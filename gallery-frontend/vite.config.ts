@@ -13,9 +13,17 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        app: './index.html'
-      }
-    }
+        app: './index.html', // Entry point
+      },
+      /*output: {
+        manualChunks: {
+          // Example of separating common libraries into their own chunk
+          vendor: ['vue', 'axios'], // Add libraries or modules here
+          workerUtils: ['./src/worker/toImgWorker.ts', './src/worker/toDataWorker.ts'], // Group your worker scripts
+        },
+      },*/
+    },
+    chunkSizeWarningLimit: 1000, // Increase warning limit to 1MB if warnings are acceptable
   },
   server: {
     proxy: {
@@ -75,6 +83,13 @@ export default defineConfig({
         target: 'http://127.0.0.1:4000',
         changeOrigin: true
       }
+    }
+  },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: "modern",
+      },
     }
   }
 })
