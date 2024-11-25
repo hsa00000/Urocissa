@@ -121,7 +121,7 @@ else {
 }
 
 # Install Rust
-if (-not (CommandExists "cargo")) {
+if (-not (CommandExists "rustup")) {
     Write-Output "Rust is not installed. Installing Rust..."
 
     # URLs for Rust installers
