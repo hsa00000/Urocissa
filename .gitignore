@@ -17,3 +17,6 @@ gallery-backend/Rocket.toml
 .env
 .vscode/
 
+ffmpeg.exe
+ffmpeg.zip
+rustup-init.exe
