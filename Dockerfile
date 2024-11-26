@@ -20,5 +20,9 @@ COPY . /urocissa
 # Install Rust using rustup
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
+# Set environment variable for Rust manually and run the script
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN node install-urocissa.mjs
+
 # Default command
-CMD ["bash"]
+CMD ["node", "run-urocissa.mjs"]
