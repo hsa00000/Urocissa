@@ -61,34 +61,45 @@ if (!commandExists("ffmpeg -version")) {
         // Windows installation: Download and extract FFmpeg
         const ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
         const ffmpegArchiveName = "ffmpeg.zip";
+        let extractedDir;
 
-        console.log(`Downloading FFmpeg from ${ffmpegUrl}...`);
-        runCommand(`curl -L -o ${ffmpegArchiveName} ${ffmpegUrl}`);
+        try {
+            console.log(`Downloading FFmpeg from ${ffmpegUrl}...`);
+            runCommand(`curl -L -o ${ffmpegArchiveName} ${ffmpegUrl}`);
 
-        console.log("Extracting FFmpeg...");
-        runCommand(`tar -xf ${ffmpegArchiveName}`);
+            console.log("Extracting FFmpeg...");
+            runCommand(`tar -xf ${ffmpegArchiveName}`);
 
-        // Locate the extracted directory
-        const extractedDir = readdirSync(".").find(dir => dir.startsWith("ffmpeg-") && dir.endsWith("-essentials_build"));
+            // Locate the extracted directory
+            extractedDir = readdirSync(".").find(dir => dir.startsWith("ffmpeg-") && dir.endsWith("-essentials_build"));
 
-        if (extractedDir) {
-            const ffmpegPath = resolve(join(extractedDir, "bin", "ffmpeg.exe"));
-            if (existsSync(ffmpegPath)) {
-                copyFileSync(ffmpegPath, "ffmpeg.exe");
-                console.log("FFmpeg setup complete!");
-
-                // Cleanup: Remove zip file and extracted folder
-                console.log("Cleaning up temporary files...");
-                rmSync(ffmpegArchiveName); // Delete the zip file
-                rmSync(extractedDir, { recursive: true, force: true }); // Delete the extracted folder
-                console.log("Cleanup complete!");
+            if (extractedDir) {
+                const ffmpegPath = resolve(join(extractedDir, "bin", "ffmpeg.exe"));
+                if (existsSync(ffmpegPath)) {
+                    copyFileSync(ffmpegPath, "ffmpeg.exe");
+                    console.log("FFmpeg setup complete!");
+                } else {
+                    console.error("Failed to locate FFmpeg binary in the extracted directory.");
+                    process.exit(1);
+                }
             } else {
-                console.error("Failed to locate FFmpeg binary in the extracted directory.");
+                console.error("Failed to locate the extracted FFmpeg directory. Ensure the archive was extracted properly.");
                 process.exit(1);
             }
-        } else {
-            console.error("Failed to locate the extracted FFmpeg directory. Ensure the archive was extracted properly.");
-            process.exit(1);
+        } finally {
+            console.log("Cleaning up temporary files...");
+            try {
+                if (existsSync(ffmpegArchiveName)) {
+                    rmSync(ffmpegArchiveName); // Delete the zip file
+                    console.log(`${ffmpegArchiveName} removed.`);
+                }
+                if (extractedDir && existsSync(extractedDir)) {
+                    rmSync(extractedDir, { recursive: true, force: true }); // Delete the extracted folder
+                    console.log(`${extractedDir} removed.`);
+                }
+            } catch (cleanupError) {
+                console.error(`Cleanup failed: ${cleanupError.message}`);
+            }
         }
     } else if (os.platform() === "linux") {
         // Linux installation: Use apt
@@ -116,9 +127,20 @@ if (!commandExists("rustup --version")) {
             : "https://static.rust-lang.org/rustup/dist/i686-pc-windows-msvc/rustup-init.exe";
         const installerPath = "rustup-init.exe";
         console.log(`Downloading Rust installer from ${rustInstallerUrl}...`);
-        runCommand(`curl -L -o ${installerPath} ${rustInstallerUrl}`);
-        console.log("Running Rust installer...");
-        runCommand(installerPath);
+
+        try {
+            runCommand(`curl -L -o ${installerPath} ${rustInstallerUrl}`);
+            console.log("Running Rust installer...");
+            runCommand(installerPath);
+        } finally {
+            console.log("Cleaning up the installer file...");
+            try {
+                rmSync(installerPath);
+                console.log("Installer file removed.");
+            } catch (error) {
+                console.error(`Failed to remove the installer file: ${error.message}`);
+            }
+        }
     } else if (os.platform() === "linux") {
         // Linux installation
         console.log("Installing Rust using rustup script...");
@@ -131,6 +153,7 @@ if (!commandExists("rustup --version")) {
 } else {
     console.log("Rust is already installed.");
 }
+
 
 // Configure and build the backend
 console.log("Configuring backend settings...");
