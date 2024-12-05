@@ -6,7 +6,7 @@ WORKDIR /app
 FROM chef AS planner
 
 # Define arguments for branch and commit hash
-ARG BRANCH=main
+ARG BRANCH=optimize/use-cargo-chef
 ARG REPO_URL=https://github.com/hsa00000/Urocissa
 
 # Fetch the latest commit hash of the specified branch
