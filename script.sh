@@ -114,6 +114,13 @@ for vol in "${PREDEFINED_VOLUMES[@]}"; do
     -v \"$vol\""
 done
 
+# Prepare formatted dynamic volume mount output
+DYNAMIC_VOLUME_OUTPUT=""
+for vol in "${DYNAMIC_VOLUMES[@]}"; do
+    DYNAMIC_VOLUME_OUTPUT+=" \\
+    -v \"$vol\""
+done
+
 # Read port from Rocket.toml
 ROCKET_PORT=$(grep -E '^port\s*=\s*' ./gallery-backend/Rocket.toml | sed 's/^port\s*=\s*//')
 
