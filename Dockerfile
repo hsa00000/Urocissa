@@ -84,4 +84,4 @@ RUN echo "Docker image built successfully! All required steps were executed."
 WORKDIR ${UROCISSA_PATH}/gallery-backend
 
 # Define the command to run the application
-CMD ["./urocissa"]
+CMD ["./Urocissa"]
