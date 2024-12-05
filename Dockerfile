@@ -36,10 +36,11 @@ ENV CARGO_TARGET_DIR=/usr/local/cargo-target
 COPY --from=planner /repo/gallery-backend/recipe.json recipe.json
 RUN cargo chef cook --recipe-path recipe.json
 COPY . .
-
+RUN ls .
+RUN ls /usr/local/cargo-target/debug/
 # Build the Rust project (cached)
 RUN cargo build 
-
+RUN ls /usr/local/cargo-target/debug/
 FROM chef AS final
 RUN ls /usr/local/cargo-target/debug/
 COPY --from=builder /usr/local/cargo-target/debug/urocissa ${UROCISSA_PATH}/gallery-backend
