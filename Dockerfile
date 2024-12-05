@@ -11,22 +11,18 @@ RUN apt update && apt install -y \
     && apt clean
 
 # Define arguments for branch and commit hash
-ARG BRANCH=optimize/use-cargo-chef
+ARG BRANCH=${BRANCH}
+ARG LAST_COMMIT_HASH=${LAST_COMMIT_HASH}
 ARG REPO_URL=https://github.com/hsa00000/Urocissa
 
 # Define a stable build directory for Rust cache
 ENV CARGO_TARGET_DIR=/usr/local/cargo-target
 
-# Fetch the latest commit hash of the specified branch
-RUN LATEST_COMMIT=$(git ls-remote ${REPO_URL} ${BRANCH} | awk '{print $1}') && \
-    echo "Latest commit is $LATEST_COMMIT" && \
-    echo $LATEST_COMMIT > /tmp/latest_commit_hash
-
-# Clone the repository into a stable path using the commit hash
+# Clone the repository and check out the specific commit
 RUN mkdir -p /repo && \
-    git clone -b ${BRANCH} ${REPO_URL} /repo && \
+    git clone --branch ${BRANCH} ${REPO_URL} /repo && \
     cd /repo && \
-    git checkout $(cat /tmp/latest_commit_hash)
+    git checkout ${LAST_COMMIT_HASH}
 
 WORKDIR /repo/gallery-backend
 
