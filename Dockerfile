@@ -40,7 +40,7 @@ COPY . .
 RUN cargo build 
 
 FROM lukemathwalker/cargo-chef:latest-rust-1 AS runtime
-COPY --from=builder /usr/local/cargo-target/debug/urocissa ${UROCISSA_PATH}/gallery-backend
+COPY --from=builder /usr/local/cargo-target/debug/Urocissa ${UROCISSA_PATH}/gallery-backend
 
 # Define a dynamic repository path
 ARG UROCISSA_PATH
