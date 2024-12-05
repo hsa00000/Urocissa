@@ -19,7 +19,10 @@ ARG REPO_URL=https://github.com/hsa00000/Urocissa
 ENV CARGO_TARGET_DIR=/usr/local/cargo-target
 
 # Clone the repository and check out the specific commit
+
+RUN mkdir -p /repo
 RUN git clone --branch ${BRANCH} ${REPO_URL} /repo
+
 WORKDIR /repo
 
 RUN git checkout ${LAST_COMMIT_HASH}
