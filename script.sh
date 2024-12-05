@@ -19,15 +19,6 @@ fi
 echo "Branch: $BRANCH"
 echo "Last Commit Hash: $LAST_COMMIT_HASH"
 
-# Update the Docker build command to include the new build arguments
-DOCKER_BUILD_COMMAND="sudo docker build \
-    --build-arg UROCISSA_PATH=${UROCISSA_PATH} \
-    --build-arg LAST_COMMIT_HASH=${LAST_COMMIT_HASH} \
-    --build-arg BRANCH=${BRANCH} \
-    -t urocissa ."
-
-eval "$DOCKER_BUILD_COMMAND"
-
 # Set the path of the .env file
 ENV_FILE="./gallery-backend/.env"
 TEMP_ENV_FILE="./gallery-backend/temp.env"
@@ -106,7 +97,15 @@ PREDEFINED_VOLUMES+=(
 
 # Build the Docker image with UROCISSA_PATH as a build argument
 echo "Building Docker image with UROCISSA_PATH set to $UROCISSA_PATH"
-sudo docker build --build-arg UROCISSA_PATH=$UROCISSA_PATH -t urocissa .
+
+# Update the Docker build command to include the new build arguments
+DOCKER_BUILD_COMMAND="sudo docker build \
+    --build-arg UROCISSA_PATH=${UROCISSA_PATH} \
+    --build-arg LAST_COMMIT_HASH=${LAST_COMMIT_HASH} \
+    --build-arg BRANCH=${BRANCH} \
+    -t urocissa ."
+
+eval "$DOCKER_BUILD_COMMAND"
 
 # Prepare formatted predefined volume mount output
 PREDEFINED_VOLUME_OUTPUT=""
