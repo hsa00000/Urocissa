@@ -27,7 +27,7 @@ FROM chef AS planner
 WORKDIR /repo/gallery-backend
 RUN cargo chef prepare --recipe-path recipe.json
 
-# Stage 3: Builder - Cook dependencies, build backend and frontend
+# Stage 3: Builder - Cook dependencies, build backend and frontend in debug mode
 FROM chef AS builder
 
 # Define a stable build directory for Rust cache
@@ -38,17 +38,21 @@ COPY --from=planner /repo/gallery-backend/recipe.json /repo/gallery-backend/reci
 WORKDIR /repo/gallery-backend
 RUN cargo chef cook --recipe-path recipe.json
 
-# Build the Rust backend
-RUN cargo build --release
+# Build the Rust backend in debug mode
+RUN cargo build
 
 # Build the frontend
 WORKDIR /repo/gallery-frontend
-# Copy frontend files
+
+# Copy frontend dependency files first for better caching
 COPY /repo/gallery-frontend/package.json /repo/gallery-frontend/package-lock.json ./
+
 # Install frontend dependencies
 RUN npm install
+
 # Copy the rest of the frontend source code
 COPY /repo/gallery-frontend/. .
+
 # Build the frontend
 RUN npm run build
 
@@ -62,8 +66,8 @@ ENV UROCISSA_PATH=${UROCISSA_PATH}
 # Create the dynamic path
 RUN mkdir -p "${UROCISSA_PATH}"
 
-# Copy the backend binary
-COPY --from=builder /usr/local/cargo-target/release/Urocissa ${UROCISSA_PATH}/gallery-backend
+# Copy the backend binary (debug build)
+COPY --from=builder /usr/local/cargo-target/debug/Urocissa ${UROCISSA_PATH}/gallery-backend
 
 # Copy necessary configuration files
 COPY --from=chef /repo/gallery-backend/.env.default ${UROCISSA_PATH}/gallery-backend/.env
