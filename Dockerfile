@@ -40,6 +40,8 @@ COPY . .
 # Build the Rust project (cached)
 RUN cargo build 
 
+FROM chef AS final
+
 COPY --from=builder /usr/local/cargo-target/release/urocissa ${UROCISSA_PATH}/gallery-backend
 
 # Define a dynamic repository path
