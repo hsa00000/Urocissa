@@ -132,7 +132,7 @@ if [[ -z "$ROCKET_PORT" ]]; then
 fi
 
 # Final Docker Run command
-DOCKER_RUN_COMMAND="sudo docker run -it --rm \\
+DOCKER_RUN_COMMAND="sudo docker run -it \\
 ${PREDEFINED_VOLUME_OUTPUT} \\
 ${DYNAMIC_VOLUME_OUTPUT} \\
     -p ${ROCKET_PORT}:${ROCKET_PORT} urocissa"
