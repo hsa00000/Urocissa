@@ -88,12 +88,20 @@ RUN npm run build
 # Print success message
 RUN echo "Docker image built successfully! All required steps were executed."
 
-# Set the working directory to backend for running the application
-WORKDIR ${UROCISSA_PATH}/gallery-backend
+
 
 # Remove all items except gallery-backend and gallery-frontend
 RUN cd ${UROCISSA_PATH} && \
     ls -A | grep -v '^gallery-backend$' | grep -v '^gallery-frontend$' | xargs rm -rf
+
+# Remove the specified files from within those directories
+RUN rm -f \
+    ${UROCISSA_PATH}/gallery-frontend/config.default.ts \
+    ${UROCISSA_PATH}/gallery-backend/.env.default \
+    ${UROCISSA_PATH}/gallery-backend/Rocket.default.toml
+
+# Set the working directory to backend for running the application
+WORKDIR ${UROCISSA_PATH}/gallery-backend
 
 # Define the command to run the application
 ENTRYPOINT [ "./Urocissa" ]
