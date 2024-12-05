@@ -46,12 +46,33 @@ FROM debian:bookworm-slim AS runtime
 
 # Install required dependencies
 RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    unzip \
     ffmpeg \
-    npm \
-    nodejs \
     --no-install-recommends && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+SHELL [ "bash", "-c" ]
+
+# Use ARG to allow flexibility if you want to change the Node.js version later
+ARG FNM_INSTALL_VERSION=22
+ENV FNM_DIR="/opt/fnm"
+
+# Install fnm
+RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir "$FNM_DIR" --skip-shell && \
+    ln -s "$FNM_DIR/fnm" /usr/bin/fnm && chmod +x /usr/bin/fnm && \
+    fnm -V
+
+RUN eval "$(fnm env --shell bash)" && \
+    fnm use --install-if-missing ${FNM_INSTALL_VERSION} && \
+    ln -s "$FNM_DIR/aliases/default/bin/node" /usr/bin/node && \
+    ln -s "$FNM_DIR/aliases/default/bin/npm" /usr/bin/npm && \
+    ln -s "$FNM_DIR/aliases/default/bin/npx" /usr/bin/npx
+
+# Verify installation
+RUN node -v && npm -v
 
 # Define a dynamic repository path
 ARG UROCISSA_PATH
@@ -67,7 +88,6 @@ COPY --from=builder /repo/gallery-backend/target/release/Urocissa ${UROCISSA_PAT
 RUN if [ -z "${UROCISSA_PATH}" ]; then \
     echo "UROCISSA_PATH is not set! Build failed." && exit 1; \
     fi
-
 
 WORKDIR ${UROCISSA_PATH}/gallery-backend
 
@@ -87,8 +107,6 @@ RUN npm run build
 
 # Print success message
 RUN echo "Docker image built successfully! All required steps were executed."
-
-
 
 # Remove all items except gallery-backend and gallery-frontend
 RUN cd ${UROCISSA_PATH} && \
