@@ -6,9 +6,15 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 # Set the UROCISSA_PATH to the script's absolute path
 UROCISSA_PATH="$SCRIPT_DIR"
 
-# Retrieve the branch name and last commit hash of optimize/use-cargo-chef
 BRANCH="main"
-LAST_COMMIT_HASH=$(git rev-parse "$BRANCH")
+
+# Fetch the latest changes from the remote
+git fetch origin $BRANCH
+
+# Get the latest commit hash from the remote branch
+LAST_COMMIT_HASH=$(git rev-parse origin/$BRANCH)
+
+echo "Latest commit hash on $BRANCH: $LAST_COMMIT_HASH"
 
 if [[ -z "$LAST_COMMIT_HASH" ]]; then
     echo "Error: Unable to retrieve the last commit hash for branch $BRANCH."
@@ -35,7 +41,8 @@ ensure_config_file() {
 
     if [[ ! -f "$target_file" ]]; then
         echo "$target_file not found. Copying from ${source_file}."
-        cp "$source_file" "$target_file"
+        mv "$source_file" "$target_file"
+        cp "$target_file" "$source_file"
     fi
 
     # Add to predefined volumes if a volume path is provided
@@ -48,6 +55,9 @@ ensure_config_file() {
 ensure_config_file "./gallery-backend/Rocket.default.toml" "./gallery-backend/Rocket.toml" "${UROCISSA_PATH}/gallery-backend/Rocket.toml"
 ensure_config_file "./gallery-frontend/config.default.ts" "./gallery-frontend/config.ts" "${UROCISSA_PATH}/gallery-frontend/config.ts"
 ensure_config_file "./gallery-backend/.env.default" "$ENV_FILE" "${UROCISSA_PATH}/gallery-backend/.env"
+
+# Convert CRLF to LF in the .env file
+sed -i 's/\r$//' "$ENV_FILE"
 
 # Process SYNC_PATH for dynamic volume mounts
 SYNC_PATH=$(grep -E '^SYNC_PATH\s*=\s*' "$ENV_FILE" | sed 's/^SYNC_PATH\s*=\s*//')
@@ -98,13 +108,14 @@ PREDEFINED_VOLUMES+=(
 # Build the Docker image with UROCISSA_PATH as a build argument
 echo "Building Docker image with UROCISSA_PATH set to $UROCISSA_PATH"
 
-# Update the Docker build command to include the new build arguments
-DOCKER_BUILD_COMMAND="sudo docker build \
+# Update the Docker build command to include the new build arguments and log redirection
+DOCKER_BUILD_COMMAND="docker build \
     --build-arg UROCISSA_PATH=${UROCISSA_PATH} \
     --build-arg LAST_COMMIT_HASH=${LAST_COMMIT_HASH} \
     --build-arg BRANCH=${BRANCH} \
     -t urocissa ."
 
+# Execute the build command
 eval "$DOCKER_BUILD_COMMAND"
 
 # Prepare formatted predefined volume mount output
@@ -121,8 +132,8 @@ for vol in "${DYNAMIC_VOLUMES[@]}"; do
     -v \"$vol\""
 done
 
-# Read port from Rocket.toml
-ROCKET_PORT=$(grep -E '^port\s*=\s*' ./gallery-backend/Rocket.toml | sed 's/^port\s*=\s*//')
+# Extract port from Rocket.toml
+ROCKET_PORT=$(grep -E '^port\s*=\s*' ./gallery-backend/Rocket.toml | sed -E 's/^port\s*=\s*"?([0-9]+)"?/\1/' | tr -d '[:space:]')
 
 # If port not found, use default port 4000
 if [[ -z "$ROCKET_PORT" ]]; then
@@ -130,17 +141,27 @@ if [[ -z "$ROCKET_PORT" ]]; then
     echo "Port not found in Rocket.toml. Using default port 4000."
 fi
 
-# Final Docker Run command
-DOCKER_RUN_COMMAND="sudo docker run -it --rm \\
+# Check if ROCKET_PORT is numeric and valid
+if [[ ! "${ROCKET_PORT}" =~ ^[0-9]+$ ]]; then
+    echo "Error: ROCKET_PORT is not set or is invalid"
+    exit 1
+else
+    echo "Using port: ${ROCKET_PORT}"
+fi
+
+
+# Generate the Docker Run command
+DOCKER_RUN_COMMAND="docker run -it --rm \\
 ${PREDEFINED_VOLUME_OUTPUT} \\
 ${DYNAMIC_VOLUME_OUTPUT} \\
-    -p ${ROCKET_PORT}:${ROCKET_PORT} urocissa /bin/bash"
+    -p ${ROCKET_PORT}:${ROCKET_PORT} \\
+    urocissa"
 
-# Output the final Docker Run command
+# Output the final Docker Run command for debugging
 echo -e "\nGenerated Docker Run command:\n"
 echo "$DOCKER_RUN_COMMAND"
 
-# Execute the Docker Run command immediately
+# Validate and execute the Docker Run command
 echo -e "\nExecuting Docker Run command...\n"
 eval "$DOCKER_RUN_COMMAND"
 

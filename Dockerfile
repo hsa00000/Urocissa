@@ -1,46 +1,57 @@
-
-
-FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
-
-# Install necessary dependencies
-RUN apt update && apt install -y \
-    ffmpeg \
-    npm \
-    pkg-config \
-    nodejs \
-    && apt clean
+FROM lukemathwalker/cargo-chef:latest-rust-latest AS chef
 
 # Define arguments for branch and commit hash
-ARG BRANCH=${BRANCH}
-ARG LAST_COMMIT_HASH=${LAST_COMMIT_HASH}
+ARG BRANCH
+ARG LAST_COMMIT_HASH
 ARG REPO_URL=https://github.com/hsa00000/Urocissa
 
 # Clone the repository and check out the specific commit
-
 RUN mkdir -p /repo
+
 RUN git clone --branch ${BRANCH} ${REPO_URL} /repo
 
 WORKDIR /repo
-
 RUN git checkout ${LAST_COMMIT_HASH}
 
-WORKDIR /repo/gallery-backend
+# Copy local config files into the cloned repository
+# Ensure these files are in your Docker build context
+# relative to the Dockerfile.
+COPY gallery-frontend/config.ts ./gallery-frontend/config.ts
+COPY gallery-backend/.env ./gallery-backend/.env
+COPY gallery-backend/Rocket.toml ./gallery-backend/Rocket.toml
 
 FROM chef AS planner
+WORKDIR /repo/gallery-backend
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
-# Define a stable build directory for Rust cache
-ENV CARGO_TARGET_DIR=/usr/local/cargo-target
+COPY --from=planner /repo/gallery-backend/recipe.json /repo/gallery-backend/recipe.json
+WORKDIR /repo/gallery-backend
+RUN cargo chef cook --release --recipe-path recipe.json
 
-COPY --from=planner /repo/gallery-backend/recipe.json recipe.json
-RUN cargo chef cook --recipe-path recipe.json
-COPY . .
+RUN git init /repo && \
+    cd /repo && \
+    git fetch origin ${BRANCH} && \
+    git reset --hard origin/${BRANCH} && \
+    git clean -df --exclude='*' && \
+    git pull origin ${BRANCH}
+RUN git checkout ${LAST_COMMIT_HASH}
 
+WORKDIR /repo/gallery-backend
 # Build the Rust project (cached)
-RUN cargo build --bin Urocissa
+RUN cargo build --release --bin Urocissa
 
-FROM lukemathwalker/cargo-chef:latest-rust-1 AS runtime
+# We do not need the Rust toolchain to run the binary!
+FROM debian:bookworm-slim AS runtime
+
+# Install required dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    npm \
+    nodejs \
+    --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Define a dynamic repository path
 ARG UROCISSA_PATH
@@ -50,7 +61,7 @@ ENV UROCISSA_PATH=${UROCISSA_PATH}
 COPY --from=chef /repo /repo
 RUN mkdir -p "${UROCISSA_PATH}" && mv /repo/* "${UROCISSA_PATH}"
 
-COPY --from=builder /usr/local/cargo-target/debug/Urocissa ${UROCISSA_PATH}/gallery-backend
+COPY --from=builder /repo/gallery-backend/target/release/Urocissa ${UROCISSA_PATH}/gallery-backend
 
 # Validate if UROCISSA_PATH is set
 RUN if [ -z "${UROCISSA_PATH}" ]; then \
@@ -59,23 +70,19 @@ RUN if [ -z "${UROCISSA_PATH}" ]; then \
 
 
 WORKDIR ${UROCISSA_PATH}/gallery-backend
+
 # Ensure required backend and frontend files exist and copy defaults if missing
 RUN if [ ! -f ".env" ]; then \
-        cp .env.default .env; \
+    cp .env.default .env; \
     fi && \
     if [ ! -f "Rocket.toml" ]; then \
-        cp Rocket.default.toml Rocket.toml; \
+    cp Rocket.default.toml Rocket.toml; \
     fi
 
 # Switch to the frontend directory
 WORKDIR ${UROCISSA_PATH}/gallery-frontend
 
-# Copy existing config file into the container if it exists on the host
-COPY ./gallery-frontend/config.ts  ${UROCISSA_PATH}/gallery-frontend/config.ts
-
 # Build the frontend
-RUN apt update && apt install -y \
-    npm
 RUN npm run build
 
 # Print success message
@@ -84,5 +91,9 @@ RUN echo "Docker image built successfully! All required steps were executed."
 # Set the working directory to backend for running the application
 WORKDIR ${UROCISSA_PATH}/gallery-backend
 
+# Remove all items except gallery-backend and gallery-frontend
+RUN cd ${UROCISSA_PATH} && \
+    ls -A | grep -v '^gallery-backend$' | grep -v '^gallery-frontend$' | xargs rm -rf
+
 # Define the command to run the application
-CMD ["./Urocissa"]
+ENTRYPOINT [ "./Urocissa" ]
