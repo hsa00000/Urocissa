@@ -27,6 +27,7 @@ RUN git checkout ${LAST_COMMIT_HASH}
 WORKDIR /repo/gallery-backend
 
 FROM chef AS planner
+COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
