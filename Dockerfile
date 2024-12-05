@@ -34,11 +34,11 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 COPY --from=planner /repo/gallery-backend/recipe.json recipe.json
-RUN cargo chef cook --profile dev-release --recipe-path recipe.json
+RUN cargo chef cook --recipe-path recipe.json
 COPY . .
 
 # Build the Rust project (cached)
-RUN cargo build --profile dev-release
+RUN cargo build 
 
 COPY --from=builder /usr/local/cargo-target/release/urocissa ${UROCISSA_PATH}/gallery-backend
 
