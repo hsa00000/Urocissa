@@ -7,7 +7,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 UROCISSA_PATH="$SCRIPT_DIR"
 
 # Retrieve the branch name and last commit hash of optimize/use-cargo-chef
-BRANCH="optimize/use-cargo-chef"
+BRANCH="main"
 LAST_COMMIT_HASH=$(git rev-parse "$BRANCH")
 
 if [[ -z "$LAST_COMMIT_HASH" ]]; then
