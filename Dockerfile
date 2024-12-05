@@ -1,22 +1,13 @@
+# Stage 1: Base image with cargo-chef
+FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
+WORKDIR /app
 
-
-# Use the official Rust image
-FROM rust:latest
-
-# Install necessary dependencies
-RUN apt update && apt install -y \
-    ffmpeg \
-    npm \
-    pkg-config \
-    nodejs \
-    && apt clean
+# Stage 2: Dependency planner
+FROM chef AS planner
 
 # Define arguments for branch and commit hash
 ARG BRANCH=main
 ARG REPO_URL=https://github.com/hsa00000/Urocissa
-
-# Define a stable build directory for Rust cache
-ENV CARGO_TARGET_DIR=/usr/local/cargo-target
 
 # Fetch the latest commit hash of the specified branch
 RUN LATEST_COMMIT=$(git ls-remote ${REPO_URL} ${BRANCH} | awk '{print $1}') && \
@@ -29,25 +20,45 @@ RUN mkdir -p /repo && \
     cd /repo && \
     git checkout $(cat /tmp/latest_commit_hash)
 
-WORKDIR /repo/gallery-backend
+# Copy the repository for planning dependencies
+COPY . . 
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Build the Rust project (cached)
-RUN cargo build --profile dev-release
+# Stage 3: Build dependencies
+FROM chef AS builder
 
-# Define a dynamic repository path
+# Copy the recipe.json from the planner stage
+COPY --from=planner /app/recipe.json recipe.json
+
+# Build dependencies (cached)
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Define arguments for dynamic paths
 ARG UROCISSA_PATH
 ENV UROCISSA_PATH=${UROCISSA_PATH}
 
-# Validate if UROCISSA_PATH is set
-RUN if [ -z "${UROCISSA_PATH}" ]; then \
-    echo "UROCISSA_PATH is not set! Build failed." && exit 1; \
-    fi
+# Clone the repository again to build the project
+COPY --from=planner /repo /repo
+WORKDIR /repo/gallery-backend
 
-# Move the cloned repository to the dynamic path
-RUN mkdir -p "${UROCISSA_PATH}" && mv /repo/* "${UROCISSA_PATH}"
+# Build the Rust project with caching enabled
+RUN cargo build --profile dev-release
 
-WORKDIR ${UROCISSA_PATH}/gallery-backend
-# Ensure required backend and frontend files exist and copy defaults if missing
+# Stage 4: Runtime stage
+FROM debian:bookworm-slim AS runtime
+
+# Install necessary runtime dependencies
+RUN apt update && apt install -y \
+    ffmpeg \
+    npm \
+    nodejs \
+    && apt clean
+
+# Copy the built application from the builder stage
+COPY --from=builder /repo /app
+WORKDIR /app/gallery-backend
+
+# Ensure required backend files exist and copy defaults if missing
 RUN if [ ! -f ".env" ]; then \
         cp .env.default .env; \
     fi && \
@@ -55,20 +66,8 @@ RUN if [ ! -f ".env" ]; then \
         cp Rocket.default.toml Rocket.toml; \
     fi
 
-# Switch to the frontend directory
-WORKDIR ${UROCISSA_PATH}/gallery-frontend
-
-# Copy existing config file into the container if it exists on the host
-COPY ./gallery-frontend/config.ts  ${UROCISSA_PATH}/gallery-frontend/config.ts
-
-# Build the frontend
-RUN npm run build
-
-# Print success message
-RUN echo "Docker image built successfully! All required steps were executed."
-
 # Set the working directory to backend for running the application
-WORKDIR ${UROCISSA_PATH}/gallery-backend
+WORKDIR /app/gallery-backend
 
 # Define the command to run the application
 CMD ["cargo", "run", "--profile", "dev-release"]
