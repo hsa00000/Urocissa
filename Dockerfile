@@ -15,9 +15,6 @@ ARG BRANCH=${BRANCH}
 ARG LAST_COMMIT_HASH=${LAST_COMMIT_HASH}
 ARG REPO_URL=https://github.com/hsa00000/Urocissa
 
-# Define a stable build directory for Rust cache
-ENV CARGO_TARGET_DIR=/usr/local/cargo-target
-
 # Clone the repository and check out the specific commit
 
 RUN mkdir -p /repo
@@ -33,6 +30,9 @@ FROM chef AS planner
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
+# Define a stable build directory for Rust cache
+ENV CARGO_TARGET_DIR=/usr/local/cargo-target
+
 COPY --from=planner /repo/gallery-backend/recipe.json recipe.json
 RUN cargo chef cook --recipe-path recipe.json
 COPY . .
