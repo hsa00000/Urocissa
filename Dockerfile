@@ -40,6 +40,11 @@ COPY . .
 RUN cargo build 
 
 FROM lukemathwalker/cargo-chef:latest-rust-1 AS runtime
+
+# Move the cloned repository to the dynamic path
+COPY --from=chef /repo /repo
+RUN mkdir -p "${UROCISSA_PATH}" && mv /repo/* "${UROCISSA_PATH}"
+
 COPY --from=builder /usr/local/cargo-target/debug/Urocissa ${UROCISSA_PATH}/gallery-backend
 
 # Define a dynamic repository path
@@ -51,8 +56,6 @@ RUN if [ -z "${UROCISSA_PATH}" ]; then \
     echo "UROCISSA_PATH is not set! Build failed." && exit 1; \
     fi
 
-# Move the cloned repository to the dynamic path
-RUN mkdir -p "${UROCISSA_PATH}" && mv /repo/* "${UROCISSA_PATH}"
 
 WORKDIR ${UROCISSA_PATH}/gallery-backend
 # Ensure required backend and frontend files exist and copy defaults if missing
