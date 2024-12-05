@@ -27,7 +27,6 @@ RUN git checkout ${LAST_COMMIT_HASH}
 WORKDIR /repo/gallery-backend
 
 FROM chef AS planner
-COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
@@ -37,8 +36,9 @@ ENV CARGO_TARGET_DIR=/usr/local/cargo-target
 COPY --from=planner /repo/gallery-backend/recipe.json recipe.json
 RUN cargo chef cook --recipe-path recipe.json
 COPY . .
+
 # Build the Rust project (cached)
-RUN cargo build 
+RUN cargo build --bin Urocissa
 
 FROM lukemathwalker/cargo-chef:latest-rust-1 AS runtime
 
