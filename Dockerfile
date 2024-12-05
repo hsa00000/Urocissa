@@ -11,7 +11,7 @@ RUN apt update && apt install -y \
     && apt clean
 
 # Define arguments for branch and commit hash
-ARG BRANCH=main
+ARG BRANCH=optimize/use-cargo-chef
 ARG REPO_URL=https://github.com/hsa00000/Urocissa
 
 # Define a stable build directory for Rust cache
