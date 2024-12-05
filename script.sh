@@ -134,7 +134,7 @@ fi
 DOCKER_RUN_COMMAND="sudo docker run -it --rm \\
 ${PREDEFINED_VOLUME_OUTPUT} \\
 ${DYNAMIC_VOLUME_OUTPUT} \\
-    -p ${ROCKET_PORT}:${ROCKET_PORT} urocissa"
+    -p ${ROCKET_PORT}:${ROCKET_PORT} urocissa /bin/bash"
 
 # Output the final Docker Run command
 echo -e "\nGenerated Docker Run command:\n"
