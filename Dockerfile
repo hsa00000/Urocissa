@@ -41,7 +41,7 @@ COPY . .
 RUN cargo build 
 
 FROM chef AS final
-
+RUN ls /usr/local/cargo-target/debug/
 COPY --from=builder /usr/local/cargo-target/debug/urocissa ${UROCISSA_PATH}/gallery-backend
 
 # Define a dynamic repository path
