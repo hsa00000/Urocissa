@@ -25,15 +25,11 @@ RUN apt update && apt install -y \
     curl \
     ca-certificates \
     unzip \
-    && apt clean
-# Download and install static ffmpeg binary
-RUN curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
-    | tar -xJ -C /usr/local/bin --strip-components=1 --wildcards '*/ffmpeg' '*/ffprobe'
+    ffmpeg \
+    --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Verify installation
-RUN ffmpeg -version
-
-# Install fnm
 SHELL [ "bash", "-c" ]
 
 # Use ARG to allow flexibility if you want to change the Node.js version later
