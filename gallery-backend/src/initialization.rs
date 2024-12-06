@@ -5,6 +5,7 @@ use log::kv::Key;
 use log::LevelFilter;
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 use std::{env, fs};
 pub fn initialize_logger() {
     env::set_var("RUST_LOG", "INFO");
@@ -66,6 +67,30 @@ pub fn initialize_logger() {
         .filter(None, LevelFilter::Info) // Set minimum Level to Warn for all modules
         .filter(Some("rocket"), LevelFilter::Warn)
         .init();
+}
+
+pub fn check_ffmpeg_and_ffprobe() {
+    for command in &["ffmpeg", "ffprobe"] {
+        match Command::new(command).arg("-version").output() {
+            Ok(output) if output.status.success() => {
+                let version_info = String::from_utf8_lossy(&output.stdout);
+                let version_line = version_info.lines().next().unwrap_or("Unknown version");
+                info!("{} version: {}", command, version_line);
+            }
+            Ok(_) => {
+                error!(
+                    "Error: `{}` command was found, but it returned an error. Please ensure it's correctly installed.",
+                    command
+                );
+            }
+            Err(_) => {
+                error!(
+                    "Error: `{}` is not installed or not available in PATH. Please install it before running the application.",
+                    command
+                );
+            }
+        }
+    }
 }
 
 pub fn initialize_folder() {

@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate rocket;
-use initialization::{initialize_file, initialize_folder, initialize_logger};
+use initialization::{
+    check_ffmpeg_and_ffprobe, initialize_file, initialize_folder, initialize_logger,
+};
 use public::redb::{ALBUM_TABLE, DATA_TABLE};
 use public::tree::start_loop::SHOULD_RESET;
 use public::tree::TREE;
@@ -41,6 +43,7 @@ mod synchronizer;
 #[launch]
 async fn rocket() -> _ {
     initialize_logger();
+    check_ffmpeg_and_ffprobe();
     initialize_folder();
     initialize_file();
     let start_time = Instant::now();
