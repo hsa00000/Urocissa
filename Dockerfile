@@ -15,10 +15,8 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS builder
 # Install dependencies needed for building
 RUN apk add --no-cache \
-    linux-headers \
     openssl-dev \
-    openssl-libs-static \
-    pkgconf
+    openssl-libs-static
 
 COPY --from=planner /repo/gallery-backend/recipe.json /repo/gallery-backend/recipe.json
 
