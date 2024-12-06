@@ -49,10 +49,17 @@ RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
     unzip \
-    ffmpeg \
+    xz-utils \
     --no-install-recommends && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Download and install static ffmpeg binary
+RUN curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+    | tar -xJ -C /usr/local/bin --strip-components=1 --wildcards '*/ffmpeg' '*/ffprobe'
+
+# Verify installation
+RUN ffmpeg -version
 
 SHELL [ "bash", "-c" ]
 
