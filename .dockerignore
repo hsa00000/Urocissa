@@ -5,12 +5,21 @@
 !gallery-frontend/
 !gallery-backend/
 
-# Include specific subdirectories and files
+# Ignore everything inside the included directories
+gallery-frontend/**
+gallery-backend/**
+
+# Include specific subdirectories
+!gallery-frontend/public/
+!gallery-frontend/src/
+!gallery-backend/src/
+
+# Include all files and subdirectories within the included subdirectories
 !gallery-frontend/public/**
 !gallery-frontend/src/**
 !gallery-backend/src/**
 
-# Include specific files in the frontend
+# Include specific files in gallery-frontend
 !gallery-frontend/config.default.ts
 !gallery-frontend/config.ts
 !gallery-frontend/package.json
@@ -21,7 +30,7 @@
 !gallery-frontend/tsconfig.tsbuildinfo
 !gallery-frontend/vite.config.ts
 
-# Include specific files in the backend
+# Include specific files in gallery-backend
 !gallery-backend/config.json
 !gallery-backend/Rocket.toml
 !gallery-backend/Cargo.lock
