@@ -1,5 +1,5 @@
 #!/bin/bash
-#
+
 # Script Name: run_urocissa_docker.sh
 #
 # Description:
