@@ -74,18 +74,24 @@ pub fn check_ffmpeg_and_ffprobe() {
         match Command::new(command).arg("-version").output() {
             Ok(output) if output.status.success() => {
                 let version_info = String::from_utf8_lossy(&output.stdout);
-                let version_line = version_info.lines().next().unwrap_or("Unknown version");
-                info!("{} version: {}", command, version_line);
+                let version_number = version_info
+                    .lines()
+                    .next()
+                    .unwrap_or("Unknown version")
+                    .split_whitespace()
+                    .nth(2) // Get the third word
+                    .unwrap_or("Unknown");
+                info!("{} version: {}", command, version_number);
             }
             Ok(_) => {
                 error!(
-                    "Error: `{}` command was found, but it returned an error. Please ensure it's correctly installed.",
+                    "`{}` command was found, but it returned an error. Please ensure it's correctly installed.",
                     command
                 );
             }
             Err(_) => {
                 error!(
-                    "Error: `{}` is not installed or not available in PATH. Please install it before running the application.",
+                    "`{}` is not installed or not available in PATH. Please install it before running the application.",
                     command
                 );
             }

@@ -4,18 +4,20 @@
 #
 # Description:
 #   This script is designed to simplify the process of running a Docker image for the Urocissa project.
-#   It supports options for debugging, logging, and specifying build types (release or debug).
+#   It supports options for debugging, logging, specifying build types (release or debug), and controlling
+#   Docker caching behavior.
 #
 # Usage:
 #   ./run_urocissa_docker.sh [OPTIONS]
 #
 # Options:
-#   --debug            Enable debug mode to display additional information during execution.
-#   --log-file <file>  Specify a log file for debug output. The file will be created if it does not exist,
-#                      or cleared if it already exists.
+#   --debug             Enable debug mode to display additional information during execution.
+#   --log-file <file>   Specify a log file for debug output. The file will be created if it does not exist,
+#                       or cleared if it already exists.
 #   --build-type <type> Specify the build type for the Docker image. Valid values are:
-#                      - release (default)
-#                      - debug
+#                       - release (default)
+#                       - debug
+#   --no-cache          Disable Docker build cache. Forces a fresh build of all layers.
 #
 # Examples:
 #   1. Run with default settings (release build):
@@ -27,13 +29,17 @@
 #   3. Build with debug configuration:
 #      ./run_urocissa_docker.sh --build-type debug
 #
-#   4. Combine debug mode, log file, and debug build type:
-#      ./run_urocissa_docker.sh --debug --log-file debug.log --build-type debug
+#   4. Disable Docker cache during build:
+#      ./run_urocissa_docker.sh --no-cache
+#
+#   5. Combine debug mode, log file, debug build type, and disable cache:
+#      ./run_urocissa_docker.sh --debug --log-file debug.log --build-type debug --no-cache
 #
 # Notes:
 #   - The log file specified with --log-file will be initialized (cleared or created) at the start of the script.
 #   - Debug mode outputs information to the terminal by default unless a log file is specified.
 #   - If --build-type is not specified, the script defaults to "release".
+#   - The --no-cache option ensures that no intermediate layers are used from previous builds.
 #
 # Exit Codes:
 #   0  Success
@@ -168,20 +174,27 @@ debug_log "Building Docker image with UROCISSA_PATH=$UROCISSA_PATH and BUILD_TYP
 
 DOCKER_BUILD_COMMAND="docker build \
     --build-arg UROCISSA_PATH=${UROCISSA_PATH} \
-    --build-arg BUILD_TYPE=${BUILD_TYPE} \
-    -t urocissa ."
+    --build-arg BUILD_TYPE=${BUILD_TYPE}"
 
 if [ "${NO_CACHE}" = true ]; then
     DOCKER_BUILD_COMMAND+=" --no-cache"
 fi
 
 DOCKER_BUILD_COMMAND+=" -t urocissa ."
+
 if [[ -n "$LOG_FILE" ]]; then
     # Redirect output to the log file
     eval "$DOCKER_BUILD_COMMAND" >>"$LOG_FILE" 2>&1
 else
     # Output to standard output
     eval "$DOCKER_BUILD_COMMAND"
+fi
+
+# Check if Docker Build succeeded
+if [[ $? -ne 0 ]]; then
+    echo "Error: Docker build failed. Exiting..."
+    debug_log "Error: Docker build failed. Exiting..."
+    exit 1
 fi
 
 # Extract port from Rocket.toml
