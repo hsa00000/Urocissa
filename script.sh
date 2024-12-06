@@ -89,7 +89,7 @@ PREDEFINED_VOLUMES+=(
 # Build the Docker image with UROCISSA_PATH as a build argument
 echo "Building Docker image with UROCISSA_PATH set to $UROCISSA_PATH"
 
-DOCKER_BUILD_COMMAND="sudo docker build --build-arg UROCISSA_PATH=${UROCISSA_PATH} -t test ."
+DOCKER_BUILD_COMMAND="sudo docker build --build-arg UROCISSA_PATH=${UROCISSA_PATH} -t urocissa ."
 
 eval "$DOCKER_BUILD_COMMAND"
 
