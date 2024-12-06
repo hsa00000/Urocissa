@@ -4,18 +4,16 @@ FROM lukemathwalker/cargo-chef:latest-rust-latest AS chef
 ARG BUILD_TYPE=release
 ENV BUILD_TYPE=${BUILD_TYPE}
 
-WORKDIR /repo
+WORKDIR /repo/gallery-backend
 
 FROM chef AS planner
 COPY ./gallery-backend /repo/gallery-backend
 
-WORKDIR /repo/gallery-backend
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder 
 COPY --from=planner /repo/gallery-backend/recipe.json /repo/gallery-backend/recipe.json
 
-WORKDIR /repo/gallery-backend
 # Use the build argument in the chef cook step
 RUN if [ "${BUILD_TYPE}" = "release" ]; then \
         cargo chef cook --release --recipe-path recipe.json; \
