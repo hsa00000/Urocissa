@@ -158,11 +158,29 @@ PREDEFINED_VOLUMES+=(
 debug_log "Predefined volumes: ${PREDEFINED_VOLUMES[*]}"
 debug_log "Dynamic volumes: ${DYNAMIC_VOLUMES[*]}"
 
+# Determine TARGET_ARCH based on uname
+case "$(uname -m)" in
+x86_64)
+    TARGET_ARCH="x86_64-unknown-linux-musl"
+    ;;
+aarch64)
+    TARGET_ARCH="aarch64-unknown-linux-musl"
+    ;;
+*)
+    debug_log "Unsupported architecture: $(uname -m)"
+    exit 1
+    ;;
+esac
+
+# Log the determined TARGET_ARCH
+debug_log "Determined TARGET_ARCH=$TARGET_ARCH"
+
 # Build the Docker image with UROCISSA_PATH and build type as build arguments
 debug_log "Building Docker image with UROCISSA_PATH=$UROCISSA_PATH and BUILD_TYPE=$BUILD_TYPE"
 DOCKER_BUILD_COMMAND="sudo docker build \
     --build-arg UROCISSA_PATH=${UROCISSA_PATH} \
     --build-arg BUILD_TYPE=${BUILD_TYPE} \
+    --build-arg TARGET_ARCH=${TARGET_ARCH} \
     -t urocissa ."
 
 if [[ -n "$LOG_FILE" ]]; then
