@@ -43,12 +43,17 @@
 DEBUG=false
 LOG_FILE=""
 BUILD_TYPE="release"
+NO_CACHE=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
     --debug)
         DEBUG=true
+        shift
+        ;;
+    --no-cache)
+        NO_CACHE=true
         shift
         ;;
     --log-file)
@@ -177,12 +182,17 @@ debug_log "Determined TARGET_ARCH=$TARGET_ARCH"
 
 # Build the Docker image with UROCISSA_PATH and build type as build arguments
 debug_log "Building Docker image with UROCISSA_PATH=$UROCISSA_PATH and BUILD_TYPE=$BUILD_TYPE"
-DOCKER_BUILD_COMMAND="sudo docker build \
+
+DOCKER_BUILD_COMMAND="docker build \
     --build-arg UROCISSA_PATH=${UROCISSA_PATH} \
     --build-arg BUILD_TYPE=${BUILD_TYPE} \
-    --build-arg TARGET_ARCH=${TARGET_ARCH} \
-    -t urocissa ."
+    --build-arg TARGET_ARCH=${TARGET_ARCH}"
 
+if [ "${NO_CACHE}" = true ]; then
+    DOCKER_BUILD_COMMAND+=" --no-cache"
+fi
+
+DOCKER_BUILD_COMMAND+=" -t urocissa ."
 if [[ -n "$LOG_FILE" ]]; then
     # Redirect output to the log file
     eval "$DOCKER_BUILD_COMMAND" >>"$LOG_FILE" 2>&1
