@@ -1,4 +1,3 @@
-# Use the official Rust image
 FROM lukemathwalker/cargo-chef:latest-rust-latest AS chef
 
 # Define the build type as a build argument
@@ -26,7 +25,6 @@ RUN if [ "${BUILD_TYPE}" = "release" ]; then \
 
 COPY ./gallery-backend /repo/gallery-backend
 
-WORKDIR /repo/gallery-backend
 # Use the build argument in the cargo build step
 RUN if [ "${BUILD_TYPE}" = "release" ]; then \
         cargo build --release --bin Urocissa; \
@@ -34,7 +32,7 @@ RUN if [ "${BUILD_TYPE}" = "release" ]; then \
         cargo build --bin Urocissa; \
     fi
 
-FROM node:22-slim AS frontend-builder
+FROM node:22-bookworm-slim AS frontend-builder
 
 WORKDIR /repo/gallery-frontend
 
@@ -43,9 +41,6 @@ COPY ./gallery-frontend /repo/gallery-frontend
 RUN npm run build
 
 FROM debian:bookworm-slim AS runtime
-
-ARG BUILD_TYPE=release
-ENV BUILD_TYPE=${BUILD_TYPE}
 
 # Install necessary dependencies
 RUN apt-get update && apt-get install -y \
@@ -58,8 +53,8 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 # Set environment variable for the FFmpeg URL
-ARG FFMPEG_BASE_URL=https://johnvansickle.com/ffmpeg/releases
-ARG FFMPEG_VERSION=ffmpeg-release
+ARG FFMPEG_BASE_URL=https://johnvansickle.com/ffmpeg/builds
+ARG FFMPEG_VERSION=ffmpeg-git
 
 RUN ARCH=$(uname -m) && \
     case "${ARCH}" in \
@@ -83,6 +78,9 @@ RUN ffmpeg -version
 # Define a dynamic repository path
 ARG UROCISSA_PATH
 ENV UROCISSA_PATH=${UROCISSA_PATH}
+
+ARG BUILD_TYPE=release
+ENV BUILD_TYPE=${BUILD_TYPE}
 
 # Validate if UROCISSA_PATH is set
 RUN if [ -z "${UROCISSA_PATH}" ]; then \
