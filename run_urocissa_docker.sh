@@ -1,4 +1,43 @@
 #!/bin/bash
+#
+# Script Name: run_urocissa_docker.sh
+#
+# Description:
+#   This script is designed to simplify the process of running a Docker image for the Urocissa project.
+#   It supports options for debugging, logging, and specifying build types (release or debug).
+#
+# Usage:
+#   ./run_urocissa_docker.sh [OPTIONS]
+#
+# Options:
+#   --debug            Enable debug mode to display additional information during execution.
+#   --log-file <file>  Specify a log file for debug output. The file will be created if it does not exist,
+#                      or cleared if it already exists.
+#   --build-type <type> Specify the build type for the Docker image. Valid values are:
+#                      - release (default)
+#                      - debug
+#
+# Examples:
+#   1. Run with default settings (release build):
+#      ./run_urocissa_docker.sh
+#
+#   2. Enable debug mode and specify a log file:
+#      ./run_urocissa_docker.sh --debug --log-file build.log
+#
+#   3. Build with debug configuration:
+#      ./run_urocissa_docker.sh --build-type debug
+#
+#   4. Combine debug mode, log file, and debug build type:
+#      ./run_urocissa_docker.sh --debug --log-file debug.log --build-type debug
+#
+# Notes:
+#   - The log file specified with --log-file will be initialized (cleared or created) at the start of the script.
+#   - Debug mode outputs information to the terminal by default unless a log file is specified.
+#   - If --build-type is not specified, the script defaults to "release".
+#
+# Exit Codes:
+#   0  Success
+#   1  Error occurred during execution
 
 # Default settings
 DEBUG=false
@@ -8,26 +47,32 @@ BUILD_TYPE="release"
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --debug)
-            DEBUG=true
-            shift
-            ;;
-        --log-file)
-            LOG_FILE="$2"
-            shift 2
-            ;;
-        --build-type)
-            BUILD_TYPE="$2"
-            if [[ "$BUILD_TYPE" != "release" && "$BUILD_TYPE" != "debug" ]]; then
-                echo "Error: Invalid build type. Use 'release' or 'debug'."
-                exit 1
-            fi
-            shift 2
-            ;;
-        *)
-            echo "Error: Unknown option $1"
+    --debug)
+        DEBUG=true
+        shift
+        ;;
+    --log-file)
+        LOG_FILE="$2"
+        # Initialize the log file: create if it doesn't exist, clear if it does
+        >"$LOG_FILE"
+        if [[ $? -ne 0 ]]; then
+            echo "Error: Failed to initialize log file at $LOG_FILE"
             exit 1
-            ;;
+        fi
+        shift 2
+        ;;
+    --build-type)
+        BUILD_TYPE="$2"
+        if [[ "$BUILD_TYPE" != "release" && "$BUILD_TYPE" != "debug" ]]; then
+            echo "Error: Invalid build type. Use 'release' or 'debug'."
+            exit 1
+        fi
+        shift 2
+        ;;
+    *)
+        echo "Error: Unknown option $1"
+        exit 1
+        ;;
     esac
 done
 
@@ -36,7 +81,7 @@ debug_log() {
     local message="$1"
     if [[ "$DEBUG" == true ]]; then
         if [[ -n "$LOG_FILE" ]]; then
-            echo "$message" >> "$LOG_FILE"
+            echo "$message" >>"$LOG_FILE"
         else
             echo "$message"
         fi
@@ -94,7 +139,7 @@ if [[ -n "$SYNC_PATH" ]]; then
     SYNC_PATH="${SYNC_PATH#\"}"
     debug_log "Original SYNC_PATH is: $SYNC_PATH"
 
-    IFS=',' read -ra PATHS <<< "$SYNC_PATH"
+    IFS=',' read -ra PATHS <<<"$SYNC_PATH"
 
     for path in "${PATHS[@]}"; do
         trimmed_path=$(echo "$path" | xargs)
@@ -119,7 +164,14 @@ DOCKER_BUILD_COMMAND="sudo docker build \
     --build-arg UROCISSA_PATH=${UROCISSA_PATH} \
     --build-arg BUILD_TYPE=${BUILD_TYPE} \
     -t urocissa ."
-eval "$DOCKER_BUILD_COMMAND"
+
+if [[ -n "$LOG_FILE" ]]; then
+    # Redirect output to the log file
+    eval "$DOCKER_BUILD_COMMAND" >>"$LOG_FILE" 2>&1
+else
+    # Output to standard output
+    eval "$DOCKER_BUILD_COMMAND"
+fi
 
 # Extract port from Rocket.toml
 ROCKET_PORT=$(grep -E '^port\s*=\s*' ./gallery-backend/Rocket.toml | sed -E 's/^port\s*=\s*"?([0-9]+)"?/\1/' | tr -d '[:space:]')
