@@ -1,0 +1,33 @@
+# Ignore everything
+**
+
+# Include the parent directories
+!gallery-frontend/
+!gallery-backend/
+
+# Ignore everything inside the included directories
+gallery-frontend/**
+gallery-backend/**
+
+# Include specific files
+!gallery-frontend/public
+!gallery-frontend/src
+!gallery-backend/src
+!gallery-frontend/config.default.ts
+!gallery-frontend/config.ts
+!gallery-frontend/package.json
+!gallery-frontend/index.html
+!gallery-frontend/package-lock.json
+!gallery-frontend/tsconfig.json
+!gallery-frontend/tsconfig.node.json
+!gallery-frontend/tsconfig.tsbuildinfo
+!gallery-frontend/vite.config.ts
+!gallery-backend/config.json
+!gallery-backend/Rocket.toml
+!gallery-backend/Cargo.lock
+!gallery-backend/Cargo.toml
+!gallery-backend/.env.default
+!gallery-backend/.env
+!gallery-backend/Rocket.default.toml
+!gallery-backend/Rocket.toml
+
