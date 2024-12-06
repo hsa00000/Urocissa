@@ -43,10 +43,30 @@ RUN apt update && apt install -y \
     curl \
     ca-certificates \
     unzip \
-    ffmpeg \
     --no-install-recommends && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Set environment variable for the FFmpeg URL
+ARG FFMPEG_BASE_URL=https://johnvansickle.com/ffmpeg/releases
+ARG FFMPEG_VERSION=ffmpeg-release
+
+# Download and install the appropriate FFmpeg binary based on architecture
+RUN ARCH=$(uname -m) && \
+    case "${ARCH}" in \
+      x86_64)   FFMPEG_ARCH=amd64 ;; \
+      i386)     FFMPEG_ARCH=i686 ;; \
+      arm64)    FFMPEG_ARCH=arm64 ;; \
+      armhf)    FFMPEG_ARCH=armhf ;; \
+      armel)    FFMPEG_ARCH=armel ;; \
+      *)        echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
+    esac && \
+    FFMPEG_URL="${FFMPEG_BASE_URL}/${FFMPEG_VERSION}-${FFMPEG_ARCH}-static.tar.xz" && \
+    echo "Downloading FFmpeg from ${FFMPEG_URL}" && \
+    curl -L "${FFMPEG_URL}" | tar -xJ -C /usr/local/bin --strip-components=1 --wildcards '*/ffmpeg' '*/ffprobe'
+
+# Verify installation
+RUN ffmpeg -version
 
 SHELL [ "bash", "-c" ]
 
