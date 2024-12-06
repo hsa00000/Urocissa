@@ -1,4 +1,5 @@
-FROM lukemathwalker/cargo-chef:latest-rust-latest AS chef
+# Use the Alpine variant of cargo-chef
+FROM lukemathwalker/cargo-chef:latest-rust-alpine AS chef
 
 # Define the build type as a build argument
 ARG BUILD_TYPE=release
@@ -11,7 +12,14 @@ COPY ./gallery-backend /repo/gallery-backend
 
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM chef AS builder 
+FROM chef AS builder
+# Install dependencies needed for building
+RUN apk add --no-cache \
+    linux-headers \
+    openssl-dev \
+    openssl-libs-static \
+    pkgconf
+
 COPY --from=planner /repo/gallery-backend/recipe.json /repo/gallery-backend/recipe.json
 
 # Use the build argument in the chef cook step
@@ -30,7 +38,7 @@ RUN if [ "${BUILD_TYPE}" = "release" ]; then \
         cargo build --bin Urocissa; \
     fi
 
-FROM node:22-bookworm-slim AS frontend-builder
+FROM node:lts-alpine AS frontend-builder
 
 WORKDIR /repo/gallery-frontend
 
@@ -38,37 +46,10 @@ COPY ./gallery-frontend /repo/gallery-frontend
 # Build the frontend
 RUN npm run build
 
-FROM debian:bookworm-slim AS runtime
+FROM alpine:latest AS runtime
 
-# Install necessary dependencies
-RUN apt-get update && apt-get install -y \
-    libssl3 \
-    curl \
-    xz-utils \
-    ca-certificates \
-    --no-install-recommends && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Set environment variable for the FFmpeg URL
-ARG FFMPEG_BASE_URL=https://johnvansickle.com/ffmpeg/builds
-ARG FFMPEG_VERSION=ffmpeg-git
-
-RUN ARCH=$(uname -m) && \
-    case "${ARCH}" in \
-      x86_64)   FFMPEG_ARCH=amd64 ;; \
-      i386)     FFMPEG_ARCH=i686 ;; \
-      arm64)    FFMPEG_ARCH=arm64 ;; \
-      armhf)    FFMPEG_ARCH=armhf ;; \
-      armel)    FFMPEG_ARCH=armel ;; \
-      *)        echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
-    esac && \
-    FFMPEG_URL="${FFMPEG_BASE_URL}/${FFMPEG_VERSION}-${FFMPEG_ARCH}-static.tar.xz" && \
-    echo "Downloading FFmpeg from ${FFMPEG_URL}" && \
-    curl -L "${FFMPEG_URL}" | tar -xJ -C /usr/local/bin --strip-components=1 --wildcards '*/ffmpeg' '*/ffprobe' && \
-    apt-get purge -y --auto-remove curl xz-utils ca-certificates && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+COPY --from=mwader/static-ffmpeg:latest /ffmpeg /usr/local/bin/
+# COPY --from=mwader/static-ffmpeg:latest /ffprobe /usr/local/bin/
 
 # Verify installation
 RUN ffmpeg -version
