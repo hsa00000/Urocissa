@@ -49,10 +49,10 @@ ENV BUILD_TYPE=${BUILD_TYPE}
 
 # Install necessary dependencies
 RUN apt-get update && apt-get install -y \
-    xz-utils \
+    libssl3 \
     curl \
+    xz-utils \
     ca-certificates \
-    unzip \
     --no-install-recommends && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -61,7 +61,6 @@ RUN apt-get update && apt-get install -y \
 ARG FFMPEG_BASE_URL=https://johnvansickle.com/ffmpeg/releases
 ARG FFMPEG_VERSION=ffmpeg-release
 
-# Download and install the appropriate FFmpeg binary based on architecture
 RUN ARCH=$(uname -m) && \
     case "${ARCH}" in \
       x86_64)   FFMPEG_ARCH=amd64 ;; \
@@ -73,7 +72,10 @@ RUN ARCH=$(uname -m) && \
     esac && \
     FFMPEG_URL="${FFMPEG_BASE_URL}/${FFMPEG_VERSION}-${FFMPEG_ARCH}-static.tar.xz" && \
     echo "Downloading FFmpeg from ${FFMPEG_URL}" && \
-    curl -L "${FFMPEG_URL}" | tar -xJ -C /usr/local/bin --strip-components=1 --wildcards '*/ffmpeg' '*/ffprobe'
+    curl -L "${FFMPEG_URL}" | tar -xJ -C /usr/local/bin --strip-components=1 --wildcards '*/ffmpeg' '*/ffprobe' && \
+    apt-get purge -y --auto-remove curl xz-utils ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Verify installation
 RUN ffmpeg -version
