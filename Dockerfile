@@ -5,16 +5,18 @@ FROM lukemathwalker/cargo-chef:latest-rust-latest AS chef
 ARG BUILD_TYPE=release
 ENV BUILD_TYPE=${BUILD_TYPE}
 
-WORKDIR /repo/gallery-backend
+WORKDIR /repo
 
 FROM chef AS planner
-COPY . /repo
+COPY ./gallery-backend /repo/gallery-backend
+
+WORKDIR /repo/gallery-backend
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder 
+COPY --from=planner /repo/gallery-backend/recipe.json /repo/gallery-backend/recipe.json
 
-COPY --from=planner /repo/gallery-backend/recipe.json recipe.json
-
+WORKDIR /repo/gallery-backend
 # Use the build argument in the chef cook step
 RUN if [ "${BUILD_TYPE}" = "release" ]; then \
         cargo chef cook --release --recipe-path recipe.json; \
@@ -22,8 +24,9 @@ RUN if [ "${BUILD_TYPE}" = "release" ]; then \
         cargo chef cook --recipe-path recipe.json; \
     fi
 
-COPY . /repo
+COPY ./gallery-backend /repo/gallery-backend
 
+WORKDIR /repo/gallery-backend
 # Use the build argument in the cargo build step
 RUN if [ "${BUILD_TYPE}" = "release" ]; then \
         cargo build --release --bin Urocissa; \
@@ -38,7 +41,7 @@ ARG BUILD_TYPE=release
 ENV BUILD_TYPE=${BUILD_TYPE}
 
 # Install necessary dependencies
-RUN apt update && apt install -y \
+RUN apt-get update && apt-get install -y \
     xz-utils \
     curl \
     ca-certificates \
@@ -92,11 +95,10 @@ RUN node -v && npm -v
 ARG UROCISSA_PATH
 ENV UROCISSA_PATH=${UROCISSA_PATH}
 
-# Move the cloned repository to the dynamic path
-COPY --from=chef /repo /repo
-RUN mkdir -p "${UROCISSA_PATH}" && mv /repo/* "${UROCISSA_PATH}"
+# Ensure the target directory exists
+RUN mkdir -p "${UROCISSA_PATH}/gallery-backend"
 
-# Use the build argument in the copy step
+# Copy the backend build artifacts to the appropriate location
 COPY --from=builder /repo/gallery-backend/target/${BUILD_TYPE}/Urocissa ${UROCISSA_PATH}/gallery-backend
 
 # Validate if UROCISSA_PATH is set
@@ -104,8 +106,7 @@ RUN if [ -z "${UROCISSA_PATH}" ]; then \
         echo "UROCISSA_PATH is not set! Build failed." && exit 1; \
     fi
 
-WORKDIR ${UROCISSA_PATH}/gallery-backend
-COPY . ${UROCISSA_PATH}
+COPY ./gallery-frontend ${UROCISSA_PATH}/gallery-frontend
 
 # Switch to the frontend directory
 WORKDIR ${UROCISSA_PATH}/gallery-frontend
