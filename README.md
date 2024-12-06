@@ -60,10 +60,10 @@ Both demos are currently in read-only mode, and uploading files or editing tags 
 | Instant Select All         | ✅     |
 | Find in Timeline           | ✅     |
 | Responsive Layout          | ✅     |
+| Docker Installation        | ✅     |
 | Shareable Albums           | 🛠️     |
 | Basic Editing              | ⏳     |
 | Multi-User Support         | ⏳     |
-| Docker Installation        | ⏳     |
 | Discovery                  | ⏳     |
 | Object/Face Recognition    | ❌     |
 | Geolocation/Map            | ❌     |
