@@ -6,25 +6,6 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 # Set the UROCISSA_PATH to the script's absolute path
 UROCISSA_PATH="$SCRIPT_DIR"
 
-BRANCH="main"
-
-# Fetch the latest changes from the remote
-git fetch origin $BRANCH
-
-# Get the latest commit hash from the remote branch
-LAST_COMMIT_HASH=$(git rev-parse origin/$BRANCH)
-
-echo "Latest commit hash on $BRANCH: $LAST_COMMIT_HASH"
-
-if [[ -z "$LAST_COMMIT_HASH" ]]; then
-    echo "Error: Unable to retrieve the last commit hash for branch $BRANCH."
-    exit 1
-fi
-
-# Print the branch and commit hash for verification
-echo "Branch: $BRANCH"
-echo "Last Commit Hash: $LAST_COMMIT_HASH"
-
 # Set the path of the .env file
 ENV_FILE="./gallery-backend/.env"
 TEMP_ENV_FILE="./gallery-backend/temp.env"
@@ -108,14 +89,8 @@ PREDEFINED_VOLUMES+=(
 # Build the Docker image with UROCISSA_PATH as a build argument
 echo "Building Docker image with UROCISSA_PATH set to $UROCISSA_PATH"
 
-# Update the Docker build command to include the new build arguments and log redirection
-DOCKER_BUILD_COMMAND="docker build \
-    --build-arg UROCISSA_PATH=${UROCISSA_PATH} \
-    --build-arg LAST_COMMIT_HASH=${LAST_COMMIT_HASH} \
-    --build-arg BRANCH=${BRANCH} \
-    -t urocissa ."
+DOCKER_BUILD_COMMAND="sudo docker build --build-arg UROCISSA_PATH=${UROCISSA_PATH} -t test ."
 
-# Execute the build command
 eval "$DOCKER_BUILD_COMMAND"
 
 # Prepare formatted predefined volume mount output
