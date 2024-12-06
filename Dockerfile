@@ -1,7 +1,7 @@
 
 
 # Use the official Rust image
-FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-latest AS chef
 
 WORKDIR /repo/gallery-backend
 
@@ -12,10 +12,10 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS builder 
 
 COPY --from=planner /repo/gallery-backend/recipe.json recipe.json
-RUN cargo chef cook --recipe-path recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 COPY . /repo
 # Build the Rust project (cached)
-RUN cargo build --bin Urocissa
+RUN cargo build --release --bin Urocissa
 
 # We do not need the Rust toolchain to run the binary!
 FROM debian:bookworm-slim AS runtime
@@ -65,12 +65,8 @@ RUN if [ -z "${UROCISSA_PATH}" ]; then \
     echo "UROCISSA_PATH is not set! Build failed." && exit 1; \
     fi
 
-# Move the cloned repository to the dynamic path
-COPY . /repo
-RUN mkdir -p "${UROCISSA_PATH}" && mv /repo/* "${UROCISSA_PATH}"
-
 WORKDIR ${UROCISSA_PATH}/gallery-backend
-COPY --from=builder /repo/gallery-backend/target/debug/Urocissa ${UROCISSA_PATH}/gallery-backend
+COPY --from=builder /repo/gallery-backend/target/release/Urocissa ${UROCISSA_PATH}/gallery-backend
 COPY . ${UROCISSA_PATH}
 
 # Switch to the frontend directory
