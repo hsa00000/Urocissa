@@ -1,0 +1,9 @@
+{
+    "shellformat.effectLanguages": [
+        "shellscript"
+    ],
+    "[dockerfile]": {
+        "editor.formatOnSave": false
+    },
+    "docker.languageserver.formatter.ignoreMultilineInstructions": true
+}
