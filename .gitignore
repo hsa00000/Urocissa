@@ -13,5 +13,3 @@ gallery-backend/Rocket.toml
 temp.env
 .vscode/
 *.log
-
-cleanup.sh
