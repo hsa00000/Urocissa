@@ -9,7 +9,7 @@ on:
       - main
 
 permissions:
-  contents: write  # Grants write permissions for pushing changes
+  contents: read  # Only requires read permissions
 
 jobs:
   manage-dev-files:
@@ -25,70 +25,17 @@ jobs:
 
       - name: Fetch main branch
         run: |
-          echo "Fetching main branch to ensure comparison is accurate."
+          echo "Fetching main branch for comparison."
           git fetch origin main
 
-      - name: Set Git user identity
+      - name: Block dev-exclusive files in pull requests or pushes
         run: |
-          echo "Setting Git user identity for commit operations."
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
-
-      - name: Remove dev-exclusive files in pull requests
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        run: |
-          FOUND_FILES=0
-          echo "Starting to check for dev-exclusive files in PR..."
-          echo "Files to check: $DEV_EXCLUSIVE_FILES"
-
-          for file in $DEV_EXCLUSIVE_FILES; do
-            echo "Checking if $file exists in the PR diff..."
-            if git diff --name-only origin/main...HEAD | grep -q "$file"; then
-              echo "Warning: $file found in PR. It will be removed."
-              echo "Attempting to remove $file from the staging area..."
-              git rm --cached "$file" || echo "Failed to remove $file from the staging area (may not be staged)."
-
-              echo "Attempting to remove $file from the working tree..."
-              rm -f "$file" || echo "Failed to remove $file from the working tree (may not exist)."
-
-              FOUND_FILES=1
-              echo "$file successfully removed from PR."
-            else
-              echo "$file not found in the PR diff. Skipping."
-            fi
-          done
-
-          if [ "$FOUND_FILES" -eq 1 ]; then
-            echo "Changes detected. Preparing to commit and push updates..."
-            git commit -m "Remove dev-exclusive files from PR" || echo "No changes to commit."
-            echo "Determining the branch to push changes..."
-            TARGET_BRANCH=${{ github.head_ref }}
-            echo "Target branch for push: $TARGET_BRANCH"
-            echo "Pushing changes to branch: $TARGET_BRANCH..."
-            git push origin HEAD:$TARGET_BRANCH || echo "Failed to push changes back to the PR branch."
-            echo "::set-output name=rerun::true"  # Indicate that the workflow needs to re-run
-          else
-            echo "No dev-exclusive files detected. No changes to push."
-            echo "::set-output name=rerun::false"
-          fi
-
-      - name: Block dev-exclusive files on push to main
-        if: github.event_name == 'push'
-        run: |
-          echo "Checking for dev-exclusive files in push to main branch..."
+          echo "Checking for dev-exclusive files in PR or push..."
           for file in $DEV_EXCLUSIVE_FILES; do
             echo "Checking $file..."
-            if git diff --name-only HEAD~1 HEAD | grep -q "$file"; then
-              echo "Error: $file cannot be pushed to main."
+            if git diff --name-only origin/main...HEAD | grep -q "$file"; then
+              echo "Error: $file cannot be included in this PR or push."
               exit 1
             fi
           done
-          echo "No dev-exclusive files detected in the push to main."
-
-  rerun-workflow:
-    needs: manage-dev-files
-    if: ${{ needs.manage-dev-files.outputs.rerun == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger workflow again
-        run: echo "Re-running the workflow to process new commit."
+          echo "No dev-exclusive files detected. Workflow completed successfully."
