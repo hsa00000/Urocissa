@@ -39,7 +39,7 @@ export const useFilterStore = (isolationId: string) =>
           } else {
             const album_id = route.params.hash
             if (typeof album_id === 'string') {
-              this.basicString = `and(album:${album_id}, not(tag:_trashed))`
+              this.basicString = `and(album:"${album_id}", not(tag:"_trashed"))`
             }
           }
         } else {

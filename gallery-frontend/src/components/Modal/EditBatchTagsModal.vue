@@ -14,7 +14,7 @@
             chips
             multiple
             label="Add Tags"
-            :rules="[addTagsRule, allowedCharactersForTags]"
+            :rules="[addTagsRule]"
             :items="tagList.filter((tag) => !specialTag(tag))"
           ></v-combobox>
         </v-container>
@@ -24,7 +24,7 @@
             chips
             multiple
             label="Remove Tags"
-            :rules="[removeTagsRule, allowedCharactersForTags]"
+            :rules="[removeTagsRule]"
             :items="tagList.filter((tag) => !specialTag(tag))"
           ></v-combobox>
         </v-container>
@@ -64,7 +64,6 @@ import { useCollectionStore } from '@/store/collectionStore'
 import { useTagStore } from '@/store/tagStore'
 import { editTagsInWorker } from '@/script/inWorker/editTagsInWorker'
 import { getIsolationIdByRoute } from '@/script/common/functions'
-import { allowedCharactersRegex } from '@/script/common/constants'
 
 const formIsValid = ref(false)
 const addTagsArray = ref<string[]>([])
@@ -92,10 +91,6 @@ const addTagsRule = (inputArray: string[]) =>
 const removeTagsRule = (inputArray: string[]) =>
   inputArray.every((tag) => !addTagsArray.value.includes(tag)) ||
   'Some tags are already selected in Add Tags'
-
-const allowedCharactersForTags = (inputArray: string[]) =>
-  inputArray.every((tag) => allowedCharactersRegex.test(tag)) ||
-  'Only letters, numbers, spaces, underscores, and hyphens are allowed'
 
 const submit = () => {
   const hashArray = Array.from(collectionStore.editModeCollection)

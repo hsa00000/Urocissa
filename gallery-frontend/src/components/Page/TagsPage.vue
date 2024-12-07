@@ -19,7 +19,7 @@
               <tr v-for="tagsData in tagStore.tags" :key="tagsData.tag">
                 <td class="key-cell">
                   <v-btn
-                    @click="SearchByTag(tagsData.tag)"
+                    @click="searchByTag(tagsData.tag, router)"
                     slim
                     class="text-caption"
                     variant="tonal"
@@ -44,6 +44,7 @@ import { useTagStore } from '@/store/tagStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { onMounted } from 'vue'
 import { onBeforeUnmount } from 'vue'
+import { searchByTag } from '@/script/common/functions'
 const initializedStore = useInitializedStore('mainId')
 const tagStore = useTagStore('mainId')
 const router = useRouter()
@@ -75,13 +76,6 @@ watch(
     }
   }
 )
-
-async function SearchByTag(tag: string) {
-  await router.replace({
-    path: '/all',
-    query: { search: `tag:${tag.trim()}` }
-  })
-}
 
 onMounted(async () => {
   if (!tagStore.fetched) {

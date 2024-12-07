@@ -11,7 +11,7 @@
         <v-container>
           <v-text-field
             v-model="albumName"
-            :rules="[rules.required, rules.allowedCharacters]"
+            :rules="[rules.required]"
             label="Album Name"
           ></v-text-field>
         </v-container>
@@ -45,7 +45,6 @@ import { ref } from 'vue'
 import axios from 'axios'
 import { useMessageStore } from '@/store/messageStore'
 import { useModalStore } from '@/store/modalStore'
-import { allowedCharactersRegex } from '@/script/common/constants'
 
 const modalStore = useModalStore('mainId')
 const messageStore = useMessageStore('mainId')
@@ -54,10 +53,7 @@ const albumName = ref<string>('')
 const formIsValid = ref<boolean>(false)
 
 const rules = {
-  required: (value: string) => !!value || 'Album Name is required',
-  allowedCharacters: (value: string) =>
-    allowedCharactersRegex.test(value) ||
-    'Only letters, numbers, spaces, underscores, and hyphens are allowed'
+  required: (value: string) => !!value || 'Album Name is required'
 }
 
 const createAlbum = async () => {

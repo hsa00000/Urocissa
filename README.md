@@ -102,10 +102,10 @@ To quickly set up and try Urocissa using Docker, follow these steps:
 
 3. **Run the Setup Script**
 
-   Run the `script.sh` file to install and start Urocissa:
+   Run the `bash run_urocissa_docker.sh` file to install and start Urocissa:
 
    ```bash
-   bash script.sh
+   bash run_urocissa_docker.sh
    ```
 
    This script will handle all necessary installations and start the application, allowing you to get Urocissa up and running in one step.
@@ -124,7 +124,7 @@ git pull
 If using Docker, simply run the script
 
 ```bash
-bash script.sh
+bash run_urocissa_docker.sh
 ```
 
 Otherwise, follow these manual steps to update:

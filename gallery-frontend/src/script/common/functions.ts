@@ -4,7 +4,7 @@ import { thumbHashToDataURL } from 'thumbhash'
 import { z } from 'zod'
 import { DataBaseParse } from './schemas'
 import { DataBase, AbstractData, Album } from './types'
-import { RouteLocationNormalizedLoaded } from 'vue-router'
+import { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { computed, ComputedRef, inject } from 'vue'
 import { useDataStore } from '../../store/dataStore.ts'
 import Cookies from 'js-cookie'
@@ -158,17 +158,31 @@ export function getScrollUpperBound(totalHeight: number, windowHeight: number): 
   return totalHeight - windowHeight + navBarHeight
 }
 
-/* export function quickAddTags(tag: string, index: number, isolationId: string) {
-  const indexArray = [index]
-  const addTagsArray: string[] = [tag]
-  const removeTagsArray: string[] = []
-  editTagsInWorker(indexArray, addTagsArray, removeTagsArray, isolationId)
+export async function searchByTag(tag: string, router: Router) {
+  await router.replace({
+    path: '/all',
+    query: { search: `tag:${escapeAndWrap(tag)}` }
+  })
 }
 
-export function quickRemoveTags(tag: string, index: number, isolationId: string) {
-  const indexArray = [index]
-  const addTagsArray: string[] = []
-  const removeTagsArray: string[] = [tag]
-  editTagsInWorker(indexArray, addTagsArray, removeTagsArray, isolationId)
+export function escapeAndWrap(str: string): string {
+  // 先將字串中的反斜線及雙引號進行轉譯
+  const escaped = str
+    .replace(/\\/g, '\\\\') // 將 \ 轉為 \\
+    .replace(/"/g, '\\"') // 將 " 轉為 \"
+
+  // 將處理後的字串用 " 包起來
+  return `"${escaped}"`
 }
- */
+
+export function unescapeAndUnwrap(str: string): string {
+  // 若字串是以 " 開頭並以 " 結尾，則去除這對引號
+  if (str.startsWith('"') && str.endsWith('"')) {
+    str = str.slice(1, -1)
+  }
+
+  // 將轉譯字元復原
+  return str
+    .replace(/\\"/g, '"') // 將 \" 還原成 "
+    .replace(/\\\\/g, '\\') // 將 \\ 還原成 \
+}

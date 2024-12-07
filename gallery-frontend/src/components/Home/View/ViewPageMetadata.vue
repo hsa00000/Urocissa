@@ -150,7 +150,7 @@
                 :key="tag"
                 link
                 class="ma-1"
-                @click="searchByTag(tag)"
+                @click="searchByTag(tag, router)"
               >
                 {{ tag }}
               </v-chip>
@@ -299,7 +299,7 @@
                 :key="tag"
                 link
                 class="ma-1"
-                @click="searchByTag(tag)"
+                @click="searchByTag(tag, router)"
               >
                 {{ tag }}
               </v-chip>
@@ -330,7 +330,7 @@ import { useModalStore } from '@/store/modalStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { filesize } from 'filesize'
 import { AbstractData } from '@/script/common/types'
-import { dater } from '@/script/common/functions'
+import { dater, searchByTag } from '@/script/common/functions'
 import { quickRemoveTags, quickAddTags } from '@/script/common/quickEditTags'
 
 const props = defineProps<{
@@ -379,10 +379,6 @@ const filteredTags = computed(() => {
 // Methods
 function toggleInfo() {
   infoStore.showInfo = !infoStore.showInfo
-}
-
-async function searchByTag(tag: string) {
-  await router.push({ path: '/all', query: { search: `tag: ${tag.trim()}` } })
 }
 
 function openEditTagsModal() {

@@ -14,7 +14,7 @@ import {
   TagExpressionCstChildren,
   TypeExpressionCstChildren
 } from './MyParserCst'
-import { getArrayValue } from '../common/functions.ts'
+import { getArrayValue, unescapeAndUnwrap } from '../common/functions.ts'
 const WhiteSpace = createToken({
   name: 'WhiteSpace',
   pattern: /\s+/,
@@ -38,22 +38,13 @@ const Comma: TokenType = createToken({ name: 'Comma', pattern: /,/ })
 
 const Identifier: TokenType = createToken({
   name: 'Identifier',
-  pattern:
-    /[\u0030-\u0039\u0041-\u005A\u0061-\u007A\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\u0370-\u03FF\u0400-\u04FF_\u002D\u0020]+/
-  /*
-  \u0030-\u0039: Decimal digits 0 to 9.
-  \u0041-\u005A: Uppercase Latin letters A to Z.
-  \u0061-\u007A: Lowercase Latin letters a to z.
-  \u4E00-\u9FFF: Common CJK (Chinese-Japanese-Korean) ideographs, including a significant portion of Chinese characters and some Japanese and Korean characters.
-  \u3040-\u309F: Hiragana characters (Japanese script).
-  \u30A0-\u30FF: Katakana characters (Japanese script).
-  \uAC00-\uD7AF: Hangul syllables (Korean script).
-  \u0370-\u03FF: Greek and Coptic characters.
-  \u0400-\u04FF: Cyrillic characters.
-  _: Underscore character.
-  \u002D: Hyphen character (-).
-  \u0020: Space character.
-*/
+  // 語法解釋：
+  // "         : 字串起始
+  // (?:\\.|[^"\\])* : 非捕獲群組，允許：
+  //     \\.: 反斜線後跟任意字元 (如 \" 用來轉譯引號)
+  //     [^"\\]: 非引號且非反斜線的任意字元
+  // "         : 字串結束
+  pattern: /"(?:\\.|[^"\\])*"/
 })
 
 const allTokens: TokenType[] = [
@@ -240,29 +231,29 @@ export class MyVisitor extends BaseVisitor {
 
   // Visit a tagExpression node
   tagExpression(children: TagExpressionCstChildren) {
-    return { Tag: getArrayValue(children.Identifier, 0).image }
+    return { Tag: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
   }
 
   typeExpression(children: TypeExpressionCstChildren) {
-    return { ExtType: getArrayValue(children.Identifier, 0).image }
+    return { ExtType: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
   }
 
   extExpression(children: ExtExpressionCstChildren) {
-    return { Ext: getArrayValue(children.Identifier, 0).image }
+    return { Ext: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
   }
   makeExpression(children: MakeExpressionCstChildren) {
-    return { Make: getArrayValue(children.Identifier, 0).image }
+    return { Make: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
   }
   modelExpression(children: ModelExpressionCstChildren) {
-    return { Model: getArrayValue(children.Identifier, 0).image }
+    return { Model: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
   }
   albumExpression(children: AlbumExpressionCstChildren) {
-    return { Album: getArrayValue(children.Identifier, 0).image }
+    return { Album: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
   }
   pathExpression(children: PathExpressionCstChildren) {
-    return { Path: getArrayValue(children.Identifier, 0).image }
+    return { Path: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
   }
   anyExpression(children: AnyExpressionCstChildren) {
-    return { Any: getArrayValue(children.Identifier, 0).image }
+    return { Any: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
   }
 }

@@ -114,7 +114,7 @@ const homePageRoutes = createRoute(
   '',
   HomeMain,
   'HomePage',
-  'and(not(tag: _archived), not(tag:_trashed))'
+  'and(not(tag:"_archived"), not(tag:"_trashed"))'
 )
 
 const allPageRoutes = createRoute('all', AllPage, 'AllPage', null)
@@ -123,23 +123,23 @@ const favoritePageRoutes = createRoute(
   'favorite',
   FavoritePage,
   'FavoritePage',
-  'and(tag:_favorite, not(tag:_trashed))'
+  'and(tag:"_favorite", not(tag:"_trashed"))'
 )
 
 const archivedPageRoutes = createRoute(
   'archived',
   ArchivedPage,
   'ArchivedPage',
-  'and(tag:_archived, not(tag:_trashed))'
+  'and(tag:"_archived", not(tag:"_trashed"))'
 )
 
-const trashedPageRoutes = createRoute('trashed', TrashedPage, 'TrashedPage', 'and(tag:_trashed)')
+const trashedPageRoutes = createRoute('trashed', TrashedPage, 'TrashedPage', 'and(tag:"_trashed")')
 
 const albumsPageRoutes = createRoute(
   'albums',
   AlbumsPage,
   'AlbumsPage',
-  'and(type:album, not(tag:_trashed))'
+  'and(type:"album", not(tag:"_trashed"))'
 )
 
 // ======================================

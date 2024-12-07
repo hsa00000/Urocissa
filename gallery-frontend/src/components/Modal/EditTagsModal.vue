@@ -19,7 +19,6 @@
             :items="filteredTagList"
             label="Tags"
             closable-chips
-            :rules="[allowedCharactersForTags]"
           ></v-combobox>
         </v-container>
         <v-card-actions>
@@ -58,7 +57,6 @@ import { useModalStore } from '@/store/modalStore'
 import { useTagStore } from '@/store/tagStore'
 import { editTagsInWorker } from '@/script/inWorker/editTagsInWorker'
 import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@/script/common/functions'
-import { allowedCharactersRegex } from '@/script/common/constants'
 
 const formIsValid = ref(false)
 const changedTagsArray = ref<string[]>([])
@@ -73,10 +71,6 @@ const tagList = computed(() => tagStore.tags)
 const filteredTagList = computed(() =>
   tagList.value.filter((tag) => !specialTag(tag.tag)).map((tag) => tag.tag)
 )
-
-const allowedCharactersForTags = (inputArray: string[]) =>
-  inputArray.every((tag) => allowedCharactersRegex.test(tag)) ||
-  'Only letters, numbers, spaces, underscores, and hyphens are allowed'
 
 const specialTag = (tag: string): boolean => {
   return tag === '_archived' || tag === '_favorite'
