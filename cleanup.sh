@@ -5,7 +5,7 @@ files=(
     "./gallery-backend/.env"
     "./gallery-backend/Rocket.toml"
     "./gallery-frontend/config.ts"
-    "./build.log"
+    "./*.log" # Match all .log files at the root level
 )
 
 # Folders to remove
@@ -19,12 +19,14 @@ folders=(
 # Remove specified files
 echo "Removing specified files..."
 for file in "${files[@]}"; do
-    if [ -f "$file" ]; then
-        rm "$file"
-        echo "Removed: $file"
-    else
-        echo "File not found: $file"
-    fi
+    for f in $file; do # Loop over matched files (in case of wildcards)
+        if [ -f "$f" ]; then
+            rm "$f"
+            echo "Removed: $f"
+        else
+            echo "File not found: $f"
+        fi
+    done
 done
 
 # Remove specified folders and their contents
