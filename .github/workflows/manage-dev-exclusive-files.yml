@@ -1,18 +1,21 @@
 name: Manage Dev-Exclusive Files
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
 
 jobs:
-  check-and-remove-dev-files:
+  manage-dev-files:
     runs-on: ubuntu-latest
     env:
       DEV_EXCLUSIVE_FILES: "cleanup.sh"
 
     steps:
-      - name: Checkout PR branch
+      - name: Checkout repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 0  # Fetch the entire history to ensure the main branch is available
@@ -26,18 +29,18 @@ jobs:
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
 
-      - name: Check for dev-exclusive files
+      - name: Remove dev-exclusive files in pull requests
+        if: github.event_name == 'pull_request'
         run: |
           FOUND_FILES=0
           for file in $DEV_EXCLUSIVE_FILES; do
             if git diff --name-only origin/main...HEAD | grep -q "$file"; then
-              echo "Warning: $file found in PR. It will be removed."
+              echo "Removing $file from PR..."
               git restore --staged "$file" || true
               git checkout "$file" || true
               FOUND_FILES=1
             fi
           done
-
           if [ "$FOUND_FILES" -eq 1 ]; then
             git commit -m "Remove dev-exclusive files from PR"
             git push origin HEAD:$(echo $GITHUB_HEAD_REF)  # Push changes back to the PR branch
@@ -45,11 +48,12 @@ jobs:
             echo "No changes to push"
           fi
 
-      - name: Ensure dev-exclusive files are removed
+      - name: Block dev-exclusive files on push to main
+        if: github.event_name == 'push'
         run: |
           for file in $DEV_EXCLUSIVE_FILES; do
-            if git diff --name-only origin/main...HEAD | grep -q "$file"; then
-              echo "Error: $file cannot be merged into main."
+            if git diff --name-only HEAD~1 HEAD | grep -q "$file"; then
+              echo "Error: $file cannot be pushed to main."
               exit 1
             fi
           done
