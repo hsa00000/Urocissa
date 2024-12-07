@@ -35,15 +35,16 @@ jobs:
           FOUND_FILES=0
           for file in $DEV_EXCLUSIVE_FILES; do
             if git diff --name-only origin/main...HEAD | grep -q "$file"; then
-              echo "Removing $file from PR..."
-              git restore --staged "$file" || true
-              git checkout "$file" || true
+              echo "Warning: $file found in PR. It will be removed."
+              git rm --cached "$file" || true  # Remove the file from the staging area
+              rm -f "$file" || true           # Remove the file from the working tree
               FOUND_FILES=1
             fi
           done
+          
           if [ "$FOUND_FILES" -eq 1 ]; then
             git commit -m "Remove dev-exclusive files from PR"
-            git push origin HEAD:$(echo $GITHUB_HEAD_REF)  # Push changes back to the PR branch
+            git push origin HEAD:${{ github.head_ref }}  # Push changes back to the PR branch
           else
             echo "No changes to push"
           fi
