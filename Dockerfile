@@ -3,31 +3,31 @@ FROM lukemathwalker/cargo-chef:latest-rust-alpine AS chef
 
 # Define the build type as a build argument (default to "release")
 ARG BUILD_TYPE=release
-# Set the build type as an environment variable
 ENV BUILD_TYPE=${BUILD_TYPE}
 
-# Set the working directory for the backend
 WORKDIR /app/gallery-backend
 
-# Planner stage: Generate the build recipe
+######################
+# Planner stage
+######################
 FROM chef AS planner
-# Copy the backend source code to the container
-COPY ./gallery-backend /app/gallery-backend
 
-# Generate the Cargo recipe file for reproducible builds
+COPY ./gallery-backend/Cargo.lock /app/gallery-backend/Cargo.lock
+COPY ./gallery-backend/Cargo.toml /app/gallery-backend/Cargo.toml
+COPY ./gallery-backend/src /app/gallery-backend/src
+
 RUN cargo chef prepare --recipe-path recipe.json
 
-# Builder stage: Build the Rust backend
+######################
+# Builder stage
+######################
 FROM chef AS builder
-# Install necessary dependencies for building the Rust project
-RUN apk add --no-cache \
-    openssl-dev \
-    openssl-libs-static
 
-# Copy the generated recipe from the planner stage
+RUN apk add --no-cache openssl-dev openssl-libs-static
+
 COPY --from=planner /app/gallery-backend/recipe.json /app/gallery-backend/recipe.json
 
-# Use the build argument to determine the build mode and handle profiles dynamically
+# Use the build argument to determine the build mode
 RUN if [ "${BUILD_TYPE}" = "release" ]; then \
         cargo chef cook --release --recipe-path recipe.json; \
     elif [ "${BUILD_TYPE}" = "debug" ]; then \
@@ -36,8 +36,9 @@ RUN if [ "${BUILD_TYPE}" = "release" ]; then \
         cargo chef cook --profile "${BUILD_TYPE}" --recipe-path recipe.json; \
     fi
 
-# Copy the backend source code to the container
-COPY ./gallery-backend /app/gallery-backend
+COPY ./gallery-backend/Cargo.lock /app/gallery-backend/Cargo.lock
+COPY ./gallery-backend/Cargo.toml /app/gallery-backend/Cargo.toml
+COPY ./gallery-backend/src /app/gallery-backend/src
 
 # Build the backend binary based on the build type
 RUN if [ "${BUILD_TYPE}" = "release" ]; then \
@@ -47,52 +48,64 @@ RUN if [ "${BUILD_TYPE}" = "release" ]; then \
     else \
         cargo build --profile "${BUILD_TYPE}" --bin Urocissa; \
     fi
-    
-# Copy the built binary to a consistent directory for easier access
-RUN mkdir -p /app/gallery-backend/bin && \
-    cp /app/gallery-backend/target/${BUILD_TYPE}/Urocissa /app/gallery-backend/bin/Urocissa
 
-# Frontend builder stage: Build the frontend assets
+RUN cp /app/gallery-backend/target/${BUILD_TYPE}/Urocissa /app/gallery-backend/Urocissa
+
+######################
+# Frontend builder stage
+######################
 FROM node:lts-alpine AS frontend-builder
-
-# Set the working directory for the frontend
 WORKDIR /app/gallery-frontend
-
-# Copy the frontend source code to the container
 COPY ./gallery-frontend /app/gallery-frontend
-
-# Build the frontend assets
 RUN npm run build
 
-# Runtime stage: Assemble the final runtime image
+######################
+# Runtime stage
+######################
 FROM alpine:latest AS runtime
 
-# Install runtime dependencies (e.g., ffmpeg for media processing)
 RUN apk add --no-cache ffmpeg
 
-# Define a dynamic repository path using an argument and environment variable
-ARG UROCISSA_PATH
-ENV UROCISSA_PATH=${UROCISSA_PATH}
+WORKDIR /app/gallery-backend
 
-# Validate if UROCISSA_PATH is set
-RUN if [ -z "${UROCISSA_PATH}" ]; then echo "UROCISSA_PATH is not set! Build failed." && exit 1; fi
+# Copy backend binary
+COPY --from=builder /app/gallery-backend /app/gallery-backend
+COPY --from=builder /app/gallery-backend/Urocissa /app/gallery-backend/Urocissa
 
-# Ensure the working directory exists for the backend
-WORKDIR ${UROCISSA_PATH}/gallery-backend
+# Copy frontend assets
+COPY --from=frontend-builder /app/gallery-frontend/dist /app/gallery-frontend/dist
+COPY --from=frontend-builder /app/gallery-frontend/public /app/gallery-frontend/public
 
-# Copy the backend binary from the builder stage to the runtime image
-COPY --from=builder /app/gallery-backend/bin/Urocissa ${UROCISSA_PATH}/gallery-backend
+# Add an entrypoint script that will:
+# 1. Check if UROCISSA_PATH is set
+# 2. Move /app/gallery-* to ${UROCISSA_PATH}/gallery-* if set
+# 3. Run the Urocissa binary
+WORKDIR /app
 
-# Copy the built frontend assets from the frontend-builder stage
-COPY --from=frontend-builder /app/gallery-frontend/dist ${UROCISSA_PATH}/gallery-frontend/dist
-COPY --from=frontend-builder /app/gallery-frontend/public ${UROCISSA_PATH}/gallery-frontend/public
+# Create the entrypoint script
+RUN echo '#!/bin/sh' > /entrypoint.sh && \
+    echo 'set -e' >> /entrypoint.sh && \
+    echo 'if [ -z "${UROCISSA_PATH}" ]; then' >> /entrypoint.sh && \
+    echo '    echo "Error: UROCISSA_PATH is not set. Terminating."' >> /entrypoint.sh && \
+    echo '    exit 1' >> /entrypoint.sh && \
+    echo 'else' >> /entrypoint.sh && \
+    echo '    mkdir -p "${UROCISSA_PATH}"' >> /entrypoint.sh && \
+    echo '    echo "Directory listing of /app/gallery-backend before moving:"' >> /entrypoint.sh && \
+    echo '    ls -al /app/gallery-backend' >> /entrypoint.sh && \
+    echo '    ls -al "${UROCISSA_PATH}/gallery-backend"' >> /entrypoint.sh && \
+    echo '    mv /app/gallery-backend/* "${UROCISSA_PATH}/gallery-backend"' >> /entrypoint.sh && \
+    echo '    mv /app/gallery-frontend/* "${UROCISSA_PATH}/gallery-frontend"' >> /entrypoint.sh && \
+    echo '    echo "Listing ${UROCISSA_PATH} after move:"' >> /entrypoint.sh && \
+    echo '    ls -al "${UROCISSA_PATH}"' >> /entrypoint.sh && \
+    echo '    echo "Listing ${UROCISSA_PATH}/gallery-backend:"' >> /entrypoint.sh && \
+    echo '    ls -al "${UROCISSA_PATH}/gallery-backend"' >> /entrypoint.sh && \
+    echo '    echo "Listing ${UROCISSA_PATH}/gallery-frontend:"' >> /entrypoint.sh && \
+    echo '    ls -al "${UROCISSA_PATH}/gallery-frontend"' >> /entrypoint.sh && \
+    echo '    cd "${UROCISSA_PATH}/gallery-backend"' >> /entrypoint.sh && \
+    echo 'fi' >> /entrypoint.sh && \
+    echo 'echo "Attempting to run ./Urocissa"' >> /entrypoint.sh && \
+    echo 'ls -al' >> /entrypoint.sh && \
+    echo 'exec ./Urocissa' >> /entrypoint.sh && \
+    chmod +x /entrypoint.sh
 
-# Copy the frontend configuration file to the runtime image
-COPY ./gallery-frontend/config.ts ${UROCISSA_PATH}/gallery-frontend
-
-# Copy the backend configuration files to the runtime image
-COPY ./gallery-backend/.env ${UROCISSA_PATH}/gallery-backend
-COPY ./gallery-backend/Rocket.toml ${UROCISSA_PATH}/gallery-backend
-
-# Define the command to run the backend application
-ENTRYPOINT [ "./Urocissa" ]
+ENTRYPOINT ["/entrypoint.sh"]

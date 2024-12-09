@@ -158,7 +158,6 @@ setup_environment() {
     debug_log "Build type is set to $BUILD_TYPE"
 
     ENV_FILE="./gallery-backend/.env"
-    TEMP_ENV_FILE="./gallery-backend/temp.env"
 
     # Initialize arrays
     PREDEFINED_VOLUMES=()
@@ -207,10 +206,9 @@ prepare_volumes() {
 }
 
 build_docker_image() {
-    debug_log "Building Docker image with UROCISSA_PATH=$UROCISSA_PATH and BUILD_TYPE=$BUILD_TYPE"
+    debug_log "Building Docker image with BUILD_TYPE=$BUILD_TYPE"
 
     DOCKER_BUILD_COMMAND="docker build \
-        --build-arg UROCISSA_PATH=${UROCISSA_PATH} \
         --build-arg BUILD_TYPE=${BUILD_TYPE}"
 
     if [ "${NO_CACHE}" = true ]; then
@@ -245,6 +243,9 @@ run_container() {
     for vol in "${DYNAMIC_VOLUMES[@]}"; do
         DOCKER_RUN_COMMAND+=" -v $vol"
     done
+
+    # Pass UROCISSA_PATH at runtime as an environment variable
+    DOCKER_RUN_COMMAND+=" -e UROCISSA_PATH=${UROCISSA_PATH}"
     DOCKER_RUN_COMMAND+=" -p ${ROCKET_PORT}:${ROCKET_PORT} urocissa"
 
     debug_log "Generated Docker Run command: $DOCKER_RUN_COMMAND"
