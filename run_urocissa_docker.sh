@@ -154,7 +154,7 @@ run_container() {
     done
 
     DOCKER_RUN_COMMAND+=" -e UROCISSA_PATH=${UROCISSA_PATH}"
-    DOCKER_RUN_COMMAND+=" -p ${ROCKET_PORT}:${ROCKET_PORT} urocissa"
+    DOCKER_RUN_COMMAND+=" -p ${ROCKET_PORT}:${ROCKET_PORT} hsa00000/urocissa:latest"
 
     debug_log "Generated Docker Run command: $DOCKER_RUN_COMMAND"
     eval "$DOCKER_RUN_COMMAND"
