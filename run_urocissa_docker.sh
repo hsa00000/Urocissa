@@ -125,6 +125,13 @@ prepare_volumes() {
             else
                 abs_path=$(realpath -m "$(dirname "./gallery-backend/.env")/$trimmed_path")
             fi
+
+            # Panic if the path does not exist
+            if [[ ! -e "$abs_path" ]]; then
+                echo "Error: Path '$abs_path' in .env does not exist. Aborting."
+                exit 1
+            fi
+
             DYNAMIC_VOLUMES+=("$abs_path:$abs_path")
         done
     else
