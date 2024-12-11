@@ -22,8 +22,8 @@ jobs:
 
       - name: Build and Push AMD64 Image
         run: |
-          docker build --build-arg BUILD_TYPE=release -t your-dockerhub-username/urocissa:amd64-latest .
-          docker push your-dockerhub-username/urocissa:amd64-latest
+          docker build --build-arg BUILD_TYPE=release -t hsa00000/urocissa:amd64-latest .
+          docker push hsa00000/urocissa:amd64-latest
 
   build-arm64:
     name: Build for ARM64
@@ -41,8 +41,8 @@ jobs:
 
       - name: Build and Push ARM64 Image
         run: |
-          docker build --build-arg BUILD_TYPE=release -t your-dockerhub-username/urocissa:arm64-latest .
-          docker push your-dockerhub-username/urocissa:arm64-latest
+          docker build --build-arg BUILD_TYPE=release -t hsa00000/urocissa:arm64-latest .
+          docker push hsa00000/urocissa:arm64-latest
 
   create-manifest:
     name: Create and Push Docker Manifest
@@ -58,8 +58,8 @@ jobs:
 
       - name: Create and Push Docker Manifest
         run: |
-          docker manifest create your-dockerhub-username/urocissa:latest \
-            your-dockerhub-username/urocissa:amd64-latest \
-            your-dockerhub-username/urocissa:arm64-latest
+          docker manifest create hsa00000/urocissa:latest \
+            hsa00000/urocissa:amd64-latest \
+            hsa00000/urocissa:arm64-latest
 
-          docker manifest push your-dockerhub-username/urocissa:latest
+          docker manifest push hsa00000/urocissa:latest
