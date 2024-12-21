@@ -79,6 +79,7 @@ import { IsolationId } from '@/script/common/types'
 
 const props = defineProps<{
   isolationId: IsolationId
+  tempMode: string | null
   title: string | null
 }>()
 
@@ -150,10 +151,14 @@ const bufferHeight = computed(() => {
 })
 
 onMounted(() => {
-  filterStore.handleFilterString(route)
-  filterStore.handleBasicString(route, props.isolationId)
+  if (props.tempMode === null) {
+    filterStore.handleFilterString(route)
+    filterStore.handleBasicString(route, props.isolationId)
 
-  prefetch(filterStore.generateFilterJsonString(), windowWidth, route, props.isolationId)
+    prefetch(filterStore.generateFilterJsonString(), windowWidth, route, props.isolationId)
+  } else {
+    prefetch(props.tempMode, windowWidth, route, props.isolationId)
+  }
   useInitializeScrollPosition(
     imageContainerRef,
     bufferHeight,

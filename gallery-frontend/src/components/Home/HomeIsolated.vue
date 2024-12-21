@@ -8,7 +8,7 @@
     transition="false"
     :close-on-back="false"
   >
-    <Home isolation-id="subId" :title="props.title" />
+    <Home isolation-id="subId" :temp-mode="null" :title="props.title" />
   </v-overlay>
 </template>
 <script setup lang="ts">
