@@ -1,6 +1,6 @@
 <template>
   <AppBar />
-  <ProgessBar />
+  <ProgessBar isolation-id="mainId" />
   <v-navigation-drawer v-model="showDrawer" temporary touchless width="150" class="no-select">
     <v-list nav :key="route.fullPath">
       <v-list-item slim to="/" prepend-icon="mdi-home" title="Home"></v-list-item>

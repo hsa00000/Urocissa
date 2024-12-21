@@ -1,9 +1,10 @@
 <template>
+  <NavBar />
   <v-container
     v-if="tagStore.fetched"
     id="table-container"
     class="pa-1 bg-grey-darken-3 d-flex align-start"
-    :style = "{
+    :style="{
       height: `calc(100% - ${navBarHeight}px)`
     }"
     fluid
@@ -49,6 +50,7 @@ import { onMounted } from 'vue'
 import { onBeforeUnmount } from 'vue'
 import { searchByTag } from '@/script/common/functions'
 import { navBarHeight } from '@/script/common/constants'
+import NavBar from '../NavBar/NavBar.vue'
 const initializedStore = useInitializedStore('mainId')
 const tagStore = useTagStore('mainId')
 const router = useRouter()

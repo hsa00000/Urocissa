@@ -21,10 +21,12 @@
   </v-toolbar>
 </template>
 <script setup lang="ts">
-import { getIsolationIdByRoute } from '@/script/common/functions'
+import { IsolationId } from '@/script/common/types'
 import { useInitializedStore } from '@/store/initializedStore'
-import { useRoute } from 'vue-router'
-const route = useRoute()
-const isolationId = getIsolationIdByRoute(route)
-const initializedStore = useInitializedStore(isolationId)
+
+const props = defineProps<{
+  isolationId: IsolationId
+}>()
+
+const initializedStore = useInitializedStore(props.isolationId)
 </script>

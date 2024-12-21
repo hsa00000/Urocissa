@@ -23,7 +23,7 @@
     <v-btn icon="mdi-plus" @click="showHomeTemp = !showHomeTemp"> </v-btn>
   </v-toolbar>
   <EditBar v-else />
-  <ProgessBar />
+  <ProgessBar isolation-id="subId" />
   <HomeTemp v-if="showHomeTemp" />
 </template>
 <script setup lang="ts">
