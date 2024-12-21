@@ -8,12 +8,16 @@
     transition="false"
     :close-on-back="false"
   >
-    <Home isolation-id="subId" :temp-mode="null" :title="props.title" />
+    <Home isolation-id="subId" :temp-mode="null" :title="props.title">
+      <template #reading-bar>
+        <ReadingBar :title="title" />
+      </template>
+    </Home>
   </v-overlay>
 </template>
 <script setup lang="ts">
 import Home from './Home.vue'
-
+import ReadingBar from '../NavBar/ReadingBar.vue'
 const props = defineProps<{
   title: string
 }>()

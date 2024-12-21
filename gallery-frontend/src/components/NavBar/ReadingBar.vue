@@ -32,15 +32,13 @@ import { leaveRead } from '@/script/navigator'
 import { useRoute } from 'vue-router'
 import EditBar from './EditBar.vue'
 import ProgessBar from './ProgessBar.vue'
-import { IsolationId } from '@/script/common/types'
 import { ref } from 'vue'
 import HomeTemp from '../Home/HomeTemp.vue'
 const showHomeTemp = ref(false)
 
 const props = defineProps<{
-  isolationId: IsolationId
   title: string | null
 }>()
 const route = useRoute()
-const collectionStore = useCollectionStore(props.isolationId)
+const collectionStore = useCollectionStore('subId')
 </script>

@@ -5,7 +5,6 @@
         scrollbarStore.isDragging || scrollbarStoreInsideAlbum.isDragging ? 'none' : 'auto' // Prevent accidental selection while scrolling.
     }"
   >
-    <component :is="NavBar" v-if="route.name !== 'LoginPage'" />
     <v-main class="h-screen">
       <router-view v-slot="{ Component }" :key="routeKey">
         <component :is="Component" />
@@ -20,7 +19,6 @@ import { useRoute } from 'vue-router'
 import { computed } from 'vue'
 import { useScrollbarStore } from '@/store/scrollbarStore'
 import NotificationWarn from '@/components/NotificationWarn.vue'
-import NavBar from '@/components/NavBar/NavBar.vue'
 
 const scrollbarStore = useScrollbarStore('mainId')
 const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
