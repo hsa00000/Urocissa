@@ -40,7 +40,6 @@ import UploadModal from '@/components/Modal/UploadModal.vue'
 import EditAlbumsModal from '@/components/Modal/EditAlbumsModal.vue'
 import EditBatchAlbumsModal from '@/components/Modal/EditBatchAlbumsModal.vue'
 import ProgessBar from './ProgessBar.vue'
-
 import { useRouter, useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { provide, ref } from 'vue'
