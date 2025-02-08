@@ -8,7 +8,18 @@
         </template>
       </v-toolbar>
       <v-divider></v-divider>
+
       <v-list class="px-6" density="compact">
+        <v-list-item>
+          <v-textarea
+            v-model="description"
+            label="Description of this link"
+            hide-details="auto"
+            :style="{
+              paddingBottom: 0
+            }"
+          ></v-textarea>
+        </v-list-item>
         <v-list-item density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
@@ -109,6 +120,7 @@
 <script setup lang="ts">
 import { useModalStore } from '@/store/modalStore'
 import { ref, watchEffect } from 'vue'
+const description = ref('')
 const modalStore = useModalStore('mainId')
 const requirePassword = ref(false)
 const willExpire = ref(false)
@@ -131,5 +143,6 @@ const durations = [
 
 watchEffect(() => {
   console.log('selectedDuration is', selectedDuration.value)
+  console.log('description is', description.value)
 })
 </script>
