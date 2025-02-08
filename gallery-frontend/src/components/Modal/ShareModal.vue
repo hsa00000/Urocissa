@@ -81,10 +81,14 @@
         </v-list-item>
         <v-list-item density="compact" slim>
           <v-select
+            v-model="selectedDuration"
+            :items="durations"
+            label="Select a duration"
+            item-title="label"
+            item-value="id"
             hide-details="auto"
-            label="Select"
-            :items="['California', 'Colorado', 'Florida', 'Georgia', 'Texas', 'Wyoming']"
-          ></v-select>
+            :disabled="!willExpire"
+          />
         </v-list-item>
       </v-list>
       <v-card-actions>
@@ -95,7 +99,7 @@
           class="ma-2 button button-submit"
           type="submit"
         >
-          Submit
+          Create Link
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -104,11 +108,28 @@
 
 <script setup lang="ts">
 import { useModalStore } from '@/store/modalStore'
-import { ref } from 'vue'
+import { ref, watchEffect } from 'vue'
 const modalStore = useModalStore('mainId')
 const requirePassword = ref(false)
 const willExpire = ref(false)
 const allowUpload = ref(false)
 const allowDownload = ref(true)
 const showMetadata = ref(false)
+
+const selectedDuration = ref<number | null>(null)
+
+const durations = [
+  { label: '30 minutes later', id: 30 },
+  { label: '1 hour later', id: 60 },
+  { label: '6 hours later', id: 360 },
+  { label: '1 day later', id: 1440 },
+  { label: '7 days later', id: 10080 },
+  { label: '30 days later', id: 43200 },
+  { label: '3 months later', id: 129600 },
+  { label: '1 year later', id: 525600 }
+]
+
+watchEffect(() => {
+  console.log('selectedDuration is', selectedDuration.value)
+})
 </script>
