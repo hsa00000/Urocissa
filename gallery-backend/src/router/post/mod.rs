@@ -2,6 +2,7 @@ use rocket::Route;
 
 pub mod authenticate;
 pub mod create_album;
+pub mod create_share;
 pub mod post_upload;
 
 pub fn generate_post_routes() -> Vec<Route> {
@@ -9,6 +10,7 @@ pub fn generate_post_routes() -> Vec<Route> {
         authenticate::authenticate,
         authenticate::authenticate_share,
         create_album::create_album,
-        post_upload::upload
+        post_upload::upload,
+        create_share::create_share
     ]
 }
