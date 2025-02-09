@@ -32,6 +32,7 @@
   <EditBar v-else />
   <ProgessBar isolation-id="subId" />
   <HomeTemp v-if="modalStore.showHomeTempModal" :album="props.album"> </HomeTemp>
+  <ShareModal v-if="modalStore.showShareModal" :album-id="props.album.id" />
 </template>
 <script setup lang="ts">
 import { useCollectionStore } from '@/store/collectionStore'
@@ -40,6 +41,7 @@ import { useRoute } from 'vue-router'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import ProgessBar from '@/components/NavBar/ProgessBar.vue'
 import HomeTemp from '@/components/Home/Page/HomeTemp.vue'
+import ShareModal from '@/components/Modal/ShareModal.vue'
 import { Album } from '@/script/common/types'
 import { useModalStore } from '@/store/modalStore'
 import { ref, watch } from 'vue'

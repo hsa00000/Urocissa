@@ -34,6 +34,7 @@
         </v-list-item>
         <v-list-item density="compact" slim>
           <v-text-field
+            v-modal="password"
             label="Password"
             hide-details="auto"
             :disabled="!requirePassword"
@@ -109,6 +110,7 @@
           variant="outlined"
           class="ma-2 button button-submit"
           type="submit"
+          @click="createLink()"
         >
           Create Link
         </v-btn>
@@ -119,10 +121,17 @@
 
 <script setup lang="ts">
 import { useModalStore } from '@/store/modalStore'
+import axios from 'axios'
 import { ref, watchEffect } from 'vue'
-const description = ref('')
+
+const props = defineProps<{
+  albumId: string
+}>()
+
 const modalStore = useModalStore('mainId')
+const description = ref('')
 const requirePassword = ref(false)
+const password = ref('')
 const willExpire = ref(false)
 const allowUpload = ref(false)
 const allowDownload = ref(true)
@@ -145,4 +154,16 @@ watchEffect(() => {
   console.log('selectedDuration is', selectedDuration.value)
   console.log('description is', description.value)
 })
+
+const createLink = async () => {
+  const shareLink = await axios.post('/post/create_share', {
+    albumId: props.albumId,
+    description: description.value,
+    password: requirePassword.value ? password.value : null,
+    showMetadata: showMetadata.value,
+    showDownload: allowDownload.value,
+    show_upload: allowUpload.value,
+    exp: selectedDuration.value ?? 0
+  })
+}
 </script>
