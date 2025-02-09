@@ -162,8 +162,9 @@ const createLink = async () => {
     password: requirePassword.value ? password.value : null,
     showMetadata: showMetadata.value,
     showDownload: allowDownload.value,
-    show_upload: allowUpload.value,
+    showUpload: allowUpload.value,
     exp: selectedDuration.value ?? 0
   })
+  console.log('shareLink is', shareLink)
 }
 </script>
