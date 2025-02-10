@@ -1,10 +1,10 @@
 <template>
-  <v-dialog v-model="modalStore.showShareModal" id="share-modal" variant="flat" persistent style="">
+  <v-dialog v-model="modalStore.showShareModal" id="share-modal" variant="flat" persistent rounded>
     <v-card class="h-100 mx-auto w-100" max-width="400" variant="elevated" retain-focus>
       <v-toolbar color="transparent">
         <v-toolbar-title class="text-h5" text=" Share"></v-toolbar-title>
         <template #append>
-          <v-btn icon="mdi-dots-vertical"></v-btn>
+          <v-btn icon="mdi-close" @click="modalStore.showShareModal = false"></v-btn>
         </template>
       </v-toolbar>
       <v-divider></v-divider>
@@ -103,30 +103,32 @@
           />
         </v-list-item>
         <v-list-item density="compact" slim class="py-6">
-          <v-btn
-            v-if="shareLink === null"
-            color="teal-accent-4"
-            variant="outlined"
-            class="button button-submit"
-            type="submit"
-            block
-            @click="createLink()"
-          >
-            Create Link
-          </v-btn>
-          <v-text-field
-            v-else
-            rounded
-            v-model="shareLink"
-            slim
-            density="compact"
-            variant="outlined"
-            readonly
-            append-inner-icon="mdi-content-copy"
-            @click:append-inner="performCopy(shareLink)"
-            hide-details
-          >
-          </v-text-field>
+          <v-card height="40px">
+            <v-btn
+              v-if="shareLink === null"
+              color="teal-accent-4"
+              variant="outlined"
+              class="button button-submit"
+              type="submit"
+              block
+              @click="createLink()"
+            >
+              Create Link
+            </v-btn>
+            <v-text-field
+              v-else
+              rounded
+              v-model="shareLink"
+              slim
+              density="compact"
+              variant="outlined"
+              readonly
+              append-inner-icon="mdi-content-copy"
+              @click:append-inner="performCopy(shareLink)"
+              hide-details
+            >
+            </v-text-field>
+          </v-card>
         </v-list-item>
       </v-list>
     </v-card>
