@@ -1,6 +1,12 @@
 <template>
-  <v-dialog v-model="modalStore.showShareModal" id="share-modal" variant="flat" persistent rounded>
-    <v-card class="h-100 mx-auto w-100" max-width="400" variant="elevated" retain-focus>
+  <v-dialog
+    v-model="modalStore.showShareModal"
+    id="share-modal"
+    variant="flat"
+    persistent
+    rounded
+  >
+    <v-card class="h-100 mx-auto w-100" max-width="400" variant="elevated" retain-focus rounded="xl">
       <v-toolbar color="transparent">
         <v-toolbar-title class="text-h5" text=" Share"></v-toolbar-title>
         <template #append>
