@@ -34,7 +34,7 @@
         </v-list-item>
         <v-list-item density="compact" slim>
           <v-text-field
-            v-modal="password"
+            v-model="password"
             label="Password"
             hide-details="auto"
             :disabled="!requirePassword"
