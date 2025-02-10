@@ -9,7 +9,7 @@ import { fixedBigRowHeight } from './constants'
 export const AliasSchema = z.object({
   file: z.string(),
   modified: z.number(),
-  scan_time: z.number()
+  scanTime: z.number()
 })
 
 /**
@@ -82,7 +82,7 @@ export const DataBaseSchema = DataBaseParse.extend({
 export const ShareSchema = z.object({
   url: z.string().max(64),
   description: z.string(),
-  password: z.string().optional(),
+  password: z.string().nullable(),
   showMetadata: z.boolean(),
   showDownload: z.boolean(),
   showUpload: z.boolean(),
