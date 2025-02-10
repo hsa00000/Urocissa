@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
 pub struct FileModify {
     pub file: String,
     pub modified: u128,
