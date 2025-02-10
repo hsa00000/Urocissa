@@ -102,19 +102,33 @@
             :disabled="!willExpire"
           />
         </v-list-item>
+        <v-list-item density="compact" slim class="py-6">
+          <v-btn
+            v-if="shareLink === null"
+            color="teal-accent-4"
+            variant="outlined"
+            class="button button-submit"
+            type="submit"
+            block
+            @click="createLink()"
+          >
+            Create Link
+          </v-btn>
+          <v-text-field
+            v-else
+            rounded
+            v-model="shareLink"
+            slim
+            density="compact"
+            variant="outlined"
+            readonly
+            append-inner-icon="mdi-content-copy"
+            @click:append-inner="performCopy(shareLink)"
+            hide-details
+          >
+          </v-text-field>
+        </v-list-item>
       </v-list>
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn
-          color="teal-accent-4"
-          variant="outlined"
-          class="ma-2 button button-submit"
-          type="submit"
-          @click="createLink()"
-        >
-          Create Link
-        </v-btn>
-      </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
@@ -122,13 +136,16 @@
 <script setup lang="ts">
 import { useModalStore } from '@/store/modalStore'
 import axios from 'axios'
-import { ref, watchEffect } from 'vue'
+import { Ref, ref, watchEffect } from 'vue'
+import { useClipboard } from '@vueuse/core'
+import { useMessageStore } from '@/store/messageStore'
 
 const props = defineProps<{
   albumId: string
 }>()
 
 const modalStore = useModalStore('mainId')
+const messageStore = useMessageStore('mainId')
 const description = ref('')
 const requirePassword = ref(false)
 const password = ref('')
@@ -136,8 +153,10 @@ const willExpire = ref(false)
 const allowUpload = ref(false)
 const allowDownload = ref(true)
 const showMetadata = ref(false)
-
+const shareLink: Ref<string | null> = ref(null)
 const selectedDuration = ref<number | null>(null)
+
+const { copy } = useClipboard()
 
 const durations = [
   { label: '30 minutes later', id: 30 },
@@ -156,7 +175,7 @@ watchEffect(() => {
 })
 
 const createLink = async () => {
-  const shareLink = await axios.post('/post/create_share', {
+  const result = await axios.post<string>('/post/create_share', {
     albumId: props.albumId,
     description: description.value,
     password: requirePassword.value ? password.value : null,
@@ -165,6 +184,12 @@ const createLink = async () => {
     showUpload: allowUpload.value,
     exp: selectedDuration.value ?? 0
   })
+  shareLink.value = result.data
   console.log('shareLink is', shareLink)
+}
+
+async function performCopy(text: string) {
+  await copy(text)
+  messageStore.showInfo('Url copied')
 }
 </script>
