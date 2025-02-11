@@ -84,6 +84,13 @@ pub async fn album_page(dynamic_album_id: String) -> Option<NamedFile> {
     }
 }
 
+#[get("/share/view/<_path..>")]
+pub async fn share_view(_path: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
+        .await
+        .ok()
+}
+
 #[get("/archived")]
 pub async fn archived() -> Option<NamedFile> {
     NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
