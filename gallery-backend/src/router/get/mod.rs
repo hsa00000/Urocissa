@@ -27,6 +27,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_page::albums,
         get_page::albums_view,
         get_page::album_page,
+        get_page::share_view,
         get_page::archived,
         get_page::archived_view,
         get_page::trashed,
