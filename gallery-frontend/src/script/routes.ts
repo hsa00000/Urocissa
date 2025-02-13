@@ -17,6 +17,24 @@ import HomeIsolated from '@/components/Home/Page/HomeIsolated.vue'
 import ViewPageIsolated from '@/components/Home/View/Page/ViewPageIsolated.vue'
 import VideosPage from '@/components/Page/VideosPage.vue'
 
+interface ParentPageReturnType {
+  name: string
+  params: { hash: string | string[] | undefined }
+  query: LocationQuery
+}
+
+type BaseName =
+  | 'home'
+  | 'all'
+  | 'favorite'
+  | 'archived'
+  | 'trashed'
+  | 'albums'
+  | 'videos'
+  | 'album'
+  | 'tags'
+  | 'login'
+
 // ======================================
 // 1. Define Simple Static Routes
 // ======================================
@@ -238,21 +256,3 @@ declare module 'vue-router' {
 }
 
 export default router
-
-interface ParentPageReturnType {
-  name: string
-  params: { hash: string | string[] | undefined }
-  query: LocationQuery
-}
-
-type BaseName =
-  | 'home'
-  | 'all'
-  | 'favorite'
-  | 'archived'
-  | 'trashed'
-  | 'albums'
-  | 'videos'
-  | 'album'
-  | 'tags'
-  | 'login'
