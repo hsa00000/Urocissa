@@ -53,7 +53,7 @@ const handleLogin = async () => {
     if (redirection !== null) {
       await router.push(redirection)
     } else {
-      await router.push({ name: 'HomePage' })
+      await router.push({ name: 'home' })
     }
   } catch (error) {
     console.error('Error during login:', error)
