@@ -31,8 +31,15 @@ pub async fn unauthorized() -> Status {
     Status::Unauthorized
 }
 
-#[get("/view/<_path..>")]
-pub async fn catch_view_routes(_path: PathBuf) -> Option<NamedFile> {
+#[get("/home")]
+pub async fn home() -> Option<NamedFile> {
+    NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
+        .await
+        .ok()
+}
+
+#[get("/home/view/<_path..>")]
+pub async fn home_view(_path: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
         .await
         .ok()
