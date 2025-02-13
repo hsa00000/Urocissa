@@ -11,7 +11,7 @@
         <v-hover v-slot="{ isHovering, props: hoverProps }">
           <v-card
             class="pa-4 text-center mx-auto"
-            :class="{ 'hover-cursor': hasHoveringEffect }"
+            :class="{ 'hover-cursor': computedHoverAndMessage.hasHoverEffect }"
             :style="{
               border: isHovering ? '2px solid #BDBDBD' : '2px solid transparent'
             }"
@@ -32,21 +32,21 @@
         <v-hover v-slot="{ isHovering, props: hoverProps }">
           <v-card
             class="pa-4 text-center mx-auto"
-            :class="{ 'hover-cursor': hasHoveringEffect }"
+            :class="{ 'hover-cursor': computedHoverAndMessage.hasHoverEffect }"
             :style="{
               border:
-                hasHoveringEffect && isHovering ? '2px solid #BDBDBD' : '2px solid transparent'
+                computedHoverAndMessage.hasHoverEffect && isHovering ? '2px solid #BDBDBD' : '2px solid transparent'
             }"
-            :elevation="hasHoveringEffect && isHovering ? 12 : 2"
+            :elevation="computedHoverAndMessage.hasHoverEffect && isHovering ? 12 : 2"
             rounded="lg"
             width="100%"
-            v-bind="hasHoveringEffect ? hoverProps : props"
-            @click="hasHoveringEffect ? clickEmptyCard() : undefined"
+            v-bind="computedHoverAndMessage.hasHoverEffect ? hoverProps : props"
+            @click="computedHoverAndMessage.hasHoverEffect ? clickEmptyCard() : undefined"
           >
             <v-icon class="mb-5" color="grey" size="100"> mdi-image-plus </v-icon>
             <v-card-item>
               <v-card-subtitle>
-                {{ computedMessage }}
+                {{ computedHoverAndMessage.message }}
               </v-card-subtitle>
             </v-card-item>
           </v-card>
@@ -58,12 +58,14 @@
         <v-hover v-slot="{ isHovering }">
           <v-card
             class="pa-4 text-center mx-auto"
-            :class="{ 'hover-cursor': hasHoveringEffect }"
+            :class="{ 'hover-cursor': computedHoverAndMessage.hasHoverEffect }"
             :style="{
               border:
-                hasHoveringEffect && isHovering ? '2px solid #BDBDBD' : '2px solid transparent'
+                computedHoverAndMessage.hasHoverEffect && isHovering
+                  ? '2px solid #BDBDBD'
+                  : '2px solid transparent'
             }"
-            :elevation="hasHoveringEffect && isHovering ? 12 : 2"
+            :elevation="computedHoverAndMessage.hasHoverEffect && isHovering ? 12 : 2"
             rounded="lg"
             width="100%"
             v-bind="props"
@@ -105,49 +107,44 @@ const isSearching = computed(() => {
   return route.query.search !== undefined && route.query.search?.toString() !== ''
 })
 
-const hasHoveringEffect = computed(() => {
-  const path = route.path
-  if (path.startsWith('/favorite')) {
-    return false
-  } else if (path.startsWith('/archived')) {
-    return false
-  } else if (path.startsWith('/trashed')) {
-    return false
-  } else if (route.meta.isReadPage) {
-    return collectionStore.editModeOn ? false : true // Inside the component for adding photos
-  } else if (path.startsWith('/albums')) {
-    return true
-  } else if (path.startsWith('/all')) {
-    return true
-  } else if (path.startsWith('/view')) {
-    return false
-  } else if (path.startsWith('/home')) {
-    return true
-  } else {
-    return true
-  }
-})
+interface HoverAndMessage {
+  hasHoverEffect: boolean
+  message: string
+}
 
-const computedMessage = computed(() => {
-  const path = route.path
-  if (path.startsWith('/favorite')) {
-    return 'Add your favorite photos and videos here!'
-  } else if (path.startsWith('/archived')) {
-    return 'Archived photos won’t appear on the home page.'
-  } else if (path.startsWith('/trashed')) {
-    return 'Deleted photos and videos appear here.'
-  } else if (path.startsWith('/all')) {
-    return 'Upload some photos here!'
-  } else if (route.meta.isReadPage) {
-    return collectionStore.editModeOn
-      ? 'All photos are already added!' // Inside the component for adding photos
-      : 'Select from existing photos.'
-  } else if (path.startsWith('/home')) {
-    return 'Upload some photos here!'
-  } else if (path.startsWith('/albums')) {
-    return 'Create some albums here!'
-  } else {
-    return 'Upload some photos here!'
+const computedHoverAndMessage = computed<HoverAndMessage>(() => {
+  if (collectionStore.editModeOn) {
+    return {
+      hasHoverEffect: false,
+      message: route.meta.isReadPage
+        ? 'All photos are already added!' // Inside the component for adding photos
+        : 'Select from existing photos.'
+    }
+  }
+
+  switch (route.meta.baseName) {
+    case 'home':
+      return { hasHoverEffect: true, message: 'Upload some photos here!' }
+    case 'all':
+      return { hasHoverEffect: true, message: 'Upload some photos here!' }
+    case 'favorite':
+      return { hasHoverEffect: false, message: 'Add your favorite photos and videos here!' }
+    case 'archived':
+      return { hasHoverEffect: false, message: 'Archived photos won’t appear on the home page.' }
+    case 'trashed':
+      return { hasHoverEffect: false, message: 'Deleted photos and videos appear here.' }
+    case 'albums':
+      return { hasHoverEffect: true, message: 'Create some albums here!' }
+    case 'videos':
+      return { hasHoverEffect: false, message: 'Upload some videos here!' }
+    case 'album':
+      return { hasHoverEffect: true, message: 'Upload some photos here!' }
+    case 'tags':
+      return { hasHoverEffect: false, message: 'Organize your photos with tags!' }
+    case 'login':
+      return { hasHoverEffect: false, message: 'Sign in to access your photos.' }
+    default:
+      return { hasHoverEffect: false, message: 'Upload some photos here!' }
   }
 })
 

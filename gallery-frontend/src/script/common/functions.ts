@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { AlbumParse, DataBaseParse } from './schemas'
 import { Database, AbstractData, Album } from './types'
 import { RouteLocationNormalizedLoaded, Router } from 'vue-router'
-import { computed, ComputedRef, inject } from 'vue'
+import { inject } from 'vue'
 import { useDataStore } from '../../store/dataStore.ts'
 import Cookies from 'js-cookie'
 import { navBarHeight } from './constants.ts'
@@ -44,34 +44,6 @@ export function createAbstractData(data: Database | Album): AbstractData {
   } else {
     return { album: data }
   }
-}
-
-export function useCurrentPage(
-  route: RouteLocationNormalizedLoaded
-): ComputedRef<
-  'default' | 'home' | 'all' | 'favorite' | 'archived' | 'trashed' | 'albums' | 'album'
-> {
-  const currentPage = computed(() => {
-    switch (true) {
-      case route.path.startsWith('/home'):
-        return 'home'
-      case route.path.startsWith('/favorite'):
-        return 'favorite'
-      case route.path.startsWith('/archived'):
-        return 'archived'
-      case route.path.startsWith('/trashed'):
-        return 'trashed'
-      case route.path.startsWith('/albums'):
-        return 'albums'
-      case route.path.startsWith('/album'):
-        return 'album'
-      case route.path.startsWith('/all'):
-        return 'all'
-      default:
-        return 'default'
-    }
-  })
-  return currentPage
 }
 
 export function dater(timestamp: number): string {
