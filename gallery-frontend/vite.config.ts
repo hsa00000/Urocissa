@@ -13,8 +13,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        app: './index.html', // Entry point
-      },
+        app: './index.html' // Entry point
+      }
       /*output: {
         manualChunks: {
           // Example of separating common libraries into their own chunk
@@ -23,10 +23,14 @@ export default defineConfig({
         },
       },*/
     },
-    chunkSizeWarningLimit: 1000, // Increase warning limit to 1MB if warnings are acceptable
+    chunkSizeWarningLimit: 1000 // Increase warning limit to 1MB if warnings are acceptable
   },
   server: {
     proxy: {
+      '/home': {
+        target: 'http://127.0.0.1:5673',
+        changeOrigin: true
+      },
       '/json': {
         target: 'http://127.0.0.1:5673',
         changeOrigin: true
@@ -88,8 +92,8 @@ export default defineConfig({
   css: {
     preprocessorOptions: {
       scss: {
-        api: "modern",
-      },
+        api: 'modern'
+      }
     }
   }
 })

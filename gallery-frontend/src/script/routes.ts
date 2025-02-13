@@ -22,6 +22,7 @@ import VideosPage from '@/components/Page/VideosPage.vue'
 // ======================================
 
 const simpleRoutes: RouteRecordRaw[] = [
+  { path: '/', redirect: '/home' },
   {
     path: '/tags',
     component: TagsPage,
@@ -112,7 +113,7 @@ function createRoute(
 // ======================================
 
 const homePageRoutes = createRoute(
-  '',
+  'home',
   HomeMain,
   'HomePage',
   'and(not(tag:"_archived"), not(tag:"_trashed"))'

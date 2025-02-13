@@ -3,7 +3,7 @@
   <ProgessBar isolation-id="mainId" />
   <v-navigation-drawer v-model="showDrawer" temporary touchless width="150" class="no-select">
     <v-list nav :key="route.fullPath">
-      <v-list-item slim to="/" prepend-icon="mdi-home" title="Home"></v-list-item>
+      <v-list-item slim to="/home" prepend-icon="mdi-home" title="Home"></v-list-item>
       <v-divider></v-divider>
       <v-list-item slim to="/tags" prepend-icon="mdi-tag-multiple" title="Tags"></v-list-item>
       <v-list-item slim to="/albums" prepend-icon="mdi-image-album" title="Albums"></v-list-item>
@@ -40,34 +40,13 @@ import UploadModal from '@/components/Modal/UploadModal.vue'
 import EditAlbumsModal from '@/components/Modal/EditAlbumsModal.vue'
 import EditBatchAlbumsModal from '@/components/Modal/EditBatchAlbumsModal.vue'
 import ProgessBar from './ProgessBar.vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { provide, ref } from 'vue'
 const showDrawer = ref(false)
 const route = useRoute()
 const modalStore = useModalStore('mainId')
-const router = useRouter()
 
-router.beforeEach((to, from, next) => {
-  // Check if the current route or `to` route already includes the dynamic base segment
-  // and adjust `to.path` accordingly if it does not
-  const currentDynamicBase = extractDynamicBase(from.path)
-  const targetDynamicBase = extractDynamicBase(to.path)
-  if (!targetDynamicBase && currentDynamicBase) {
-    // If the target route does not have a dynamic base but the current route does,
-    // prepend it to the target route's path.
-    next({ path: `${currentDynamicBase}${to.path}`, query: to.query })
-  } else {
-    // Proceed with navigation as usual
-    next()
-  }
-})
-
-function extractDynamicBase(path: string) {
-  // Return '/share/[id]' if the path includes it
-  const match = /\/share\/[a-zA-Z0-9]+/.exec(path)
-  return match ? match[0] : ''
-}
 provide('showDrawer', showDrawer)
 </script>
 
