@@ -31,7 +31,8 @@ const simpleRoutes: RouteRecordRaw[] = [
       isReadPage: false,
       isViewPage: false,
       basicString: null,
-      baseName: 'tags'
+      baseName: 'tags',
+      parentPageName: 'HomePage'
     }
   },
   {
@@ -42,7 +43,8 @@ const simpleRoutes: RouteRecordRaw[] = [
       isReadPage: false,
       isViewPage: false,
       basicString: null,
-      baseName: 'login'
+      baseName: 'login',
+      parentPageName: 'HomePage'
     }
   }
 ]
@@ -73,20 +75,33 @@ function createRoute(
       isReadPage: false,
       isViewPage: false,
       basicString: basicString,
-      baseName: name
+      baseName: name,
+      parentPageName: name
     },
     children: [
       {
         path: 'view/:hash',
         component: ViewPageMain,
         name: `${name}ViewPage`,
-        meta: { isReadPage: false, isViewPage: true, basicString: basicString, baseName: name },
+        meta: {
+          isReadPage: false,
+          isViewPage: true,
+          basicString: basicString,
+          baseName: name,
+          parentPageName: name
+        },
         children: [
           {
             path: 'read',
             component: HomeIsolated,
             name: `${name}ReadPage`,
-            meta: { isReadPage: true, isViewPage: false, basicString: basicString, baseName: name },
+            meta: {
+              isReadPage: true,
+              isViewPage: false,
+              basicString: basicString,
+              baseName: name,
+              parentPageName: `${name}ViewPage`
+            },
             children: [
               {
                 path: 'view/:subhash',
@@ -96,7 +111,8 @@ function createRoute(
                   isReadPage: true,
                   isViewPage: true,
                   basicString: basicString,
-                  baseName: name
+                  baseName: name,
+                  parentPageName: `${name}ReadPage`
                 }
               }
             ]
@@ -181,6 +197,7 @@ declare module 'vue-router' {
     isViewPage: boolean
     baseName: string
     basicString: string | null
+    parentPageName: string
   }
 }
 

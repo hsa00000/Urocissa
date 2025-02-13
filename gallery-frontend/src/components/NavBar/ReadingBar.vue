@@ -15,7 +15,7 @@
       backgroundColor: '#212121'
     }"
   >
-    <v-btn icon="mdi mdi-arrow-left" :to="leaveRead(route)"></v-btn>
+    <v-btn icon="mdi mdi-arrow-left" @click = "leave(router)"></v-btn>
     <v-card elevation="0" class="w-100">
       <v-card-title>
         <v-text-field
@@ -37,8 +37,7 @@
 </template>
 <script setup lang="ts">
 import { useCollectionStore } from '@/store/collectionStore'
-import { leaveRead } from '@/script/navigator'
-import { useRoute } from 'vue-router'
+import { leave } from '@/script/navigator'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import ProgessBar from '@/components/NavBar/ProgessBar.vue'
 import HomeTemp from '@/components/Home/Page/HomeTemp.vue'
@@ -47,12 +46,13 @@ import { Album } from '@/script/common/types'
 import { useModalStore } from '@/store/modalStore'
 import { ref, watch } from 'vue'
 import { editTitle } from '@/script/common/createAlbums'
+import { useRouter } from 'vue-router'
 
 const props = defineProps<{
   album: Album
 }>()
 
-const route = useRoute()
+const router = useRouter()
 
 const modalStore = useModalStore('mainId')
 const collectionStore = useCollectionStore('subId')

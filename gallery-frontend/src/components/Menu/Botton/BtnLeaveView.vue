@@ -1,10 +1,10 @@
 <template>
-  <v-btn icon="mdi mdi-arrow-left" :to="leaveViewPage(route)"></v-btn>
+  <v-btn icon="mdi mdi-arrow-left" @click="leave(router)"></v-btn>
 </template>
 <script setup lang="ts">
-import { useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 
-import { leaveViewPage } from '@/script/navigator'
+import { leave } from '@/script/navigator'
 
-const route = useRoute()
+const router = useRouter()
 </script>
