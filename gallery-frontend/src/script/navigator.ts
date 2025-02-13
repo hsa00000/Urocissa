@@ -1,21 +1,5 @@
 import { useRerenderStore } from '@/store/rerenderStore'
-import { RouteLocationNormalizedLoadedGeneric, Router } from 'vue-router'
-
-export function intoViewPage(route: RouteLocationNormalizedLoadedGeneric, hashOrSubhash: string) {
-  if (!route.meta.isReadPage) {
-    return {
-      name: `${route.meta.baseName}ViewPage`,
-      params: { hash: hashOrSubhash },
-      query: route.query
-    }
-  } else {
-    return {
-      name: `${route.meta.baseName}ReadViewPage`,
-      params: { hash: route.meta.hash as string, subhash: hashOrSubhash },
-      query: route.query
-    }
-  }
-}
+import { Router } from 'vue-router'
 
 export async function navigateToAlbum(albumId: string, router: Router) {
   const albumPath = `/albums/view/${albumId}/read` // Adjust the path as necessary
