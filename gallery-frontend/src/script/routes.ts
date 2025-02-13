@@ -1,7 +1,7 @@
 // src/router.ts
 
 import { Component } from 'vue'
-import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, LocationQuery, RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 
 import TagsPage from '@/components/Page/TagsPage.vue'
@@ -32,7 +32,13 @@ const simpleRoutes: RouteRecordRaw[] = [
       isViewPage: false,
       basicString: null,
       baseName: 'tags',
-      parentPageName: 'HomePage'
+      getParentPage: (route) => {
+        return {
+          name: 'HomePage',
+          params: { hash: undefined },
+          query: route.query
+        }
+      }
     }
   },
   {
@@ -44,7 +50,13 @@ const simpleRoutes: RouteRecordRaw[] = [
       isViewPage: false,
       basicString: null,
       baseName: 'login',
-      parentPageName: 'HomePage'
+      getParentPage: (route) => {
+        return {
+          name: 'HomePage',
+          params: { hash: undefined },
+          query: route.query
+        }
+      }
     }
   }
 ]
@@ -76,7 +88,13 @@ function createRoute(
       isViewPage: false,
       basicString: basicString,
       baseName: name,
-      parentPageName: name
+      getParentPage: (route) => {
+        return {
+          name: name,
+          params: { hash: undefined },
+          query: route.query
+        }
+      }
     },
     children: [
       {
@@ -88,7 +106,13 @@ function createRoute(
           isViewPage: true,
           basicString: basicString,
           baseName: name,
-          parentPageName: name
+          getParentPage: (route) => {
+            return {
+              name: name,
+              params: { hash: undefined },
+              query: route.query
+            }
+          }
         },
         children: [
           {
@@ -100,7 +124,13 @@ function createRoute(
               isViewPage: false,
               basicString: basicString,
               baseName: name,
-              parentPageName: `${name}ViewPage`
+              getParentPage: (route) => {
+                return {
+                  name: `${name}ViewPage`,
+                  params: { hash: route.params.hash },
+                  query: route.query
+                }
+              }
             },
             children: [
               {
@@ -112,7 +142,13 @@ function createRoute(
                   isViewPage: true,
                   basicString: basicString,
                   baseName: name,
-                  parentPageName: `${name}ReadPage`
+                  getParentPage: (route) => {
+                    return {
+                      name: `${name}ReadPage`,
+                      params: { hash: route.params.hash },
+                      query: route.query
+                    }
+                  }
                 }
               }
             ]
@@ -197,8 +233,14 @@ declare module 'vue-router' {
     isViewPage: boolean
     baseName: string
     basicString: string | null
-    parentPageName: string
+    getParentPage: (router: RouteLocationNormalizedLoadedGeneric) => ParentPageReturnType
   }
 }
 
 export default router
+
+interface ParentPageReturnType {
+  name: string
+  params: { hash: string | string[] | undefined }
+  query: LocationQuery
+}
