@@ -17,9 +17,9 @@ import HomeIsolated from '@/components/Home/Page/HomeIsolated.vue'
 import ViewPageIsolated from '@/components/Home/View/Page/ViewPageIsolated.vue'
 import VideosPage from '@/components/Page/VideosPage.vue'
 
-interface ParentPageReturnType {
+interface PageReturnType {
   name: string
-  params: { hash: string | string[] | undefined }
+  params: { hash: string | string[] | undefined; subhash: string | string[] | undefined }
   query: LocationQuery
 }
 
@@ -52,8 +52,15 @@ const simpleRoutes: RouteRecordRaw[] = [
       baseName: 'tags',
       getParentPage: (route) => {
         return {
-          name: 'HomePage',
-          params: { hash: undefined },
+          name: 'home',
+          params: { hash: undefined, subhash: undefined },
+          query: route.query
+        }
+      },
+      getChildPage: (route) => {
+        return {
+          name: 'TagsPage',
+          params: { hash: undefined, subhash: undefined },
           query: route.query
         }
       }
@@ -70,8 +77,15 @@ const simpleRoutes: RouteRecordRaw[] = [
       baseName: 'login',
       getParentPage: (route) => {
         return {
-          name: 'HomePage',
-          params: { hash: undefined },
+          name: 'home',
+          params: { hash: undefined, subhash: undefined },
+          query: route.query
+        }
+      },
+      getChildPage: (route) => {
+        return {
+          name: 'LoginPage',
+          params: { hash: undefined, subhash: undefined },
           query: route.query
         }
       }
@@ -94,13 +108,12 @@ const simpleRoutes: RouteRecordRaw[] = [
 function createRoute(
   baseName: BaseName,
   component: Component,
-  name: string,
   basicString: string | null
 ): RouteRecordRaw[] {
   const mainRoute: RouteRecordRaw = {
     path: `/${baseName}`,
     component: component,
-    name: name,
+    name: baseName,
     meta: {
       isReadPage: false,
       isViewPage: false,
@@ -108,8 +121,15 @@ function createRoute(
       baseName: baseName,
       getParentPage: (route) => {
         return {
-          name: name,
-          params: { hash: undefined },
+          name: baseName,
+          params: { hash: undefined, subhash: undefined },
+          query: route.query
+        }
+      },
+      getChildPage: (route, hash) => {
+        return {
+          name: `${baseName}ViewPage`,
+          params: { hash: hash, subhash: undefined },
           query: route.query
         }
       }
@@ -118,7 +138,7 @@ function createRoute(
       {
         path: 'view/:hash',
         component: ViewPageMain,
-        name: `${name}ViewPage`,
+        name: `${baseName}ViewPage`,
         meta: {
           isReadPage: false,
           isViewPage: true,
@@ -126,8 +146,15 @@ function createRoute(
           baseName: baseName,
           getParentPage: (route) => {
             return {
-              name: name,
-              params: { hash: undefined },
+              name: baseName,
+              params: { hash: undefined, subhash: undefined },
+              query: route.query
+            }
+          },
+          getChildPage: (route) => {
+            return {
+              name: `${baseName}ReadPage`,
+              params: { hash: route.params.hash, subhash: undefined },
               query: route.query
             }
           }
@@ -136,7 +163,7 @@ function createRoute(
           {
             path: 'read',
             component: HomeIsolated,
-            name: `${name}ReadPage`,
+            name: `${baseName}ReadPage`,
             meta: {
               isReadPage: true,
               isViewPage: false,
@@ -144,8 +171,15 @@ function createRoute(
               baseName: baseName,
               getParentPage: (route) => {
                 return {
-                  name: `${name}ViewPage`,
-                  params: { hash: route.params.hash },
+                  name: `${baseName}ViewPage`,
+                  params: { hash: route.params.hash, subhash: undefined },
+                  query: route.query
+                }
+              },
+              getChildPage: (route, subhash) => {
+                return {
+                  name: `${baseName}ReadViewPage`,
+                  params: { hash: route.params.hash, subhash: subhash },
                   query: route.query
                 }
               }
@@ -153,7 +187,7 @@ function createRoute(
             children: [
               {
                 path: 'view/:subhash',
-                name: `${name}ReadViewPage`,
+                name: `${baseName}ReadViewPage`,
                 component: ViewPageIsolated,
                 meta: {
                   isReadPage: true,
@@ -162,8 +196,15 @@ function createRoute(
                   baseName: baseName,
                   getParentPage: (route) => {
                     return {
-                      name: `${name}ReadPage`,
-                      params: { hash: route.params.hash },
+                      name: `${baseName}ReadPage`,
+                      params: { hash: route.params.hash, subhash: undefined },
+                      query: route.query
+                    }
+                  },
+                  getChildPage: (route) => {
+                    return {
+                      name: `${baseName}ReadViewPage`,
+                      params: { hash: route.params.hash, subhash: route.params.subhash },
                       query: route.query
                     }
                   }
@@ -185,39 +226,30 @@ function createRoute(
 const homePageRoutes = createRoute(
   'home',
   HomeMain,
-  'HomePage',
   'and(not(tag:"_archived"), not(tag:"_trashed"))'
 )
 
-const allPageRoutes = createRoute('all', AllPage, 'AllPage', 'not(tag:"_trashed")')
+const allPageRoutes = createRoute('all', AllPage, 'not(tag:"_trashed")')
 
 const favoritePageRoutes = createRoute(
   'favorite',
   FavoritePage,
-  'FavoritePage',
   'and(tag:"_favorite", not(tag:"_trashed"))'
 )
 
 const archivedPageRoutes = createRoute(
   'archived',
   ArchivedPage,
-  'ArchivedPage',
   'and(tag:"_archived", not(tag:"_trashed"))'
 )
 
-const trashedPageRoutes = createRoute('trashed', TrashedPage, 'TrashedPage', 'and(tag:"_trashed")')
+const trashedPageRoutes = createRoute('trashed', TrashedPage, 'and(tag:"_trashed")')
 
-const albumsPageRoutes = createRoute(
-  'albums',
-  AlbumsPage,
-  'AlbumsPage',
-  'and(type:"album", not(tag:"_trashed"))'
-)
+const albumsPageRoutes = createRoute('albums', AlbumsPage, 'and(type:"album", not(tag:"_trashed"))')
 
 const videosPageRoutes = createRoute(
   'videos',
   VideosPage,
-  'VideosPage',
   'and(type:"video", not(tag:"_archived"), not(tag:"_trashed"))'
 )
 
@@ -251,7 +283,8 @@ declare module 'vue-router' {
     isViewPage: boolean
     baseName: BaseName
     basicString: string | null
-    getParentPage: (router: RouteLocationNormalizedLoadedGeneric) => ParentPageReturnType
+    getParentPage: (router: RouteLocationNormalizedLoadedGeneric) => PageReturnType
+    getChildPage: (router: RouteLocationNormalizedLoadedGeneric, hash: string) => PageReturnType
   }
 }
 
