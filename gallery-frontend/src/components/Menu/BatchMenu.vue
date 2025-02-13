@@ -64,5 +64,5 @@ const shouldShowSetAsCover = computed(
   () => route.meta.isReadPage && collectionStore.editModeCollection.size === 1
 )
 
-const isInTrashedPath = computed(() => route.path.startsWith('/trashed'))
+const isInTrashedPath = computed(() => route.meta.baseName === 'trashed')
 </script>
