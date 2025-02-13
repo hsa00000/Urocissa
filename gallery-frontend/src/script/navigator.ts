@@ -27,15 +27,7 @@ export async function navigateToAlbum(albumId: string, router: Router) {
 }
 
 export async function leave(router: Router) {
-  console.log('trigger')
-
   const route = router.currentRoute.value
-  const parentPage = {
-    name: route.meta.parentPageName,
-    params: {
-      hash: route.params.hash
-    },
-    query: route.query
-  }
+  const parentPage = route.meta.getParentPage(route)
   await router.push(parentPage)
 }
