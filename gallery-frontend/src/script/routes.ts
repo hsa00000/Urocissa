@@ -74,20 +74,20 @@ const simpleRoutes: RouteRecordRaw[] = [
  * @returns An array containing the RouteRecordRaw object.
  */
 function createRoute(
-  path: string,
+  baseName: BaseName,
   component: Component,
   name: string,
   basicString: string | null
 ): RouteRecordRaw[] {
   const mainRoute: RouteRecordRaw = {
-    path: `/${path}`,
+    path: `/${baseName}`,
     component: component,
     name: name,
     meta: {
       isReadPage: false,
       isViewPage: false,
       basicString: basicString,
-      baseName: name,
+      baseName: baseName,
       getParentPage: (route) => {
         return {
           name: name,
@@ -105,7 +105,7 @@ function createRoute(
           isReadPage: false,
           isViewPage: true,
           basicString: basicString,
-          baseName: name,
+          baseName: baseName,
           getParentPage: (route) => {
             return {
               name: name,
@@ -123,7 +123,7 @@ function createRoute(
               isReadPage: true,
               isViewPage: false,
               basicString: basicString,
-              baseName: name,
+              baseName: baseName,
               getParentPage: (route) => {
                 return {
                   name: `${name}ViewPage`,
@@ -141,7 +141,7 @@ function createRoute(
                   isReadPage: true,
                   isViewPage: true,
                   basicString: basicString,
-                  baseName: name,
+                  baseName: baseName,
                   getParentPage: (route) => {
                     return {
                       name: `${name}ReadPage`,
@@ -231,7 +231,7 @@ declare module 'vue-router' {
   interface RouteMeta {
     isReadPage: boolean
     isViewPage: boolean
-    baseName: string
+    baseName: BaseName
     basicString: string | null
     getParentPage: (router: RouteLocationNormalizedLoadedGeneric) => ParentPageReturnType
   }
@@ -244,3 +244,15 @@ interface ParentPageReturnType {
   params: { hash: string | string[] | undefined }
   query: LocationQuery
 }
+
+type BaseName =
+  | 'home'
+  | 'all'
+  | 'favorite'
+  | 'archived'
+  | 'trashed'
+  | 'albums'
+  | 'videos'
+  | 'album'
+  | 'tags'
+  | 'login'
