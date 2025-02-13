@@ -1,16 +1,6 @@
 import { useRerenderStore } from '@/store/rerenderStore'
 import { RouteLocationNormalizedLoadedGeneric, Router } from 'vue-router'
 
-export function leaveRead(route: RouteLocationNormalizedLoadedGeneric) {
-  return {
-    name: `${route.meta.baseName}ViewPage`,
-    params: {
-      hash: route.params.hash
-    },
-    query: route.query
-  }
-}
-
 export function intoViewPage(route: RouteLocationNormalizedLoadedGeneric, hashOrSubhash: string) {
   if (!route.meta.isReadPage) {
     return {
@@ -27,20 +17,6 @@ export function intoViewPage(route: RouteLocationNormalizedLoadedGeneric, hashOr
   }
 }
 
-export function leaveViewPage(route: RouteLocationNormalizedLoadedGeneric) {
-  if (!route.meta.isReadPage) {
-    return { name: route.meta.baseName, query: route.query }
-  } else {
-    return {
-      name: `${route.meta.baseName}ReadPage`,
-      params: {
-        hash: route.params.hash
-      },
-      query: route.query
-    }
-  }
-}
-
 export async function navigateToAlbum(albumId: string, router: Router) {
   const albumPath = `/albums/view/${albumId}/read` // Adjust the path as necessary
   if (router.currentRoute.value.fullPath.startsWith('/albums')) {
@@ -48,4 +24,18 @@ export async function navigateToAlbum(albumId: string, router: Router) {
     rerenderStore.rerenderHome()
   }
   await router.push({ path: albumPath })
+}
+
+export async function leave(router: Router) {
+  console.log('trigger')
+
+  const route = router.currentRoute.value
+  const parentPage = {
+    name: route.meta.parentPageName,
+    params: {
+      hash: route.params.hash
+    },
+    query: route.query
+  }
+  await router.push(parentPage)
 }
