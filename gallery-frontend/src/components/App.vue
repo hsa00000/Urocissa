@@ -35,6 +35,8 @@ const currentPage = computed(() => {
     return 'archived'
   } else if (route.path.startsWith('/all')) {
     return 'all'
+  } else if (route.path.startsWith('/home')) {
+    return 'home'
   } else {
     return 'default'
   }

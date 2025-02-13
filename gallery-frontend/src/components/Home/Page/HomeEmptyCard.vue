@@ -121,6 +121,8 @@ const hasHoveringEffect = computed(() => {
     return true
   } else if (path.startsWith('/view')) {
     return false
+  } else if (path.startsWith('/home')) {
+    return true
   } else {
     return true
   }
@@ -140,6 +142,8 @@ const computedMessage = computed(() => {
     return collectionStore.editModeOn
       ? 'All photos are already added!' // Inside the component for adding photos
       : 'Select from existing photos.'
+  } else if (path.startsWith('/home')) {
+    return 'Upload some photos here!'
   } else if (path.startsWith('/albums')) {
     return 'Create some albums here!'
   } else {

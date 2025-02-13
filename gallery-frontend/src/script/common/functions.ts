@@ -48,22 +48,27 @@ export function createAbstractData(data: Database | Album): AbstractData {
 
 export function useCurrentPage(
   route: RouteLocationNormalizedLoaded
-): ComputedRef<'default' | 'all' | 'favorite' | 'archived' | 'trashed' | 'albums' | 'album'> {
+): ComputedRef<
+  'default' | 'home' | 'all' | 'favorite' | 'archived' | 'trashed' | 'albums' | 'album'
+> {
   const currentPage = computed(() => {
-    if (route.path.startsWith('/favorite')) {
-      return 'favorite'
-    } else if (route.path.startsWith('/archived')) {
-      return 'archived'
-    } else if (route.path.startsWith('/trashed')) {
-      return 'trashed'
-    } else if (route.path.startsWith('/albums')) {
-      return 'albums'
-    } else if (route.path.startsWith('/album')) {
-      return 'album'
-    } else if (route.path.startsWith('/all')) {
-      return 'all'
-    } else {
-      return 'default'
+    switch (true) {
+      case route.path.startsWith('/home'):
+        return 'home'
+      case route.path.startsWith('/favorite'):
+        return 'favorite'
+      case route.path.startsWith('/archived'):
+        return 'archived'
+      case route.path.startsWith('/trashed'):
+        return 'trashed'
+      case route.path.startsWith('/albums'):
+        return 'albums'
+      case route.path.startsWith('/album'):
+        return 'album'
+      case route.path.startsWith('/all'):
+        return 'all'
+      default:
+        return 'default'
     }
   })
   return currentPage
