@@ -9,16 +9,35 @@
     :close-on-back="false"
     persistent
   >
-    <Home isolation-id="shareId" :temp-mode="generateJsonString(basicString)"> </Home>
+    <Home
+      v-if="basicString !== undefined"
+      isolation-id="shareId"
+      :temp-mode="generateJsonString(basicString)"
+    >
+    </Home>
   </v-overlay>
 </template>
 <script setup lang="ts">
+import { useRoute } from 'vue-router'
 import Home from './Home.vue'
 import { generateJsonString } from '@/script/lexer/generateJson'
-const props = defineProps<{
-  albumId: string
-  shareId: string
-}>()
 
-const basicString = `and(not(tag:"_trashed"), album:"${props.albumId}")`
+import { onMounted, ref, Ref } from 'vue'
+
+const route = useRoute()
+const albumId: Ref<string | undefined> = ref(undefined)
+const shareId: Ref<string | undefined> = ref(undefined)
+const basicString: Ref<string | undefined> = ref(undefined)
+
+onMounted(() => {
+  const albumIdOpt = route.params.albumId
+  const shareIdOpt = route.params.shareId
+  if (typeof albumIdOpt === 'string' && typeof shareIdOpt === 'string') {
+    albumId.value = albumIdOpt
+    shareId.value = shareIdOpt
+    basicString.value = `and(not(tag:"_trashed"), album:"${albumIdOpt}")`
+  } else {
+    console.error(`(albumId, shareId) is (${albumId.value}, ${shareId.value})`)
+  }
+})
 </script>
