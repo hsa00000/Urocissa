@@ -94,7 +94,7 @@ const simpleRoutes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/share-:shareId',
+    path: '/share-:albumId-:shareId',
     component: HomeShare,
     name: 'SharePage',
     meta: {
