@@ -16,6 +16,7 @@ import ViewPageMain from '@/components/Home/View/Page/ViewPageMain.vue'
 import HomeIsolated from '@/components/Home/Page/HomeIsolated.vue'
 import ViewPageIsolated from '@/components/Home/View/Page/ViewPageIsolated.vue'
 import VideosPage from '@/components/Page/VideosPage.vue'
+import HomeShare from '@/components/Home/Page/HomeShare.vue'
 
 interface PageReturnType {
   name: string
@@ -34,6 +35,7 @@ type BaseName =
   | 'album'
   | 'tags'
   | 'login'
+  | 'share'
 
 // ======================================
 // 1. Define Simple Static Routes
@@ -89,6 +91,17 @@ const simpleRoutes: RouteRecordRaw[] = [
           query: route.query
         }
       }
+    }
+  },
+  {
+    path: '/share-:shareId',
+    component: HomeShare,
+    name: 'SharePage',
+    meta: {
+      isReadPage: false,
+      isViewPage: false,
+      basicString: null,
+      baseName: 'share'
     }
   }
 ]

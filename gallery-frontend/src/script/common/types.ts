@@ -106,6 +106,6 @@ export type SubRow = z.infer<typeof SubRowSchema>
 
 export type PublicConfig = z.infer<typeof PublicConfigSchema>
 
-export type IsolationId = 'mainId' | 'subId' | 'tempId'
+export type IsolationId = 'mainId' | 'subId' | 'tempId' | 'shareId'
 
 export type FetchDataMethod = 'batch' | 'single'
