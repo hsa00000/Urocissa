@@ -1,12 +1,12 @@
 <template>
-  <v-dialog
-    v-model="modalStore.showShareModal"
-    id="share-modal"
-    variant="flat"
-    persistent
-    rounded
-  >
-    <v-card class="h-100 mx-auto w-100" max-width="400" variant="elevated" retain-focus rounded="xl">
+  <v-dialog v-model="modalStore.showShareModal" id="share-modal" variant="flat" persistent rounded>
+    <v-card
+      class="h-100 mx-auto w-100"
+      max-width="400"
+      variant="elevated"
+      retain-focus
+      rounded="xl"
+    >
       <v-toolbar color="transparent">
         <v-toolbar-title class="text-h5" text=" Share"></v-toolbar-title>
         <template #append>
@@ -192,7 +192,7 @@ const createLink = async () => {
     showUpload: allowUpload.value,
     exp: selectedDuration.value ?? 0
   })
-  shareLink.value = result.data
+  shareLink.value = `${window.location.origin}/share-${props.albumId}-${result.data}`
   console.log('shareLink is', shareLink)
 }
 
