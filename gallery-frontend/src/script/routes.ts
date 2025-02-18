@@ -46,7 +46,7 @@ const simpleRoutes: RouteRecordRaw[] = [
   {
     path: '/tags',
     component: TagsPage,
-    name: 'TagsPage',
+    name: 'tags',
     meta: {
       isReadPage: false,
       isViewPage: false,
@@ -61,7 +61,7 @@ const simpleRoutes: RouteRecordRaw[] = [
       },
       getChildPage: (route) => {
         return {
-          name: 'TagsPage',
+          name: 'tags',
           params: { hash: undefined, subhash: undefined },
           query: route.query
         }
@@ -71,7 +71,7 @@ const simpleRoutes: RouteRecordRaw[] = [
   {
     path: '/login',
     component: LoginPage,
-    name: 'LoginPage',
+    name: 'login',
     meta: {
       isReadPage: false,
       isViewPage: false,
@@ -86,7 +86,7 @@ const simpleRoutes: RouteRecordRaw[] = [
       },
       getChildPage: (route) => {
         return {
-          name: 'LoginPage',
+          name: 'login',
           params: { hash: undefined, subhash: undefined },
           query: route.query
         }
@@ -96,12 +96,26 @@ const simpleRoutes: RouteRecordRaw[] = [
   {
     path: '/share-:albumId-:shareId',
     component: HomeShare,
-    name: 'SharePage',
+    name: 'share',
     meta: {
       isReadPage: false,
       isViewPage: false,
       basicString: null,
-      baseName: 'share'
+      baseName: 'share',
+      getParentPage: (route) => {
+        return {
+          name: 'share',
+          params: { hash: undefined, subhash: undefined },
+          query: route.query
+        }
+      },
+      getChildPage: (route, hash) => {
+        return {
+          name: `shareViewPage`,
+          params: { hash: hash, subhash: undefined },
+          query: route.query
+        }
+      }
     }
   }
 ]
