@@ -25,7 +25,9 @@ pub fn cache_control_fairing() -> AdHoc {
     })
 }
 
-pub struct AuthGuard;
+pub struct AuthGuard {
+    pub claims: Claims,
+}
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AuthGuard {
@@ -38,14 +40,13 @@ impl<'r> FromRequest<'r> for AuthGuard {
             let token = jwt_cookie.value();
             let validation = Validation::new(Algorithm::HS256);
 
-            if decode::<Claims>(
+            if let Ok(token_data_claims) = decode::<Claims>(
                 token,
                 &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
                 &validation,
-            )
-            .is_ok()
-            {
-                return Outcome::Success(AuthGuard);
+            ) {
+                let claims = token_data_claims.claims;
+                return Outcome::Success(AuthGuard { claims });
             } else {
                 warn!("JWT validation failed.");
             }
