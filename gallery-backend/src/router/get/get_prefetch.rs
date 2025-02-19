@@ -35,7 +35,7 @@ impl Prefetch {
 }
 #[post("/get/prefetch?<locate>", format = "json", data = "<query_data>")]
 pub async fn prefetch(
-    _auth: AuthGuard,
+    auth: AuthGuard,
     query_data: Option<Json<Expression>>,
     locate: Option<String>,
 ) -> Json<Option<Prefetch>> {
@@ -46,7 +46,18 @@ pub async fn prefetch(
         // Step 1: Check if query cache is available
         let find_cache_start_time = Instant::now();
 
-        let expression_opt = query_data.map(|query| query.into_inner());
+        let mut expression_opt = query_data.map(|query| query.into_inner());
+
+        if let Some(album_id) = auth.claims.album_id {
+            let expression_1 = Expression::Album(album_id);
+            match expression_opt {
+                Some(expression) => {
+                    let expression_2 = expression;
+                    expression_opt = Some(Expression::And(vec![expression_1, expression_2]));
+                }
+                None => expression_opt = Some(expression_1),
+            }
+        };
 
         let hasher = &mut DefaultHasher::new();
 

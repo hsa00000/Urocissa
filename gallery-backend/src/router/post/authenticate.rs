@@ -25,8 +25,10 @@ pub static JSON_WEB_TOKEN_SECRET_KEY: LazyLock<Vec<u8>> = LazyLock::new(|| {
 });
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Claims {
-    exp: usize,
+    pub album_id: Option<ArrayString<64>>,
+    pub exp: usize,
 }
 
 #[post("/post/authenticate", data = "<password>")]
@@ -44,6 +46,7 @@ pub async fn authenticate(password: Json<String>) -> Result<Json<String>, &'stat
 
         // Generate claims
         let claims = Claims {
+            album_id: None,
             exp: expiration as usize,
         };
 

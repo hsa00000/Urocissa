@@ -26,7 +26,6 @@ import { useRouter } from 'vue-router'
 import { z } from 'zod'
 import { useRedirectionStore } from '@/store/redirectionStore'
 const password = ref('')
-const token = ref<string>('') // To store the JWT token
 const router = useRouter()
 const redirectionStore = useRedirectionStore('mainId')
 const handleLogin = async () => {
@@ -40,10 +39,8 @@ const handleLogin = async () => {
     // Validate response.data using Zod
     const tokenValue = z.string().parse(response.data) // Ensures response.data is a string
 
-    token.value = tokenValue
-
     // Store the JWT in a cookie with security attributes
-    Cookies.set('jwt', token.value, {
+    Cookies.set('jwt', tokenValue, {
       httpOnly: false, // Set to true for better security (cannot access via JavaScript)
       secure: true, // Ensure it's only sent over HTTPS
       sameSite: 'Strict', // Prevent CSRF attacks
