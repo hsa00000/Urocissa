@@ -6,15 +6,58 @@ use crate::public::row::{Row, ScrollBarData};
 use crate::public::tree::TREE;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
 use crate::router::fairing::AuthGuard;
+use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use rocket::fairing::AdHoc;
+use rocket::http::{CookieJar, Status};
+use rocket::request::{FromRequest, Outcome};
+use rocket::Request;
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use rocket::http::Status;
 use rocket::serde::json::Json;
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimestampClaims {
+    timestamp: u128,
+}
+
+pub struct TimestampGuard {
+    claims: TimestampClaims,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for TimestampGuard {
+    type Error = ();
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        // Check for JWT cookie
+        let cookies: &CookieJar = req.cookies();
+        if let Some(jwt_cookie) = cookies.get("jwt") {
+            let token = jwt_cookie.value();
+            let validation = Validation::new(Algorithm::HS256);
+
+            if let Ok(token_data_claims) = decode::<TimestampClaims>(
+                token,
+                &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+                &validation,
+            ) {
+                let claims = token_data_claims.claims;
+                return Outcome::Success(TimestampGuard { claims });
+            } else {
+                warn!("JWT validation failed.");
+            }
+        }
+
+        Outcome::Forward(Status::Unauthorized)
+    }
+}
 
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
 pub async fn get_data(
-    _auth: AuthGuard,
+    _auth: TimestampGuard,
     timestamp: u128,
     start: usize,
     end: usize,
