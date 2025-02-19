@@ -5,15 +5,16 @@ pub mod get_export;
 pub mod get_img;
 pub mod get_page;
 pub mod get_prefetch;
+pub mod get_timestamp;
 
 pub fn generate_get_routes() -> Vec<Route> {
     routes![
-        get_data::get_data,
         get_data::get_config,
         get_data::get_tags,
         get_data::get_albums,
-        get_data::get_rows,
-        get_data::get_scroll_bar,
+        get_timestamp::get_data,
+        get_timestamp::get_rows,
+        get_timestamp::get_scroll_bar,
         get_img::compressed_file,
         get_img::imported_file,
         get_page::redirect_to_photo,
