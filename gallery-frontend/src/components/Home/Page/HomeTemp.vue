@@ -9,7 +9,7 @@
     :close-on-back="false"
     persistent
   >
-    <Home isolation-id="tempId" :temp-mode="generateJsonString(basicString)">
+    <Home isolation-id="tempId" :filter-determined-by-query="generateJsonString(basicString)">
       <template #reading-bar>
         <SelectionBar :album="album" />
       </template>

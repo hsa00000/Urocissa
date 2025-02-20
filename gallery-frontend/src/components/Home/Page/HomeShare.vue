@@ -12,7 +12,7 @@
     <Home
       v-if="basicString !== undefined"
       isolation-id="shareId"
-      :temp-mode="generateJsonString(basicString)"
+      :filter-determined-by-query="generateJsonString(basicString)"
     >
     </Home>
   </v-overlay>
