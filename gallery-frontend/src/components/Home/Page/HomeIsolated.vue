@@ -9,7 +9,7 @@
     :close-on-back="false"
     persistent
   >
-    <Home v-if="album !== undefined" isolation-id="subId" :temp-mode="null">
+    <Home v-if="album !== undefined" isolation-id="subId" :filter-determined-by-query="null">
       <template #reading-bar>
         <ReadingBar :album="album" />
       </template>
