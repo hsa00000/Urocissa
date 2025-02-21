@@ -190,26 +190,23 @@ pub fn migration_album(txn: &WriteTransaction) {
                 .expect("Migration failed: Unable to retrieve value from the old album table");
             let old_album = value_guard.value();
 
-            let thumbhash_opt = if let Some(cover_hash) = old_album.cover {
-                match database_table.get(&*cover_hash) {
-                    Ok(Some(guard)) => Some(guard.value().thumbhash),
-                    Ok(None) => {
-                        panic!(
+            let thumbhash_opt =
+                old_album
+                    .cover
+                    .and_then(|cover_hash| match database_table.get(&*cover_hash) {
+                        Ok(Some(guard)) => Some(guard.value().thumbhash),
+                        Ok(None) => panic!(
                             "Migration failed: Album {} cannot get cover {}",
                             old_album.id, cover_hash
-                        );
-                    }
-                    Err(err) => {
-                        error!("{}", err);
-                        panic!(
-                            "Migration failed: Album {} cannot get thumbhash with cover {}",
-                            old_album.id, cover_hash
-                        );
-                    }
-                }
-            } else {
-                None
-            };
+                        ),
+                        Err(err) => {
+                            error!("{}", err);
+                            panic!(
+                                "Migration failed: Album {} cannot get thumbhash with cover {}",
+                                old_album.id, cover_hash
+                            );
+                        }
+                    });
 
             let converted = crate::public::album::Album {
                 id: old_album.id,

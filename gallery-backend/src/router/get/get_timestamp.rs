@@ -7,11 +7,11 @@ use crate::public::tree::TREE;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
 use crate::router::fairing::AuthGuard;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use rocket::Request;
 use rocket::fairing::AdHoc;
 use rocket::http::{CookieJar, Status};
 use rocket::request::{FromRequest, Outcome};
-use rocket::Request;
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::serde::json::Json;
@@ -39,15 +39,18 @@ impl<'r> FromRequest<'r> for TimestampGuard {
             let token = jwt_cookie.value();
             let validation = Validation::new(Algorithm::HS256);
 
-            if let Ok(token_data_claims) = decode::<TimestampClaims>(
+            match decode::<TimestampClaims>(
                 token,
                 &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
                 &validation,
             ) {
-                let claims = token_data_claims.claims;
-                return Outcome::Success(TimestampGuard { claims });
-            } else {
-                warn!("JWT validation failed.");
+                Ok(token_data_claims) => {
+                    let claims = token_data_claims.claims;
+                    return Outcome::Success(TimestampGuard { claims });
+                }
+                _ => {
+                    warn!("JWT validation failed.");
+                }
             }
         }
 
@@ -57,7 +60,7 @@ impl<'r> FromRequest<'r> for TimestampGuard {
 
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
 pub async fn get_data(
-    _auth: TimestampGuard,
+    _auth: AuthGuard,
     timestamp: u128,
     start: usize,
     end: usize,
