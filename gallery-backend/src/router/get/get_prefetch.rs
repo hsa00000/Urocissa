@@ -1,8 +1,8 @@
 use crate::public::expression::Expression;
 use crate::public::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::reduced_data::ReducedData;
-use crate::public::tree::start_loop::VERSION_COUNT_TIMESTAMP;
 use crate::public::tree::TREE;
+use crate::public::tree::start_loop::VERSION_COUNT_TIMESTAMP;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
 use crate::router::fairing::AuthGuard;
 

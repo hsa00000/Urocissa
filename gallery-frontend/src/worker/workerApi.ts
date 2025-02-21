@@ -83,12 +83,6 @@ interface FetchRowParams {
   windowWidth: number
   isLastRow: boolean
 }
-interface PrefetchParams {
-  filterJsonString: string | null
-  priorityId: string
-  reverse: string | undefined
-  locate: string | null
-}
 export interface EditTagsParams {
   indexSet: Set<number>
   addTagsArray: string[]
@@ -113,7 +107,6 @@ interface FetchScrollBarParams {
 export const toDataWorker = createActionCreators({
   fetchData: (payload: FetchDataParams) => payload,
   fetchRow: (payload: FetchRowParams) => payload,
-  prefetch: (payload: PrefetchParams) => payload,
   editTags: (payload: EditTagsParams) => payload,
   editAlbums: (payload: EditAlbumsParams) => payload,
   deleteData: (payload: DeleteDataParams) => payload,

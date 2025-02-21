@@ -1,5 +1,4 @@
 import {
-  prefetchSchema,
   rowSchema,
   rowWithOffsetSchema,
   scrollbarDataSchema,
@@ -11,7 +10,6 @@ import {
   Database,
   DisplayElement,
   FetchDataMethod,
-  Prefetch,
   Row,
   RowWithOffset,
   ScrollbarData,
@@ -111,14 +109,7 @@ self.addEventListener('message', (e) => {
         timestamp: timestamp
       })
     },
-    prefetch: async (payload) => {
-      const { filterJsonString, priorityId, reverse, locate } = payload
-      shouldProcessBatch.push(0)
-      const result = await prefetch(filterJsonString, priorityId, reverse, locate)
-      const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
 
-      postToMain.prefetchReturn({ result: result })
-    },
     editTags: async (payload) => {
       const { indexSet, addTagsArray, removeTagsArray, timestamp } = payload
       const { returnedTagsArray } = await editTags(
@@ -151,36 +142,6 @@ self.addEventListener('message', (e) => {
   })
   handler(e.data as ReturnType<(typeof toDataWorker)[keyof typeof toDataWorker]>)
 })
-
-/**
- * Prefetches data based on the provided filter criteria, priority, order, and location.
- *
- * @param filterJsonString - A JSON string representing filter criteria. Can be null.
- * @param priorityId - An optional string representing the priority. Defaults to 'default'.
- * @param reverse - An optional string indicating if the order should be reversed. Defaults to 'false'.
- * @param locate - An optional string representing the hash of a photo. Can be null.
- * @returns A promise that resolves to a Prefetch object if successful, or undefined if an error occurs.
- */
-async function prefetch(
-  filterJsonString: string | null,
-  priorityId: string | undefined = 'default',
-  reverse: string | undefined = 'false',
-  locate: null | string = null
-) {
-  void priorityId
-  void reverse
-  const fetchUrl = `/get/prefetch?${locate !== null ? `locate=${locate}` : ''}`
-
-  const axiosResponse = await axios.post<Prefetch>(fetchUrl, filterJsonString, {
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  })
-
-  const prefetch = prefetchSchema.parse(axiosResponse.data)
-
-  return prefetch
-}
 
 /**
  * Fetches a batch of data based on the provided batch index and timestamp.
