@@ -1,14 +1,13 @@
 use anstyle::Color;
-use env_logger::fmt::style::Style;
 use env_logger::Builder;
-use log::kv::Key;
+use env_logger::fmt::style::Style;
 use log::LevelFilter;
+use log::kv::Key;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 use std::{env, fs};
 pub fn initialize_logger() {
-    env::set_var("RUST_LOG", "INFO");
     Builder::new()
         .format(|buf, record| {
             let custom_value = record
