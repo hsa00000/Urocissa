@@ -3,10 +3,10 @@ use env_logger::Builder;
 use env_logger::fmt::style::Style;
 use log::LevelFilter;
 use log::kv::Key;
+use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
-use std::{env, fs};
 pub fn initialize_logger() {
     Builder::new()
         .format(|buf, record| {

@@ -1,5 +1,5 @@
 use crate::public::database_struct::database::definition::Database;
-use crate::public::error_data::{handle_error, ErrorData};
+use crate::public::error_data::{ErrorData, handle_error};
 use crate::public::tree::TREE;
 use arrayvec::ArrayString;
 use blake3::Hasher;
@@ -25,34 +25,27 @@ where
         match blake3_hasher(&database.source_path()) {
             Ok(hash) => {
                 let read_table = TREE.api_read_tree();
-                match read_table.get(&*hash).unwrap() {
-                    Some(guard) => {
-                        // If this file is already in database
-                        let mut database_exist = guard.value();
-                        let file_modify = mem::take(&mut database.alias[0]);
-                        database_exist.alias.push(file_modify);
-                        TREE.insert_tree_api(&vec![database_exist]).unwrap();
-                        TREE.tree_update();
-                        scaned_number.fetch_add(1, Ordering::SeqCst);
-                    }
-                    None => {
-                        // If this file is not in database
-                        // but the is duplicated in this batch
-                        if let Some(mut duplicated_database) = dashmap_of_database.get_mut(&hash) {
-                            let file_modify = mem::take(&mut database.alias[0]);
-                            duplicated_database.alias.push(file_modify);
-                            duplicated_files_number.fetch_add(1, Ordering::SeqCst);
-                        } else {
-                            // If this is indeed a new file
-                            database.hash = hash;
-                            dashmap_of_database.insert(hash, database);
-                        }
-                    }
+
+                if let Some(guard) = read_table.get(&*hash).unwrap() {
+                    // File is already in database
+                    let mut database_exist = guard.value();
+                    let file_modify = mem::take(&mut database.alias[0]);
+                    database_exist.alias.push(file_modify);
+                    TREE.insert_tree_api(&vec![database_exist]).unwrap();
+                    TREE.tree_update();
+                    scaned_number.fetch_add(1, Ordering::SeqCst);
+                } else if let Some(mut duplicated_database) = dashmap_of_database.get_mut(&hash) {
+                    // File is duplicated in the current batch
+                    let file_modify = mem::take(&mut database.alias[0]);
+                    duplicated_database.alias.push(file_modify);
+                    duplicated_files_number.fetch_add(1, Ordering::SeqCst);
+                } else {
+                    // New file
+                    database.hash = hash;
+                    dashmap_of_database.insert(hash, database);
                 }
             }
-            Err(err) => {
-                handle_error(err);
-            }
+            Err(err) => handle_error(err),
         }
     });
     dashmap_of_database
