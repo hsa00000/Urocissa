@@ -1,8 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use arrayvec::ArrayString;
-use rand::distr::Alphanumeric;
 use rand::Rng;
+use rand::distr::Alphanumeric;
 use redb::{ReadableTable, WriteTransaction};
 use rocket::serde::json::Json;
 use rocket::{http::Status, post};
@@ -51,36 +51,42 @@ fn create_and_insert_share(
     create_share: CreateShare,
 ) -> Result<String, Status> {
     let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-    let album_opt = if let Some(guard) = album_table.get(&*create_share.album_id).unwrap() {
-        let album = guard.value();
-        Some(album)
-    } else {
-        None
+
+    // TODO: simplfy this
+    let album_opt = match album_table.get(&*create_share.album_id).unwrap() {
+        Some(guard) => {
+            let album = guard.value();
+            Some(album)
+        }
+        _ => None,
     };
 
-    if let Some(mut album) = album_opt {
-        let link: String = rand::rng()
-            .sample_iter(&Alphanumeric)
-            .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
-            .take(64)
-            .map(char::from)
-            .collect();
-        let share = Share {
-            url: ArrayString::<64>::from(&link).unwrap(),
-            description: create_share.description,
-            password: create_share.password,
-            show_metadata: create_share.show_metadata,
-            show_download: create_share.show_download,
-            show_upload: create_share.show_upload,
-            exp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        };
-        album.share_list.push(share);
-        album_table.insert(&*create_share.album_id, album).unwrap();
-        return Ok(link);
-    } else {
-        return Err(Status::NotFound);
+    match album_opt {
+        Some(mut album) => {
+            let link: String = rand::rng()
+                .sample_iter(&Alphanumeric)
+                .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+                .take(64)
+                .map(char::from)
+                .collect();
+            let share = Share {
+                url: ArrayString::<64>::from(&link).unwrap(),
+                description: create_share.description,
+                password: create_share.password,
+                show_metadata: create_share.show_metadata,
+                show_download: create_share.show_download,
+                show_upload: create_share.show_upload,
+                exp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+            album.share_list.push(share);
+            album_table.insert(&*create_share.album_id, album).unwrap();
+            return Ok(link);
+        }
+        _ => {
+            return Err(Status::NotFound);
+        }
     }
 }

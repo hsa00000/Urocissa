@@ -67,13 +67,16 @@ pub async fn prefetch(
 
         let expression_hashed = hasher.finish();
 
-        if let Ok(Some(prefetch_opt)) = QUERY_SNAPSHOT.read_query_snapshot(expression_hashed) {
-            let duration = format!("{:?}", find_cache_start_time.elapsed());
-            info!(duration = &*duration; "Query cache found");
-            return Json(prefetch_opt);
-        } else {
-            let duration = format!("{:?}", find_cache_start_time.elapsed());
-            info!(duration = &*duration; "Query cache not found. Generate a new one.");
+        match QUERY_SNAPSHOT.read_query_snapshot(expression_hashed) {
+            Ok(Some(prefetch_opt)) => {
+                let duration = format!("{:?}", find_cache_start_time.elapsed());
+                info!(duration = &*duration; "Query cache found");
+                return Json(prefetch_opt);
+            }
+            _ => {
+                let duration = format!("{:?}", find_cache_start_time.elapsed());
+                info!(duration = &*duration; "Query cache not found. Generate a new one.");
+            }
         }
 
         // Step 2: Filter items

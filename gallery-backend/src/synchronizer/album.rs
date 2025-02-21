@@ -48,34 +48,39 @@ pub fn start_album_channel() -> tokio::task::JoinHandle<()> {
                             .unwrap()
                             .map(|guard| guard.value());
 
-                        if let Some(mut album) = album_opt {
-                            album.pending = true;
-                            album.self_update();
-                            album.pending = false;
-                            album_table.insert(&**album_id, album).unwrap();
-                        } else {
-                            // Album has been deleted
-                            let ref_data = TREE.in_memory.read().unwrap();
+                        match album_opt {
+                            Some(mut album) => {
+                                album.pending = true;
+                                album.self_update();
+                                album.pending = false;
+                                album_table.insert(&**album_id, album).unwrap();
+                            }
+                            _ => {
+                                // Album has been deleted
+                                let ref_data = TREE.in_memory.read().unwrap();
 
-                            // Collect all data contained in this album
-                            let hash_list: Vec<_> = ref_data
-                                .par_iter()
-                                .filter_map(|dt| match &dt.abstract_data {
-                                    AbstractData::Database(db) if db.album.contains(&*album_id) => {
-                                        Some(db.hash)
-                                    }
-                                    _ => None,
-                                })
-                                .collect();
+                                // Collect all data contained in this album
+                                let hash_list: Vec<_> = ref_data
+                                    .par_iter()
+                                    .filter_map(|dt| match &dt.abstract_data {
+                                        AbstractData::Database(db)
+                                            if db.album.contains(&*album_id) =>
+                                        {
+                                            Some(db.hash)
+                                        }
+                                        _ => None,
+                                    })
+                                    .collect();
 
-                            let mut table = txn.open_table(DATA_TABLE).unwrap();
+                                let mut table = txn.open_table(DATA_TABLE).unwrap();
 
-                            // Remove this album from these data
-                            hash_list.into_iter().for_each(|hash| {
-                                let mut database = table.get(&*hash).unwrap().unwrap().value();
-                                database.album.remove(&*album_id);
-                                table.insert(&*hash, database).unwrap();
-                            });
+                                // Remove this album from these data
+                                hash_list.into_iter().for_each(|hash| {
+                                    let mut database = table.get(&*hash).unwrap().unwrap().value();
+                                    database.album.remove(&*album_id);
+                                    table.insert(&*hash, database).unwrap();
+                                });
+                            }
                         }
                     });
                 }

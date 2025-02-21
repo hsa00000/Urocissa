@@ -1,6 +1,6 @@
 use arrayvec::ArrayString;
-use jsonwebtoken::{encode, EncodingKey, Header};
-use rand::{rngs::OsRng, TryRngCore};
+use jsonwebtoken::{EncodingKey, Header, encode};
+use rand::{TryRngCore, rngs::OsRng};
 use rocket::post;
 use rocket::serde::json::Json;
 use std::{
@@ -12,17 +12,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::public::config::PRIVATE_CONFIG;
 
-pub static JSON_WEB_TOKEN_SECRET_KEY: LazyLock<Vec<u8>> = LazyLock::new(|| {
-    if let Some(auth_key) = PRIVATE_CONFIG.auth_key.as_ref() {
-        auth_key.as_bytes().to_vec()
-    } else {
-        let mut secret = vec![0u8; 32];
-        OsRng
-            .try_fill_bytes(&mut secret)
-            .expect("Failed to generate random secret key");
-        secret
-    }
-});
+pub static JSON_WEB_TOKEN_SECRET_KEY: LazyLock<Vec<u8>> =
+    LazyLock::new(|| match PRIVATE_CONFIG.auth_key.as_ref() {
+        Some(auth_key) => auth_key.as_bytes().to_vec(),
+        _ => {
+            let mut secret = vec![0u8; 32];
+            OsRng
+                .try_fill_bytes(&mut secret)
+                .expect("Failed to generate random secret key");
+            secret
+        }
+    });
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

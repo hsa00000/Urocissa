@@ -1,8 +1,8 @@
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use rocket::Request;
 use rocket::fairing::AdHoc;
 use rocket::http::{CookieJar, Status};
 use rocket::request::{FromRequest, Outcome};
-use rocket::Request;
 
 use crate::public::config::PUBLIC_CONFIG;
 
@@ -40,15 +40,18 @@ impl<'r> FromRequest<'r> for AuthGuard {
             let token = jwt_cookie.value();
             let validation = Validation::new(Algorithm::HS256);
 
-            if let Ok(token_data_claims) = decode::<Claims>(
+            match decode::<Claims>(
                 token,
                 &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
                 &validation,
             ) {
-                let claims = token_data_claims.claims;
-                return Outcome::Success(AuthGuard { claims });
-            } else {
-                warn!("JWT validation failed.");
+                Ok(token_data_claims) => {
+                    let claims = token_data_claims.claims;
+                    return Outcome::Success(AuthGuard { claims });
+                }
+                _ => {
+                    warn!("JWT validation failed.");
+                }
             }
         }
 
