@@ -8,6 +8,7 @@ use crate::public::tree_snapshot::TREE_SNAPSHOT;
 use crate::router::fairing::AuthGuard;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use log::info;
 use rocket::Request;
 use rocket::fairing::AdHoc;
 use rocket::http::{CookieJar, Status};
@@ -33,25 +34,32 @@ impl<'r> FromRequest<'r> for TimestampGuard {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        // Check for JWT cookie
-        let cookies: &CookieJar = req.cookies();
-        if let Some(jwt_cookie) = cookies.get("jwt") {
-            let token = jwt_cookie.value();
-            let validation = Validation::new(Algorithm::HS256);
+        // 從 Authorization header 獲取 JWT
+        if let Some(auth_header) = req.headers().get_one("Authorization") {
+            // 預期格式: "Bearer <token>"
+            if let Some(token) = auth_header.strip_prefix("Bearer ") {
+                let validation = Validation::new(Algorithm::HS256);
 
-            match decode::<TimestampClaims>(
-                token,
-                &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-                &validation,
-            ) {
-                Ok(token_data_claims) => {
-                    let claims = token_data_claims.claims;
-                    return Outcome::Success(TimestampGuard { claims });
+                match decode::<TimestampClaims>(
+                    token,
+                    &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+                    &validation,
+                ) {
+                    Ok(token_data_claims) => {
+                        let claims = token_data_claims.claims;
+
+                        info!("timestamp token passed");
+                        return Outcome::Success(TimestampGuard { claims });
+                    }
+                    Err(err) => {
+                        warn!("JWT validation failed: {:?}", err);
+                    }
                 }
-                _ => {
-                    warn!("JWT validation failed.");
-                }
+            } else {
+                warn!("Authorization header is malformed. Expected format: 'Bearer <token>'");
             }
+        } else {
+            warn!("Authorization header not found.");
         }
 
         Outcome::Forward(Status::Unauthorized)

@@ -1,10 +1,10 @@
-import { prefetchInWorker } from '@/script/inWorker/prefetchInWorker'
 import { RouteLocationNormalizedLoadedGeneric } from 'vue-router'
 import { watchDebounced } from '@vueuse/core'
 import { Ref } from 'vue'
 import { IsolationId } from '@/script/common/types'
+import { prefetch } from '@/script/prefetch/prefetch'
 
-export function prefetch(
+export function usePrefetch(
   filterJsonString: string | null,
   windowWidth: Ref<number>,
   route: RouteLocationNormalizedLoadedGeneric,
@@ -12,7 +12,7 @@ export function prefetch(
 ) {
   const stopWatcher = watchDebounced(
     windowWidth,
-    () => {
+    async () => {
       if (windowWidth.value > 0) {
         const priorityId = route.query.priorityId as string
         const reverse = route.query.reverse as string
@@ -27,7 +27,7 @@ export function prefetch(
           }
         }
 
-        prefetchInWorker(filterJsonString, priorityId, reverse, locate, isolationId)
+        await prefetch(filterJsonString, priorityId, reverse, locate)
 
         stopWatcher() // Stop the watcher after prefetching
       }
