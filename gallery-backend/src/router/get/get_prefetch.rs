@@ -38,7 +38,7 @@ pub async fn prefetch(
     auth: AuthGuard,
     query_data: Option<Json<Expression>>,
     locate: Option<String>,
-) -> Json<Option<Prefetch>> {
+) -> Json<Prefetch> {
     tokio::task::spawn_blocking(move || {
         // Start timer
         let start_time = Instant::now();
@@ -146,13 +146,13 @@ pub async fn prefetch(
         // Step 6: Create and return JSON response
         let json_start_time = Instant::now();
 
-        let prefetch_opt = Some(Prefetch::new(timestamp, locate_to, data_length));
+        let prefetch_return = Prefetch::new(timestamp, locate_to, data_length);
 
         QUERY_SNAPSHOT
             .in_memory
-            .insert(expression_hashed, prefetch_opt);
+            .insert(expression_hashed, prefetch_return);
         QUERY_SNAPSHOT.query_snapshot_flush();
-        let json = Json(prefetch_opt);
+        let json = Json(prefetch_return);
 
         let duration = format!("{:?}", json_start_time.elapsed());
         info!(duration = &*duration; "Create JSON response");

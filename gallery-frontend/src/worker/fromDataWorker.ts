@@ -1,8 +1,7 @@
 import { useDataStore } from '@/store/dataStore'
-import { IsolationId, Prefetch, SlicedDataItem } from '@/script/common/types'
+import { IsolationId, SlicedDataItem } from '@/script/common/types'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useMessageStore } from '@/store/messageStore'
-import { useInitializedStore } from '@/store/initializedStore'
 import { useTagStore } from '@/store/tagStore'
 import { createHandler } from 'typesafe-agent-events'
 import { fromDataWorker } from '@/worker/workerApi'
@@ -10,13 +9,8 @@ import { useScrollbarStore } from '@/store/scrollbarStore'
 import { useOffsetStore } from '@/store/offsetStore'
 import { useRowStore } from '@/store/rowStore'
 import { useLocationStore } from '@/store/locationStore'
-import { fetchScrollbarInWorker } from '@/script/inWorker/fetchScrollbarInWorker'
 import { useModalStore } from '@/store/modalStore'
 import router from '@/script/routes'
-import axios from 'axios'
-import { useConfigStore } from '@/store/configStore'
-import { useAlbumStore } from '@/store/albumStore'
-import { PublicConfigSchema } from '@/script/common/schemas'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
 const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
@@ -25,16 +19,14 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
   const messageStore = useMessageStore('mainId')
   const modalStore = useModalStore('mainId')
   const redirectionStore = useRedirectionStore('mainId')
-  const albumStore = useAlbumStore('mainId')
+
   const dataStore = useDataStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
   const tagStore = useTagStore('mainId')
-  const initializedStore = useInitializedStore(isolationId)
   const scrollbarStore = useScrollbarStore(isolationId)
   const offsetStore = useOffsetStore(isolationId)
   const rowStore = useRowStore(isolationId)
   const locationStore = useLocationStore(isolationId)
-  const configStore = useConfigStore(isolationId)
   const optimisticUpateStore = useOptimisticStore(isolationId)
 
   const handler = createHandler<typeof fromDataWorker>({
@@ -83,35 +75,6 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
 
       prefetchStore.updateFetchRowTrigger = !prefetchStore.updateFetchRowTrigger
       prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
-    },
-    prefetchReturn: async (payload) => {
-      try {
-        const response = await axios.get('/get/get-config.json')
-        const publicConfig = PublicConfigSchema.parse(response.data)
-        configStore.disableImg = publicConfig.disableImg
-      } catch (error) {
-        console.error('Error fetching config:', error)
-        throw error
-      }
-
-      const result: Prefetch = payload.result
-      prefetchStore.timestamp = result.timestamp
-      prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
-      prefetchStore.calculateLength(result.dataLength)
-      prefetchStore.locateTo = result.locateTo
-      initializedStore.initialized = true
-
-      // Perform initialization:
-      if (!tagStore.fetched) {
-        await tagStore.fetchTags()
-      }
-      if (!albumStore.fetched) {
-        await albumStore.fetchAlbums()
-      }
-
-      fetchScrollbarInWorker(isolationId)
-
-      prefetchStore.updateFetchRowTrigger = !prefetchStore.updateFetchRowTrigger
     },
     editTagsReturn: (payload) => {
       if (payload.returnedTagsArray !== undefined) {
