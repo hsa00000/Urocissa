@@ -1,17 +1,18 @@
 use super::Expire;
-use crate::public::{
-    query_snapshot::{PrefetchReturn, QUERY_SNAPSHOT},
-    tree::start_loop::VERSION_COUNT_TIMESTAMP,
-    tree_snapshot::TREE_SNAPSHOT,
-    utils::start_loop_util,
+use crate::{
+    public::{
+        query_snapshot::QUERY_SNAPSHOT, tree::start_loop::VERSION_COUNT_TIMESTAMP,
+        tree_snapshot::TREE_SNAPSHOT, utils::start_loop_util,
+    },
+    router::get::get_prefetch::Prefetch,
 };
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use redb::{ReadableTable, TableDefinition, TableHandle};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc, OnceLock,
+    atomic::{AtomicU64, Ordering},
 };
-use tokio::sync::{mpsc::UnboundedSender, Notify};
+use tokio::sync::{Notify, mpsc::UnboundedSender};
 
 static EXPIRE_CHECK_SENDER: OnceLock<UnboundedSender<Option<Arc<Notify>>>> = OnceLock::new();
 
@@ -34,7 +35,7 @@ impl Expire {
                             // the table in QUERY_SNAPSHOT expired
                             // perform purge
                             let binding = timestamp.to_string();
-                            let table_definition: TableDefinition<u64, PrefetchReturn> =
+                            let table_definition: TableDefinition<u64, Prefetch> =
                                 TableDefinition::new(&binding);
 
                             let read_txn = QUERY_SNAPSHOT.in_disk.begin_read().unwrap();
@@ -49,9 +50,10 @@ impl Expire {
                                         .iter()
                                         .unwrap()
                                         .par_bridge()
-                                        .filter_map(|result| {
-                                            let (_, value) = result.unwrap();
-                                            value.value().map(|prefetch| prefetch.timestamp)
+                                        .map(|result| {
+                                            let (_, guard) = result.unwrap();
+                                            let prefetch_return = guard.value();
+                                            prefetch_return.timestamp
                                         })
                                         .collect();
 

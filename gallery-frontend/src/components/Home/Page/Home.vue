@@ -51,7 +51,7 @@ import { useWorkerStore } from '@/store/workerStore'
 import { useQueueStore } from '@/store/queueStore'
 import { useRoute } from 'vue-router'
 import { useElementSize } from '@vueuse/core'
-import { prefetch } from '@/components/hook/usePrefetch'
+import { usePrefetch } from '@/components/hook/usePrefetch'
 import { handleScroll } from '@/components/hook/useHandleScroll'
 import { useInitializeScrollPosition } from '@/components/hook/useInitializeScrollPosition'
 import { useImgStore } from '@/store/imgStore'
@@ -157,9 +157,9 @@ onMounted(() => {
     filterStore.handleFilterString(route)
     filterStore.handleBasicString(route, props.isolationId)
 
-    prefetch(filterStore.generateFilterJsonString(), windowWidth, route, props.isolationId)
+    usePrefetch(filterStore.generateFilterJsonString(), windowWidth, route, props.isolationId)
   } else {
-    prefetch(props.filterDeterminedByQuery, windowWidth, route, props.isolationId)
+    usePrefetch(props.filterDeterminedByQuery, windowWidth, route, props.isolationId)
   }
   useInitializeScrollPosition(
     imageContainerRef,

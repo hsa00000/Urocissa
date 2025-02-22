@@ -39,15 +39,6 @@ export interface SlicedData {
 }
 
 /**
- * Represents prefetching sliced data.
- */
-export interface PreFetchSliced {
-  timestamp: string
-  locateTo?: number
-  dataLength: number
-}
-
-/**
  * Represents an alias with file information.
  */
 export type Alias = z.infer<typeof AliasSchema>
