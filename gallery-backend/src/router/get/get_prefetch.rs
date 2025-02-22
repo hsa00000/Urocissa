@@ -39,6 +39,7 @@ impl Prefetch {
         }
     }
 }
+
 #[post("/get/prefetch?<locate>", format = "json", data = "<query_data>")]
 pub async fn prefetch(
     auth: AuthGuard,
@@ -152,7 +153,7 @@ pub async fn prefetch(
         // Step 6: Create and return JSON response
         let json_start_time = Instant::now();
 
-        let token = get_timestamp_token(timestamp).unwrap();
+        let token = get_timestamp_token(timestamp);
 
         let prefetch_return = Prefetch::new(timestamp, locate_to, data_length, token);
 
@@ -177,19 +178,16 @@ pub async fn prefetch(
     .unwrap()
 }
 
-pub fn get_timestamp_token(timestamp: u128) -> Result<String, &'static str> {
+pub fn get_timestamp_token(timestamp: u128) -> String {
     // Create expiration timestamp (valid for 1 hour)
-    let expiration = SystemTime::now()
+    let exp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs()
         + 3600;
 
     // Generate claims
-    let claims = TimestampClaims {
-        timestamp,
-        exp: expiration,
-    };
+    let claims = TimestampClaims { timestamp, exp };
 
     // Encode the JWT token
     let token = encode(
@@ -197,7 +195,7 @@ pub fn get_timestamp_token(timestamp: u128) -> Result<String, &'static str> {
         &claims,
         &EncodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
     )
-    .map_err(|_| "Token generation failed")?;
+    .expect("Token generation failed");
 
-    return Ok(token); // Return the JWT token
+    return token;
 }
