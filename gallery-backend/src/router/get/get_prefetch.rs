@@ -6,10 +6,8 @@ use crate::public::tree::start_loop::VERSION_COUNT_TIMESTAMP;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
 use crate::router::fairing::guard_auth::AuthGuard;
 use crate::router::fairing::guard_timestamp::TimestampClaims;
-use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use bitcode::{Decode, Encode};
-use jsonwebtoken::{EncodingKey, Header, encode};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -151,8 +149,8 @@ pub async fn prefetch(
 
         // Step 6: Create and return JSON response
         let json_start_time = Instant::now();
-
-        let token = get_timestamp_token(timestamp);
+        let claims = TimestampClaims::new(timestamp);
+        let token = claims.encode();
 
         let prefetch_return = Prefetch::new(timestamp, locate_to, data_length, token);
 
@@ -175,26 +173,4 @@ pub async fn prefetch(
     })
     .await
     .unwrap()
-}
-
-pub fn get_timestamp_token(timestamp: u128) -> String {
-    // Create expiration timestamp (valid for 1 hour)
-    let exp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-        + 3600;
-
-    // Generate claims
-    let claims = TimestampClaims { timestamp, exp };
-
-    // Encode the JWT token
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-    )
-    .expect("Token generation failed");
-
-    return token;
 }

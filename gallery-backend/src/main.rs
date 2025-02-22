@@ -10,6 +10,7 @@ use redb::ReadableTableMetadata;
 use rocket::fairing::AdHoc;
 use rocket::fs::FileServer;
 use router::fairing::cache_control_fairing::cache_control_fairing;
+use router::fairing::generate_fairing_routes;
 use router::{
     delete::generate_delete_routes, get::generate_get_routes, post::generate_post_routes,
     put::generate_put_routes,
@@ -62,4 +63,5 @@ async fn rocket() -> _ {
         .mount("/", generate_post_routes())
         .mount("/", generate_put_routes())
         .mount("/", generate_delete_routes())
+        .mount("/", generate_fairing_routes())
 }
