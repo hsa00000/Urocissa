@@ -1,5 +1,6 @@
 use crate::public::{tree::TREE, tree_snapshot::TREE_SNAPSHOT};
-use crate::router::fairing::{AuthGuard, ReadOnlyModeGuard};
+use crate::router::fairing::guard_auth::AuthGuard;
+use crate::router::fairing::guard_read_only_mod::ReadOnlyModeGuard;
 use crate::synchronizer::album::album_self_update_async;
 use std::collections::HashSet;
 
@@ -7,7 +8,7 @@ use crate::public::redb::{ALBUM_TABLE, DATA_TABLE};
 use arrayvec::ArrayString;
 use redb::ReadableTable;
 use rocket::http::Status;
-use rocket::serde::{json::Json, Deserialize};
+use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
 
 #[derive(Debug, Deserialize)]
