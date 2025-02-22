@@ -1,7 +1,6 @@
 import {
   rowSchema,
   rowWithOffsetSchema,
-  scrollbarDataSchema,
   tagInfoSchema,
   databaseTimestampSchema
 } from '@/script/common/schemas'
@@ -12,7 +11,6 @@ import {
   FetchDataMethod,
   Row,
   RowWithOffset,
-  ScrollbarData,
   SlicedData,
   TagInfo
 } from '@/script/common/types'
@@ -70,7 +68,7 @@ axios.interceptors.response.use(
 self.addEventListener('message', (e) => {
   const handler = createHandler<typeof toDataWorker>({
     fetchData: async (payload) => {
-      const { fetchMethod, batch, timestamp } = payload
+      const { fetchMethod, batch, timestamp, timestampToken } = payload
 
       // if there are too many batch are processed then try to terminate the oldest request
       if (fetchMethod === 'batch') {
@@ -80,7 +78,12 @@ self.addEventListener('message', (e) => {
         shouldProcessBatch.push(batch)
       }
 
-      const { result, startIndex, endIndex } = await fetchData(fetchMethod, batch, timestamp)
+      const { result, startIndex, endIndex } = await fetchData(
+        fetchMethod,
+        batch,
+        timestamp,
+        timestampToken
+      )
 
       if (result.size > 0) {
         const indices = Array.from({ length: endIndex - startIndex }, (_, i) => startIndex + i)
@@ -99,9 +102,9 @@ self.addEventListener('message', (e) => {
       }
     },
     fetchRow: async (payload) => {
-      const { index, timestamp, windowWidth, isLastRow } = payload
+      const { index, timestamp, windowWidth, isLastRow, timestampToken } = payload
 
-      const rowWithOffset = await fetchRow(index, timestamp, windowWidth, isLastRow)
+      const rowWithOffset = await fetchRow(index, timestamp, windowWidth, isLastRow, timestampToken)
 
       const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
       postToMain.fetchRowReturn({
@@ -132,12 +135,6 @@ self.addEventListener('message', (e) => {
     deleteData: async (payload) => {
       const { indexArray, timestamp } = payload
       await deleteData(indexArray, timestamp)
-    },
-    fetchScrollbar: async (payload) => {
-      const { timestamp } = payload
-      const { scrollbarDataArray } = await fetchScrollbar(timestamp)
-      const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
-      postToMain.fetchScrollbarReturn({ scrollbarDataArray: scrollbarDataArray })
     }
   })
   handler(e.data as ReturnType<(typeof toDataWorker)[keyof typeof toDataWorker]>)
@@ -155,7 +152,8 @@ self.addEventListener('message', (e) => {
 async function fetchData(
   fetchMethod: FetchDataMethod,
   index: number,
-  timestamp: number
+  timestamp: number,
+  timestampToken: string
 ): Promise<{ result: Map<number, AbstractData>; startIndex: number; endIndex: number }> {
   let start: number
   let end: number
@@ -175,7 +173,11 @@ async function fetchData(
 
   const fetchUrl = `/get/get-data?timestamp=${timestamp}&start=${start}&end=${end}`
 
-  const response = await axios.get<Database[]>(fetchUrl)
+  const response = await axios.get<Database[]>(fetchUrl, {
+    headers: {
+      Authorization: `Bearer ${timestampToken}`
+    }
+  })
   const databaseTimestampArray = z.array(databaseTimestampSchema).parse(response.data)
 
   const data = new Map<number, AbstractData>()
@@ -235,13 +237,19 @@ async function fetchRow(
   index: number,
   timestamp: number,
   windowWidth: number,
-  isLastRow: boolean
+  isLastRow: boolean,
+  timestampToken: string
 ): Promise<RowWithOffset> {
   let row = fetchedRowData.get(index)
 
   if (row === undefined) {
     const response = await axios.get<Row>(
-      `/get/get-rows?index=${index}&timestamp=${timestamp}&window_width=${Math.round(windowWidth)}`
+      `/get/get-rows?index=${index}&timestamp=${timestamp}&window_width=${Math.round(windowWidth)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${timestampToken}`
+        }
+      }
     )
     row = rowSchema.parse(response.data)
     fetchedRowData.set(row.rowIndex, structuredClone(row))
@@ -488,17 +496,4 @@ async function deleteData(indexArray: number[], timestamp: number) {
   console.log('Successfully deleted data.')
   const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
   postToMain.notification({ message: 'Successfully deleted data.', messageType: 'info' })
-}
-
-/**
- * Fetches scrollbar data based on the provided timestamp.
- *
- * @param timestamp - The timestamp associated with the data fetch.
- * @returns A promise that resolves to an object containing an array of scrollbar data,
- *          or an empty array if an error occurs.
- */
-async function fetchScrollbar(timestamp: number) {
-  const response = await axios.get<ScrollbarData[]>(`/get/get-scroll-bar?timestamp=${timestamp}`)
-  const scrollBarDataArray = z.array(scrollbarDataSchema).parse(response.data)
-  return { scrollbarDataArray: scrollBarDataArray }
 }

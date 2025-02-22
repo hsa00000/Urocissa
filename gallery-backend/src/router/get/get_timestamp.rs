@@ -23,6 +23,7 @@ use std::time::Instant;
 #[serde(rename_all = "camelCase")]
 pub struct TimestampClaims {
     pub timestamp: u128,
+    pub exp: u64,
 }
 
 pub struct TimestampGuard {
@@ -68,7 +69,7 @@ impl<'r> FromRequest<'r> for TimestampGuard {
 
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
 pub async fn get_data(
-    _auth: AuthGuard,
+    _auth: TimestampGuard,
     timestamp: u128,
     start: usize,
     end: usize,
@@ -122,7 +123,7 @@ pub async fn get_data(
 
 #[get("/get/get-rows?<index>&<timestamp>")]
 pub async fn get_rows(
-    _auth: AuthGuard,
+    _auth: TimestampGuard,
     index: usize,
     timestamp: u128,
 ) -> Result<Json<Row>, Status> {
@@ -139,7 +140,7 @@ pub async fn get_rows(
 
 #[get("/get/get-scroll-bar?<timestamp>")]
 pub async fn get_scroll_bar(
-    _auth: AuthGuard,
+    _auth: TimestampGuard,
     timestamp: u128,
 ) -> Result<Json<Vec<ScrollBarData>>, Status> {
     let scrollbar_data = TREE_SNAPSHOT.read_scrollbar(timestamp);

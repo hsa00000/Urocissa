@@ -48,7 +48,8 @@ export const rowWithOffsetSchema = z.object({
 export const prefetchSchema = z.object({
   timestamp: z.number(),
   dataLength: z.number(),
-  locateTo: z.number().nullable()
+  locateTo: z.number().nullable(),
+  token: z.string()
 })
 
 export const DataBaseParse = z.object({
