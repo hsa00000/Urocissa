@@ -13,6 +13,7 @@ pub struct Claims {
     pub album_id: Option<ArrayString<64>>,
     pub exp: usize,
 }
+
 pub struct AuthGuard {
     pub claims: Claims,
 }
