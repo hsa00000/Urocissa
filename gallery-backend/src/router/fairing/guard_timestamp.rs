@@ -71,7 +71,7 @@ impl<'r> FromRequest<'r> for TimestampGuard {
         ) {
             Ok(data) => data,
             Err(err) => {
-                warn!("JWT validation failed: {:?}", err);
+                warn!("TimestampCLaims decode failed: {:?}", err);
                 return Outcome::Forward(Status::Unauthorized);
             }
         };
@@ -118,20 +118,26 @@ impl<'r> FromRequest<'r> for TimestampGuard {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenRequest {
+    pub token: String,
+}
+
 #[post("/post/renew-timestamp-token", format = "json", data = "<token>")]
 pub async fn renew_timestamp_token(
     _auth: AuthGuard,
-    token: String,
+    token: Json<TokenRequest>,
 ) -> Result<Json<String>, Status> {
     tokio::task::spawn_blocking(move || {
         let token_data = match decode::<TimestampClaims>(
-            &token,
+            &token.into_inner().token,
             &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
             &Validation::new(Algorithm::HS256),
         ) {
             Ok(data) => data,
             Err(err) => {
-                warn!("JWT validation failed: {:?}", err);
+                warn!("Renew timestamp failed: {:?}", err);
                 return Err(Status::Unauthorized);
             }
         };
@@ -139,6 +145,9 @@ pub async fn renew_timestamp_token(
         let claims = token_data.claims;
         let new_claims = TimestampClaims::new(claims.timestamp);
         let new_token = new_claims.encode();
+
+        info!("new_token {}", new_token);
+
         Ok(Json(new_token))
     })
     .await

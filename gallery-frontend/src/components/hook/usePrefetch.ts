@@ -66,7 +66,11 @@ async function handlePrefetchReturn(result: Prefetch, isolationId: IsolationId) 
   prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
   prefetchStore.calculateLength(result.dataLength)
   prefetchStore.locateTo = result.locateTo
-  tokenStore.timestampToken = result.token
+
+  console.log('new token is', result.token)
+
+  tokenStore.setToken(result.token)
+  await tokenStore.renewToken()
 
   initializedStore.initialized = true
 
