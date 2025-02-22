@@ -44,6 +44,7 @@ export function usePrefetch(
   )
 }
 
+// TODO optimize tags fetch
 async function handlePrefetchReturn(result: Prefetch, isolationId: IsolationId) {
   const configStore = useConfigStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
