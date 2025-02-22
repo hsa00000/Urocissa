@@ -6,6 +6,7 @@ import { toDataWorker } from '@/worker/workerApi'
 import { clamp } from 'lodash'
 import { bindActionDispatch } from 'typesafe-agent-events'
 import { IsolationId } from '../common/types'
+import { useTokenStore } from '@/store/tokenStore'
 
 /**
  * Fetches a row of data using a web worker if it isn't already queued.
@@ -16,6 +17,7 @@ export function fetchRowInWorker(index: number, isolationId: IsolationId) {
   const prefetchStore = usePrefetchStore(isolationId)
   const locationStore = useLocationStore(isolationId)
   const queueStore = useQueueStore(isolationId)
+  const tokenStore = useTokenStore(isolationId)
 
   if (prefetchStore.rowLength === 0) {
     return // No data to fetch
@@ -29,6 +31,11 @@ export function fetchRowInWorker(index: number, isolationId: IsolationId) {
 
   if (locationStore.anchor !== null && locationStore.anchor !== index) {
     return // If a specific row is anchored, this make sure to fetch only that row
+  }
+
+  if (tokenStore.timestampToken === null) {
+    console.error('timestamp token not found')
+    return
   }
 
   const workerStore = useWorkerStore(isolationId)
@@ -51,7 +58,8 @@ export function fetchRowInWorker(index: number, isolationId: IsolationId) {
       index: index,
       timestamp: timestamp,
       windowWidth: prefetchStore.windowWidth,
-      isLastRow: index === prefetchStore.rowLength - 1
+      isLastRow: index === prefetchStore.rowLength - 1,
+      timestampToken: tokenStore.timestampToken
     })
   }
 }

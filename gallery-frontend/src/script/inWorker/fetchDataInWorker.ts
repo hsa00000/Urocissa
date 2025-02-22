@@ -3,6 +3,7 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import { bindActionDispatch } from 'typesafe-agent-events'
 import { toDataWorker } from '@/worker/workerApi'
 import { FetchDataMethod, IsolationId } from '../common/types'
+import { useTokenStore } from '@/store/tokenStore'
 
 export function fetchDataInWorker(
   fetchMethod: FetchDataMethod,
@@ -24,12 +25,22 @@ export function fetchDataInWorker(
     }
   })
   const timestamp = prefetchStore.timestamp
+
+  const tokenStore = useTokenStore(isolationId)
+  const timestampToken = tokenStore.timestampToken
+
+  if (timestampToken === null) {
+    console.error('timestampToken not found')
+    return
+  }
+
   if (timestamp !== null) {
     // Photo data is fetched batch by batch
     postToWorker.fetchData({
       fetchMethod: fetchMethod,
       batch: batch,
-      timestamp: timestamp
+      timestamp: timestamp,
+      timestampToken
     })
   }
 }

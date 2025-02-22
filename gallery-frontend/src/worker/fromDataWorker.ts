@@ -5,7 +5,6 @@ import { useMessageStore } from '@/store/messageStore'
 import { useTagStore } from '@/store/tagStore'
 import { createHandler } from 'typesafe-agent-events'
 import { fromDataWorker } from '@/worker/workerApi'
-import { useScrollbarStore } from '@/store/scrollbarStore'
 import { useOffsetStore } from '@/store/offsetStore'
 import { useRowStore } from '@/store/rowStore'
 import { useLocationStore } from '@/store/locationStore'
@@ -23,7 +22,6 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
   const dataStore = useDataStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
   const tagStore = useTagStore('mainId')
-  const scrollbarStore = useScrollbarStore(isolationId)
   const offsetStore = useOffsetStore(isolationId)
   const rowStore = useRowStore(isolationId)
   const locationStore = useLocationStore(isolationId)
@@ -84,10 +82,6 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       }
       modalStore.showEditTagsModal = false
       messageStore.showMessage = true
-    },
-    fetchScrollbarReturn: (payload) => {
-      console.log('payload.scrollbarDataArray is ', payload.scrollbarDataArray)
-      scrollbarStore.initialize(payload.scrollbarDataArray)
     },
     notification: function (payload: { message: string; messageType: 'info' | 'warn' }): void {
       messageStore.message = payload.message

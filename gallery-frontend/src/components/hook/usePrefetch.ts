@@ -2,7 +2,7 @@ import { RouteLocationNormalizedLoadedGeneric } from 'vue-router'
 import { watchDebounced } from '@vueuse/core'
 import { Ref } from 'vue'
 import { IsolationId, Prefetch } from '@/script/common/types'
-import { prefetch } from '@/script/prefetch/prefetch'
+import { prefetch } from '@/script/fetch/prefetch'
 import axios from 'axios'
 import { PublicConfigSchema } from '@/script/common/schemas'
 import { useConfigStore } from '@/store/configStore'
@@ -10,7 +10,8 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useTagStore } from '@/store/tagStore'
 import { useAlbumStore } from '@/store/albumStore'
-import { fetchScrollbarInWorker } from '@/script/inWorker/fetchScrollbarInWorker'
+import { useTokenStore } from '@/store/tokenStore'
+import { fetchScrollbar } from '@/script/fetch/scrollbar'
 
 export function usePrefetch(
   filterJsonString: string | null,
@@ -51,6 +52,7 @@ async function handlePrefetchReturn(result: Prefetch, isolationId: IsolationId) 
   const albumStore = useAlbumStore('mainId')
   const initializedStore = useInitializedStore(isolationId)
   const tagStore = useTagStore('mainId')
+  const tokenStore = useTokenStore(isolationId)
   try {
     const response = await axios.get('/get/get-config.json')
     const publicConfig = PublicConfigSchema.parse(response.data)
@@ -64,6 +66,8 @@ async function handlePrefetchReturn(result: Prefetch, isolationId: IsolationId) 
   prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
   prefetchStore.calculateLength(result.dataLength)
   prefetchStore.locateTo = result.locateTo
+  tokenStore.timestampToken = result.token
+
   initializedStore.initialized = true
 
   // Perform initialization:
@@ -74,7 +78,7 @@ async function handlePrefetchReturn(result: Prefetch, isolationId: IsolationId) 
     await albumStore.fetchAlbums()
   }
 
-  fetchScrollbarInWorker(isolationId)
+  await fetchScrollbar(isolationId)
 
   prefetchStore.updateFetchRowTrigger = !prefetchStore.updateFetchRowTrigger
 }
