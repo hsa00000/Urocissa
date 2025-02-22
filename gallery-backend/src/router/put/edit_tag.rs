@@ -2,10 +2,11 @@ use crate::public::{tree::TREE, tree_snapshot::TREE_SNAPSHOT};
 
 use crate::public::redb::{ALBUM_TABLE, DATA_TABLE};
 use crate::public::tree::read_tags::TagInfo;
-use crate::router::fairing::{AuthGuard, ReadOnlyModeGuard};
+use crate::router::fairing::guard_auth::AuthGuard;
+use crate::router::fairing::guard_read_only_mod::ReadOnlyModeGuard;
 
 use redb::ReadableTable;
-use rocket::serde::{json::Json, Deserialize};
+use rocket::serde::{Deserialize, json::Json};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditTagsData {

@@ -4,7 +4,8 @@ use crate::public::reduced_data::ReducedData;
 use crate::public::tree::TREE;
 use crate::public::tree::start_loop::VERSION_COUNT_TIMESTAMP;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
-use crate::router::fairing::AuthGuard;
+use crate::router::fairing::guard_auth::AuthGuard;
+use crate::router::fairing::guard_timestamp::TimestampClaims;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use bitcode::{Decode, Encode};
@@ -17,8 +18,6 @@ use std::hash::{DefaultHasher, Hash};
 use std::sync::atomic::Ordering;
 use std::time::UNIX_EPOCH;
 use std::time::{Instant, SystemTime};
-
-use super::get_timestamp::TimestampClaims;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "camelCase")]
