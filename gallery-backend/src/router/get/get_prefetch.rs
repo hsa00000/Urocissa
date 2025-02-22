@@ -186,7 +186,10 @@ pub fn get_timestamp_token(timestamp: u128) -> Result<String, &'static str> {
         + 3600;
 
     // Generate claims
-    let claims = TimestampClaims { timestamp };
+    let claims = TimestampClaims {
+        timestamp,
+        exp: expiration,
+    };
 
     // Encode the JWT token
     let token = encode(

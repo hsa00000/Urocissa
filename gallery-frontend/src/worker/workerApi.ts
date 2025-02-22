@@ -1,11 +1,5 @@
 // Import necessary types from the commonType module
-import {
-  FetchDataMethod,
-  RowWithOffset,
-  ScrollbarData,
-  SlicedData,
-  TagInfo
-} from '@/script/common/types'
+import { FetchDataMethod, RowWithOffset, SlicedData, TagInfo } from '@/script/common/types'
 
 // Import createActionCreators from typesafe-agent-events for defining strongly-typed actions
 import { createActionCreators } from 'typesafe-agent-events'
@@ -75,12 +69,14 @@ interface FetchDataParams {
   fetchMethod: FetchDataMethod
   batch: number
   timestamp: number
+  timestampToken: string
 }
 interface FetchRowParams {
   index: number
   timestamp: number
   windowWidth: number
   isLastRow: boolean
+  timestampToken: string
 }
 export interface EditTagsParams {
   indexSet: Set<number>
@@ -98,9 +94,6 @@ interface DeleteDataParams {
   indexArray: number[]
   timestamp: number
 }
-interface FetchScrollBarParams {
-  timestamp: number
-}
 
 // Define actions for the worker to receive and execute tasks
 export const toDataWorker = createActionCreators({
@@ -108,8 +101,7 @@ export const toDataWorker = createActionCreators({
   fetchRow: (payload: FetchRowParams) => payload,
   editTags: (payload: EditTagsParams) => payload,
   editAlbums: (payload: EditAlbumsParams) => payload,
-  deleteData: (payload: DeleteDataParams) => payload,
-  fetchScrollbar: (payload: FetchScrollBarParams) => payload
+  deleteData: (payload: DeleteDataParams) => payload
 })
 
 /* ================================================================================
@@ -130,9 +122,6 @@ interface FetchRowReturnParams {
 interface EditTagsReturnParams {
   returnedTagsArray: TagInfo[] | undefined
 }
-interface FetchScrollBarReturnParams {
-  scrollbarDataArray: ScrollbarData[]
-}
 interface NotificationReturnParams {
   message: string
   messageType: 'info' | 'warn'
@@ -143,7 +132,6 @@ export const fromDataWorker = createActionCreators({
   returnData: (payload: ReturnDataParams) => payload,
   fetchRowReturn: (payload: FetchRowReturnParams) => payload,
   editTagsReturn: (payload: EditTagsReturnParams) => payload,
-  fetchScrollbarReturn: (payload: FetchScrollBarReturnParams) => payload,
   notification: (payload: NotificationReturnParams) => payload,
   unauthorized: () => ({})
 })
