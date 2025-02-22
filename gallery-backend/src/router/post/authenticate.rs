@@ -10,7 +10,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::public::config::PRIVATE_CONFIG;
+use crate::{public::config::PRIVATE_CONFIG, router::fairing::guard_auth::Claims};
 
 pub static JSON_WEB_TOKEN_SECRET_KEY: LazyLock<Vec<u8>> =
     LazyLock::new(|| match PRIVATE_CONFIG.auth_key.as_ref() {
@@ -23,13 +23,6 @@ pub static JSON_WEB_TOKEN_SECRET_KEY: LazyLock<Vec<u8>> =
             secret
         }
     });
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Claims {
-    pub album_id: Option<ArrayString<64>>,
-    pub exp: usize,
-}
 
 #[post("/post/authenticate", data = "<password>")]
 pub async fn authenticate(password: Json<String>) -> Result<Json<String>, &'static str> {

@@ -9,7 +9,7 @@ use public::tree::TREE;
 use redb::ReadableTableMetadata;
 use rocket::fairing::AdHoc;
 use rocket::fs::FileServer;
-use router::fairing::cache_control_fairing;
+use router::fairing::cache_control_fairing::cache_control_fairing;
 use router::{
     delete::generate_delete_routes, get::generate_get_routes, post::generate_post_routes,
     put::generate_put_routes,
