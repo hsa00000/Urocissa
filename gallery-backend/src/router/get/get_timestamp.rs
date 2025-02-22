@@ -22,7 +22,7 @@ use std::time::Instant;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimestampClaims {
-    timestamp: u128,
+    pub timestamp: u128,
 }
 
 pub struct TimestampGuard {

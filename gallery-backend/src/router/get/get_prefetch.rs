@@ -5,8 +5,10 @@ use crate::public::tree::TREE;
 use crate::public::tree::start_loop::VERSION_COUNT_TIMESTAMP;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
 use crate::router::fairing::AuthGuard;
+use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use bitcode::{Decode, Encode};
+use jsonwebtoken::{EncodingKey, Header, encode};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -16,20 +18,24 @@ use std::sync::atomic::Ordering;
 use std::time::UNIX_EPOCH;
 use std::time::{Instant, SystemTime};
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Decode, Encode)]
+use super::get_timestamp::TimestampClaims;
+
+#[derive(Debug, Clone, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "camelCase")]
 pub struct Prefetch {
     pub timestamp: u128,
     pub locate_to: Option<usize>,
     pub data_length: usize,
+    pub token: String,
 }
 
 impl Prefetch {
-    fn new(timestamp: u128, locate_to: Option<usize>, data_length: usize) -> Self {
+    fn new(timestamp: u128, locate_to: Option<usize>, data_length: usize, token: String) -> Self {
         Self {
             timestamp,
             locate_to,
             data_length,
+            token,
         }
     }
 }
@@ -146,12 +152,16 @@ pub async fn prefetch(
         // Step 6: Create and return JSON response
         let json_start_time = Instant::now();
 
-        let prefetch_return = Prefetch::new(timestamp, locate_to, data_length);
+        let token = get_timestamp_token(timestamp).unwrap();
+
+        let prefetch_return = Prefetch::new(timestamp, locate_to, data_length, token);
 
         QUERY_SNAPSHOT
             .in_memory
-            .insert(expression_hashed, prefetch_return);
+            .insert(expression_hashed, prefetch_return.clone());
+
         QUERY_SNAPSHOT.query_snapshot_flush();
+
         let json = Json(prefetch_return);
 
         let duration = format!("{:?}", json_start_time.elapsed());
@@ -165,4 +175,26 @@ pub async fn prefetch(
     })
     .await
     .unwrap()
+}
+
+pub fn get_timestamp_token(timestamp: u128) -> Result<String, &'static str> {
+    // Create expiration timestamp (valid for 1 hour)
+    let expiration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 3600;
+
+    // Generate claims
+    let claims = TimestampClaims { timestamp };
+
+    // Encode the JWT token
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+    )
+    .map_err(|_| "Token generation failed")?;
+
+    return Ok(token); // Return the JWT token
 }
