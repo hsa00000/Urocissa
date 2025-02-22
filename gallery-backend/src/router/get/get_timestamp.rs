@@ -5,13 +5,12 @@ use crate::public::redb::{ALBUM_TABLE, DATA_TABLE};
 use crate::public::row::{Row, ScrollBarData};
 use crate::public::tree::TREE;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
-use crate::router::fairing::AuthGuard;
+
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use log::info;
 use rocket::Request;
-use rocket::fairing::AdHoc;
-use rocket::http::{CookieJar, Status};
+use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -35,9 +34,7 @@ impl<'r> FromRequest<'r> for TimestampGuard {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        // 從 Authorization header 獲取 JWT
         if let Some(auth_header) = req.headers().get_one("Authorization") {
-            // 預期格式: "Bearer <token>"
             if let Some(token) = auth_header.strip_prefix("Bearer ") {
                 let validation = Validation::new(Algorithm::HS256);
 
@@ -73,7 +70,7 @@ pub async fn get_data(
     timestamp: u128,
     start: usize,
     end: usize,
-) -> Result<Json<Vec<DataBaseTimestamp>>, Status> {
+) -> Json<Vec<DataBaseTimestamp>> {
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
         let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
@@ -82,40 +79,33 @@ pub async fn get_data(
         let album_table = read_txn.open_table(ALBUM_TABLE).unwrap();
         let end = end.min(tree_snapshot.len());
 
-        if start < end {
-            // Change the type of data_vec to Result<Vec<DataBaseTimestamp>, Status>
-            let data_vec: Result<Vec<DataBaseTimestamp>, Status> = (start..end)
-                .into_par_iter()
-                .map(
-                    |index| match table.get(&*tree_snapshot.get_hash(index)).unwrap() {
-                        Some(database) => Ok(DataBaseTimestamp::new(
-                            AbstractData::Database(database.value()),
-                            &DEFAULT_PRIORITY_LIST,
-                        )),
-                        None => match album_table.get(&*tree_snapshot.get_hash(index)).unwrap() {
-                            Some(album) => Ok(DataBaseTimestamp::new(
-                                AbstractData::Album(album.value()),
-                                &DEFAULT_PRIORITY_LIST,
-                            )),
-                            None => Err(Status::InternalServerError),
-                        },
-                    },
-                )
-                .collect();
-
-            match data_vec {
-                Ok(vec) => {
-                    let duration = format!("{:?}", start_time.elapsed());
-                    info!(duration = &*duration; "Get data: {} ~ {}", start, end);
-
-                    Ok(Json(vec))
-                }
-                Err(e) => Err(e),
-            }
-        } else {
-            // Index out of range
-            Ok(Json(vec![]))
+        // Early return if start is out of range.
+        if start >= end {
+            return Json(vec![]);
         }
+
+        let data_vec: Vec<DataBaseTimestamp> = (start..end)
+            .into_par_iter()
+            .map(|index| {
+                let hash = tree_snapshot.get_hash(index);
+                if let Some(database) = table.get(&*hash).unwrap() {
+                    DataBaseTimestamp::new(
+                        AbstractData::Database(database.value()),
+                        &DEFAULT_PRIORITY_LIST,
+                    )
+                } else if let Some(album) = album_table.get(&*hash).unwrap() {
+                    DataBaseTimestamp::new(
+                        AbstractData::Album(album.value()),
+                        &DEFAULT_PRIORITY_LIST,
+                    )
+                } else {
+                    panic!("Entry not found for hash: {:?}", hash);
+                }
+            })
+            .collect();
+        let duration = format!("{:?}", start_time.elapsed());
+        info!(duration = &*duration; "Get data: {} ~ {}", start, end);
+        Json(data_vec)
     })
     .await
     .unwrap()
@@ -139,10 +129,7 @@ pub async fn get_rows(
 }
 
 #[get("/get/get-scroll-bar?<timestamp>")]
-pub async fn get_scroll_bar(
-    _auth: TimestampGuard,
-    timestamp: u128,
-) -> Result<Json<Vec<ScrollBarData>>, Status> {
+pub async fn get_scroll_bar(_auth: TimestampGuard, timestamp: u128) -> Json<Vec<ScrollBarData>> {
     let scrollbar_data = TREE_SNAPSHOT.read_scrollbar(timestamp);
-    Ok(Json(scrollbar_data))
+    Json(scrollbar_data)
 }
