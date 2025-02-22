@@ -1,7 +1,6 @@
 // Import necessary types from the commonType module
 import {
   FetchDataMethod,
-  Prefetch,
   RowWithOffset,
   ScrollbarData,
   SlicedData,
@@ -128,9 +127,6 @@ interface FetchRowReturnParams {
   rowWithOffset: RowWithOffset
   timestamp: number
 }
-interface PrefetchReturnParams {
-  result: Prefetch
-}
 interface EditTagsReturnParams {
   returnedTagsArray: TagInfo[] | undefined
 }
@@ -146,7 +142,6 @@ interface NotificationReturnParams {
 export const fromDataWorker = createActionCreators({
   returnData: (payload: ReturnDataParams) => payload,
   fetchRowReturn: (payload: FetchRowReturnParams) => payload,
-  prefetchReturn: (payload: PrefetchReturnParams) => payload,
   editTagsReturn: (payload: EditTagsReturnParams) => payload,
   fetchScrollbarReturn: (payload: FetchScrollBarReturnParams) => payload,
   notification: (payload: NotificationReturnParams) => payload,
