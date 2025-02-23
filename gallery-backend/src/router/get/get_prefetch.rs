@@ -5,7 +5,7 @@ use crate::public::tree::TREE;
 use crate::public::tree::start_loop::VERSION_COUNT_TIMESTAMP;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
 use crate::router::fairing::guard_auth::AuthGuard;
-use crate::router::fairing::guard_timestamp::TimestampClaims;
+use crate::router::fairing::guard_timestamp::{TimestampClaims, renew_timestamp_token_sync};
 
 use bitcode::{Decode, Encode};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -72,9 +72,11 @@ pub async fn prefetch(
         let expression_hashed = hasher.finish();
 
         match QUERY_SNAPSHOT.read_query_snapshot(expression_hashed) {
-            Ok(Some(prefetch_opt)) => {
+            Ok(Some(mut prefetch_opt)) => {
                 let duration = format!("{:?}", find_cache_start_time.elapsed());
                 info!(duration = &*duration; "Query cache found");
+                let new_token = renew_timestamp_token_sync(prefetch_opt.token).unwrap();
+                prefetch_opt.token = new_token;
                 return Json(prefetch_opt);
             }
             _ => {

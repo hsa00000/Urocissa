@@ -124,32 +124,41 @@ pub struct TokenRequest {
     pub token: String,
 }
 
-#[post("/post/renew-timestamp-token", format = "json", data = "<token>")]
+#[post(
+    "/post/renew-timestamp-token",
+    format = "json",
+    data = "<token_request>"
+)]
 pub async fn renew_timestamp_token(
     _auth: AuthGuard,
-    token: Json<TokenRequest>,
+    token_request: Json<TokenRequest>,
 ) -> Result<Json<String>, Status> {
     tokio::task::spawn_blocking(move || {
-        let token_data = match decode::<TimestampClaims>(
-            &token.into_inner().token,
-            &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-            &Validation::new(Algorithm::HS256),
-        ) {
-            Ok(data) => data,
-            Err(err) => {
-                warn!("Renew timestamp failed: {:?}", err);
-                return Err(Status::Unauthorized);
-            }
-        };
-
-        let claims = token_data.claims;
-        let new_claims = TimestampClaims::new(claims.timestamp);
-        let new_token = new_claims.encode();
-
-        info!("new_token {}", new_token);
-
+        let new_token = renew_timestamp_token_sync(token_request.into_inner().token)?;
         Ok(Json(new_token))
     })
     .await
     .unwrap()
+}
+
+pub fn renew_timestamp_token_sync(token: String) -> Result<String, Status> {
+    let token_data = match decode::<TimestampClaims>(
+        &token,
+        &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+        &Validation::new(Algorithm::HS256),
+    ) {
+        Ok(data) => data,
+        Err(err) => {
+            warn!("Renew timestamp failed: {:?}", err);
+            return Err(Status::Unauthorized);
+        }
+    };
+
+    let claims = token_data.claims;
+    let new_claims = TimestampClaims::new(claims.timestamp);
+    let new_token = new_claims.encode();
+
+    info!("new_token {}", new_token);
+
+    Ok(new_token)
 }
