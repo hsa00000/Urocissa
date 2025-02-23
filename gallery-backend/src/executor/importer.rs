@@ -1,8 +1,8 @@
 use crate::public::database_struct::database::definition::Database;
 use arrayvec::ArrayString;
 use dashmap::DashMap;
-use futures::stream::{self, StreamExt};
 use futures::TryStreamExt;
+use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::error;
 use std::sync::Arc;
@@ -61,14 +61,14 @@ async fn async_import(
                 // Ensure the destination directory exists
                 if let Some(parent) = dest_path.parent() {
                     if let Err(err) = fs::create_dir_all(parent).await {
-                        error!("Failed to create directory {:?}: {:?}", parent, err);
+                        error!("Failed to create directory {:?}: {:#?}", parent, err);
                         return Err(err);
                     }
                 }
 
                 if let Err(err) = fs::copy(&source_path, &dest_path).await {
                     error!(
-                        "Failed to copy file from {:?} to {:?}: {:?}",
+                        "Failed to copy file from {:?} to {:?}: {:#?}",
                         source_path, dest_path, err
                     );
                     return Err(err);

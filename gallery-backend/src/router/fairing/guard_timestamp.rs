@@ -28,16 +28,14 @@ impl TimestampClaims {
 
         Self { timestamp, exp }
     }
+
     pub fn encode(&self) -> String {
-        // Encode the JWT token
-        let token = encode(
+        encode(
             &Header::default(),
             &self,
             &EncodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
         )
-        .expect("Token generation failed");
-
-        return token;
+        .expect("Failed to generate token")
     }
 }
 
@@ -51,7 +49,7 @@ impl<'r> FromRequest<'r> for TimestampGuard {
         let auth_header = match req.headers().get_one("Authorization") {
             Some(header) => header,
             None => {
-                warn!("Authorization header not found.");
+                warn!("Request is missing the Authorization header.");
                 return Outcome::Forward(Status::Unauthorized);
             }
         };
@@ -59,7 +57,7 @@ impl<'r> FromRequest<'r> for TimestampGuard {
         let token = match auth_header.strip_prefix("Bearer ") {
             Some(token) => token,
             None => {
-                warn!("Authorization header is malformed. Expected format: 'Bearer <token>'");
+                warn!("Authorization header format is invalid. Expected 'Bearer <token>'.");
                 return Outcome::Forward(Status::Unauthorized);
             }
         };
@@ -71,7 +69,7 @@ impl<'r> FromRequest<'r> for TimestampGuard {
         ) {
             Ok(data) => data,
             Err(err) => {
-                warn!("TimestampCLaims decode failed: {:?}", err);
+                warn!("Failed to decode token: {:#?}", err);
                 return Outcome::Forward(Status::Unauthorized);
             }
         };
@@ -87,14 +85,14 @@ impl<'r> FromRequest<'r> for TimestampGuard {
         let query_timestamp = match query_timestamp {
             Some(ts) => ts,
             None => {
-                warn!("Timestamp query parameter not found or invalid.");
+                warn!("No valid 'timestamp' parameter found in the query.");
                 return Outcome::Forward(Status::Unauthorized);
             }
         };
 
         if query_timestamp != claims.timestamp {
             warn!(
-                "Timestamp mismatch: query = {}, claims = {}",
+                "Timestamp does not match. Received: {}, Expected: {}.",
                 query_timestamp, claims.timestamp
             );
             return Outcome::Forward(Status::Unauthorized);
@@ -103,17 +101,20 @@ impl<'r> FromRequest<'r> for TimestampGuard {
         let current_time = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(duration) => duration.as_secs(),
             Err(_) => {
-                error!("System time error while checking token expiration.");
+                error!("System time error: unable to verify token expiration.");
                 return Outcome::Forward(Status::Unauthorized);
             }
         };
 
         if claims.exp < current_time {
-            error!("Token expired.");
+            error!(
+                "Token has expired. Current time: {}, token expiration: {}.",
+                current_time, claims.exp
+            );
             return Outcome::Forward(Status::Unauthorized);
         }
 
-        info!("Timestamp token passed.");
+        info!("Token has been successfully validated.");
         Outcome::Success(TimestampGuard)
     }
 }
@@ -149,7 +150,10 @@ pub fn renew_timestamp_token_sync(token: String) -> Result<String, Status> {
     ) {
         Ok(data) => data,
         Err(err) => {
-            warn!("Renew timestamp failed: {:?}", err);
+            warn!(
+                "Token renewal failed: unable to decode token. Error: {:#?}",
+                err
+            );
             return Err(Status::Unauthorized);
         }
     };
@@ -158,7 +162,6 @@ pub fn renew_timestamp_token_sync(token: String) -> Result<String, Status> {
     let new_claims = TimestampClaims::new(claims.timestamp);
     let new_token = new_claims.encode();
 
-    info!("new_token {}", new_token);
-
+    info!("New timestamp token generated successfully.");
     Ok(new_token)
 }

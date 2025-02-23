@@ -13,7 +13,7 @@ impl TreeSnapshot {
         }
 
         let read_txn = self.in_disk.begin_read().map_err(|err| {
-            error!("{:?}", err);
+            error!("{:#?}", err);
             Status::InternalServerError
         })?;
 
@@ -28,7 +28,7 @@ impl TreeSnapshot {
                     Status::Unauthorized
                 }
                 _ => {
-                    error!("{:?}", err);
+                    error!("{:#?}", err);
                     Status::InternalServerError
                 }
             })?;

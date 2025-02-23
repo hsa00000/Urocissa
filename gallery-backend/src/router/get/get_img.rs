@@ -25,7 +25,7 @@ pub async fn compressed_file(
         SeekStream::from_path(compressed_file_path)
             .map(CompressedFileResponse::SeekStream)
             .map_err(|error| {
-                error!("Error opening MP4 file: {:?}", error);
+                error!("Error opening MP4 file: {:#?}", error);
                 Status::NotFound
             })
     } else {
@@ -33,7 +33,7 @@ pub async fn compressed_file(
             .await
             .map(CompressedFileResponse::NamedFile)
             .map_err(|error| {
-                error!("Error opening file: {:?}", error);
+                error!("Error opening file: {:#?}", error);
                 Status::NotFound
             })
     }
@@ -49,7 +49,7 @@ pub async fn imported_file(
         .await
         .map(CompressedFileResponse::NamedFile)
         .map_err(|error| {
-            error!("Error opening imported file: {:?}", error);
+            error!("Error opening imported file: {:#?}", error);
             Status::NotFound
         })
 }
