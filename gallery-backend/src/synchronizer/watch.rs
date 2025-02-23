@@ -5,7 +5,7 @@ use std::thread;
 use std::{panic::Location, path::PathBuf};
 
 use crate::public::config::PRIVATE_CONFIG;
-use crate::public::error_data::{handle_error, ErrorData};
+use crate::public::error_data::{ErrorData, handle_error};
 
 use super::event::EVENTS_SENDER;
 pub fn start_watcher() -> tokio::task::JoinHandle<()> {
@@ -75,7 +75,7 @@ fn get_watcher() -> RecommendedWatcher {
                         _ => (),
                     }
                 }
-                Err(e) => error!("watch error: {:?}", e),
+                Err(err) => error!("watch error: {:#?}", err),
             }
         })
         .unwrap();

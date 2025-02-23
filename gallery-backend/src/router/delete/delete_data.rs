@@ -39,11 +39,11 @@ pub async fn delete_data(
                         let compressed_path = data.compressed_path();
                         let imported_path = data.imported_path();
                         std::fs::remove_file(&compressed_path).unwrap_or_else(|err| {
-                            error!("Failed to delete file at {:?}: {:?}", compressed_path, err);
+                            error!("Failed to delete file at {:?}: {:#?}", compressed_path, err);
                         });
 
                         std::fs::remove_file(&imported_path).unwrap_or_else(|err| {
-                            error!("Failed to delete file at {:?}: {:?}", imported_path, err);
+                            error!("Failed to delete file at {:?}: {:#?}", imported_path, err);
                         });
                         true
                     }
