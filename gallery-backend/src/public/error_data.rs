@@ -89,6 +89,6 @@ fn send_discord_webhook(webhook_url: &str, error_data: ErrorData) -> () {
     let params = json!({ "content": debug_string });
     let result = client.post(webhook_url).json(&params).send();
     if let Err(e) = result {
-        error!("Error sending webhook: {:?}", e);
+        error!("Error sending webhook: {:#?}", e);
     }
 }

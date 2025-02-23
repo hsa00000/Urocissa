@@ -64,7 +64,7 @@ impl Expire {
                                 }
                                 Err(e) => {
                                     error!(
-                                        "Failed to delete query cache table: {:?}, error: {:?}",
+                                        "Failed to delete query cache table: {:?}, error: {:#?}",
                                         timestamp, e
                                     );
                                 }

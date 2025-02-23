@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Instant,
 };
-use tokio::sync::{mpsc::UnboundedSender, Notify};
+use tokio::sync::{Notify, mpsc::UnboundedSender};
 
 static TREE_SNAPSHOT_FLUSH_SENDER: OnceLock<UnboundedSender<Option<Arc<Notify>>>> = OnceLock::new();
 
@@ -43,7 +43,7 @@ impl TreeSnapshot {
                         }
                         Err(e) => {
                             error!(
-                                "Failed to delete tree cache table: {:?}, error: {:?}",
+                                "Failed to delete tree cache table: {:?}, error: {:#?}",
                                 timestamp_delete, e
                             )
                         }

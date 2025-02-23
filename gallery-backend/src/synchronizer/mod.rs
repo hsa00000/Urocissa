@@ -63,8 +63,8 @@ pub async fn start_sync(shutdown: Shutdown) {
             Ok(_) => {
                 error!("{} closed unexpectedly.", name);
             }
-            Err(e) => {
-                error!("{} task failed: {:?}", name, e);
+            Err(err) => {
+                error!("{} task failed: {:#?}", name, err);
             }
         }
         // Notify shutdown after any task completes
