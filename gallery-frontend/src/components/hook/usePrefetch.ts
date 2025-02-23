@@ -70,7 +70,6 @@ async function handlePrefetchReturn(result: Prefetch, isolationId: IsolationId) 
   console.log('new token is', result.token)
 
   tokenStore.setToken(result.token)
-  await tokenStore.renewToken()
 
   initializedStore.initialized = true
 

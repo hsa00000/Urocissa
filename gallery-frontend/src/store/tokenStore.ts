@@ -5,7 +5,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
   defineStore('tokenStore' + isolationId, {
     state: (): {
       timestampToken: string | null
-      tokenRenewTimeout: NodeJS.Timeout | null
+      tokenRenewTimeout: ReturnType<typeof setTimeout> | null
     } => ({
       timestampToken: null,
       tokenRenewTimeout: null
@@ -16,8 +16,9 @@ export const useTokenStore = (isolationId: IsolationId) =>
         this.startAutoRenew()
       },
       startAutoRenew() {
-        if (this.tokenRenewTimeout) clearTimeout(this.tokenRenewTimeout)
-
+        if (this.tokenRenewTimeout) {
+          clearTimeout(this.tokenRenewTimeout)
+        }
         this.tokenRenewTimeout = setTimeout(() => {
           this.renewToken().catch((error: unknown) => {
             console.error('Token renewal failed in timer:', error)
