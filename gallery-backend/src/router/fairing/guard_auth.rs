@@ -1,11 +1,13 @@
 use arrayvec::ArrayString;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use jsonwebtoken::{DecodingKey, decode};
 use rocket::Request;
 use rocket::http::{CookieJar, Status};
 use rocket::request::{FromRequest, Outcome};
 use serde::{Deserialize, Serialize};
 
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
+
+use super::VALIDATION;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,12 +29,11 @@ impl<'r> FromRequest<'r> for AuthGuard {
         let cookies: &CookieJar = req.cookies();
         if let Some(jwt_cookie) = cookies.get("jwt") {
             let token = jwt_cookie.value();
-            let validation = Validation::new(Algorithm::HS256);
 
             match decode::<Claims>(
                 token,
                 &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-                &validation,
+                &VALIDATION,
             ) {
                 Ok(token_data_claims) => {
                     let claims = token_data_claims.claims;
