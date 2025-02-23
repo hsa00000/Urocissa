@@ -1,4 +1,4 @@
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, decode, encode};
 use log::{error, info, warn};
 use rocket::Request;
 use rocket::http::Status;
@@ -7,6 +7,7 @@ use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use super::guard_auth::AuthGuard;
@@ -65,7 +66,7 @@ impl<'r> FromRequest<'r> for TimestampGuard {
         let token_data = match decode::<TimestampClaims>(
             token,
             &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-            &Validation::new(Algorithm::HS256),
+            &VALIDATION,
         ) {
             Ok(data) => data,
             Err(err) => {
@@ -146,7 +147,7 @@ pub fn renew_timestamp_token_sync(token: String) -> Result<String, Status> {
     let token_data = match decode::<TimestampClaims>(
         &token,
         &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-        &Validation::new(Algorithm::HS256),
+        &VALIDATION,
     ) {
         Ok(data) => data,
         Err(err) => {
