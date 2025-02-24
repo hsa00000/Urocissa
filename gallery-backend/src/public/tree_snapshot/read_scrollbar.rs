@@ -54,7 +54,7 @@ impl TreeSnapshot {
                     });
             }
         }
-        warn!(duration = &*format!("{:?}", start_time.elapsed()); "Generate scrollbar"); // or log this information
+        info!(duration = &*format!("{:?}", start_time.elapsed()); "Generate scrollbar");
         scroll_bar_data_vec
     }
 }
