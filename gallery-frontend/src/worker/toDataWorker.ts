@@ -194,11 +194,15 @@ async function fetchData(
     const key = start + i
 
     if (item !== undefined && 'Database' in item.abstractData) {
-      const databaseInstance = createDataBase(item.abstractData.Database, item.timestamp)
+      const databaseInstance = createDataBase(
+        item.abstractData.Database,
+        item.timestamp,
+        item.token
+      )
       const abstractData = createAbstractData(databaseInstance)
       data.set(key, abstractData)
     } else if (item !== undefined && 'Album' in item.abstractData) {
-      const albumInstance = createAlbum(item.abstractData.Album, item.timestamp)
+      const albumInstance = createAlbum(item.abstractData.Album, item.timestamp, item.token)
       const abstractData = createAbstractData(albumInstance)
 
       data.set(key, abstractData)

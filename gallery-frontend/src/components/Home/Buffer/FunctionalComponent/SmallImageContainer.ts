@@ -122,7 +122,8 @@ function checkAndFetch(
         width: displayWidth,
         height: displayHeight,
         devicePixelRatio: window.devicePixelRatio,
-        jwt: getCookiesJwt()
+        jwt: getCookiesJwt(),
+        token: abstractData.database.token
       })
     } else if (abstractData.album?.cover !== null && abstractData.album?.cover !== undefined) {
       getArrayValue(workerStore.postToWorkerList, workerIndex).processSmallImage({
@@ -132,7 +133,8 @@ function checkAndFetch(
         height: displayHeight,
         devicePixelRatio: window.devicePixelRatio,
         jwt: getCookiesJwt(),
-        albumMode: true
+        albumMode: true,
+        token: abstractData.album.token
       })
     }
   } else {
