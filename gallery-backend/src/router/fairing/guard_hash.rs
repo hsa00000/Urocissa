@@ -109,13 +109,13 @@ impl<'r> FromRequest<'r> for HashGuard {
             }
         };
 
-        if claims.exp < current_time {
+        /* if claims.exp < current_time {
             error!(
                 "Token has expired. Current time: {}, token expiration: {}.",
                 current_time, claims.exp
             );
             return Outcome::Forward(Status::Unauthorized);
-        }
+        } */
 
         info!("Token has been successfully validated.");
         Outcome::Success(HashGuard)
