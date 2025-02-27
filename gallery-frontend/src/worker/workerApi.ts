@@ -25,6 +25,7 @@ export interface processSmallImagePayload {
   devicePixelRatio: number
   jwt: string
   albumMode?: boolean
+  token: string
 }
 
 export interface processImagePayload {

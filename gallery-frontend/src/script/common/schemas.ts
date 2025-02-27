@@ -74,7 +74,8 @@ export const DataBaseParse = z.object({
 export const DataBaseSchema = DataBaseParse.extend({
   timestamp: z.number(),
   thumbhashUrl: z.string(), // need initialize
-  filename: z.string() // need initialize
+  filename: z.string(), // need initialize
+  token: z.string()
 })
 
 /**
@@ -114,7 +115,8 @@ export const AlbumParse = z.object({
  */
 export const AlbumSchema = AlbumParse.extend({
   timestamp: z.number(),
-  thumbhashUrl: z.string().nullable() // need initialize
+  thumbhashUrl: z.string().nullable(), // need initialize
+  token: z.string()
 })
 
 export const AbstractDataParseSchema = z.union([
@@ -158,7 +160,8 @@ export const albumInfoSchema = z.object({
  */
 export const databaseTimestampSchema = z.object({
   abstractData: AbstractDataParseSchema,
-  timestamp: z.number()
+  timestamp: z.number(),
+  token: z.string()
 })
 
 /**
