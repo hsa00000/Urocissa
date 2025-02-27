@@ -41,10 +41,10 @@ impl HashClaims {
     }
 }
 
-pub struct DataGuard;
+pub struct HashGuard;
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for DataGuard {
+impl<'r> FromRequest<'r> for HashGuard {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
@@ -77,25 +77,26 @@ impl<'r> FromRequest<'r> for DataGuard {
         };
 
         let claims = token_data.claims;
-        let query_hash = req.uri().query().and_then(|query| {
-            query
-                .segments()
-                .find(|(key, _)| *key == "hash")
-                .and_then(|(_, value)| value.parse::<ArrayString<64>>().ok())
-        });
+        let hash_opt = req
+            .uri()
+            .path()
+            .segments()
+            .last()
+            .and_then(|hash_with_ext| hash_with_ext.rsplit_once('.'))
+            .map(|(hash, _ext)| hash.to_string());
 
-        let query_hash = match query_hash {
-            Some(ts) => ts,
+        let data_hash = match hash_opt {
+            Some(hash) => hash,
             None => {
-                warn!("No valid 'hash' parameter found in the query.");
+                warn!("No valid 'hash' parameter found in the uri.");
                 return Outcome::Forward(Status::Unauthorized);
             }
         };
 
-        if query_hash != claims.hash {
+        if data_hash != *claims.hash {
             warn!(
                 "Hash does not match. Received: {}, Expected: {}.",
-                query_hash, claims.hash
+                data_hash, claims.hash
             );
             return Outcome::Forward(Status::Unauthorized);
         }
@@ -117,7 +118,7 @@ impl<'r> FromRequest<'r> for DataGuard {
         }
 
         info!("Token has been successfully validated.");
-        Outcome::Success(DataGuard)
+        Outcome::Success(HashGuard)
     }
 }
 
