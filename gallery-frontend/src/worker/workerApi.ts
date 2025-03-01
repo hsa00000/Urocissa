@@ -33,6 +33,7 @@ export interface processImagePayload {
   hash: string
   devicePixelRatio: number
   jwt: string
+  token: string
 }
 
 export interface processAbortPayload {

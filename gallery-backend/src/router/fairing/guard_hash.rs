@@ -101,22 +101,6 @@ impl<'r> FromRequest<'r> for HashGuard {
             return Outcome::Forward(Status::Unauthorized);
         }
 
-        let current_time = match SystemTime::now().duration_since(UNIX_EPOCH) {
-            Ok(duration) => duration.as_secs(),
-            Err(_) => {
-                error!("System time error: unable to verify token expiration.");
-                return Outcome::Forward(Status::Unauthorized);
-            }
-        };
-
-        /* if claims.exp < current_time {
-            error!(
-                "Token has expired. Current time: {}, token expiration: {}.",
-                current_time, claims.exp
-            );
-            return Outcome::Forward(Status::Unauthorized);
-        } */
-
         info!("Token has been successfully validated.");
         Outcome::Success(HashGuard)
     }
