@@ -180,13 +180,16 @@ const checkAndFetch = (index: number): boolean => {
   // Determine the hash from database or album cover
   const hash = abstractData.database?.hash ?? abstractData.album?.cover
 
+  const token = abstractData.database?.token ?? abstractData.album?.token
+
   // If a valid hash exists, initiate the image processing
-  if (hash != null) {
+  if (hash != null && token !== undefined) {
     postToWorker.processImage({
       index,
       hash,
       devicePixelRatio: window.devicePixelRatio,
-      jwt: getCookiesJwt()
+      jwt: getCookiesJwt(),
+      token
     })
   }
 

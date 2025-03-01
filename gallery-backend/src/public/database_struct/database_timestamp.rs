@@ -13,7 +13,16 @@ pub struct DataBaseTimestamp {
 impl DataBaseTimestamp {
     pub fn new(abstract_data: AbstractData, priority_list: &[&str]) -> Self {
         let timestamp = abstract_data.compute_timestamp(priority_list);
-        let token = HashClaims::new(abstract_data.hash()).encode();
+        let token = match &abstract_data {
+            AbstractData::Database(database) => HashClaims::new(database.hash).encode(),
+            AbstractData::Album(album) => {
+                if let Some(cover_hash) = album.cover {
+                    HashClaims::new(cover_hash).encode()
+                } else {
+                    String::new()
+                }
+            }
+        };
         Self {
             abstract_data,
             timestamp,

@@ -13,7 +13,8 @@ pub enum CompressedFileResponse<'a> {
 
 #[get("/object/compressed/<file_path..>")]
 pub async fn compressed_file(
-    _auth: HashGuard,
+    _auth_guard: AuthGuard,
+    _hash_guard: HashGuard,
     file_path: PathBuf,
 ) -> Result<CompressedFileResponse<'static>, Status> {
     let compressed_file_path = Path::new("./object/compressed").join(&file_path);
@@ -42,6 +43,7 @@ pub async fn compressed_file(
 #[get("/object/imported/<file_path..>")]
 pub async fn imported_file(
     _auth: AuthGuard,
+    _hash_guard: HashGuard,
     file_path: PathBuf,
 ) -> Result<CompressedFileResponse<'static>, Status> {
     let imported_file_path = Path::new("./object/imported").join(&file_path);

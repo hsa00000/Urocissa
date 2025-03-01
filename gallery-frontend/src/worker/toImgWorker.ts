@@ -89,7 +89,10 @@ const handler = createHandler<typeof toImgWorker>({
       const response = await axios.get<Blob>(
         getSrc(event.hash, false, 'jpg', event.jwt, undefined),
         {
-          responseType: 'blob'
+          responseType: 'blob',
+          headers: {
+            Authorization: `Bearer ${event.token}` // or another authentication scheme
+          }
         }
       )
       const blob = response.data
