@@ -5,7 +5,7 @@
     </template>
     <v-list>
       <ItemViewOriginalFile
-        :src="getSrc(database.hash, true, database.ext, Cookies.get('jwt')!, undefined )"
+        :src="getSrcWithToken(database.hash, true, database.ext, Cookies.get('jwt')!, undefined, database.token )"
       />
       <ItemDownload :index-list="[props.index]" />
       <ItemFindInTimeline :hash="props.hash" />
@@ -23,7 +23,7 @@
 </template>
 <script setup lang="ts">
 import { Database, IsolationId } from '@/script/common/types'
-import { getSrc } from '@/../config'
+import { getSrcWithToken } from '@/worker/utils'
 import Cookies from 'js-cookie'
 import ItemViewOriginalFile from './Item/ItemViewOriginalFile.vue'
 import ItemDownload from './Item/ItemDownload.vue'

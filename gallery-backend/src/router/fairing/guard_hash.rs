@@ -40,30 +40,29 @@ impl HashClaims {
         .expect("Failed to generate token")
     }
 }
-
 pub struct HashGuard;
 
-#[rocket::async_trait]
+#[async_trait]
 impl<'r> FromRequest<'r> for HashGuard {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let auth_header = match req.headers().get_one("Authorization") {
-            Some(header) => header,
-            None => {
-                warn!("Request is missing the Authorization header.");
-                return Outcome::Forward(Status::Unauthorized);
-            }
-        };
+        // Extract token from query parameters
+        let token_opt = req
+            .uri()
+            .query()
+            .and_then(|query| query.segments().find(|(key, _)| *key == "token"))
+            .and_then(|(_, value)| Some(value));
 
-        let token = match auth_header.strip_prefix("Bearer ") {
+        let token = match token_opt {
             Some(token) => token,
             None => {
-                warn!("Authorization header format is invalid. Expected 'Bearer <token>'.");
+                warn!("Request is missing the 'token' query parameter.");
                 return Outcome::Forward(Status::Unauthorized);
             }
         };
 
+        // Decode the token
         let token_data = match decode::<HashClaims>(
             token,
             &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
@@ -77,6 +76,8 @@ impl<'r> FromRequest<'r> for HashGuard {
         };
 
         let claims = token_data.claims;
+
+        // Extract hash from the request URL path
         let hash_opt = req
             .uri()
             .path()
@@ -93,6 +94,7 @@ impl<'r> FromRequest<'r> for HashGuard {
             }
         };
 
+        // Compare hash in the token with the hash in the request path
         if data_hash != *claims.hash {
             warn!(
                 "Hash does not match. Received: {}, Expected: {}.",

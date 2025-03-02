@@ -8,7 +8,7 @@ import type {
 } from './workerApi'
 import axiosRetry from 'axios-retry'
 import axios, { AxiosError } from 'axios'
-import { getSrc } from '@/../config'
+import { getSrcWithToken } from './utils'
 
 const controllerMap = new Map<number, AbortController>()
 
@@ -44,13 +44,10 @@ const handler = createHandler<typeof toImgWorker>({
       console.log('using `Bearer ${event.token}`', `Bearer ${event.token}`)
 
       const response = await axios.get<Blob>(
-        getSrc(event.hash, false, 'jpg', event.jwt, undefined),
+        getSrcWithToken(event.hash, false, 'jpg', event.jwt, undefined, event.token),
         {
           signal: controller.signal,
-          responseType: 'blob',
-          headers: {
-            Authorization: `Bearer ${event.token}` // or another authentication scheme
-          }
+          responseType: 'blob'
         }
       )
       controllerMap.delete(event.index)
@@ -87,12 +84,9 @@ const handler = createHandler<typeof toImgWorker>({
   async processImage(event: processImagePayload) {
     try {
       const response = await axios.get<Blob>(
-        getSrc(event.hash, false, 'jpg', event.jwt, undefined),
+        getSrcWithToken(event.hash, false, 'jpg', event.jwt, undefined, event.token),
         {
-          responseType: 'blob',
-          headers: {
-            Authorization: `Bearer ${event.token}` // or another authentication scheme
-          }
+          responseType: 'blob'
         }
       )
       const blob = response.data
