@@ -8,7 +8,7 @@ import type {
 } from './workerApi'
 import axiosRetry from 'axios-retry'
 import axios, { AxiosError } from 'axios'
-import { getSrcWithToken } from './utils'
+import { getSrcWithToken } from './getSrcWithToken'
 
 const controllerMap = new Map<number, AbortController>()
 
