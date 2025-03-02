@@ -2,7 +2,7 @@
   <video
     controls
     autoplay
-    :src="getSrc(hash, false, 'mp4', Cookies.get('jwt')!, undefined)"
+    :src="getSrcWithToken(hash, false, 'mp4', Cookies.get('jwt')!, undefined, database.token)"
     :style="{
       width: `${database.width}px`,
       height: `${database.height}px`,
@@ -18,11 +18,11 @@
 </template>
 
 <script setup lang="ts">
-import { getSrc } from '@/../config.ts'
 import { Database, IsolationId } from '@/script/common/types'
 import Cookies from 'js-cookie'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { ref, watch } from 'vue'
+import { getSrcWithToken } from '@/worker/utils'
 
 const props = defineProps<{
   isolationId: IsolationId

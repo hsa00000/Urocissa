@@ -8,7 +8,7 @@ import { useRoute } from 'vue-router'
 import { useDataStore } from '@/store/dataStore'
 import axios from 'axios'
 import { saveAs } from 'file-saver'
-import { getSrc } from '@/../config'
+import { getSrcWithToken } from '@/worker/utils'
 import { fetchDataInWorker } from '@/script/inWorker/fetchDataInWorker'
 import { getCookiesJwt, getIsolationIdByRoute } from '@/script/common/functions'
 import { AbstractData } from '@/script/common/types'
@@ -69,12 +69,13 @@ const downloadAllFiles = async () => {
         }
 
         if (metadata.database) {
-          const url = getSrc(
+          const url = getSrcWithToken(
             metadata.database.hash,
             true,
             metadata.database.ext,
             getCookiesJwt(),
-            undefined
+            undefined,
+            metadata.database.token
           )
           try {
             const response = await axios.get<Blob>(url, { responseType: 'blob' })
