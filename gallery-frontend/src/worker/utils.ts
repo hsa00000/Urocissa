@@ -6,7 +6,6 @@ import { bindActionDispatch } from 'typesafe-agent-events'
 import { toImgWorker } from './workerApi'
 import { getCookiesJwt } from '@/script/common/functions'
 import { watch } from 'vue'
-import { getSrc } from '@/../config'
 export function refreshAlbumMetadata(albumId: string) {
   const dataStore = useDataStore('mainId')
   const workerStore = useWorkerStore('mainId')
@@ -69,19 +68,4 @@ export function refreshAlbumMetadata(albumId: string) {
   )
 
   fetchDataInWorker('single', albumIndex, 'mainId')
-}
-
-export function getSrcWithToken(
-  hash: string,
-  original: boolean,
-  ext: string,
-  _password: string,
-  _customParams: unknown,
-  token: string
-) {
-  const url = getSrc(hash, original, ext, _password, _customParams)
-  const urlWithToken = `${url}?token=${token}`
-  console.log('urlWithToken is', urlWithToken)
-
-  return urlWithToken
 }

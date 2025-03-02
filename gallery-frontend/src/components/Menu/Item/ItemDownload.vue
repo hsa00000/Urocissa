@@ -8,10 +8,10 @@ import { useRoute } from 'vue-router'
 import { useDataStore } from '@/store/dataStore'
 import axios from 'axios'
 import { saveAs } from 'file-saver'
-import { getSrcWithToken } from '@/worker/utils'
 import { fetchDataInWorker } from '@/script/inWorker/fetchDataInWorker'
 import { getCookiesJwt, getIsolationIdByRoute } from '@/script/common/functions'
 import { AbstractData } from '@/script/common/types'
+import { getSrcWithToken } from '@/worker/getSrcWithToken'
 
 const props = defineProps<{
   indexList: number[]
