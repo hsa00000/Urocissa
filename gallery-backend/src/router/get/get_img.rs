@@ -14,7 +14,7 @@ pub enum CompressedFileResponse<'a> {
 #[get("/object/compressed/<file_path..>")]
 pub async fn compressed_file(
     _auth_guard: AuthGuard,
-    _hash_guard: HashGuard,
+    /* _hash_guard: HashGuard, */
     file_path: PathBuf,
 ) -> Result<CompressedFileResponse<'static>, Status> {
     let compressed_file_path = Path::new("./object/compressed").join(&file_path);
