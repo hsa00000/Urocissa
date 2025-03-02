@@ -17,23 +17,13 @@
       }"
     />
 
-    <video
-      controls
-      autoplay
+    <DisplayDatabaseVideo
+      :key="index"
       v-if="metadata.database.ext_type === 'video' && !metadata.database.pending"
-      :src="getSrc(hash, false, 'mp4', Cookies.get('jwt')!, undefined)"
-      :style="{
-        width: `${metadata.database.width}px`,
-        height: `${metadata.database.height}px`,
-        maxWidth: '100%',
-        maxHeight: '100%'
-      }"
-      inline
-      ref="videoRef"
-      crossorigin="anonymous"
-    >
-      >
-    </video>
+      :database="metadata.database"
+      :hash="metadata.database.hash"
+      :isolation-id="isolationId"
+    />
     <v-card
       v-if="metadata.database.ext_type === 'video' && metadata.database.pending"
       class="d-flex align-center justify-start"
@@ -56,11 +46,12 @@
 <script setup lang="ts">
 import { VCol } from 'vuetify/components'
 import { useImgStore } from '@/store/imgStore'
-import { getSrc } from '@/../config.ts'
+
 import { AbstractData, IsolationId } from '@/script/common/types'
-import Cookies from 'js-cookie'
+
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { ref, watch } from 'vue'
+import DisplayDatabaseVideo from './DisplayDatabaseVideo.vue'
 
 const props = defineProps<{
   isolationId: IsolationId
