@@ -67,7 +67,7 @@ import { useElementSize } from '@vueuse/core'
 import ViewPageDisplayDatabase from './DisplayDatabase.vue'
 import ViewPageDisplayAlbum from './DisplayAlbum.vue'
 import delay from 'delay'
-import { getCookiesJwt } from '@/script/common/functions'
+import { getCookiesJwt } from '@utils/getter'
 import { useConfigStore } from '@/store/configStore'
 
 const colRef = ref<InstanceType<typeof VCol> | null>(null)

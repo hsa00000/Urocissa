@@ -79,7 +79,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { IsolationId } from '@/script/common/types'
-import { searchByTag } from '@/script/common/functions'
+import { searchByTag } from '@utils/getter'
 import { quickRemoveTags, quickAddTags } from '@/script/common/quickEditTags'
 
 const props = defineProps<{

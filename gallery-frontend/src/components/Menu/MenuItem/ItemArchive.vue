@@ -9,7 +9,7 @@
 
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
-import { getIsolationIdByRoute } from '@/script/common/functions'
+import { getIsolationIdByRoute } from '@utils/getter'
 import { quickAddTags } from '@/script/common/quickEditTags'
 
 const props = defineProps<{

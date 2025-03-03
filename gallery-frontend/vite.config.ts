@@ -8,7 +8,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
-      '@Menu': resolve(__dirname, 'src/components/Menu')
+      '@Menu': resolve(__dirname, 'src/components/Menu'),
+      '@worker': resolve(__dirname, 'src/worker'),
+      '@utils': resolve(__dirname, 'src/script/utils'),
+      '@constants': resolve(__dirname, 'src/script/common/constants')
     }
   },
   build: {
@@ -16,13 +19,6 @@ export default defineConfig({
       input: {
         app: './index.html' // Entry point
       }
-      /*output: {
-        manualChunks: {
-          // Example of separating common libraries into their own chunk
-          vendor: ['vue', 'axios'], // Add libraries or modules here
-          workerUtils: ['./src/worker/toImgWorker.ts', './src/worker/toDataWorker.ts'], // Group your worker scripts
-        },
-      },*/
     },
     chunkSizeWarningLimit: 1000 // Increase warning limit to 1MB if warnings are acceptable
   },

@@ -5,7 +5,7 @@
 <script lang="ts" setup>
 import { useCollectionStore } from '@/store/collectionStore'
 import { useRoute } from 'vue-router'
-import { getIsolationIdByRoute } from '@/script/common/functions'
+import { getIsolationIdByRoute } from '@utils/getter'
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 

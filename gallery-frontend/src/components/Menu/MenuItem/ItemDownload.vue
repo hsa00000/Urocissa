@@ -9,10 +9,9 @@ import { useDataStore } from '@/store/dataStore'
 import axios from 'axios'
 import { saveAs } from 'file-saver'
 import { fetchDataInWorker } from '@/script/inWorker/fetchDataInWorker'
-import { getCookiesJwt, getIsolationIdByRoute } from '@/script/common/functions'
+import { getCookiesJwt, getIsolationIdByRoute } from '@utils/getter'
 import { AbstractData } from '@/script/common/types'
-import { getSrcWithToken } from '@/worker/getSrcWithToken'
-
+import { getSrcWithToken } from '@utils/getter'
 const props = defineProps<{
   indexList: number[]
 }>()

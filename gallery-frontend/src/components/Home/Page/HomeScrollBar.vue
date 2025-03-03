@@ -97,7 +97,7 @@ import { fetchRowInWorker } from '@/script/inWorker/fetchRowInWorker'
 import { IsolationId, ScrollbarData } from '@/script/common/types'
 import { fixedBigRowHeight, layoutBatchNumber, scrollBarWidth } from '@/script/common/constants'
 import { useScrollTopStore } from '@/store/scrollTopStore'
-import { getInjectValue, getScrollUpperBound } from '@/script/common/functions'
+import { getInjectValue, getScrollUpperBound } from '@utils/getter'
 const isScrolling = ref(false)
 const hoverLabelRowIndex = ref(0)
 const currentDateChipIndex = ref(0)

@@ -2,7 +2,7 @@ import { computed, Ref, watch } from 'vue'
 import { fetchDataInWorker } from '@/script/inWorker/fetchDataInWorker'
 import { useDataStore } from '@/store/dataStore'
 import debounce from 'lodash/debounce'
-import { getArrayValue } from '@/script/common/functions'
+import { getArrayValue } from '@utils/getter'
 import { IsolationId } from '@/script/common/types'
 /**
  * Hook to fetch image batches for visible rows in a virtual scroll.

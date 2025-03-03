@@ -16,12 +16,8 @@ import {
 } from '@/script/common/types'
 import { SubRow } from '@/script/common/types'
 import { batchNumber, fixedBigRowHeight, paddingPixel } from '@/script/common/constants'
-import {
-  createAbstractData,
-  createAlbum,
-  createDataBase,
-  getArrayValue
-} from '@/script/common/functions'
+import { getArrayValue } from '@utils/getter'
+import { createAbstractData, createAlbum, createDataBase } from '@utils/createData'
 
 import axios, { AxiosResponse } from 'axios'
 import { bindActionDispatch, createHandler } from 'typesafe-agent-events'

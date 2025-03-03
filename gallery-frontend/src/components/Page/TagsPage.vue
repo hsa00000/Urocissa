@@ -48,7 +48,7 @@ import { useTagStore } from '@/store/tagStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { onMounted } from 'vue'
 import { onBeforeUnmount } from 'vue'
-import { searchByTag } from '@/script/common/functions'
+import { searchByTag } from '@utils/getter'
 import { navBarHeight } from '@/script/common/constants'
 import NavBar from '@/components/NavBar/NavBar.vue'
 const initializedStore = useInitializedStore('mainId')

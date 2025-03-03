@@ -12,7 +12,7 @@
 import { ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createEmptyAlbum } from '@/script/common/createAlbums'
-import { getIsolationIdByRoute } from '@/script/common/functions'
+import { getIsolationIdByRoute } from '@utils/getter'
 
 const loading = defineModel<boolean>()
 

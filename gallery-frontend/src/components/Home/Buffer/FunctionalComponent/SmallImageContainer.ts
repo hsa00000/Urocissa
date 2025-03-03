@@ -5,7 +5,7 @@ import { AbstractData, DisplayElement, IsolationId } from '@/script/common/types
 import { useImgStore } from '@/store/imgStore'
 import { useQueueStore } from '@/store/queueStore'
 import { useWorkerStore } from '@/store/workerStore'
-import { getArrayValue, getCookiesJwt } from '@/script/common/functions'
+import { getArrayValue, getCookiesJwt } from '@utils/getter'
 
 interface SmallImageContainerProps {
   abstractData: AbstractData

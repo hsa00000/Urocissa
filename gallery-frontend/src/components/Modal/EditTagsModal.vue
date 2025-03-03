@@ -56,7 +56,7 @@ import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { useTagStore } from '@/store/tagStore'
 import { editTagsInWorker } from '@/script/inWorker/editTagsInWorker'
-import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@/script/common/functions'
+import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
 
 const formIsValid = ref(false)
 const changedTagsArray = ref<string[]>([])
