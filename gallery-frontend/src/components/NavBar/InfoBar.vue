@@ -73,7 +73,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useFilterStore } from '@/store/filterStore'
 import { useUploadStore } from '@/store/uploadStore'
 import { useAlbumStore } from '@/store/albumStore'
-import ItemCreateAlbum from '@/components/Menu/Item/ItemCreateAlbum.vue'
+import ItemCreateAlbum from '@Menu/MenuItem/ItemCreateAlbum.vue'
 
 const showDrawer = inject('showDrawer')
 

@@ -28,13 +28,13 @@
 <script lang="ts" setup>
 import { useCollectionStore } from '@/store/collectionStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
-import BatchMenu from '@/components/Menu/BatchMenu.vue'
+import BatchMenu from '@Menu/MenuMain/BatchMenu.vue'
 import { useRoute } from 'vue-router'
 import { getIsolationIdByRoute } from '@/script/common/functions'
-import LeaveEdit from '@/components/Menu/Botton/BtnLeaveEdit.vue'
-import SelectAll from '@/components/Menu/Botton/BtnSelectAll.vue'
-import SelectClear from '@/components/Menu/Botton/BtnSelectClear.vue'
-import SelectInverse from '@/components/Menu/Botton/BtnSelectInverse.vue'
+import LeaveEdit from '@Menu/MenuButton/BtnLeaveEdit.vue'
+import SelectAll from '@Menu/MenuButton/BtnSelectAll.vue'
+import SelectClear from '@Menu/MenuButton/BtnSelectClear.vue'
+import SelectInverse from '@Menu/MenuButton/BtnSelectInverse.vue'
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 
