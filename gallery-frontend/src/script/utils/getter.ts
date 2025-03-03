@@ -125,7 +125,6 @@ export function getSrcWithToken(
 ) {
   const url = getSrc(hash, original, ext, _password, _customParams)
   const urlWithToken = `${url}?token=${token}`
-  console.log('urlWithToken is', urlWithToken)
 
   return urlWithToken
 }
