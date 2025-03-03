@@ -1,5 +1,5 @@
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, decode, encode};
-use log::{error, info, warn};
+use log::warn;
 use rocket::Request;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
@@ -25,7 +25,7 @@ impl TimestampClaims {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_secs()
-            + 10;
+            + 300;
 
         Self { timestamp, exp }
     }
@@ -99,23 +99,6 @@ impl<'r> FromRequest<'r> for TimestampGuard {
             return Outcome::Forward(Status::Unauthorized);
         }
 
-        let current_time = match SystemTime::now().duration_since(UNIX_EPOCH) {
-            Ok(duration) => duration.as_secs(),
-            Err(_) => {
-                error!("System time error: unable to verify token expiration.");
-                return Outcome::Forward(Status::Unauthorized);
-            }
-        };
-
-        if claims.exp < current_time {
-            error!(
-                "Token has expired. Current time: {}, token expiration: {}.",
-                current_time, claims.exp
-            );
-            return Outcome::Forward(Status::Unauthorized);
-        }
-
-        info!("Token has been successfully validated.");
         Outcome::Success(TimestampGuard)
     }
 }
@@ -162,7 +145,5 @@ pub fn renew_timestamp_token_sync(token: String) -> Result<String, Status> {
     let claims = token_data.claims;
     let new_claims = TimestampClaims::new(claims.timestamp);
     let new_token = new_claims.encode();
-
-    info!("New timestamp token generated successfully.");
     Ok(new_token)
 }

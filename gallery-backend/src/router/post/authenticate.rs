@@ -1,5 +1,4 @@
 use arrayvec::ArrayString;
-use jsonwebtoken::{EncodingKey, Header, encode};
 use rand::{TryRngCore, rngs::OsRng};
 use rocket::post;
 use rocket::serde::json::Json;
@@ -30,26 +29,8 @@ pub async fn authenticate(password: Json<String>) -> Result<Json<String>, &'stat
 
     // Verify the password
     if input_password == PRIVATE_CONFIG.password {
-        // Create expiration timestamp (valid for 1 hour)
-        let expiration = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-            + 3600;
-
-        // Generate claims
-        let claims = Claims {
-            album_id: None,
-            exp: expiration as usize,
-        };
-
-        // Encode the JWT token
-        let token = encode(
-            &Header::default(),
-            &claims,
-            &EncodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-        )
-        .map_err(|_| "Token generation failed")?;
+        // Generate token
+        let token = Claims::new().encode();
 
         return Ok(Json(token)); // Return the JWT token
     }

@@ -1,6 +1,6 @@
 use arrayvec::ArrayString;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, decode, encode};
-use log::{info, warn};
+use log::warn;
 use rocket::Request;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
@@ -24,7 +24,7 @@ impl HashClaims {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_secs()
-            + 10;
+            + 300;
 
         Self { hash, exp }
     }
@@ -100,8 +100,6 @@ impl<'r> FromRequest<'r> for HashGuard {
             );
             return Outcome::Forward(Status::Unauthorized);
         }
-
-        info!("Token has been successfully validated.");
         Outcome::Success(HashGuard)
     }
 }

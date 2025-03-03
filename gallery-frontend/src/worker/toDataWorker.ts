@@ -39,6 +39,28 @@ axios.interceptors.response.use(
   async (error) => {
     if (axios.isAxiosError(error)) {
       if (error.response?.status === 401) {
+        const requestUrl = error.config?.url
+        console.log('requestUrl is', requestUrl)
+
+        if (requestUrl !== undefined) {
+          switch (true) {
+            case requestUrl.startsWith('/get/get-data'): {
+              console.log('case 1')
+              break
+            }
+            case requestUrl.startsWith('/get/get-rows'): {
+              console.log('case 2')
+              break
+            }
+            case requestUrl.startsWith('/get/get-scroll-bar'): {
+              console.log('case 3')
+              break
+            }
+
+            default:
+              break
+          }
+        }
         unauthorized()
         const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
         postToMain.notification({ message: 'Unauthorized. Please log in.', messageType: 'warn' })

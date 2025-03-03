@@ -1,5 +1,7 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use arrayvec::ArrayString;
-use jsonwebtoken::{DecodingKey, decode};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, decode, encode};
 use rocket::Request;
 use rocket::http::{CookieJar, Status};
 use rocket::request::{FromRequest, Outcome};
@@ -13,7 +15,30 @@ use super::VALIDATION;
 #[serde(rename_all = "camelCase")]
 pub struct Claims {
     pub album_id: Option<ArrayString<64>>,
-    pub exp: usize,
+    pub exp: u64,
+}
+
+impl Claims {
+    pub fn new() -> Self {
+        let exp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs()
+            + 86400;
+
+        Self {
+            album_id: None,
+            exp,
+        }
+    }
+    pub fn encode(&self) -> String {
+        encode(
+            &Header::default(),
+            &self,
+            &EncodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+        )
+        .expect("Failed to generate token")
+    }
 }
 
 pub struct AuthGuard {
