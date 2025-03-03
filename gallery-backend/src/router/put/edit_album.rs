@@ -1,6 +1,6 @@
 use crate::public::{tree::TREE, tree_snapshot::TREE_SNAPSHOT};
-use crate::router::fairing::guard_auth::AuthGuard;
-use crate::router::fairing::guard_read_only_mod::ReadOnlyModeGuard;
+use crate::router::fairing::auth_guard::AuthGuard;
+use crate::router::fairing::read_only_mod_guard::ReadOnlyModeGuard;
 use crate::synchronizer::album::album_self_update_async;
 use std::collections::HashSet;
 

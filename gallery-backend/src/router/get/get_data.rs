@@ -1,7 +1,7 @@
 use crate::public::config::{PUBLIC_CONFIG, PublicConfig};
 use crate::public::tree::TREE;
 use crate::public::tree::read_tags::TagInfo;
-use crate::router::fairing::guard_auth::AuthGuard;
+use crate::router::fairing::auth_guard::AuthGuard;
 
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};

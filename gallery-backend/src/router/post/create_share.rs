@@ -10,8 +10,8 @@ use rocket::{http::Status, post};
 use crate::public::album::Share;
 use crate::public::redb::ALBUM_TABLE;
 use crate::public::tree::TREE;
-use crate::router::fairing::guard_auth::AuthGuard;
-use crate::router::fairing::guard_read_only_mod::ReadOnlyModeGuard;
+use crate::router::fairing::auth_guard::AuthGuard;
+use crate::router::fairing::read_only_mod_guard::ReadOnlyModeGuard;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]

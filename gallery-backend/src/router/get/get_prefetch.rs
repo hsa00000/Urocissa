@@ -4,8 +4,8 @@ use crate::public::reduced_data::ReducedData;
 use crate::public::tree::TREE;
 use crate::public::tree::start_loop::VERSION_COUNT_TIMESTAMP;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
-use crate::router::fairing::guard_auth::AuthGuard;
-use crate::router::fairing::guard_timestamp::{TimestampClaims, renew_timestamp_token_sync};
+use crate::router::fairing::auth_guard::AuthGuard;
+use crate::router::fairing::timestamp_guard::{TimestampClaims, renew_timestamp_token_sync};
 
 use bitcode::{Decode, Encode};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};

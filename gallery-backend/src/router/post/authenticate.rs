@@ -10,7 +10,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{public::config::PRIVATE_CONFIG, router::fairing::guard_auth::Claims};
+use crate::{public::config::PRIVATE_CONFIG, router::fairing::auth_guard::Claims};
 
 pub static JSON_WEB_TOKEN_SECRET_KEY: LazyLock<Vec<u8>> =
     LazyLock::new(|| match PRIVATE_CONFIG.auth_key.as_ref() {
