@@ -67,8 +67,6 @@ async function handlePrefetchReturn(result: Prefetch, isolationId: IsolationId) 
   prefetchStore.calculateLength(result.dataLength)
   prefetchStore.locateTo = result.locateTo
 
-  console.log('new token is', result.token)
-
   tokenStore.setToken(result.token)
 
   initializedStore.initialized = true

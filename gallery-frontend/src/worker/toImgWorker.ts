@@ -40,8 +40,6 @@ const handler = createHandler<typeof toImgWorker>({
       const controller = new AbortController()
       controllerMap.set(event.index, controller)
 
-      console.log('using `Bearer ${event.token}`', `Bearer ${event.token}`)
-
       const response = await axios.get<Blob>(
         getSrcWithToken(event.hash, false, 'jpg', event.jwt, undefined, event.token),
         {
