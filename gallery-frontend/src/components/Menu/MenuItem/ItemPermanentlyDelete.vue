@@ -7,7 +7,7 @@
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
 import { deleteDataInWorker } from '@/script/inWorker/deleteDataInWorker'
-import { getIsolationIdByRoute } from '@/script/common/functions'
+import { getIsolationIdByRoute } from '@utils/getter'
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 

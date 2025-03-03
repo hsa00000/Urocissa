@@ -79,7 +79,7 @@ import { batchNumber, paddingPixel } from '@/script/common/constants'
 import BufferPlaceholder from '@/components/Home/Buffer/BufferPlaceholder.vue'
 import RowBlock from '@/components/Home/Buffer/BufferRowBlock.vue'
 import { useScrollTopStore } from '@/store/scrollTopStore'
-import { getArrayValue, getInjectValue } from '@/script/common/functions'
+import { getArrayValue, getInjectValue } from '@utils/getter'
 import { IsolationId } from '@/script/common/types'
 
 const props = defineProps<{

@@ -1,66 +1,10 @@
-// functions.ts
-
-import { thumbHashToDataURL } from 'thumbhash'
-import { z } from 'zod'
-import { AlbumParse, DataBaseParse } from './schemas'
-import { Database, AbstractData, Album } from './types'
 import { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { inject } from 'vue'
-import { useDataStore } from '../../store/dataStore.ts'
+import { useDataStore } from '@/store/dataStore'
 import Cookies from 'js-cookie'
-import { navBarHeight } from './constants.ts'
-
-/**
- * Creates a Database instance from parsed data and timestamp.
- */
-export function createDataBase(
-  databaseParse: z.infer<typeof DataBaseParse>,
-  timestamp: number,
-  token: string
-): Database {
-  const database: Database = {
-    ...databaseParse,
-    timestamp: timestamp,
-    thumbhashUrl: thumbHashToDataURL(databaseParse.thumbhash),
-    filename: databaseParse.alias[0]?.file.split('/').pop() ?? '',
-    token
-  }
-  return database
-}
-
-export function createAlbum(
-  albumParse: z.infer<typeof AlbumParse>,
-  timestamp: number,
-  token: string
-): Album {
-  const album: Album = {
-    ...albumParse,
-    timestamp: timestamp,
-    thumbhashUrl: albumParse.thumbhash ? thumbHashToDataURL(albumParse.thumbhash) : null,
-    token
-  }
-  return album
-}
-
-/**
- * Creates an AbstractData instance from Database or Album.
- */
-export function createAbstractData(data: Database | Album): AbstractData {
-  if ('hash' in data) {
-    return { database: data }
-  } else {
-    return { album: data }
-  }
-}
-
-export function dater(timestamp: number): string {
-  const locale = navigator.language
-  return new Intl.DateTimeFormat(locale, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  }).format(timestamp)
-}
+import { escapeAndWrap } from '@utils/escape'
+import { navBarHeight } from '../common/constants'
+import { getSrc } from '@/../config'
 
 export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded) {
   const isolationId = route.meta.isReadPage ? 'subId' : 'mainId'
@@ -171,48 +115,17 @@ export async function searchByTag(tag: string, router: Router) {
   }
 }
 
-export function escapeAndWrap(str: string): string {
-  // First, escape backslashes and double quotes in the string
-  const escaped = str
-    .replace(/\\/g, '\\\\') // Convert \ to \\
-    .replace(/"/g, '\\"') // Convert " to \"
+export function getSrcWithToken(
+  hash: string,
+  original: boolean,
+  ext: string,
+  _password: string,
+  _customParams: unknown,
+  token: string
+) {
+  const url = getSrc(hash, original, ext, _password, _customParams)
+  const urlWithToken = `${url}?token=${token}`
+  console.log('urlWithToken is', urlWithToken)
 
-  // Wrap the processed string in double quotes
-  return `"${escaped}"`
-}
-
-export function unescapeAndUnwrap(str: string): string {
-  // If the string starts and ends with double quotes, remove them
-  if (str.startsWith('"') && str.endsWith('"')) {
-    str = str.slice(1, -1)
-  }
-
-  // Restore escaped characters
-  return str
-    .replace(/\\"/g, '"') // Convert \" back to "
-    .replace(/\\\\/g, '\\') // Convert \\ back to \
-}
-
-export function formatDuration(durationString: string) {
-  // Convert the duration string to a number and truncate to the integer part
-  const durationInSeconds = Math.floor(parseFloat(durationString))
-
-  // Calculate hours, minutes, and seconds
-  const hours = Math.floor(durationInSeconds / 3600)
-  const minutes = Math.floor((durationInSeconds % 3600) / 60)
-  const seconds = durationInSeconds % 60
-
-  // Determine the formatted duration based on the presence of hours, minutes, and seconds
-  let formattedDuration = ''
-  if (hours > 0) {
-    formattedDuration = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds
-      .toString()
-      .padStart(2, '0')}`
-  } else {
-    formattedDuration = `${minutes.toString().padStart(2, '0')}:${seconds
-      .toString()
-      .padStart(2, '0')}`
-  }
-
-  return formattedDuration
+  return urlWithToken
 }

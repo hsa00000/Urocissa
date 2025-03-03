@@ -23,7 +23,7 @@
 </template>
 <script setup lang="ts">
 import { Database, IsolationId } from '@/script/common/types'
-import { getSrcWithToken } from '@/worker/getSrcWithToken'
+import { getSrcWithToken } from '@utils/getter'
 import Cookies from 'js-cookie'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'

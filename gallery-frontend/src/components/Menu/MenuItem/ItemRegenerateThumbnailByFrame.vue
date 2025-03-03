@@ -7,7 +7,7 @@
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
 import axios from 'axios'
-import { getCookiesJwt, getIsolationIdByRoute } from '@/script/common/functions'
+import { getCookiesJwt, getIsolationIdByRoute } from '@utils/getter'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { getSrc } from '@/../config'
 import { useMessageStore } from '@/store/messageStore'

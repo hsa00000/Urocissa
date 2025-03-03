@@ -1,4 +1,4 @@
-import { getScrollUpperBound } from '@/script/common/functions'
+import { getScrollUpperBound } from '@utils/getter'
 import { IsolationId } from '@/script/common/types'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useScrollTopStore } from '@/store/scrollTopStore'

@@ -3,8 +3,8 @@ import { useDataStore } from '@/store/dataStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useWorkerStore } from '@/store/workerStore'
 import { bindActionDispatch } from 'typesafe-agent-events'
-import { toImgWorker } from './workerApi'
-import { getCookiesJwt } from '@/script/common/functions'
+import { toImgWorker } from '@/worker/workerApi'
+import { getCookiesJwt } from '@utils/getter'
 import { watch } from 'vue'
 export function refreshAlbumMetadata(albumId: string) {
   const dataStore = useDataStore('mainId')

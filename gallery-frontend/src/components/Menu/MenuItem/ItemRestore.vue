@@ -8,7 +8,7 @@
 </template>
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
-import { getIsolationIdByRoute } from '@/script/common/functions'
+import { getIsolationIdByRoute } from '@utils/getter'
 import { quickRemoveTags } from '@/script/common/quickEditTags'
 
 const props = defineProps<{

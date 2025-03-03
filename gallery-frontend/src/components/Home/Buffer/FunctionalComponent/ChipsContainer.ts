@@ -3,7 +3,7 @@ import ProcessingChip from './ProcessingChip'
 import DurationChip from './DurationChip'
 import AlbumChip from './AlbumChip'
 import { AbstractData, DisplayElement } from '@/script/common/types'
-import { formatDuration } from '@/script/common/functions'
+import { formatDuration } from '@utils/dater'
 
 interface ChipsContainerProps {
   abstractData: AbstractData

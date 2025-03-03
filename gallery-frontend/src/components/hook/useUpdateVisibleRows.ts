@@ -5,7 +5,7 @@ import { useLocationStore } from '@/store/locationStore'
 import { useRowStore } from '@/store/rowStore'
 import { Ref, ref, toRaw, watch } from 'vue'
 import { useScrollTopStore } from '@/store/scrollTopStore'
-import { getArrayValue, getMapValue, getScrollUpperBound } from '@/script/common/functions'
+import { getArrayValue, getMapValue, getScrollUpperBound } from '@utils/getter'
 
 /**
  * Finds and returns rows that overlap within the given range.

@@ -22,8 +22,7 @@ import { Database, IsolationId } from '@/script/common/types'
 import Cookies from 'js-cookie'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { ref, watch } from 'vue'
-import { getSrcWithToken } from '@/worker/getSrcWithToken'
-
+import { getSrcWithToken } from '@utils/getter'
 const props = defineProps<{
   isolationId: IsolationId
   hash: string

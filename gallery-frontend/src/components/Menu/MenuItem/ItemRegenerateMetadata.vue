@@ -8,7 +8,7 @@
 import { useRoute } from 'vue-router'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import axios from 'axios'
-import { getIsolationIdByRoute } from '@/script/common/functions'
+import { getIsolationIdByRoute } from '@utils/getter'
 import { useMessageStore } from '@/store/messageStore'
 
 const props = defineProps<{

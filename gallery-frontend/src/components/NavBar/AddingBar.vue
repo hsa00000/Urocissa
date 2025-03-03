@@ -44,7 +44,7 @@ import { useModalStore } from '@/store/modalStore'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { ref } from 'vue'
 import axios from 'axios'
-import { refreshAlbumMetadata } from '@/worker/utils'
+import { refreshAlbumMetadata } from '@utils/refreshAlbumMetadata'
 import { useRoute } from 'vue-router'
 
 const collectionStore = useCollectionStore('tempId')

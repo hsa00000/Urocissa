@@ -8,10 +8,9 @@
 import { useRoute } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useDataStore } from '@/store/dataStore'
-import { getIsolationIdByRoute } from '@/script/common/functions'
-
+import { getIsolationIdByRoute } from '@utils/getter'
 import axios from 'axios'
-import { refreshAlbumMetadata } from '@/worker/utils'
+import { refreshAlbumMetadata } from '@utils/refreshAlbumMetadata'
 
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)

@@ -73,7 +73,7 @@ import { useModalStore } from '@/store/modalStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { editAlbumsInWorker } from '@/script/inWorker/editAlbumsInWorker'
 import { AlbumInfo } from '@/script/common/types'
-import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@/script/common/functions'
+import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
 
 const route = useRoute()
 

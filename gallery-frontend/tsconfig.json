@@ -3,7 +3,10 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["src/*"],
+      "@Menu/*": ["src/components/Menu/*"],
+      "@worker/*": ["src/worker/*"],
+      "@utils/*": ["src/script/utils/*"]
     },
     "target": "ES2023",
     "useDefineForClassFields": true,

@@ -52,7 +52,7 @@ import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
 import ItemRegenerateMetadata from '@Menu/MenuItem/ItemRegenerateMetadata.vue'
 import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
 
-import { getIsolationIdByRoute } from '@/script/common/functions'
+import { getIsolationIdByRoute } from '@utils/getter'
 
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)

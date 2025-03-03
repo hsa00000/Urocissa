@@ -1,15 +1,14 @@
 import { readAndCompressImage } from '@misskey-dev/browser-image-resizer'
 import { bindActionDispatch, createHandler } from 'typesafe-agent-events'
-import { fromImgWorker, toImgWorker } from './workerApi'
+import { fromImgWorker, toImgWorker } from '@/worker/workerApi'
 import type {
   processAbortPayload,
   processImagePayload,
   processSmallImagePayload
-} from './workerApi'
+} from '@/worker/workerApi'
 import axiosRetry from 'axios-retry'
 import axios, { AxiosError } from 'axios'
-import { getSrcWithToken } from './getSrcWithToken'
-
+import { getSrcWithToken } from '@utils/getter'
 const controllerMap = new Map<number, AbortController>()
 
 axiosRetry(axios, {

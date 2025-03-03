@@ -14,7 +14,8 @@ import {
   TagExpressionCstChildren,
   TypeExpressionCstChildren
 } from './MyParserCst'
-import { getArrayValue, unescapeAndUnwrap } from '../common/functions.ts'
+import { getArrayValue } from '@utils/getter'
+import { unescapeAndUnwrap } from '@utils/escape'
 const WhiteSpace = createToken({
   name: 'WhiteSpace',
   pattern: /\s+/,

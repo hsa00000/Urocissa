@@ -67,7 +67,7 @@ import { useModalStore } from '@/store/modalStore'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useTagStore } from '@/store/tagStore'
 import { editTagsInWorker } from '@/script/inWorker/editTagsInWorker'
-import { getIsolationIdByRoute } from '@/script/common/functions'
+import { getIsolationIdByRoute } from '@utils/getter'
 import { VForm } from 'vuetify/components/VForm'
 const formRef = ref<VForm | null>(null)
 const formIsValid = ref(false)
