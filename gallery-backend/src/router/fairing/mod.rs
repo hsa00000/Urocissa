@@ -15,7 +15,6 @@ pub fn generate_fairing_routes() -> Vec<Route> {
 }
 
 static VALIDATION: LazyLock<Validation> = LazyLock::new(|| {
-    let mut validation = Validation::new(Algorithm::HS256);
-    validation.validate_exp = false; // Allow tokens with expired signatures
+    let validation = Validation::new(Algorithm::HS256);
     validation
 });

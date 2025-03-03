@@ -12,7 +12,7 @@ import { getSrcWithToken } from '@utils/getter'
 const controllerMap = new Map<number, AbortController>()
 
 axiosRetry(axios, {
-  retries: Infinity,
+  retries: 0,
   retryDelay: () => {
     return 200
   },
