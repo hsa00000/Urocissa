@@ -1,17 +1,15 @@
 use arrayvec::ArrayString;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, decode, encode};
-use log::{error, info, warn};
+use log::{info, warn};
 use rocket::Request;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
-use rocket::serde::json::Json;
+
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
-
-use super::guard_auth::AuthGuard;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

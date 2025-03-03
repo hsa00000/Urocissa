@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
-use super::guard_auth::AuthGuard;
+use super::auth_guard::AuthGuard;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

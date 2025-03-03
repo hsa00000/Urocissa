@@ -1,8 +1,8 @@
 use std::time::Instant;
 
 use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
-use crate::router::fairing::guard_auth::AuthGuard;
-use crate::router::fairing::guard_read_only_mod::ReadOnlyModeGuard;
+use crate::router::fairing::auth_guard::AuthGuard;
+use crate::router::fairing::read_only_mod_guard::ReadOnlyModeGuard;
 use rocket::form::{self, DataField, FromFormField, ValueField};
 use rocket::http::Status;
 use rocket::{form::Form, fs::TempFile};

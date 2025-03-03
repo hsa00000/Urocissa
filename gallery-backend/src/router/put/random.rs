@@ -1,6 +1,6 @@
 use crate::public::{database_struct::database::definition::Database, tree::TREE};
-use crate::router::fairing::guard_auth::AuthGuard;
-use crate::router::fairing::guard_read_only_mod::ReadOnlyModeGuard;
+use crate::router::fairing::auth_guard::AuthGuard;
+use crate::router::fairing::read_only_mod_guard::ReadOnlyModeGuard;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 #[get("/put/generate_random_data?<number>")]
