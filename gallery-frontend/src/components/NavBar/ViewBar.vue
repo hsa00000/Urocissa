@@ -44,10 +44,10 @@
 <script setup lang="ts">
 import { quickRemoveTags, quickAddTags } from '@/script/common/quickEditTags'
 import { AbstractData, IsolationId } from '@/script/common/types'
-import ViewPageToolBarDatabase from '@/components/Menu/SingleMenu.vue'
-import AlbumMenu from '@/components/Menu/AlbumMenu.vue'
-import LeaveView from '@/components/Menu/Botton/BtnLeaveView.vue'
-import ShowInfo from '@/components/Menu/Botton/BtnShowInfo.vue'
+import ViewPageToolBarDatabase from '@Menu//MenuMain/SingleMenu.vue'
+import AlbumMenu from '@Menu//MenuMain/AlbumMenu.vue'
+import LeaveView from '@Menu/MenuButton/BtnLeaveView.vue'
+import ShowInfo from '@Menu/MenuButton/BtnShowInfo.vue'
 
 defineProps<{
   isolationId: IsolationId
