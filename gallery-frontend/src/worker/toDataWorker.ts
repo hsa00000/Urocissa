@@ -2,7 +2,8 @@ import {
   rowSchema,
   rowWithOffsetSchema,
   tagInfoSchema,
-  databaseTimestampSchema
+  databaseTimestampSchema,
+  tokenReturnSchema
 } from '@/script/common/schemas'
 import {
   AbstractData,
@@ -33,7 +34,6 @@ function unauthorized() {
   postToMain.unauthorized()
 }
 
-// Response interceptor to handle 401 Unauthorized
 axios.interceptors.response.use(
   (response: AxiosResponse) => response, // Pass through valid responses
   async (error) => {
@@ -44,16 +44,51 @@ axios.interceptors.response.use(
 
         if (requestUrl !== undefined) {
           switch (true) {
-            case requestUrl.startsWith('/get/get-data'): {
-              console.log('case 1')
-              break
-            }
-            case requestUrl.startsWith('/get/get-rows'): {
-              console.log('case 2')
-              break
-            }
-            case requestUrl.startsWith('/get/get-scroll-bar'): {
-              console.log('case 3')
+            case requestUrl.startsWith('/get/get-data') ||
+              requestUrl.startsWith('/get/get-rows') ||
+              requestUrl.startsWith('/get/get-scroll-bar'): {
+              try {
+                const authHeader = error.config?.headers.Authorization
+
+                const expiredToken =
+                  typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+                    ? authHeader.split(' ')[1]
+                    : null
+
+                if (expiredToken == null) {
+                  throw new Error('No expired token found')
+                }
+
+                console.log('expired token is ', expiredToken)
+
+                const response = await axios.post('/post/renew-timestamp-token', {
+                  token: expiredToken
+                })
+
+                if (response.status === 200) {
+                  const newToken = tokenReturnSchema.parse(response.data)
+
+                  if (error.config) {
+                    error.config.headers.Authorization = `Bearer ${newToken.token}`
+
+                    try {
+                      console.log('resending')
+                      const postToMain = bindActionDispatch(
+                        fromDataWorker,
+                        self.postMessage.bind(self)
+                      )
+                      postToMain.renewTimestampToken({
+                        token: newToken.token
+                      })
+                      return await axios.request(error.config)
+                    } catch (resendError) {
+                      console.error('Resending the request failed:', resendError)
+                    }
+                  }
+                }
+              } catch (err) {
+                console.error('Token renewal failed:', err)
+              }
               break
             }
 
@@ -61,7 +96,8 @@ axios.interceptors.response.use(
               break
           }
         }
-        unauthorized()
+
+        /* unauthorized() */
         const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
         postToMain.notification({ message: 'Unauthorized. Please log in.', messageType: 'warn' })
       } else if (error.response) {

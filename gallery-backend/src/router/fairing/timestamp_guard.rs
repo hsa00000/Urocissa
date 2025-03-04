@@ -11,6 +11,7 @@ use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use super::auth_guard::AuthGuard;
+use super::VALIDATION_ALLOW_EXPIRED;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +26,7 @@ impl TimestampClaims {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_secs()
-            + 300;
+            + 10;
 
         Self { timestamp, exp }
     }
@@ -109,6 +110,12 @@ pub struct TokenRequest {
     pub token: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenReturn {
+    pub token: String,
+}
+
 #[post(
     "/post/renew-timestamp-token",
     format = "json",
@@ -117,13 +124,13 @@ pub struct TokenRequest {
 pub async fn renew_timestamp_token(
     _auth: AuthGuard,
     token_request: Json<TokenRequest>,
-) -> Result<Json<String>, Status> {
+) -> Result<Json<TokenReturn>, Status> {
     tokio::task::spawn_blocking(move || {
         let token = token_request.into_inner().token;
         let token_data = match decode::<TimestampClaims>(
             &token,
             &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-            &VALIDATION,
+            &VALIDATION_ALLOW_EXPIRED,
         ) {
             Ok(data) => data,
             Err(err) => {
@@ -139,7 +146,7 @@ pub async fn renew_timestamp_token(
         let new_claims = TimestampClaims::new(claims.timestamp);
         let new_token = new_claims.encode();
 
-        Ok(Json(new_token))
+        Ok(Json(TokenReturn { token: new_token }))
     })
     .await
     .unwrap()

@@ -129,11 +129,16 @@ interface NotificationReturnParams {
   messageType: 'info' | 'warn'
 }
 
+interface RenewTimestampTokenReturnParams {
+  token: string
+}
+
 // Define actions for the worker to send responses back to the main thread
 export const fromDataWorker = createActionCreators({
   returnData: (payload: ReturnDataParams) => payload,
   fetchRowReturn: (payload: FetchRowReturnParams) => payload,
   editTagsReturn: (payload: EditTagsReturnParams) => payload,
   notification: (payload: NotificationReturnParams) => payload,
-  unauthorized: () => ({})
+  unauthorized: () => ({}),
+  renewTimestampToken: (payload: RenewTimestampTokenReturnParams) => payload
 })
