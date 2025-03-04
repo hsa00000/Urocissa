@@ -119,31 +119,28 @@ pub async fn renew_timestamp_token(
     token_request: Json<TokenRequest>,
 ) -> Result<Json<String>, Status> {
     tokio::task::spawn_blocking(move || {
-        let new_token = renew_timestamp_token_sync(token_request.into_inner().token)?;
+        let token = token_request.into_inner().token;
+        let token_data = match decode::<TimestampClaims>(
+            &token,
+            &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+            &VALIDATION,
+        ) {
+            Ok(data) => data,
+            Err(err) => {
+                warn!(
+                    "Token renewal failed: unable to decode token. Error: {:#?}",
+                    err
+                );
+                return Err(Status::Unauthorized);
+            }
+        };
+
+        let claims = token_data.claims;
+        let new_claims = TimestampClaims::new(claims.timestamp);
+        let new_token = new_claims.encode();
+
         Ok(Json(new_token))
     })
     .await
     .unwrap()
-}
-
-pub fn renew_timestamp_token_sync(token: String) -> Result<String, Status> {
-    let token_data = match decode::<TimestampClaims>(
-        &token,
-        &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-        &VALIDATION,
-    ) {
-        Ok(data) => data,
-        Err(err) => {
-            warn!(
-                "Token renewal failed: unable to decode token. Error: {:#?}",
-                err
-            );
-            return Err(Status::Unauthorized);
-        }
-    };
-
-    let claims = token_data.claims;
-    let new_claims = TimestampClaims::new(claims.timestamp);
-    let new_token = new_claims.encode();
-    Ok(new_token)
 }

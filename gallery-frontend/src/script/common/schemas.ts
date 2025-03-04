@@ -1,54 +1,42 @@
-// schemas.ts
-
 import { z } from 'zod'
 import { fixedBigRowHeight } from './constants'
 
-/**
- * Schema for alias objects.
- */
 export const AliasSchema = z.object({
   file: z.string(),
   modified: z.number(),
   scanTime: z.number()
 })
 
-/**
- * Schema for display elements.
- */
 export const displayElementSchema = z.object({
   displayWidth: z.number(),
   displayHeight: z.number(),
   displayTopPixelAccumulated: z.number().optional().default(0)
 })
 
-/**
- * Schema for rows.
- */
 export const rowSchema = z.object({
   start: z.number(),
   end: z.number(),
   rowHeight: z.number().optional().default(fixedBigRowHeight),
   displayElements: z.array(displayElementSchema),
-  topPixelAccumulated: z.number().default(0), // Changed line
+  topPixelAccumulated: z.number().default(0),
   rowIndex: z.number(),
   offset: z.number().optional().default(0)
 })
-/**
- * Schema for rows with offset.
- */
+
 export const rowWithOffsetSchema = z.object({
   row: rowSchema,
   offset: z.number(),
   windowWidth: z.number()
 })
 
-/**
- * Schema for prefetching data.
- */
 export const prefetchSchema = z.object({
   timestamp: z.number(),
   dataLength: z.number(),
-  locateTo: z.number().nullable(),
+  locateTo: z.number().nullable()
+})
+
+export const prefetchReturnSchema = z.object({
+  prefetch: prefetchSchema,
   token: z.string()
 })
 
@@ -68,9 +56,6 @@ export const DataBaseParse = z.object({
   width: z.number()
 })
 
-/**
- * Schema for Database with additional fields.
- */
 export const DataBaseSchema = DataBaseParse.extend({
   timestamp: z.number(),
   thumbhashUrl: z.string(), // need initialize
@@ -78,9 +63,6 @@ export const DataBaseSchema = DataBaseParse.extend({
   token: z.string()
 })
 
-/**
- * Schema for share information.
- */
 export const ShareSchema = z.object({
   url: z.string().max(64),
   description: z.string(),
@@ -110,9 +92,6 @@ export const AlbumParse = z.object({
   pending: z.boolean()
 })
 
-/**
- * Schema for Database with additional fields.
- */
 export const AlbumSchema = AlbumParse.extend({
   timestamp: z.number(),
   thumbhashUrl: z.string().nullable(), // need initialize
@@ -129,44 +108,29 @@ export const AbstractDataSchema = z.object({
   album: AlbumSchema.optional()
 })
 
-/**
- * Schema for scrollbar data.
- */
 export const scrollbarDataSchema = z.object({
   index: z.number(),
   year: z.number(),
   month: z.number()
 })
 
-/**
- * Schema for tag information.
- */
 export const tagInfoSchema = z.object({
   tag: z.string(),
   number: z.number()
 })
 
-/**
- * Schema for album information.
- */
 export const albumInfoSchema = z.object({
   albumId: z.string(),
   albumName: z.string().nullable(),
   displayName: z.string().optional()
 })
 
-/**
- * Schema for database timestamp.
- */
 export const databaseTimestampSchema = z.object({
   abstractData: AbstractDataParseSchema,
   timestamp: z.number(),
   token: z.string()
 })
 
-/**
- * Represents a sub-row containing display elements.
- */
 export const SubRowSchema = z.object({
   displayElements: z.array(displayElementSchema)
 })
