@@ -13,7 +13,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
     actions: {
       setToken(token: string) {
         this.timestampToken = token
-        /* this.startAutoRenew() */
+        /* this.startAutoRenew()  */
       },
       startAutoRenew() {
         if (this.tokenRenewTimeout) {

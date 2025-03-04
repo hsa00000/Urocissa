@@ -5,7 +5,7 @@ use crate::public::tree::TREE;
 use crate::public::tree::start_loop::VERSION_COUNT_TIMESTAMP;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
 use crate::router::fairing::auth_guard::AuthGuard;
-use crate::router::fairing::timestamp_guard::{TimestampClaims, renew_timestamp_token_sync};
+use crate::router::fairing::timestamp_guard::TimestampClaims;
 
 use bitcode::{Decode, Encode};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -17,23 +17,34 @@ use std::sync::atomic::Ordering;
 use std::time::UNIX_EPOCH;
 use std::time::{Instant, SystemTime};
 
-#[derive(Debug, Clone, Deserialize, Serialize, Decode, Encode)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "camelCase")]
 pub struct Prefetch {
     pub timestamp: u128,
     pub locate_to: Option<usize>,
     pub data_length: usize,
-    pub token: String,
 }
 
 impl Prefetch {
-    fn new(timestamp: u128, locate_to: Option<usize>, data_length: usize, token: String) -> Self {
+    fn new(timestamp: u128, locate_to: Option<usize>, data_length: usize) -> Self {
         Self {
             timestamp,
             locate_to,
             data_length,
-            token,
         }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Decode, Encode)]
+#[serde(rename_all = "camelCase")]
+pub struct PrefetchReturn {
+    pub prefetch: Prefetch,
+    pub token: String,
+}
+
+impl PrefetchReturn {
+    fn new(prefetch: Prefetch, token: String) -> Self {
+        Self { prefetch, token }
     }
 }
 
@@ -42,7 +53,7 @@ pub async fn prefetch(
     auth: AuthGuard,
     query_data: Option<Json<Expression>>,
     locate: Option<String>,
-) -> Json<Prefetch> {
+) -> Json<PrefetchReturn> {
     tokio::task::spawn_blocking(move || {
         // Start timer
         let start_time = Instant::now();
@@ -72,12 +83,14 @@ pub async fn prefetch(
         let expression_hashed = hasher.finish();
 
         match QUERY_SNAPSHOT.read_query_snapshot(expression_hashed) {
-            Ok(Some(mut prefetch_opt)) => {
+            Ok(Some(prefetch)) => {
                 let duration = format!("{:?}", find_cache_start_time.elapsed());
                 info!(duration = &*duration; "Query cache found");
-                let new_token = renew_timestamp_token_sync(prefetch_opt.token).unwrap();
-                prefetch_opt.token = new_token;
-                return Json(prefetch_opt);
+                let claims = TimestampClaims::new(prefetch.timestamp);
+                let token = claims.encode();
+                let prefetch_return = PrefetchReturn::new(prefetch, token);
+
+                return Json(prefetch_return);
             }
             _ => {
                 let duration = format!("{:?}", find_cache_start_time.elapsed());
@@ -138,6 +151,7 @@ pub async fn prefetch(
 
         // Step 5: Insert data into TREE_SNAPSHOT
         let db_start_time = Instant::now();
+
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -154,12 +168,10 @@ pub async fn prefetch(
         let claims = TimestampClaims::new(timestamp);
         let token = claims.encode();
 
-        let prefetch_return = Prefetch::new(timestamp, locate_to, data_length, token);
+        let prefetch = Prefetch::new(timestamp, locate_to, data_length);
+        let prefetch_return = PrefetchReturn::new(prefetch, token);
 
-        QUERY_SNAPSHOT
-            .in_memory
-            .insert(expression_hashed, prefetch_return.clone());
-
+        QUERY_SNAPSHOT.in_memory.insert(expression_hashed, prefetch);
         QUERY_SNAPSHOT.query_snapshot_flush();
 
         let json = Json(prefetch_return);

@@ -1,7 +1,7 @@
 import { RouteLocationNormalizedLoadedGeneric } from 'vue-router'
 import { watchDebounced } from '@vueuse/core'
 import { Ref } from 'vue'
-import { IsolationId, Prefetch } from '@/script/common/types'
+import { IsolationId, PrefetchReturn } from '@/script/common/types'
 import { prefetch } from '@/script/fetch/prefetch'
 import axios from 'axios'
 import { PublicConfigSchema } from '@/script/common/schemas'
@@ -46,7 +46,7 @@ export function usePrefetch(
 }
 
 // TODO optimize tags fetch
-async function handlePrefetchReturn(result: Prefetch, isolationId: IsolationId) {
+async function handlePrefetchReturn(prefetchReturn: PrefetchReturn, isolationId: IsolationId) {
   const configStore = useConfigStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
   const albumStore = useAlbumStore('mainId')
@@ -62,12 +62,15 @@ async function handlePrefetchReturn(result: Prefetch, isolationId: IsolationId) 
     throw error
   }
 
-  prefetchStore.timestamp = result.timestamp
-  prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
-  prefetchStore.calculateLength(result.dataLength)
-  prefetchStore.locateTo = result.locateTo
+  const prefetch = prefetchReturn.prefetch
+  const token = prefetchReturn.token
 
-  tokenStore.setToken(result.token)
+  prefetchStore.timestamp = prefetch.timestamp
+  prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
+  prefetchStore.calculateLength(prefetch.dataLength)
+  prefetchStore.locateTo = prefetch.locateTo
+
+  tokenStore.setToken(token)
 
   initializedStore.initialized = true
 

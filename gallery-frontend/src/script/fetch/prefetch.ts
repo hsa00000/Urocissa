@@ -1,13 +1,13 @@
 import axios from 'axios'
-import { Prefetch } from '../common/types'
-import { prefetchSchema } from '../common/schemas'
+import { Prefetch, PrefetchReturn } from '../common/types'
+import { prefetchReturnSchema } from '../common/schemas'
 
 export async function prefetch(
   filterJsonString: string | null,
   priorityId: string | undefined = 'default',
   reverse: string | undefined = 'false',
   locate: null | string = null
-) {
+): Promise<PrefetchReturn> {
   void priorityId
   void reverse
   const fetchUrl = `/get/prefetch?${locate !== null ? `locate=${locate}` : ''}`
@@ -18,7 +18,7 @@ export async function prefetch(
     }
   })
 
-  const prefetch = prefetchSchema.parse(axiosResponse.data)
+  const prefetchReturn = prefetchReturnSchema.parse(axiosResponse.data)
 
-  return prefetch
+  return prefetchReturn
 }
