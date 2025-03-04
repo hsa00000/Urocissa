@@ -1,9 +1,11 @@
-import axios, { AxiosResponse } from 'axios'
+import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMain } from './toDataWorker'
 
-export function setupAxiosInterceptors(): void {
-  axios.interceptors.response.use(
+const channel = new BroadcastChannel('auth_channel')
+
+export function setupAxiosInterceptors(axiosInstance: AxiosInstance): void {
+  axiosInstance.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error) => {
       if (!axios.isAxiosError(error)) {
@@ -20,11 +22,14 @@ export function setupAxiosInterceptors(): void {
         console.log('requestUrl is', requestUrl)
 
         // Check if the request URL matches any of the specified endpoints
+        if (requestUrl === undefined) {
+          postToMain.unauthorized()
+          return
+        }
         if (
-          requestUrl != null &&
-          (requestUrl.startsWith('/get/get-data') ||
-            requestUrl.startsWith('/get/get-rows') ||
-            requestUrl.startsWith('/get/get-scroll-bar'))
+          requestUrl.startsWith('/get/get-data') ||
+          requestUrl.startsWith('/get/get-rows') ||
+          requestUrl.startsWith('/get/get-scroll-bar')
         ) {
           try {
             const authHeader = config?.headers.Authorization
@@ -46,6 +51,7 @@ export function setupAxiosInterceptors(): void {
               if (config) {
                 config.headers.Authorization = `Bearer ${newToken.token}`
                 postToMain.renewTimestampToken({ token: newToken.token })
+                channel.postMessage(newToken.token)
                 return await axios.request(config)
               }
             }

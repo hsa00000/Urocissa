@@ -10,10 +10,10 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::router::fairing::VALIDATION;
-use crate::router::fairing::timestamp_guard::TimestampGuard;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use super::VALIDATION_ALLOW_EXPIRED;
+use super::timestamp_guard::TimestampClaims;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,7 +29,7 @@ impl HashClaims {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_secs()
-            + 10;
+            + 1;
 
         Self {
             hash,
@@ -122,17 +122,12 @@ pub struct TokenRequest {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenReturn {
-    pub new_hash_token: String,
+    pub token: String,
 }
 
-#[post(
-    "/post/renew-timestamp-token?<timestamp>",
-    format = "json",
-    data = "<token_request>"
-)]
+#[post("/post/renew-hash-token", format = "json", data = "<token_request>")]
 pub async fn renew_hash_token(
-    _auth: TimestampGuard,
-    timestamp: u128,
+    auth: TimestampGuardModified,
     token_request: Json<TokenRequest>,
 ) -> Result<Json<TokenReturn>, Status> {
     tokio::task::spawn_blocking(move || {
@@ -152,10 +147,10 @@ pub async fn renew_hash_token(
             }
         };
 
-        if token_data.claims.timestamp != timestamp {
+        if token_data.claims.timestamp != auth.timestamp_decoded {
             warn!(
                 "Timestamp does not match. Received: {}, Expected: {}.",
-                token_data.claims.timestamp, timestamp
+                token_data.claims.timestamp, auth.timestamp_decoded
             );
             return Err(Status::Unauthorized);
         }
@@ -164,8 +159,55 @@ pub async fn renew_hash_token(
         let new_hash_claims = HashClaims::new(claims.hash, claims.timestamp);
         let new_hash_token = new_hash_claims.encode();
 
-        Ok(Json(TokenReturn { new_hash_token }))
+        Ok(Json(TokenReturn {
+            token: new_hash_token,
+        }))
     })
     .await
     .unwrap()
+}
+
+pub struct TimestampGuardModified {
+    pub timestamp_decoded: u128,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for TimestampGuardModified {
+    type Error = ();
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let auth_header = match req.headers().get_one("Authorization") {
+            Some(header) => header,
+            None => {
+                warn!("Request is missing the Authorization header.");
+                return Outcome::Forward(Status::Unauthorized);
+            }
+        };
+
+        let token = match auth_header.strip_prefix("Bearer ") {
+            Some(token) => token,
+            None => {
+                warn!("Authorization header format is invalid. Expected 'Bearer <token>'.");
+                return Outcome::Forward(Status::Unauthorized);
+            }
+        };
+
+        let token_data = match decode::<TimestampClaims>(
+            token,
+            &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+            &VALIDATION,
+        ) {
+            Ok(data) => data,
+            Err(err) => {
+                warn!("Failed to decode token: {:#?}", err);
+                return Outcome::Forward(Status::Unauthorized);
+            }
+        };
+
+        let claims = token_data.claims;
+
+        Outcome::Success(TimestampGuardModified {
+            timestamp_decoded: claims.timestamp,
+        })
+    }
 }

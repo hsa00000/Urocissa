@@ -1,6 +1,6 @@
 use crate::public::abstract_data::AbstractData;
 use crate::public::constant::DEFAULT_PRIORITY_LIST;
-use crate::public::database_struct::database_timestamp::DataBaseTimestamp;
+use crate::public::database_struct::database_timestamp::{DataBaseTimestamp, DataBaseTimestampReturn};
 use crate::public::redb::{ALBUM_TABLE, DATA_TABLE};
 use crate::public::row::{Row, ScrollBarData};
 use crate::public::tree::TREE;
@@ -20,7 +20,7 @@ pub async fn get_data(
     timestamp: u128,
     start: usize,
     end: usize,
-) -> Json<Vec<DataBaseTimestamp>> {
+) -> Json<Vec<DataBaseTimestampReturn>> {
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
         let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
@@ -34,19 +34,21 @@ pub async fn get_data(
             return Json(vec![]);
         }
 
-        let data_vec: Vec<DataBaseTimestamp> = (start..end)
+        let data_vec: Vec<DataBaseTimestampReturn> = (start..end)
             .into_par_iter()
             .map(|index| {
                 let hash = tree_snapshot.get_hash(index);
                 if let Some(database) = table.get(&*hash).unwrap() {
-                    DataBaseTimestamp::new(
+                    DataBaseTimestampReturn::new(
                         AbstractData::Database(database.value()),
                         &DEFAULT_PRIORITY_LIST,
+                        timestamp,
                     )
                 } else if let Some(album) = album_table.get(&*hash).unwrap() {
-                    DataBaseTimestamp::new(
+                    DataBaseTimestampReturn::new(
                         AbstractData::Album(album.value()),
                         &DEFAULT_PRIORITY_LIST,
+                        timestamp,
                     )
                 } else {
                     panic!("Entry not found for hash: {:?}", hash);
