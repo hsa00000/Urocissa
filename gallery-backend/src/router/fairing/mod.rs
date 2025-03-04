@@ -18,3 +18,9 @@ static VALIDATION: LazyLock<Validation> = LazyLock::new(|| {
     let validation = Validation::new(Algorithm::HS256);
     validation
 });
+
+static VALIDATION_ALLOW_EXPIRED: LazyLock<Validation> = LazyLock::new(|| {
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = false; // Disable expiration validation
+    validation
+});

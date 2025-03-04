@@ -13,7 +13,8 @@ import {
   SubRowSchema,
   albumInfoSchema,
   PublicConfigSchema,
-  prefetchReturnSchema
+  prefetchReturnSchema,
+  tokenReturnSchema
 } from './schemas'
 
 export type Sorting = 'ascending' | 'descending' | 'random' | 'similar'
@@ -44,3 +45,4 @@ export type SubRow = z.infer<typeof SubRowSchema>
 export type PublicConfig = z.infer<typeof PublicConfigSchema>
 export type IsolationId = 'mainId' | 'subId' | 'tempId' | 'shareId'
 export type FetchDataMethod = 'batch' | 'single'
+export type TokenReturn = z.infer<typeof tokenReturnSchema>

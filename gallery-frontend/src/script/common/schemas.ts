@@ -139,3 +139,7 @@ export const PublicConfigSchema = z.object({
   readOnlyMode: z.boolean(),
   disableImg: z.boolean()
 })
+
+export const tokenReturnSchema = z.object({
+  token: z.string()
+})
