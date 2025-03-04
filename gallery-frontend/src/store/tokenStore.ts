@@ -1,6 +1,8 @@
 import { IsolationId } from '@/script/common/types'
 import axios from 'axios'
 import { defineStore } from 'pinia'
+import { useWorkerStore } from './workerStore'
+
 export const useTokenStore = (isolationId: IsolationId) =>
   defineStore('tokenStore' + isolationId, {
     state: (): {
@@ -13,6 +15,15 @@ export const useTokenStore = (isolationId: IsolationId) =>
     actions: {
       setToken(token: string) {
         this.timestampToken = token
+
+        const workerStore = useWorkerStore(isolationId)
+        if (workerStore.imgWorker.length === 0) {
+          workerStore.initializeWorker(isolationId)
+        }
+        setTimeout(() => {
+          const channel = new BroadcastChannel('auth_channel')
+          channel.postMessage(token)
+        }, 1000)
 
         /* this.startAutoRenew()  */
       },

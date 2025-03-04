@@ -95,7 +95,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       await router.push('/login')
     },
     renewTimestampToken: (payload) => {
-      tokenStore.timestampToken = payload.token
+      tokenStore.setToken(payload.token)
     }
   })
 

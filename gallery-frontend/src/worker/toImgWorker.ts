@@ -10,7 +10,7 @@ import axiosRetry from 'axios-retry'
 import axios, { AxiosError } from 'axios'
 import { getSrcWithToken } from '@utils/getter'
 import { ref, Ref } from 'vue'
-import { setupAxiosInterceptorsForImg, setupAxiosInterceptorsRenew } from './interceptorImg'
+import { setupAxiosInterceptorsForImg } from './interceptorImg'
 
 const controllerMap = new Map<number, AbortController>()
 
@@ -24,9 +24,9 @@ channel.onmessage = (event) => {
     console.log('[Worker] Token updated:', timestampTokenRef.value)
   }
 }
+
 const workerAxios = axios.create() // 建立獨立的 axios 實例
 setupAxiosInterceptorsForImg(workerAxios, timestampTokenRef)
-setupAxiosInterceptorsRenew(workerAxios)
 
 axiosRetry(workerAxios, {
   retries: 0,
