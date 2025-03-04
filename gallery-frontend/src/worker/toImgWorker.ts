@@ -9,9 +9,26 @@ import type {
 import axiosRetry from 'axios-retry'
 import axios, { AxiosError } from 'axios'
 import { getSrcWithToken } from '@utils/getter'
+import { ref, Ref } from 'vue'
+import { setupAxiosInterceptorsForImg, setupAxiosInterceptorsRenew } from './interceptorImg'
+
 const controllerMap = new Map<number, AbortController>()
 
-axiosRetry(axios, {
+const timestampTokenRef: Ref<string | null> = ref(null)
+
+const channel = new BroadcastChannel('auth_channel')
+
+channel.onmessage = (event) => {
+  if (typeof event.data === 'string') {
+    timestampTokenRef.value = event.data
+    console.log('[Worker] Token updated:', timestampTokenRef.value)
+  }
+}
+const workerAxios = axios.create() // 建立獨立的 axios 實例
+setupAxiosInterceptorsForImg(workerAxios, timestampTokenRef)
+setupAxiosInterceptorsRenew(workerAxios)
+
+axiosRetry(workerAxios, {
   retries: 0,
   retryDelay: () => {
     return 200
@@ -40,7 +57,7 @@ const handler = createHandler<typeof toImgWorker>({
       const controller = new AbortController()
       controllerMap.set(event.index, controller)
 
-      const response = await axios.get<Blob>(
+      const response = await workerAxios.get<Blob>(
         getSrcWithToken(event.hash, false, 'jpg', event.jwt, undefined, event.token),
         {
           signal: controller.signal,
@@ -80,7 +97,7 @@ const handler = createHandler<typeof toImgWorker>({
   },
   async processImage(event: processImagePayload) {
     try {
-      const response = await axios.get<Blob>(
+      const response = await workerAxios.get<Blob>(
         getSrcWithToken(event.hash, false, 'jpg', event.jwt, undefined, event.token),
         {
           responseType: 'blob'

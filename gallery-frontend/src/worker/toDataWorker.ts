@@ -20,6 +20,7 @@ import { getArrayValue } from '@utils/getter'
 import { createAbstractData, createAlbum, createDataBase } from '@utils/createData'
 
 import axios from 'axios'
+
 import { bindActionDispatch, createHandler } from 'typesafe-agent-events'
 import { fromDataWorker, toDataWorker } from './workerApi'
 import { z } from 'zod'
@@ -31,7 +32,8 @@ const fetchedRowData = new Map<number, Row>()
 
 export const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
 
-setupAxiosInterceptors()
+const workerAxios = axios.create() // 建立獨立的 axios 實例
+setupAxiosInterceptors(workerAxios) // 只對 worker 內的 axios 設定攔截器
 
 self.addEventListener('message', (e) => {
   const handler = createHandler<typeof toDataWorker>({
@@ -139,7 +141,7 @@ async function fetchData(
 
   const fetchUrl = `/get/get-data?timestamp=${timestamp}&start=${start}&end=${end}`
 
-  const response = await axios.get<Database[]>(fetchUrl, {
+  const response = await workerAxios.get<Database[]>(fetchUrl, {
     headers: {
       Authorization: `Bearer ${timestampToken}`
     }
@@ -213,7 +215,7 @@ async function fetchRow(
   let row = fetchedRowData.get(index)
 
   if (row === undefined) {
-    const response = await axios.get<Row>(
+    const response = await workerAxios.get<Row>(
       `/get/get-rows?index=${index}&timestamp=${timestamp}&window_width=${Math.round(windowWidth)}`,
       {
         headers: {
@@ -420,7 +422,7 @@ const editTags = async (
   removeTagsArray: string[],
   timestamp: number
 ): Promise<{ returnedTagsArray?: TagInfo[] }> => {
-  const axiosResponse = await axios.put<TagInfo[]>('/put/edit_tag', {
+  const axiosResponse = await workerAxios.put<TagInfo[]>('/put/edit_tag', {
     indexArray,
     addTagsArray,
     removeTagsArray,
@@ -442,7 +444,7 @@ export const editAlbums = async (
   removeAlbumsArray: string[],
   timestamp: number
 ) => {
-  await axios.put('/put/edit_album', {
+  await workerAxios.put('/put/edit_album', {
     indexArray,
     addAlbumsArray,
     removeAlbumsArray,
@@ -460,7 +462,7 @@ export const editAlbums = async (
  * @returns A promise that resolves to an object containing the result message and a warning flag.
  */
 async function deleteData(indexArray: number[], timestamp: number) {
-  await axios.delete('/delete/delete-data', {
+  await workerAxios.delete('/delete/delete-data', {
     data: { deleteList: indexArray, timestamp }
   })
   console.log('Successfully deleted data.')
