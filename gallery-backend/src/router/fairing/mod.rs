@@ -11,7 +11,10 @@ pub mod share_guard;
 pub mod timestamp_guard;
 
 pub fn generate_fairing_routes() -> Vec<Route> {
-    routes![timestamp_guard::renew_timestamp_token]
+    routes![
+        timestamp_guard::renew_timestamp_token,
+        hash_guard::renew_hash_token
+    ]
 }
 
 static VALIDATION: LazyLock<Validation> = LazyLock::new(|| {
