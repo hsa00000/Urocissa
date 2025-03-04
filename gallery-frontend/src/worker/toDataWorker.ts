@@ -2,8 +2,7 @@ import {
   rowSchema,
   rowWithOffsetSchema,
   tagInfoSchema,
-  databaseTimestampSchema,
-  tokenReturnSchema
+  databaseTimestampSchema
 } from '@/script/common/schemas'
 import {
   AbstractData,
@@ -20,104 +19,19 @@ import { batchNumber, fixedBigRowHeight, paddingPixel } from '@/script/common/co
 import { getArrayValue } from '@utils/getter'
 import { createAbstractData, createAlbum, createDataBase } from '@utils/createData'
 
-import axios, { AxiosResponse } from 'axios'
+import axios from 'axios'
 import { bindActionDispatch, createHandler } from 'typesafe-agent-events'
 import { fromDataWorker, toDataWorker } from './workerApi'
 import { z } from 'zod'
+import { setupAxiosInterceptors } from './interceptor'
 
 const shouldProcessBatch: number[] = []
 
 const fetchedRowData = new Map<number, Row>()
 
-function unauthorized() {
-  const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
-  postToMain.unauthorized()
-}
+export const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
 
-axios.interceptors.response.use(
-  (response: AxiosResponse) => response, // Pass through valid responses
-  async (error) => {
-    if (axios.isAxiosError(error)) {
-      if (error.response?.status === 401) {
-        const requestUrl = error.config?.url
-        console.log('requestUrl is', requestUrl)
-
-        if (requestUrl !== undefined) {
-          switch (true) {
-            case requestUrl.startsWith('/get/get-data') ||
-              requestUrl.startsWith('/get/get-rows') ||
-              requestUrl.startsWith('/get/get-scroll-bar'): {
-              try {
-                const authHeader = error.config?.headers.Authorization
-
-                const expiredToken =
-                  typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
-                    ? authHeader.split(' ')[1]
-                    : null
-
-                if (expiredToken == null) {
-                  throw new Error('No expired token found')
-                }
-
-                console.log('expired token is ', expiredToken)
-
-                const response = await axios.post('/post/renew-timestamp-token', {
-                  token: expiredToken
-                })
-
-                if (response.status === 200) {
-                  const newToken = tokenReturnSchema.parse(response.data)
-
-                  if (error.config) {
-                    error.config.headers.Authorization = `Bearer ${newToken.token}`
-
-                    try {
-                      console.log('resending')
-                      const postToMain = bindActionDispatch(
-                        fromDataWorker,
-                        self.postMessage.bind(self)
-                      )
-                      postToMain.renewTimestampToken({
-                        token: newToken.token
-                      })
-                      return await axios.request(error.config)
-                    } catch (resendError) {
-                      console.error('Resending the request failed:', resendError)
-                    }
-                  }
-                }
-              } catch (err) {
-                console.error('Token renewal failed:', err)
-              }
-              break
-            }
-
-            default:
-              break
-          }
-        }
-
-        /* unauthorized() */
-        const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
-        postToMain.notification({ message: 'Unauthorized. Please log in.', messageType: 'warn' })
-      } else if (error.response) {
-        const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
-        postToMain.notification({ message: 'An error occurred', messageType: 'warn' })
-      } else {
-        // Handle cases where there is no response (e.g., network errors)
-        const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
-        postToMain.notification({ message: 'No response from server', messageType: 'warn' })
-      }
-    } else {
-      // Handle non-Axios errors if necessary
-      console.error('Unexpected error:', error)
-      const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
-      postToMain.notification({ message: 'An unexpected error occurred', messageType: 'warn' })
-    }
-    console.error(error)
-    if (error instanceof Error) return Promise.reject(error) // Always reject the error to maintain default behavior
-  }
-)
+setupAxiosInterceptors()
 
 self.addEventListener('message', (e) => {
   const handler = createHandler<typeof toDataWorker>({
@@ -151,7 +65,6 @@ self.addEventListener('message', (e) => {
           }
         }
 
-        const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
         postToMain.returnData({ batch: batch, slicedDataArray: slicedDataArray })
       }
     },
@@ -160,7 +73,6 @@ self.addEventListener('message', (e) => {
 
       const rowWithOffset = await fetchRow(index, timestamp, windowWidth, isLastRow, timestampToken)
 
-      const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
       postToMain.fetchRowReturn({
         rowWithOffset: rowWithOffset,
         timestamp: timestamp
@@ -175,7 +87,7 @@ self.addEventListener('message', (e) => {
         removeTagsArray,
         timestamp
       )
-      const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
+
       postToMain.editTagsReturn({
         returnedTagsArray: returnedTagsArray
       })
@@ -183,7 +95,7 @@ self.addEventListener('message', (e) => {
     editAlbums: async (payload) => {
       const { indexSet, addAlbumsArray, removeAlbumsArray, timestamp } = payload
       await editAlbums(Array.from(indexSet), addAlbumsArray, removeAlbumsArray, timestamp)
-      const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
+
       postToMain.notification({ message: 'Successfully edited albums.', messageType: 'info' })
     },
     deleteData: async (payload) => {
@@ -519,7 +431,7 @@ const editTags = async (
   const response = tagsArraySchema.parse(axiosResponse.data)
 
   console.log('Successfully edited tags.')
-  const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
+
   postToMain.notification({ message: 'Successfully edited tags.', messageType: 'info' })
   return { returnedTagsArray: response }
 }
@@ -552,6 +464,6 @@ async function deleteData(indexArray: number[], timestamp: number) {
     data: { deleteList: indexArray, timestamp }
   })
   console.log('Successfully deleted data.')
-  const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
+
   postToMain.notification({ message: 'Successfully deleted data.', messageType: 'info' })
 }
