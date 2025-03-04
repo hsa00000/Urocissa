@@ -37,8 +37,6 @@ export function setupAxiosInterceptors(): void {
               throw new Error('No expired token found')
             }
 
-            console.log('expired token is', expiredToken)
-
             const tokenResponse = await axios.post('/post/renew-timestamp-token', {
               token: expiredToken
             })
@@ -47,7 +45,6 @@ export function setupAxiosInterceptors(): void {
               const newToken = tokenReturnSchema.parse(tokenResponse.data)
               if (config) {
                 config.headers.Authorization = `Bearer ${newToken.token}`
-                console.log('resending')
                 postToMain.renewTimestampToken({ token: newToken.token })
                 return await axios.request(config)
               }
