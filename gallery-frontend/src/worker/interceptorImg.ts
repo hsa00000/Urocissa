@@ -5,6 +5,10 @@ import { Ref } from 'vue'
 
 const channel = new BroadcastChannel('auth_channel')
 
+const subAxios = axios.create() // 建立獨立的 axios 實例
+
+setupAxiosInterceptorsRenew(subAxios)
+
 export function setupAxiosInterceptorsForImg(
   axiosInstance: AxiosInstance,
   timestampTokenRef: Ref<string | null>
@@ -45,7 +49,7 @@ export function setupAxiosInterceptorsForImg(
               throw new Error('No timestampToken found in query parameters')
             }
 
-            const tokenResponse = await axios.post(
+            const tokenResponse = await subAxios.post(
               `/post/renew-hash-token`,
               {
                 expiredHashToken: expiredToken
@@ -63,11 +67,13 @@ export function setupAxiosInterceptorsForImg(
               if (config) {
                 config.url = newUrl
                 console.log('send new img request')
-                return await axios.request(config)
+                return await axiosInstance.request(config)
               }
             }
           } catch (err) {
-            console.error('Token renewal failed:', err)
+            if (!(err instanceof Error && err.name === 'CanceledError')) {
+              console.error('Token renewal failed:', err)
+            }
           }
         } else {
           postToMain.unauthorized()
@@ -79,7 +85,9 @@ export function setupAxiosInterceptorsForImg(
         postToMain.notification({ message: 'No response from server', messageType: 'warn' })
       }
 
-      console.error(error)
+      if (!(error instanceof Error && error.name === 'CanceledError')) {
+        console.error('Token renewal failed:', error)
+      }
       return Promise.reject(error)
     }
   )
@@ -119,7 +127,7 @@ export function setupAxiosInterceptorsRenew(axiosInstance: AxiosInstance): void 
               throw new Error('No expired token found')
             }
 
-            const tokenResponse = await axios.post('/post/renew-timestamp-token', {
+            const tokenResponse = await axiosInstance.post('/post/renew-timestamp-token', {
               token: expiredToken
             })
 
@@ -129,7 +137,7 @@ export function setupAxiosInterceptorsRenew(axiosInstance: AxiosInstance): void 
                 config.headers.Authorization = `Bearer ${newToken.token}`
                 postToMain.renewTimestampToken({ token: newToken.token })
                 channel.postMessage(newToken.token)
-                return await axios.request(config)
+                return await axiosInstance.request(config)
               }
             }
           } catch (err) {
