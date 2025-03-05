@@ -4,7 +4,7 @@ import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMain } from './toDataWorker'
 import { storeToken } from '@/indexedDb/token'
 
-export function setupAxiosInterceptors(axiosInstance: AxiosInstance): void {
+export function interceptorData(axiosInstance: AxiosInstance): void {
   axiosInstance.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error) => {
