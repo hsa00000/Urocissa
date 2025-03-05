@@ -28,7 +28,8 @@ export function setupAxiosInterceptors(axiosInstance: AxiosInstance): void {
         if (
           requestUrl.startsWith('/get/get-data') ||
           requestUrl.startsWith('/get/get-rows') ||
-          requestUrl.startsWith('/get/get-scroll-bar')
+          requestUrl.startsWith('/get/get-scroll-bar') ||
+          requestUrl.startsWith('/post/renew-hash-token')
         ) {
           try {
             const authHeader = config?.headers.Authorization
