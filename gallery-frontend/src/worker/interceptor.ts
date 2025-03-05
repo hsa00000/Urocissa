@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/return-await */
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMain } from './toDataWorker'
@@ -50,7 +51,7 @@ export function setupAxiosInterceptors(axiosInstance: AxiosInstance): void {
                 config.headers.Authorization = `Bearer ${newToken.token}`
                 postToMain.renewTimestampToken({ token: newToken.token })
                 await storeToken(newToken.token)
-                return await axios.request(config)
+                return axios.request(config)
               }
             }
           } catch (err) {
