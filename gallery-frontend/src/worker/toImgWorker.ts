@@ -9,24 +9,12 @@ import type {
 import axiosRetry from 'axios-retry'
 import axios, { AxiosError } from 'axios'
 import { getSrcWithToken } from '@utils/getter'
-import { ref, Ref } from 'vue'
 import { setupAxiosInterceptorsForImg } from './interceptorImg'
 
 const controllerMap = new Map<number, AbortController>()
 
-const timestampTokenRef: Ref<string | null> = ref(null)
-
-const channel = new BroadcastChannel('auth_channel')
-
-channel.onmessage = (event) => {
-  if (typeof event.data === 'string') {
-    timestampTokenRef.value = event.data
-    console.log('[Worker] Token updated:', timestampTokenRef.value)
-  }
-}
-
 const workerAxios = axios.create() // 建立獨立的 axios 實例
-setupAxiosInterceptorsForImg(workerAxios, timestampTokenRef)
+setupAxiosInterceptorsForImg(workerAxios)
 
 axiosRetry(workerAxios, {
   retries: 0,
