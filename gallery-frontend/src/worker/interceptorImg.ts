@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/return-await */
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMain } from './toDataWorker'
@@ -59,7 +60,7 @@ export function setupAxiosInterceptorsForImg(axiosInstance: AxiosInstance): void
               const newUrl = requestUrl.replace(`token=${expiredToken}`, `token=${newToken.token}`)
               if (config) {
                 config.url = newUrl
-                return await axiosInstance.request(config)
+                return axiosInstance.request(config)
               }
             }
           } catch (err) {
@@ -98,6 +99,8 @@ export function setupAxiosInterceptorsRenew(axiosInstance: AxiosInstance): void 
 
       const { config, response } = error
 
+      console.log('response', response, ' is', response?.status)
+
       if (response?.status === 401) {
         const requestUrl = config?.url
         console.log('requestUrl is', requestUrl)
@@ -129,7 +132,7 @@ export function setupAxiosInterceptorsRenew(axiosInstance: AxiosInstance): void 
                 config.headers.Authorization = `Bearer ${newToken.token}`
                 postToMain.renewTimestampToken({ token: newToken.token })
                 await storeToken(newToken.token)
-                return await axiosInstance.request(config)
+                return axiosInstance.request(config)
               }
             }
           } catch (err) {
