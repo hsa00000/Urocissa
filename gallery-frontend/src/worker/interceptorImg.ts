@@ -1,18 +1,13 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMain } from './toDataWorker'
-import { Ref } from 'vue'
-
-const channel = new BroadcastChannel('auth_channel')
+import { getToken, storeToken } from '@/indexedDb/token'
 
 const subAxios = axios.create() // 建立獨立的 axios 實例
 
 setupAxiosInterceptorsRenew(subAxios)
 
-export function setupAxiosInterceptorsForImg(
-  axiosInstance: AxiosInstance,
-  timestampTokenRef: Ref<string | null>
-): void {
+export function setupAxiosInterceptorsForImg(axiosInstance: AxiosInstance): void {
   axiosInstance.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error) => {
@@ -27,14 +22,12 @@ export function setupAxiosInterceptorsForImg(
 
       if (response?.status === 401) {
         const requestUrl = config?.url
-        console.log('requestUrl is', requestUrl)
 
         // Check if the request URL matches any of the specified endpoints
         if (requestUrl === undefined) {
           postToMain.unauthorized()
           return
         }
-        console.log("requestUrl.startsWith('/object') is", requestUrl.startsWith('/object'))
 
         if (requestUrl.startsWith('/object')) {
           try {
@@ -44,7 +37,7 @@ export function setupAxiosInterceptorsForImg(
               throw new Error('No hash token found in query parameters')
             }
 
-            const timestampToken = timestampTokenRef.value
+            const timestampToken = await getToken()
             if (timestampToken === null) {
               throw new Error('No timestampToken found in query parameters')
             }
@@ -66,7 +59,6 @@ export function setupAxiosInterceptorsForImg(
               const newUrl = requestUrl.replace(`token=${expiredToken}`, `token=${newToken.token}`)
               if (config) {
                 config.url = newUrl
-                console.log('send new img request')
                 return await axiosInstance.request(config)
               }
             }
@@ -136,7 +128,7 @@ export function setupAxiosInterceptorsRenew(axiosInstance: AxiosInstance): void 
               if (config) {
                 config.headers.Authorization = `Bearer ${newToken.token}`
                 postToMain.renewTimestampToken({ token: newToken.token })
-                channel.postMessage(newToken.token)
+                await storeToken(newToken.token)
                 return await axiosInstance.request(config)
               }
             }

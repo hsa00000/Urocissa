@@ -1,8 +1,7 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMain } from './toDataWorker'
-
-const channel = new BroadcastChannel('auth_channel')
+import { storeToken } from '@/indexedDb/token'
 
 export function setupAxiosInterceptors(axiosInstance: AxiosInstance): void {
   axiosInstance.interceptors.response.use(
@@ -19,7 +18,6 @@ export function setupAxiosInterceptors(axiosInstance: AxiosInstance): void {
 
       if (response?.status === 401) {
         const requestUrl = config?.url
-        console.log('requestUrl is', requestUrl)
 
         // Check if the request URL matches any of the specified endpoints
         if (requestUrl === undefined) {
@@ -51,7 +49,7 @@ export function setupAxiosInterceptors(axiosInstance: AxiosInstance): void {
               if (config) {
                 config.headers.Authorization = `Bearer ${newToken.token}`
                 postToMain.renewTimestampToken({ token: newToken.token })
-                channel.postMessage(newToken.token)
+                await storeToken(newToken.token)
                 return await axios.request(config)
               }
             }
