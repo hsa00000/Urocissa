@@ -24,16 +24,13 @@ import axios from 'axios'
 import { bindActionDispatch, createHandler } from 'typesafe-agent-events'
 import { fromDataWorker, toDataWorker } from './workerApi'
 import { z } from 'zod'
-import { setupAxiosInterceptors } from './interceptor'
+import { interceptorData } from './interceptorData'
 
 const shouldProcessBatch: number[] = []
-
 const fetchedRowData = new Map<number, Row>()
-
 export const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
-
-const workerAxios = axios.create() // 建立獨立的 axios 實例
-setupAxiosInterceptors(workerAxios) // 只對 worker 內的 axios 設定攔截器
+const workerAxios = axios.create()
+interceptorData(workerAxios)
 
 self.addEventListener('message', (e) => {
   const handler = createHandler<typeof toDataWorker>({

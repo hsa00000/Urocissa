@@ -9,12 +9,11 @@ import type {
 import axiosRetry from 'axios-retry'
 import axios, { AxiosError } from 'axios'
 import { getSrcWithToken } from '@utils/getter'
-import { setupAxiosInterceptorsForImg } from './interceptorImg'
+import { interceptorImg } from './interceptorImg'
 
 const controllerMap = new Map<number, AbortController>()
-
-const workerAxios = axios.create() // 建立獨立的 axios 實例
-setupAxiosInterceptorsForImg(workerAxios)
+const workerAxios = axios.create()
+interceptorImg(workerAxios)
 
 axiosRetry(workerAxios, {
   retries: 0,

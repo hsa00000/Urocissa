@@ -3,13 +3,12 @@ import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMain } from './toDataWorker'
 import { getToken } from '@/indexedDb/token'
-import { setupAxiosInterceptors } from './interceptor'
+import { interceptorData } from './interceptorData'
 
-const subAxios = axios.create() // 建立獨立的 axios 實例
+const subAxios = axios.create()
+interceptorData(subAxios)
 
-setupAxiosInterceptors(subAxios)
-
-export function setupAxiosInterceptorsForImg(axiosInstance: AxiosInstance): void {
+export function interceptorImg(axiosInstance: AxiosInstance): void {
   axiosInstance.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error) => {
