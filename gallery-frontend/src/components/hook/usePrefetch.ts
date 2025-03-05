@@ -10,8 +10,8 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useTagStore } from '@/store/tagStore'
 import { useAlbumStore } from '@/store/albumStore'
-import { useTokenStore } from '@/store/tokenStore'
 import { fetchScrollbar } from '@/script/fetch/scrollbar'
+import { storeToken } from '@/indexedDb/token'
 
 export function usePrefetch(
   filterJsonString: string | null,
@@ -52,7 +52,7 @@ async function handlePrefetchReturn(prefetchReturn: PrefetchReturn, isolationId:
   const albumStore = useAlbumStore('mainId')
   const initializedStore = useInitializedStore(isolationId)
   const tagStore = useTagStore('mainId')
-  const tokenStore = useTokenStore(isolationId)
+
   try {
     const response = await axios.get('/get/get-config.json')
     const publicConfig = PublicConfigSchema.parse(response.data)
@@ -70,7 +70,7 @@ async function handlePrefetchReturn(prefetchReturn: PrefetchReturn, isolationId:
   prefetchStore.calculateLength(prefetch.dataLength)
   prefetchStore.locateTo = prefetch.locateTo
 
-  tokenStore.setToken(token)
+  await storeToken(token)
 
   initializedStore.initialized = true
 
