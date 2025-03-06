@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/return-await */
 import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { tokenReturnSchema } from '@/script/common/schemas'
-import { postToMain } from './toDataWorker'
+import { postToMainData } from './toDataWorker'
 import { storeToken } from '@/indexedDb/token'
 
 interface QueuedRequest {
@@ -19,7 +19,10 @@ export function interceptorData(axiosInstance: AxiosInstance): void {
     async (error) => {
       if (!axios.isAxiosError(error)) {
         console.error('Unexpected error:', error)
-        postToMain.notification({ message: 'An unexpected error occurred', messageType: 'warn' })
+        postToMainData.notification({
+          message: 'An unexpected error occurred',
+          messageType: 'warn'
+        })
         return Promise.reject(error instanceof Error ? error : new Error(String(error)))
       }
 
@@ -29,7 +32,7 @@ export function interceptorData(axiosInstance: AxiosInstance): void {
         const requestUrl = config?.url
 
         if (requestUrl == null) {
-          postToMain.unauthorized()
+          postToMainData.unauthorized()
           return Promise.reject(error)
         }
 
@@ -52,7 +55,6 @@ export function interceptorData(axiosInstance: AxiosInstance): void {
           if (isRefreshing) {
             // Return a promise that queues this retried request
             return new Promise((resolve, reject) => {
-
               queueList.push({ config, resolve, reject })
             })
           }
@@ -105,13 +107,16 @@ export function interceptorData(axiosInstance: AxiosInstance): void {
             isRefreshing = false
           }
         } else {
-          postToMain.unauthorized()
+          postToMainData.unauthorized()
         }
-        postToMain.notification({ message: 'Unauthorized. Please log in.', messageType: 'warn' })
+        postToMainData.notification({
+          message: 'Unauthorized. Please log in.',
+          messageType: 'warn'
+        })
       } else if (response) {
-        postToMain.notification({ message: 'An error occurred', messageType: 'warn' })
+        postToMainData.notification({ message: 'An error occurred', messageType: 'warn' })
       } else {
-        postToMain.notification({ message: 'No response from server', messageType: 'warn' })
+        postToMainData.notification({ message: 'No response from server', messageType: 'warn' })
       }
 
       return Promise.reject(error)

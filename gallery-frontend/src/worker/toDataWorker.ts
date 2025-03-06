@@ -28,7 +28,7 @@ import { interceptorData } from './interceptorData'
 
 const shouldProcessBatch: number[] = []
 const fetchedRowData = new Map<number, Row>()
-export const postToMain = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
+export const postToMainData = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
 const workerAxios = axios.create()
 interceptorData(workerAxios)
 
@@ -64,7 +64,7 @@ self.addEventListener('message', (e) => {
           }
         }
 
-        postToMain.returnData({ batch: batch, slicedDataArray: slicedDataArray })
+        postToMainData.returnData({ batch: batch, slicedDataArray: slicedDataArray })
       }
     },
     fetchRow: async (payload) => {
@@ -72,7 +72,7 @@ self.addEventListener('message', (e) => {
 
       const rowWithOffset = await fetchRow(index, timestamp, windowWidth, isLastRow, timestampToken)
 
-      postToMain.fetchRowReturn({
+      postToMainData.fetchRowReturn({
         rowWithOffset: rowWithOffset,
         timestamp: timestamp
       })
@@ -87,7 +87,7 @@ self.addEventListener('message', (e) => {
         timestamp
       )
 
-      postToMain.editTagsReturn({
+      postToMainData.editTagsReturn({
         returnedTagsArray: returnedTagsArray
       })
     },
@@ -95,7 +95,7 @@ self.addEventListener('message', (e) => {
       const { indexSet, addAlbumsArray, removeAlbumsArray, timestamp } = payload
       await editAlbums(Array.from(indexSet), addAlbumsArray, removeAlbumsArray, timestamp)
 
-      postToMain.notification({ message: 'Successfully edited albums.', messageType: 'info' })
+      postToMainData.notification({ message: 'Successfully edited albums.', messageType: 'info' })
     },
     deleteData: async (payload) => {
       const { indexArray, timestamp } = payload
@@ -431,7 +431,7 @@ const editTags = async (
 
   console.log('Successfully edited tags.')
 
-  postToMain.notification({ message: 'Successfully edited tags.', messageType: 'info' })
+  postToMainData.notification({ message: 'Successfully edited tags.', messageType: 'info' })
   return { returnedTagsArray: response }
 }
 
@@ -464,5 +464,5 @@ async function deleteData(indexArray: number[], timestamp: number) {
   })
   console.log('Successfully deleted data.')
 
-  postToMain.notification({ message: 'Successfully deleted data.', messageType: 'info' })
+  postToMainData.notification({ message: 'Successfully deleted data.', messageType: 'info' })
 }

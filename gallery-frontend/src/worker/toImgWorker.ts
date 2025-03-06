@@ -11,6 +11,7 @@ import axios, { AxiosError } from 'axios'
 import { getSrcWithToken } from '@utils/getter'
 import { interceptorImg } from './interceptorImg'
 
+export const postToMainImg = bindActionDispatch(fromImgWorker, self.postMessage.bind(self))
 const controllerMap = new Map<number, AbortController>()
 const workerAxios = axios.create()
 interceptorImg(workerAxios)
@@ -37,7 +38,6 @@ axiosRetry(workerAxios, {
   }
 })
 
-const postToMain = bindActionDispatch(fromImgWorker, self.postMessage.bind(self))
 const handler = createHandler<typeof toImgWorker>({
   async processSmallImage(event: processSmallImagePayload) {
     try {
@@ -73,7 +73,7 @@ const handler = createHandler<typeof toImgWorker>({
       })
 
       const objectUrl = URL.createObjectURL(converted)
-      postToMain.smallImageProcessed({ index: event.index, url: objectUrl })
+      postToMainImg.smallImageProcessed({ index: event.index, url: objectUrl })
     } catch (error) {
       if (axios.isCancel(error)) {
         // Do nothing if the error is due to cancellation
@@ -102,7 +102,7 @@ const handler = createHandler<typeof toImgWorker>({
       const orientedImgBlob = await offscreenCanvas.convertToBlob()
       const objectUrl = URL.createObjectURL(orientedImgBlob)
 
-      postToMain.imageProcessed({ index: event.index, url: objectUrl })
+      postToMainImg.imageProcessed({ index: event.index, url: objectUrl })
     } catch (error) {
       console.error(error)
     }

@@ -12,7 +12,6 @@ import { useModalStore } from '@/store/modalStore'
 import router from '@/script/routes'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
-import { storeToken } from '@/indexedDb/token'
 
 const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 
@@ -93,9 +92,6 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
     unauthorized: async () => {
       redirectionStore.redirection = router.currentRoute.value.fullPath
       await router.push('/login')
-    },
-    renewTimestampToken: async (payload) => {
-      await storeToken(payload.token)
     }
   })
 

@@ -53,11 +53,18 @@ export const toImgWorker = createActionCreators({
  * These actions are used to handle responses from the worker after processing images.
  * ================================================================================ */
 
+interface RenewHashTokenReturnParams {
+  hash: string
+  token: string
+}
+
 // Define actions to be received from the image processing worker
 export const fromImgWorker = createActionCreators({
   smallImageProcessed: (payload: { index: number; url: string }) => payload,
   imageProcessed: (payload: { index: number; url: string }) => payload,
-  unauthorized: () => ({})
+  unauthorized: () => ({}),
+  notification: (payload: NotificationReturnParams) => payload,
+  renewHashToken: (payload: RenewHashTokenReturnParams) => payload
 })
 
 /* ================================================================================
@@ -129,16 +136,11 @@ interface NotificationReturnParams {
   messageType: 'info' | 'warn'
 }
 
-interface RenewTimestampTokenReturnParams {
-  token: string
-}
-
 // Define actions for the worker to send responses back to the main thread
 export const fromDataWorker = createActionCreators({
   returnData: (payload: ReturnDataParams) => payload,
   fetchRowReturn: (payload: FetchRowReturnParams) => payload,
   editTagsReturn: (payload: EditTagsReturnParams) => payload,
   notification: (payload: NotificationReturnParams) => payload,
-  unauthorized: () => ({}),
-  renewTimestampToken: (payload: RenewTimestampTokenReturnParams) => payload
+  unauthorized: () => ({})
 })

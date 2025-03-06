@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/return-await */
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { tokenReturnSchema } from '@/script/common/schemas'
-import { postToMain } from './toDataWorker'
+import { postToMainImg } from './toImgWorker'
 import { getToken } from '@/indexedDb/token'
 import { interceptorData } from './interceptorData'
 
@@ -14,7 +14,10 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
     async (error) => {
       if (!axios.isAxiosError(error)) {
         console.error('Unexpected error:', error)
-        postToMain.notification({ message: 'An unexpected error occurred', messageType: 'warn' })
+        postToMainImg.notification({
+          message: 'An unexpected error occurred',
+          messageType: 'warn'
+        })
         console.error(error)
         return Promise.reject(error instanceof Error ? error : new Error(String(error)))
       }
@@ -26,7 +29,7 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
 
         // Check if the request URL matches any of the specified endpoints
         if (requestUrl === undefined) {
-          postToMain.unauthorized()
+          postToMainImg.unauthorized()
           return
         }
 
@@ -57,6 +60,24 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
 
             if (tokenResponse.status === 200) {
               const newToken = tokenReturnSchema.parse(tokenResponse.data)
+              const urlWithoutParams = requestUrl.split('?')[0]
+              if (urlWithoutParams == null) {
+                throw new Error('urlWithoutParams is undefined')
+              }
+              const segments = urlWithoutParams.split('/')
+              const fileName = segments[segments.length - 1]
+              if (fileName == null) {
+                throw new Error('fileName is undefined')
+              }
+              const hash = fileName.split('.')[0]
+              if (hash == null) {
+                throw new Error('hash is undefined')
+              }
+
+              postToMainImg.renewHashToken({
+                hash: hash,
+                token: newToken.token
+              })
               const newUrl = requestUrl.replace(`token=${expiredToken}`, `token=${newToken.token}`)
               if (config) {
                 config.url = newUrl
@@ -69,13 +90,12 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
             }
           }
         } else {
-          postToMain.unauthorized()
+          postToMainImg.unauthorized()
         }
-        postToMain.notification({ message: 'Unauthorized. Please log in.', messageType: 'warn' })
-      } else if (response) {
-        postToMain.notification({ message: 'An error occurred', messageType: 'warn' })
-      } else {
-        postToMain.notification({ message: 'No response from server', messageType: 'warn' })
+        postToMainImg.notification({
+          message: 'Unauthorized. Please log in.',
+          messageType: 'warn'
+        })
       }
 
       if (!(error instanceof Error && error.name === 'CanceledError')) {
