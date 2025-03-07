@@ -2,9 +2,6 @@ const DB_NAME = 'token'
 const STORE_NAME = 'store'
 const KEY = 'timestampToken'
 
-/**
- * 開啟或建立資料庫
- */
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1)
@@ -31,10 +28,6 @@ function openDB(): Promise<IDBDatabase> {
   })
 }
 
-/**
- * 儲存 token
- * @param value 要儲存的字串
- */
 export async function storeToken(value: string): Promise<void> {
   const db = await openDB()
   return new Promise<void>((resolve, reject) => {
@@ -52,10 +45,6 @@ export async function storeToken(value: string): Promise<void> {
   })
 }
 
-/**
- * 讀取 token
- * @returns token 的字串內容，若不存在則回傳 null
- */
 export async function getToken(): Promise<string | null> {
   const db = await openDB()
   return new Promise<string | null>((resolve, reject) => {
@@ -73,9 +62,6 @@ export async function getToken(): Promise<string | null> {
   })
 }
 
-/**
- * 刪除 token
- */
 export async function deleteToken(): Promise<void> {
   const db = await openDB()
   return new Promise<void>((resolve, reject) => {
