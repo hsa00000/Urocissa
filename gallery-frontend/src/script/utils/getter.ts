@@ -113,9 +113,17 @@ export async function searchByTag(tag: string, router: Router) {
       break
   }
 }
+// 適用於完整 URL（包含 http:// 或 https://）
+export function extractHashFromAbsoluteUrl(url: URL): string | null {
+  const segments = url.pathname.split('/').filter(Boolean) // 移除空字串
+  const lastSegment = segments.pop() // 取得最後一個片段
 
-export function extractHashFromUrl(url: URL): string | null {
-  const segments = url.pathname.split('/') // 直接從 URL pathname 取出 segments
+  return lastSegment?.split('.').shift() ?? null // 移除副檔名，保留 hash
+}
+
+// 適用於相對路徑（不含 http:// 或 https://）
+export function extractHashFromPath(path: string): string | null {
+  const segments = path.split('/').filter(Boolean) // 移除空字串
   const lastSegment = segments.pop() // 取得最後一個片段
 
   return lastSegment?.split('.').shift() ?? null // 移除副檔名，保留 hash

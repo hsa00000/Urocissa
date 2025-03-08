@@ -7,8 +7,8 @@ export default defineConfig({
   plugins: [
     vue(),
     VitePWA({
-      srcDir: 'src', // 指定 Service Worker 位置
-      filename: 'worker/serviceWorker.ts', // Service Worker 檔案名稱
+      srcDir: 'src/worker', // 指定 Service Worker 位置
+      filename: 'serviceWorker.ts', // Service Worker 檔案名稱
       strategies: 'injectManifest', // 使用 injectManifest，不啟用 PWA
       /* injectRegister: false, // 不自動註冊 Service Worker */
       manifest: false, // 不啟用 Web App Manifest

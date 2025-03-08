@@ -1,5 +1,5 @@
 import { getHashToken } from '@/indexedDb/hashToken'
-import { extractHashFromUrl } from '@/script/utils/getter'
+import { extractHashFromAbsoluteUrl } from '@/script/utils/getter'
 
 self.addEventListener('fetch', (event: unknown) => {
   if (!(event instanceof FetchEvent)) {
@@ -14,7 +14,7 @@ self.addEventListener('fetch', (event: unknown) => {
     return
   }
 
-  const hash = extractHashFromUrl(url)
+  const hash = extractHashFromAbsoluteUrl(url)
   if (hash === null) {
     console.error('[Service Worker] Failed to extract hash from URL:', url.href)
     event.respondWith(new Response('Invalid URL hash', { status: 400 }))

@@ -4,7 +4,8 @@ import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMainImg } from './toImgWorker'
 import { getTimestampToken } from '@/indexedDb/timestampToken'
 import { interceptorData } from './interceptorData'
-import { storeHashToken } from '@/indexedDb/hashToken'
+import { getHashToken, storeHashToken } from '@/indexedDb/hashToken'
+import { extractHashFromPath } from '@/script/utils/getter'
 
 const subAxios = axios.create()
 interceptorData(subAxios)
@@ -13,8 +14,6 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
   axiosInstance.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error) => {
-      console.log('getted', error)
-
       if (!axios.isAxiosError(error)) {
         console.error('Unexpected error:', error)
         postToMainImg.notification({
@@ -38,7 +37,13 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
 
         if (requestUrl.startsWith('/object')) {
           try {
-            const expiredToken = new URLSearchParams(requestUrl.split('?')[1]).get('token')
+            const hash = extractHashFromPath(requestUrl)
+
+            if (hash === null) {
+              throw new Error('Failed to extract hash from URL')
+            }
+
+            const expiredToken = await getHashToken(hash)
 
             if (expiredToken == null) {
               throw new Error('No hash token found in query parameters')
@@ -63,19 +68,6 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
 
             if (tokenResponse.status === 200) {
               const newToken = tokenReturnSchema.parse(tokenResponse.data)
-              const urlWithoutParams = requestUrl.split('?')[0]
-              if (urlWithoutParams == null) {
-                throw new Error('urlWithoutParams is undefined')
-              }
-              const segments = urlWithoutParams.split('/')
-              const fileName = segments[segments.length - 1]
-              if (fileName == null) {
-                throw new Error('fileName is undefined')
-              }
-              const hash = fileName.split('.')[0]
-              if (hash == null) {
-                throw new Error('hash is undefined')
-              }
 
               await storeHashToken(hash, newToken.token)
 

@@ -47,8 +47,7 @@ export function refreshAlbumMetadata(albumId: string) {
         index: albumIndex,
         hash: coverHash,
         devicePixelRatio: window.devicePixelRatio,
-        jwt: getCookiesJwt(),
-        token: ''
+        jwt: getCookiesJwt()
       })
 
       postToWorker.processSmallImage({
@@ -58,8 +57,7 @@ export function refreshAlbumMetadata(albumId: string) {
         height: 300,
         devicePixelRatio: window.devicePixelRatio,
         jwt: getCookiesJwt(),
-        albumMode: true,
-        token: ''
+        albumMode: true
       })
 
       messageStore.showInfo('Edit successfully.')
