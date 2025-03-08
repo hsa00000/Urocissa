@@ -2,7 +2,7 @@
 import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMainData } from './toDataWorker'
-import { storeToken } from '@/indexedDb/token'
+import { storeTimestampToken } from '@/indexedDb/timestampToken'
 
 interface QueuedRequest {
   config: InternalAxiosRequestConfig | undefined
@@ -68,7 +68,7 @@ export function interceptorData(axiosInstance: AxiosInstance): void {
 
             if (tokenResponse.status === 200) {
               const newToken = tokenReturnSchema.parse(tokenResponse.data)
-              await storeToken(newToken.token)
+              await storeTimestampToken(newToken.token)
 
               // Update original failed request and retry
               if (config) {

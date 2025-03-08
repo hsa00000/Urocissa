@@ -2,7 +2,7 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMainImg } from './toImgWorker'
-import { getToken } from '@/indexedDb/token'
+import { getTimestampToken } from '@/indexedDb/timestampToken'
 import { interceptorData } from './interceptorData'
 
 const subAxios = axios.create()
@@ -41,7 +41,7 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
               throw new Error('No hash token found in query parameters')
             }
 
-            const timestampToken = await getToken()
+            const timestampToken = await getTimestampToken()
             if (timestampToken === null) {
               throw new Error('No timestampToken found in query parameters')
             }

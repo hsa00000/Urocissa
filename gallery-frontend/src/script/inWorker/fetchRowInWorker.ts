@@ -6,7 +6,7 @@ import { toDataWorker } from '@/worker/workerApi'
 import { clamp } from 'lodash'
 import { bindActionDispatch } from 'typesafe-agent-events'
 import { IsolationId } from '../common/types'
-import { getToken } from '@/indexedDb/token'
+import { getTimestampToken } from '@/indexedDb/timestampToken'
 
 /**
  * Fetches a row of data using a web worker if it isn't already queued.
@@ -32,7 +32,7 @@ export function fetchRowInWorker(index: number, isolationId: IsolationId) {
     return // If a specific row is anchored, this make sure to fetch only that row
   }
 
-  getToken()
+  getTimestampToken()
     .then((timestampToken) => {
       if (timestampToken === null) {
         console.error('timestamp token not found')

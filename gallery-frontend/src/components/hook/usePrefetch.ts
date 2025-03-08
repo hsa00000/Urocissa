@@ -11,7 +11,7 @@ import { useInitializedStore } from '@/store/initializedStore'
 import { useTagStore } from '@/store/tagStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { fetchScrollbar } from '@/script/fetch/scrollbar'
-import { storeToken } from '@/indexedDb/token'
+import { storeTimestampToken } from '@/indexedDb/timestampToken'
 
 export function usePrefetch(
   filterJsonString: string | null,
@@ -70,7 +70,7 @@ async function handlePrefetchReturn(prefetchReturn: PrefetchReturn, isolationId:
   prefetchStore.calculateLength(prefetch.dataLength)
   prefetchStore.locateTo = prefetch.locateTo
 
-  await storeToken(token)
+  await storeTimestampToken(token)
 
   initializedStore.initialized = true
 

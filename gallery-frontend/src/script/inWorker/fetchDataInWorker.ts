@@ -3,7 +3,7 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import { bindActionDispatch } from 'typesafe-agent-events'
 import { toDataWorker } from '@/worker/workerApi'
 import { FetchDataMethod, IsolationId } from '../common/types'
-import { getToken } from '@/indexedDb/token'
+import { getTimestampToken } from '@/indexedDb/timestampToken'
 
 export function fetchDataInWorker(
   fetchMethod: FetchDataMethod,
@@ -26,7 +26,7 @@ export function fetchDataInWorker(
   })
   const timestamp = prefetchStore.timestamp
 
-  getToken()
+  getTimestampToken()
     .then((timestampToken) => {
       if (timestampToken === null) {
         console.error('timestampToken not found')

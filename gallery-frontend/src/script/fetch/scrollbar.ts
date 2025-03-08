@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { scrollbarDataSchema } from '../common/schemas'
 import { useScrollbarStore } from '@/store/scrollbarStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
-import { getToken } from '@/indexedDb/token'
+import { getTimestampToken } from '@/indexedDb/timestampToken'
 
 export async function fetchScrollbar(isolationId: IsolationId) {
   const prefetchStore = usePrefetchStore(isolationId)
@@ -12,7 +12,7 @@ export async function fetchScrollbar(isolationId: IsolationId) {
   const scrollbarStore = useScrollbarStore(isolationId)
 
   const timestamp = prefetchStore.timestamp
-  const timestampToken = await getToken()
+  const timestampToken = await getTimestampToken()
   const response = await axios.get<ScrollbarData[]>(`/get/get-scroll-bar?timestamp=${timestamp}`, {
     headers: {
       Authorization: `Bearer ${timestampToken}`

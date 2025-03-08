@@ -1,5 +1,5 @@
 const DB_NAME = 'token'
-const STORE_NAME = 'store'
+const STORE_NAME = 'timestampToken'
 const KEY = 'timestampToken'
 
 function openDB(): Promise<IDBDatabase> {
@@ -28,7 +28,7 @@ function openDB(): Promise<IDBDatabase> {
   })
 }
 
-export async function storeToken(value: string): Promise<void> {
+export async function storeTimestampToken(value: string): Promise<void> {
   const db = await openDB()
   return new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite')
@@ -40,12 +40,12 @@ export async function storeToken(value: string): Promise<void> {
     }
 
     request.onerror = () => {
-      reject(new Error('Error storing token'))
+      reject(new Error('Error storing timestamp token'))
     }
   })
 }
 
-export async function getToken(): Promise<string | null> {
+export async function getTimestampToken(): Promise<string | null> {
   const db = await openDB()
   return new Promise<string | null>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readonly')
@@ -57,12 +57,12 @@ export async function getToken(): Promise<string | null> {
     }
 
     request.onerror = () => {
-      reject(new Error('Error retrieving token'))
+      reject(new Error('Error retrieving timestamp token'))
     }
   })
 }
 
-export async function deleteToken(): Promise<void> {
+export async function deleteTimestampToken(): Promise<void> {
   const db = await openDB()
   return new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite')
@@ -74,7 +74,7 @@ export async function deleteToken(): Promise<void> {
     }
 
     request.onerror = () => {
-      reject(new Error('Error deleting token'))
+      reject(new Error('Error deleting timestamp token'))
     }
   })
 }
