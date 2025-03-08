@@ -1,10 +1,26 @@
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-
+import { VitePWA } from 'vite-plugin-pwa'
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    VitePWA({
+      srcDir: 'src', // 指定 Service Worker 位置
+      filename: 'worker/serviceWorker.ts', // Service Worker 檔案名稱
+      strategies: 'injectManifest', // 使用 injectManifest，不啟用 PWA
+      /* injectRegister: false, // 不自動註冊 Service Worker */
+      manifest: false, // 不啟用 Web App Manifest
+      injectManifest: {
+        injectionPoint: undefined // 不插入預快取清單
+      },
+      devOptions: {
+        enabled: true, // 在開發模式啟用 Service Worker
+        type: 'module' // 如果你的 SW 內有 import，要設為 "module"
+      }
+    })
+  ],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

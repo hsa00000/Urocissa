@@ -14,6 +14,7 @@ gallery-frontend/config.ts
 # Ignore build and generated files that should not be version-controlled
 gallery-frontend/dist
 gallery-frontend/node_modules
+gallery-frontend/dev-dist
 gallery-backend/target
 gallery-backend/test
 gallery-backend/db
