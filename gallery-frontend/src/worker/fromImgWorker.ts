@@ -3,13 +3,11 @@ import { createHandler } from 'typesafe-agent-events'
 import { fromImgWorker } from '@/worker/workerApi'
 import router from '@/script/routes'
 import { IsolationId } from '@/script/common/types'
-import { useDataStore } from '@/store/dataStore'
 import { useMessageStore } from '@/store/messageStore'
 const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 
 export function handleImgWorker(imgWorker: Worker, isolationId: IsolationId) {
   const imgStore = useImgStore(isolationId)
-  const dataStore = useDataStore(isolationId)
   const messageStore = useMessageStore('mainId')
 
   const handler = createHandler<typeof fromImgWorker>({
@@ -26,23 +24,6 @@ export function handleImgWorker(imgWorker: Worker, isolationId: IsolationId) {
       messageStore.message = payload.message
       messageStore.warn = payload.messageType === 'warn'
       messageStore.showMessage = true
-    },
-    renewHashToken: (payload) => {
-      const index = dataStore.hashMapData.get(payload.hash)
-      if (index !== undefined) {
-        const abstractData = dataStore.data.get(index)
-        if (abstractData !== undefined) {
-          const database = abstractData.database
-          if (database) {
-            database.token = payload.token
-          } else {
-            const album = abstractData.album
-            if (album) {
-              album.token = payload.token
-            }
-          }
-        }
-      }
     }
   })
 

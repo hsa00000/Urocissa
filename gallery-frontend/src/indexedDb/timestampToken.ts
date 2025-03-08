@@ -1,4 +1,4 @@
-const DB_NAME = 'token'
+const DB_NAME = 'timestampToken'
 const STORE_NAME = 'timestampToken'
 const KEY = 'timestampToken'
 

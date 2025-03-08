@@ -8,8 +8,8 @@ import type {
 } from '@/worker/workerApi'
 import axiosRetry from 'axios-retry'
 import axios, { AxiosError } from 'axios'
-import { getSrcWithToken } from '@utils/getter'
 import { interceptorImg } from './interceptorImg'
+import { getSrc } from '@/../config'
 
 export const postToMainImg = bindActionDispatch(fromImgWorker, self.postMessage.bind(self))
 const controllerMap = new Map<number, AbortController>()
@@ -45,7 +45,7 @@ const handler = createHandler<typeof toImgWorker>({
       controllerMap.set(event.index, controller)
 
       const response = await workerAxios.get<Blob>(
-        getSrcWithToken(event.hash, false, 'jpg', event.jwt, undefined, event.token),
+        getSrc(event.hash, false, 'jpg', event.jwt, undefined),
         {
           signal: controller.signal,
           responseType: 'blob'
@@ -85,7 +85,7 @@ const handler = createHandler<typeof toImgWorker>({
   async processImage(event: processImagePayload) {
     try {
       const response = await workerAxios.get<Blob>(
-        getSrcWithToken(event.hash, false, 'jpg', event.jwt, undefined, event.token),
+        getSrc(event.hash, false, 'jpg', event.jwt, undefined),
         {
           responseType: 'blob'
         }

@@ -4,7 +4,6 @@ import { useDataStore } from '@/store/dataStore'
 import Cookies from 'js-cookie'
 import { escapeAndWrap } from '@utils/escape'
 import { navBarHeight } from '../common/constants'
-import { getSrc } from '@/../config'
 
 export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded) {
   const isolationId = route.meta.isReadPage ? 'subId' : 'mainId'
@@ -115,16 +114,9 @@ export async function searchByTag(tag: string, router: Router) {
   }
 }
 
-export function getSrcWithToken(
-  hash: string,
-  original: boolean,
-  ext: string,
-  _password: string,
-  _customParams: unknown,
-  token: string
-) {
-  const url = getSrc(hash, original, ext, _password, _customParams)
-  const urlWithToken = `${url}?token=${token}`
+export function extractHashFromUrl(url: URL): string | null {
+  const segments = url.pathname.split('/') // 直接從 URL pathname 取出 segments
+  const lastSegment = segments.pop() // 取得最後一個片段
 
-  return urlWithToken
+  return lastSegment?.split('.').shift() ?? null // 移除副檔名，保留 hash
 }

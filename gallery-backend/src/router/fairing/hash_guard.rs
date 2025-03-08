@@ -54,21 +54,21 @@ impl<'r> FromRequest<'r> for HashGuard {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        // Extract token from query parameters
-        let token_opt = req
-            .uri()
-            .query()
-            .and_then(|query| query.segments().find(|(key, _)| *key == "token"))
-            .and_then(|(_, value)| Some(value));
-
-        let token = match token_opt {
-            Some(token) => token,
+        let auth_header = match req.headers().get_one("Authorization") {
+            Some(header) => header,
             None => {
-                warn!("Request is missing the 'token' query parameter.");
+                warn!("Request is missing the Authorization header.");
                 return Outcome::Forward(Status::Unauthorized);
             }
         };
 
+        let token = match auth_header.strip_prefix("Bearer ") {
+            Some(token) => token,
+            None => {
+                warn!("Authorization header format is invalid. Expected 'Bearer <token>'.");
+                return Outcome::Forward(Status::Unauthorized);
+            }
+        };
         // Decode the token
         let token_data = match decode::<HashClaims>(
             token,

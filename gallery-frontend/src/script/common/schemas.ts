@@ -59,8 +59,7 @@ export const DataBaseParse = z.object({
 export const DataBaseSchema = DataBaseParse.extend({
   timestamp: z.number(),
   thumbhashUrl: z.string(), // need initialize
-  filename: z.string(), // need initialize
-  token: z.string()
+  filename: z.string() // need initialize
 })
 
 export const ShareSchema = z.object({
@@ -94,8 +93,7 @@ export const AlbumParse = z.object({
 
 export const AlbumSchema = AlbumParse.extend({
   timestamp: z.number(),
-  thumbhashUrl: z.string().nullable(), // need initialize
-  token: z.string()
+  thumbhashUrl: z.string().nullable() // need initialize
 })
 
 export const AbstractDataParseSchema = z.union([

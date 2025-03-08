@@ -25,7 +25,6 @@ export interface processSmallImagePayload {
   devicePixelRatio: number
   jwt: string
   albumMode?: boolean
-  token: string
 }
 
 export interface processImagePayload {
@@ -33,7 +32,6 @@ export interface processImagePayload {
   hash: string
   devicePixelRatio: number
   jwt: string
-  token: string
 }
 
 export interface processAbortPayload {
@@ -53,18 +51,12 @@ export const toImgWorker = createActionCreators({
  * These actions are used to handle responses from the worker after processing images.
  * ================================================================================ */
 
-interface RenewHashTokenReturnParams {
-  hash: string
-  token: string
-}
-
 // Define actions to be received from the image processing worker
 export const fromImgWorker = createActionCreators({
   smallImageProcessed: (payload: { index: number; url: string }) => payload,
   imageProcessed: (payload: { index: number; url: string }) => payload,
   unauthorized: () => ({}),
-  notification: (payload: NotificationReturnParams) => payload,
-  renewHashToken: (payload: RenewHashTokenReturnParams) => payload
+  notification: (payload: NotificationReturnParams) => payload
 })
 
 /* ================================================================================

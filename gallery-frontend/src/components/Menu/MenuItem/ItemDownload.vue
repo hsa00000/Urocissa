@@ -11,7 +11,8 @@ import { saveAs } from 'file-saver'
 import { fetchDataInWorker } from '@/script/inWorker/fetchDataInWorker'
 import { getCookiesJwt, getIsolationIdByRoute } from '@utils/getter'
 import { AbstractData } from '@/script/common/types'
-import { getSrcWithToken } from '@utils/getter'
+import { getSrc } from '@/../config'
+
 const props = defineProps<{
   indexList: number[]
 }>()
@@ -68,13 +69,12 @@ const downloadAllFiles = async () => {
         }
 
         if (metadata.database) {
-          const url = getSrcWithToken(
+          const url = getSrc(
             metadata.database.hash,
             true,
             metadata.database.ext,
             getCookiesJwt(),
-            undefined,
-            metadata.database.token
+            undefined
           )
           try {
             const response = await axios.get<Blob>(url, { responseType: 'blob' })

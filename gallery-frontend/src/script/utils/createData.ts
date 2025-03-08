@@ -5,29 +5,22 @@ import { AbstractData, Album, Database } from '../common/types.ts'
 
 export function createDataBase(
   databaseParse: z.infer<typeof DataBaseParse>,
-  timestamp: number,
-  token: string
+  timestamp: number
 ): Database {
   const database: Database = {
     ...databaseParse,
     timestamp: timestamp,
     thumbhashUrl: thumbHashToDataURL(databaseParse.thumbhash),
-    filename: databaseParse.alias[0]?.file.split('/').pop() ?? '',
-    token
+    filename: databaseParse.alias[0]?.file.split('/').pop() ?? ''
   }
   return database
 }
 
-export function createAlbum(
-  albumParse: z.infer<typeof AlbumParse>,
-  timestamp: number,
-  token: string
-): Album {
+export function createAlbum(albumParse: z.infer<typeof AlbumParse>, timestamp: number): Album {
   const album: Album = {
     ...albumParse,
     timestamp: timestamp,
-    thumbhashUrl: albumParse.thumbhash ? thumbHashToDataURL(albumParse.thumbhash) : null,
-    token
+    thumbhashUrl: albumParse.thumbhash ? thumbHashToDataURL(albumParse.thumbhash) : null
   }
   return album
 }

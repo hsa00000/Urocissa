@@ -4,6 +4,7 @@ import { tokenReturnSchema } from '@/script/common/schemas'
 import { postToMainImg } from './toImgWorker'
 import { getTimestampToken } from '@/indexedDb/timestampToken'
 import { interceptorData } from './interceptorData'
+import { storeHashToken } from '@/indexedDb/hashToken'
 
 const subAxios = axios.create()
 interceptorData(subAxios)
@@ -12,6 +13,8 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
   axiosInstance.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error) => {
+      console.log('getted', error)
+
       if (!axios.isAxiosError(error)) {
         console.error('Unexpected error:', error)
         postToMainImg.notification({
@@ -74,13 +77,9 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
                 throw new Error('hash is undefined')
               }
 
-              postToMainImg.renewHashToken({
-                hash: hash,
-                token: newToken.token
-              })
-              const newUrl = requestUrl.replace(`token=${expiredToken}`, `token=${newToken.token}`)
+              await storeHashToken(hash, newToken.token)
+
               if (config) {
-                config.url = newUrl
                 return axiosInstance.request(config)
               }
             }
