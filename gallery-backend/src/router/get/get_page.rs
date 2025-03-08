@@ -1,6 +1,6 @@
 use rocket::fs::NamedFile;
 use rocket::http::Status;
-use rocket::response::{content, Redirect};
+use rocket::response::{Redirect, content};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -164,6 +164,20 @@ pub async fn setting() -> Option<NamedFile> {
 #[get("/favicon.ico")]
 pub async fn favicon() -> Option<NamedFile> {
     NamedFile::open(Path::new("../gallery-frontend/dist/favicon.ico"))
+        .await
+        .ok()
+}
+
+#[get("/registerSW.js")]
+pub async fn sregister_sw() -> Option<NamedFile> {
+    NamedFile::open(Path::new("../gallery-frontend/dist/registerSW.js"))
+        .await
+        .ok()
+}
+
+#[get("/serviceWorker.js")]
+pub async fn service_worker() -> Option<NamedFile> {
+    NamedFile::open(Path::new("../gallery-frontend/dist/serviceWorker.js"))
         .await
         .ok()
 }
