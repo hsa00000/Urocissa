@@ -14,7 +14,7 @@
     "@mdi/font": "^7.4.47",
     "@misskey-dev/browser-image-resizer": "^2024.1.0",
     "@vueuse/core": "^12.5.0",
-    "axios": "^1.7.9",
+    "axios": "^1.8.2",
     "axios-retry": "^4.5.0",
     "chevrotain": "^11.0.3",
     "delay": "^6.0.0",
