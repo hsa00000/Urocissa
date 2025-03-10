@@ -44,8 +44,9 @@ const handleLogin = async () => {
       httpOnly: false, // Set to true for better security (cannot access via JavaScript)
       secure: true, // Ensure it's only sent over HTTPS
       sameSite: 'Strict', // Prevent CSRF attacks
-      expires: 1 // Optional: Expires in 1 day
+      expires: 14 // Optional: Expires in 1 day
     })
+
     const redirection = redirectionStore.redirection
     if (redirection !== null) {
       await router.push(redirection)

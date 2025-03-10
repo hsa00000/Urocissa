@@ -24,7 +24,7 @@ impl Claims {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_secs()
-            + 86400;
+            + 86400 * 14; // 14 days
 
         Self {
             album_id: None,
