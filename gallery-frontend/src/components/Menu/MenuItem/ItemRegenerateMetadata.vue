@@ -27,15 +27,15 @@ const reindex = async () => {
     timestamp: prefetchStore.timestamp
   }
   try {
-    messageStore.showInfo('Reindexing...')
+    messageStore.info('Reindexing...')
     await axios.post('/put/reindex', regenerateData, {
       headers: {
         'Content-Type': 'application/json'
       }
     })
-    messageStore.showInfo('Regenerating metadata successfully')
+    messageStore.success('Regenerating metadata successfully')
   } catch (error) {
-    messageStore.showWarn(`Regenerating metadata failed: ${String(error)}`)
+    messageStore.error(`Regenerating metadata failed: ${String(error)}`)
   }
 }
 </script>

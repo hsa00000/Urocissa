@@ -1,5 +1,5 @@
 // Import necessary types from the commonType module
-import { FetchDataMethod, RowWithOffset, SlicedData, TagInfo } from '@type/types'
+import { FetchDataMethod, MessageColor, RowWithOffset, SlicedData, TagInfo } from '@type/types'
 
 // Import createActionCreators from typesafe-agent-events for defining strongly-typed actions
 import { createActionCreators } from 'typesafe-agent-events'
@@ -122,8 +122,8 @@ interface EditTagsReturnParams {
   returnedTagsArray: TagInfo[] | undefined
 }
 interface NotificationReturnParams {
-  message: string
-  messageType: 'info' | 'warn'
+  text: string
+  color: MessageColor
 }
 
 // Define actions for the worker to send responses back to the main thread

@@ -9,9 +9,8 @@
       <DropZoneModal v-if="!isMobile()" />
       <router-view v-slot="{ Component }" :key="routeKey">
         <component :is="Component" />
-      </router-view>
-    </v-main>
-    <NotificationWarn />
+      </router-view> </v-main
+    ><v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
   </v-app>
 </template>
 
@@ -20,12 +19,13 @@ import { useRoute } from 'vue-router'
 import { computed } from 'vue'
 import { useScrollbarStore } from '@/store/scrollbarStore'
 import { useRerenderStore } from '@/store/rerenderStore'
-import NotificationWarn from '@/components/NotificationWarn.vue'
+import { useMessageStore } from '@/store/messageStore'
 import DropZoneModal from './Modal/DropZoneModal.vue'
 import isMobile from 'is-mobile'
 const scrollbarStore = useScrollbarStore('mainId')
 const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
 const rerenderStore = useRerenderStore('mainId')
+const messageStore = useMessageStore('mainId')
 const route = useRoute()
 
 // The routeKey is used to ensure that the router-view reloads the Home.vue component properly.

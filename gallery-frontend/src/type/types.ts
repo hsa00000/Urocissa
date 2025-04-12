@@ -29,6 +29,11 @@ export interface SlicedData {
   data: AbstractData
 }
 
+export interface Message {
+  text: string
+  color: MessageColor
+}
+
 export type Alias = z.infer<typeof AliasSchema>
 export type TagInfo = z.infer<typeof tagInfoSchema>
 export type AlbumInfo = z.infer<typeof albumInfoSchema>
@@ -46,3 +51,4 @@ export type PublicConfig = z.infer<typeof PublicConfigSchema>
 export type IsolationId = 'mainId' | 'subId' | 'tempId' | 'shareId'
 export type FetchDataMethod = 'batch' | 'single'
 export type TokenReturn = z.infer<typeof tokenReturnSchema>
+export type MessageColor = 'error' | 'success' | 'info'

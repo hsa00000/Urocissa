@@ -29,7 +29,7 @@ const regenerateThumbnailByFrame = async () => {
 
       // Append the file
       formData.append('file', currentFrameBlob)
-      messageStore.showInfo('Regenerating thumbnail...')
+      messageStore.info('Regenerating thumbnail...')
 
       const response = await axios.put('/put/regenerate-thumbnail-with-frame', formData, {
         headers: {
@@ -42,11 +42,11 @@ const regenerateThumbnailByFrame = async () => {
         cache: 'reload'
       })
       await blobHeader.blob()
-      messageStore.showInfo('Regenerating thumbnail successfually')
+      messageStore.success('Regenerating thumbnail successfually')
       console.log('Response:', response.data)
     }
   } catch (err) {
-    messageStore.showWarn(`Regenerating thumbnail failed ${String(err)}`)
+    messageStore.error(`Regenerating thumbnail failed ${String(err)}`)
   }
 }
 </script>

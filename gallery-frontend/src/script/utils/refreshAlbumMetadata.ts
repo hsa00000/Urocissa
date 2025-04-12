@@ -57,7 +57,7 @@ export function refreshAlbumMetadata(albumId: string) {
         albumMode: true
       })
 
-      messageStore.showInfo('Edit successfully.')
+      messageStore.success(`Album cover updated successfully`)
       stopWatch()
     }
   )

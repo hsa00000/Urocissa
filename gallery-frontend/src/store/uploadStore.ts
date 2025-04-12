@@ -125,14 +125,14 @@ export const useUploadStore = (isolationId: IsolationId) =>
           })
           this.status = 'Completed'
 
-          messageStore.showInfo('Files uploaded successfully!')
+          messageStore.success('Files uploaded successfully')
         } catch (error) {
           console.error('There was an error uploading the files: ', error)
 
           if (error instanceof Error) {
-            messageStore.showWarn(`There was an error uploading the files: ${error.message}`)
+            messageStore.error(`There was an error uploading the files: ${error.message}`)
           } else {
-            messageStore.showWarn(`There was an error uploading the files: ${String(error)}`)
+            messageStore.error(`There was an error uploading the files: ${String(error)}`)
           }
         }
       },

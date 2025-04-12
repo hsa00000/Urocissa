@@ -1,27 +1,23 @@
-import { IsolationId } from '@type/types'
+import { IsolationId, Message, MessageColor } from '@type/types'
 import { defineStore } from 'pinia'
 
 export const useMessageStore = (isolationId: IsolationId) =>
   defineStore('messageStore' + isolationId, {
-    state: (): {
-      message: string
-      showMessage: boolean
-      warn: boolean
-    } => ({
-      message: '',
-      showMessage: false,
-      warn: false
+    state: (): { queue: Message[] } => ({
+      queue: []
     }),
     actions: {
-      showInfo(message: string) {
-        this.message = message
-        this.warn = false
-        this.showMessage = true
+      push(text: string, color: MessageColor) {
+        this.queue.push({ text, color })
       },
-      showWarn(message: string) {
-        this.message = message
-        this.warn = true
-        this.showMessage = true
+      error(text: string) {
+        this.push(text, 'error')
+      },
+      success(text: string) {
+        this.push(text, 'success')
+      },
+      info(text: string) {
+        this.push(text, 'info')
       }
     }
   })()

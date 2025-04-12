@@ -27,14 +27,14 @@ export async function createAlbum(
       }
     })
 
-    messageStore.showInfo('Album created successfully.')
+    messageStore.success('Album created successfully.')
 
     const newAlbumId = response.data
     await albumStore.fetchAlbums()
     return newAlbumId
   } catch (error) {
     console.error('Error creating album:', error)
-    messageStore.showWarn('Failed to create album.')
+    messageStore.error('Failed to create album.')
   }
 }
 

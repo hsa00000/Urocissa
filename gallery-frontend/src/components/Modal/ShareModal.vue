@@ -198,6 +198,6 @@ const createLink = async () => {
 
 async function performCopy(text: string) {
   await copy(text)
-  messageStore.showInfo('Url copied')
+  messageStore.success('Url copied')
 }
 </script>

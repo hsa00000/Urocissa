@@ -1,5 +1,5 @@
 import { useDataStore } from '@/store/dataStore'
-import { IsolationId, SlicedDataItem } from '@type/types'
+import { IsolationId, MessageColor, SlicedDataItem } from '@type/types'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useTagStore } from '@/store/tagStore'
@@ -78,15 +78,12 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       if (payload.returnedTagsArray !== undefined) {
         tagStore.applyTags(payload.returnedTagsArray)
       } else {
-        console.warn('editTags did not find tags')
+        console.warn('Returned tags array is undefined')
       }
       modalStore.showEditTagsModal = false
-      messageStore.showMessage = true
     },
-    notification: function (payload: { message: string; messageType: 'info' | 'warn' }): void {
-      messageStore.message = payload.message
-      messageStore.warn = payload.messageType === 'warn'
-      messageStore.showMessage = true
+    notification: function (payload: { text: string; color: MessageColor }): void {
+      messageStore.push(payload.text, payload.color)
     },
     unauthorized: async () => {
       await redirectionStore.redirectionToLogin()

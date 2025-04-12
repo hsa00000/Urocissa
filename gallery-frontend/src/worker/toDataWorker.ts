@@ -96,7 +96,7 @@ self.addEventListener('message', (e) => {
       const { indexSet, addAlbumsArray, removeAlbumsArray, timestamp } = payload
       await editAlbums(Array.from(indexSet), addAlbumsArray, removeAlbumsArray, timestamp)
 
-      postToMainData.notification({ message: 'Successfully edited albums.', messageType: 'info' })
+      postToMainData.notification({ text: 'Successfully edited albums.', color: 'success' })
     },
     deleteData: async (payload) => {
       const { indexArray, timestamp } = payload
@@ -431,7 +431,7 @@ const editTags = async (
 
   console.log('Successfully edited tags.')
 
-  postToMainData.notification({ message: 'Successfully edited tags.', messageType: 'info' })
+  postToMainData.notification({ text: 'Successfully edited tags.', color: 'success' })
   return { returnedTagsArray: response }
 }
 
@@ -464,5 +464,5 @@ async function deleteData(indexArray: number[], timestamp: number) {
   })
   console.log('Successfully deleted data.')
 
-  postToMainData.notification({ message: 'Successfully deleted data.', messageType: 'info' })
+  postToMainData.notification({ text: 'Successfully deleted data.', color: 'success' })
 }
