@@ -7,9 +7,9 @@ import {
   EditTagsParams,
   FetchDataParams,
   FetchRowParams,
-  processAbortPayload,
-  processImagePayload,
-  processSmallImagePayload,
+  ProcessAbortPayload,
+  ProcessImagePayload,
+  ProcessSmallImagePayload,
   toDataWorker,
   toImgWorker
 } from '@/worker/workerApi'
@@ -17,9 +17,9 @@ import { defineStore } from 'pinia'
 import { bindActionDispatch } from 'typesafe-agent-events'
 
 interface postToWorkerType {
-  processSmallImage: (payload: processSmallImagePayload) => void
-  processImage: (payload: processImagePayload) => void
-  processAbort: (payload: processAbortPayload) => void
+  processSmallImage: (payload: ProcessSmallImagePayload) => void
+  processImage: (payload: ProcessImagePayload) => void
+  processAbort: (payload: ProcessAbortPayload) => void
 }
 interface postToWorkerTypeB {
   fetchData: (payload: FetchDataParams) => void

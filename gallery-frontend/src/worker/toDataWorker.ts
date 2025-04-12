@@ -29,9 +29,9 @@ import { storeHashToken } from '@/indexedDb/hashToken'
 
 const shouldProcessBatch: number[] = []
 const fetchedRowData = new Map<number, Row>()
-export const postToMainData = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
+const postToMainData = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
 const workerAxios = axios.create()
-interceptorData(workerAxios)
+interceptorData(workerAxios, postToMainData)
 
 self.addEventListener('message', (e) => {
   const handler = createHandler<typeof toDataWorker>({

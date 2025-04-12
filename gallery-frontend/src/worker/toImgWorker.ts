@@ -1,10 +1,10 @@
 import { readAndCompressImage } from '@misskey-dev/browser-image-resizer'
 import { bindActionDispatch, createHandler } from 'typesafe-agent-events'
 import { fromImgWorker, toImgWorker } from '@/worker/workerApi'
-import type {
-  processAbortPayload,
-  processImagePayload,
-  processSmallImagePayload
+import {
+  ProcessAbortPayload,
+  ProcessImagePayload,
+  ProcessSmallImagePayload
 } from '@/worker/workerApi'
 import axiosRetry from 'axios-retry'
 import axios, { AxiosError } from 'axios'
@@ -14,7 +14,7 @@ import { getSrc } from '@/../config'
 export const postToMainImg = bindActionDispatch(fromImgWorker, self.postMessage.bind(self))
 const controllerMap = new Map<number, AbortController>()
 const workerAxios = axios.create()
-interceptorImg(workerAxios)
+interceptorImg(workerAxios, postToMainImg)
 
 axiosRetry(workerAxios, {
   retries: 0,
@@ -39,7 +39,7 @@ axiosRetry(workerAxios, {
 })
 
 const handler = createHandler<typeof toImgWorker>({
-  async processSmallImage(event: processSmallImagePayload) {
+  async processSmallImage(event: ProcessSmallImagePayload) {
     try {
       const controller = new AbortController()
       controllerMap.set(event.index, controller)
@@ -82,7 +82,7 @@ const handler = createHandler<typeof toImgWorker>({
       console.error(error)
     }
   },
-  async processImage(event: processImagePayload) {
+  async processImage(event: ProcessImagePayload) {
     try {
       const response = await workerAxios.get<Blob>(
         getSrc(event.hash, false, 'jpg', '', undefined),
@@ -107,7 +107,7 @@ const handler = createHandler<typeof toImgWorker>({
       console.error(error)
     }
   },
-  processAbort(event: processAbortPayload) {
+  processAbort(event: ProcessAbortPayload) {
     const controller = controllerMap.get(event.index)
     if (controller !== undefined) {
       controller.abort()

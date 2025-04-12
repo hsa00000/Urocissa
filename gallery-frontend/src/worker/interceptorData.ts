@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/return-await */
 import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { tokenReturnSchema } from '@type/schemas'
-import { postToMainData } from './toDataWorker'
 import { storeTimestampToken } from '@/indexedDb/timestampToken'
+import { PostToMainDataType } from './workerApi'
 
 interface QueuedRequest {
   config: InternalAxiosRequestConfig | undefined
@@ -13,7 +13,10 @@ interface QueuedRequest {
 let isRefreshing = false
 const queueList: QueuedRequest[] = []
 
-export function interceptorData(axiosInstance: AxiosInstance): void {
+export function interceptorData(
+  axiosInstance: AxiosInstance,
+  postToMainData: PostToMainDataType
+): void {
   axiosInstance.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error) => {
