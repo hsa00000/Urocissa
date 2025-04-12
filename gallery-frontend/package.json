@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "npm ci && vue-tsc --noEmit && vite build",
+    "build:only": "vue-tsc --noEmit && vite build",
     "lint": "eslint .",
     "generateLexer": "ts-node-esm ./src/script/lexer/generateCstDts.ts"
   },
