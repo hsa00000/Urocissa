@@ -20,8 +20,8 @@ export function interceptorData(axiosInstance: AxiosInstance): void {
       if (!axios.isAxiosError(error)) {
         console.error('Unexpected error:', error)
         postToMainData.notification({
-          message: 'An unexpected error occurred',
-          messageType: 'warn'
+          text: 'An unexpected error occurred',
+          color: 'error'
         })
         return Promise.reject(error instanceof Error ? error : new Error(String(error)))
       }
@@ -110,13 +110,13 @@ export function interceptorData(axiosInstance: AxiosInstance): void {
           postToMainData.unauthorized()
         }
         postToMainData.notification({
-          message: 'Unauthorized. Please log in.',
-          messageType: 'warn'
+          text: 'Unauthorized. Please log in.',
+          color: 'error'
         })
       } else if (response) {
-        postToMainData.notification({ message: 'An error occurred', messageType: 'warn' })
+        postToMainData.notification({ text: 'An error occurred', color: 'error' })
       } else {
-        postToMainData.notification({ message: 'No response from server', messageType: 'warn' })
+        postToMainData.notification({ text: 'No response from server', color: 'error' })
       }
 
       return Promise.reject(error)

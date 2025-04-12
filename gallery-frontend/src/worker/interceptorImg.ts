@@ -17,8 +17,8 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
       if (!axios.isAxiosError(error)) {
         console.error('Unexpected error:', error)
         postToMainImg.notification({
-          message: 'An unexpected error occurred',
-          messageType: 'warn'
+          text: 'An unexpected error occurred',
+          color: 'error'
         })
         console.error(error)
         return Promise.reject(error instanceof Error ? error : new Error(String(error)))
@@ -84,8 +84,8 @@ export function interceptorImg(axiosInstance: AxiosInstance): void {
           postToMainImg.unauthorized()
         }
         postToMainImg.notification({
-          message: 'Unauthorized. Please log in.',
-          messageType: 'warn'
+          text: 'Unauthorized. Please log in.',
+          color: 'error'
         })
       }
 

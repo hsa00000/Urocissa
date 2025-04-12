@@ -2,9 +2,15 @@ import { IsolationId } from '@type/types'
 import { handleDataWorkerReturn, removeHandleDataWorkerReturn } from '@/worker/fromDataWorker'
 import { handleImgWorker, removeHandleImgWorkerReturn } from '@/worker/fromImgWorker'
 import {
+  DeleteDataParams,
+  EditAlbumsParams,
+  EditTagsParams,
+  FetchDataParams,
+  FetchRowParams,
   processAbortPayload,
   processImagePayload,
   processSmallImagePayload,
+  toDataWorker,
   toImgWorker
 } from '@/worker/workerApi'
 import { defineStore } from 'pinia'
@@ -15,17 +21,27 @@ interface postToWorkerType {
   processImage: (payload: processImagePayload) => void
   processAbort: (payload: processAbortPayload) => void
 }
+interface postToWorkerTypeB {
+  fetchData: (payload: FetchDataParams) => void
+  fetchRow: (payload: FetchRowParams) => void
+  editTags: (payload: EditTagsParams) => void
+  editAlbums: (payload: EditAlbumsParams) => void
+  deleteData: (payload: DeleteDataParams) => void
+}
+
 export const useWorkerStore = (isolationId: IsolationId) =>
   defineStore('workerStore' + isolationId, {
     state: (): {
       concurrencyNumber: number
       worker: null | Worker
       imgWorker: Worker[]
+      postToWorker: postToWorkerTypeB | undefined
       postToWorkerList: postToWorkerType[] | undefined
     } => ({
       concurrencyNumber: Math.max(Math.floor(navigator.hardwareConcurrency / 2), 1),
       worker: null,
       imgWorker: [],
+      postToWorker: undefined,
       postToWorkerList: undefined
     }),
     actions: {
@@ -35,6 +51,9 @@ export const useWorkerStore = (isolationId: IsolationId) =>
             type: 'module'
           })
           handleDataWorkerReturn(this.worker, isolationId)
+          this.postToWorker = bindActionDispatch(toDataWorker, (action) => {
+            this.worker?.postMessage(action)
+          })
         } else {
           console.error('There is already a worker')
         }

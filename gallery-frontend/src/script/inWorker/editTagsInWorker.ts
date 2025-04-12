@@ -1,8 +1,6 @@
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useWorkerStore } from '@/store/workerStore'
-import { toDataWorker } from '@/worker/workerApi'
-import { bindActionDispatch } from 'typesafe-agent-events'
 import { IsolationId } from '@type/types'
 
 export function editTagsInWorker(
@@ -18,12 +16,6 @@ export function editTagsInWorker(
     workerStore.initializeWorker('mainId')
   }
 
-  const dataWorker = workerStore.worker
-  const postToWorker = bindActionDispatch(toDataWorker, (action) => {
-    if (dataWorker) {
-      dataWorker.postMessage(action)
-    }
-  })
   const timestamp = prefetchStore.timestamp
   if (timestamp !== null) {
     const payload = {
@@ -32,7 +24,10 @@ export function editTagsInWorker(
       removeTagsArray: [...removeTagsArray],
       timestamp: timestamp
     }
-    postToWorker.editTags(payload)
-    optimisticUpdateTags.optimisticUpdateTags(payload, true)
+    const postToWorker = workerStore.postToWorker
+    if (postToWorker !== undefined) {
+      postToWorker.editTags(payload)
+      optimisticUpdateTags.optimisticUpdateTags(payload, true)
+    }
   }
 }

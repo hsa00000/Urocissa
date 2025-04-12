@@ -64,13 +64,13 @@ export const fromImgWorker = createActionCreators({
  * ================================================================================ */
 
 // Define the parameter types for different actions to manage data and UI state
-interface FetchDataParams {
+export interface FetchDataParams {
   fetchMethod: FetchDataMethod
   batch: number
   timestamp: number
   timestampToken: string
 }
-interface FetchRowParams {
+export interface FetchRowParams {
   index: number
   timestamp: number
   windowWidth: number
@@ -89,7 +89,7 @@ export interface EditAlbumsParams {
   removeAlbumsArray: string[]
   timestamp: number
 }
-interface DeleteDataParams {
+export interface DeleteDataParams {
   indexArray: number[]
   timestamp: number
 }
