@@ -42,60 +42,64 @@ SOFTWARE.
     </slot>
   </div>
 </template>
-
 <script setup lang="ts">
 import { useUploadStore } from '@/store/uploadStore'
-import { onMounted } from 'vue'
-import { onUnmounted } from 'vue'
-import { computed } from 'vue'
-import { ref } from 'vue'
+import { onMounted, onUnmounted, computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
+
 const uploadStore = useUploadStore('mainId')
 const visible = ref(false)
 const lastTarget = ref(null)
+const route = useRoute()
 
-const classes = computed(() => {
-  return {
-    'vue-full-screen-file-drop--visible': visible.value
-  }
-})
+const classes = computed(() => ({
+  'vue-full-screen-file-drop--visible': visible.value
+}))
 
-function onDragEnter(e: DragEvent) {
-  lastTarget.value = e.target as any
+function isUploadAllowed(e: DragEvent): boolean {
+  if (route.meta.isReadPage || route.meta.isViewPage) return false
 
   const items = e.dataTransfer?.items
-  if (items) {
-    const hasValidType = Array.from(items).some(
-      (item) => item.type.startsWith('image/') || item.type.startsWith('video/') || item.type === ''
-    )
+  if (!items) return false
 
-    if (hasValidType) {
-      visible.value = true
-    }
-  }
+  return Array.from(items).some(
+    (item) => item.type.startsWith('image/') || item.type.startsWith('video/') || item.type === ''
+  )
 }
+
+function onDragEnter(e: DragEvent) {
+  if (!isUploadAllowed(e)) return
+  lastTarget.value = e.target as any
+  visible.value = true
+}
+
 function onDragLeave(e: any) {
   if (e.target === lastTarget.value) {
     visible.value = false
   }
 }
+
 function onDragOver(e: any) {
   e.preventDefault()
 }
-function onDrop(e: any) {
+
+function onDrop(e: DragEvent) {
   e.preventDefault()
   visible.value = false
-  const files: File[] = Array.from(e.dataTransfer.files)
 
-  if (files.length !== 0) {
-    uploadStore
-      .fileUpload(files)
-      .then((result) => {
-        console.log(result)
-      })
-      .catch((error: unknown) => {
-        console.error('Error occurred:', error)
-      })
-  }
+  if (!isUploadAllowed(e)) return
+
+  const files: File[] = Array.from(e.dataTransfer?.files || [])
+  if (files.length === 0) return
+
+  uploadStore
+    .fileUpload(files)
+    .then((result) => {
+      console.log(result)
+    })
+    .catch((error: unknown) => {
+      console.error('Error occurred:', error)
+    })
 }
 
 onMounted(() => {
@@ -112,7 +116,6 @@ onUnmounted(() => {
   window.removeEventListener('drop', onDrop)
 })
 </script>
-
 <style lang="css">
 .vue-full-screen-file-drop {
   position: fixed;
