@@ -49,7 +49,7 @@ import { useRoute } from 'vue-router'
 
 const uploadStore = useUploadStore('mainId')
 const visible = ref(false)
-const lastTarget = ref(null)
+const lastTarget = ref<EventTarget | null>(null)
 const route = useRoute()
 
 const classes = computed(() => ({
@@ -69,17 +69,17 @@ function isUploadAllowed(e: DragEvent): boolean {
 
 function onDragEnter(e: DragEvent) {
   if (!isUploadAllowed(e)) return
-  lastTarget.value = e.target as any
+  lastTarget.value = e.target
   visible.value = true
 }
 
-function onDragLeave(e: any) {
+function onDragLeave(e: DragEvent) {
   if (e.target === lastTarget.value) {
     visible.value = false
   }
 }
 
-function onDragOver(e: any) {
+function onDragOver(e: DragEvent) {
   e.preventDefault()
 }
 
@@ -89,7 +89,7 @@ function onDrop(e: DragEvent) {
 
   if (!isUploadAllowed(e)) return
 
-  const files: File[] = Array.from(e.dataTransfer?.files || [])
+  const files: File[] = Array.from(e.dataTransfer?.files ?? [])
   if (files.length === 0) return
 
   uploadStore
