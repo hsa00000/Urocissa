@@ -44,6 +44,7 @@
     "eslint": "9.24.0",
     "eslint-config-prettier": "^10.1.2",
     "eslint-plugin-vue": "^10.0.0",
+    "globals": "^16.0.0",
     "sass-embedded": "^1.85.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3",
