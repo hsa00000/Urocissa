@@ -34,6 +34,11 @@
                 </td>
               </tr>
             </template>
+            <template #[`item.actions`]="{ item }">
+              <div class="d-flex flex-row justify-center ga-1">
+                <v-btn icon="mdi-pencil" variant="text" />
+              </div>
+            </template>
           </v-data-table>
         </v-card>
       </v-col>
@@ -60,7 +65,8 @@ const updateDynamicWidth = () => {
 
 const headers = [
   { title: 'Link', key: 'url' },
-  { title: 'Description', key: 'description' }
+  { title: 'Description', key: 'description' },
+  { title: 'Edit', key: 'actions', align: 'center' as const, sortable: false }
 ]
 
 // 將 albums 資料展平成 item 陣列
