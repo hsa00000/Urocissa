@@ -1,15 +1,8 @@
 <template>
   <NavBar />
   <EditShareModal
-    v-if="
-      modalStore.showShareModal &&
-      currentEditShare !== undefined &&
-      currentEditDisplayName !== undefined &&
-      currentEditAlbumId !== undefined
-    "
-    :album-id="currentEditAlbumId"
-    :share="currentEditShare"
-    :display-name="currentEditDisplayName"
+    v-if="modalStore.showShareModal && currentEditShareData !== undefined"
+    :edit-share-data="currentEditShareData"
   />
   <v-container
     v-if="albumStore.fetched"
@@ -47,11 +40,7 @@
             </template>
             <template #[`item.actions`]="{ item }">
               <div class="d-flex flex-row justify-center ga-1">
-                <v-btn
-                  icon="mdi-pencil"
-                  variant="text"
-                  @click="clickEditShare(item.albumId, item.share, item.displayName)"
-                />
+                <v-btn icon="mdi-pencil" variant="text" @click="clickEditShare(item)" />
               </div>
             </template>
           </v-data-table>
@@ -60,38 +49,40 @@
     </v-row>
   </v-container>
 </template>
+
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useInitializedStore } from '@/store/initializedStore'
-import { onMounted } from 'vue'
-import { onBeforeUnmount } from 'vue'
 import { navBarHeight } from '@/type/constants'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import { useAlbumStore } from '@/store/albumStore'
 import { useModalStore } from '@/store/modalStore'
-import { Share } from '@/type/types'
+import { EditShareData } from '@/type/types'
 import EditShareModal from '@/components/Modal/EditShareModal.vue'
+
 const initializedStore = useInitializedStore('mainId')
 const albumStore = useAlbumStore('mainId')
 const modalStore = useModalStore('mainId')
 const dynamicWidth = ref<number>(0)
 const tableRef = ref<HTMLElement | null>(null)
+
 const updateDynamicWidth = () => {
   const tableWidth = tableRef.value?.offsetWidth ?? 0
   dynamicWidth.value = tableWidth <= 300 ? 300 : tableWidth
 }
-const currentEditShare = ref<Share | undefined>(undefined)
-const currentEditDisplayName = ref<string | undefined>(undefined)
-const currentEditAlbumId = ref<string | undefined>(undefined)
+
+// Single reactive variable for storing edit share data (of type EditShareData)
+const currentEditShareData = ref<EditShareData | undefined>(undefined)
+
 const headers = [
   { title: 'Link', key: 'share.url' },
   { title: 'Description', key: 'share.description' },
   { title: 'Edit', key: 'actions', align: 'center' as const, sortable: false }
 ]
 
-// 將 albums 資料展平成 item 陣列
-const tableItems = computed(() => {
-  const result: { albumId: string; displayName: string; share: Share }[] = []
+// Compute table items using EditShareData as the type.
+const tableItems = computed<EditShareData[]>(() => {
+  const result: EditShareData[] = []
 
   for (const album of albumStore.albums.values()) {
     for (const [, share] of album.shareList) {
@@ -106,10 +97,8 @@ const tableItems = computed(() => {
   return result
 })
 
-function clickEditShare(albumId: string, share: Share, displayName: string) {
-  currentEditShare.value = share
-  currentEditDisplayName.value = displayName
-  currentEditAlbumId.value = albumId
+function clickEditShare(data: EditShareData) {
+  currentEditShareData.value = data
   modalStore.showShareModal = true
 }
 
@@ -130,7 +119,7 @@ onMounted(async () => {
 
   await nextTick()
 
-  // Find all buttons containing mdi-chevron-right (unexpanded groups)
+  // Find all buttons with mdi-chevron-right (for unexpanded groups)
   const groupButtons = Array.from(document.querySelectorAll('button.v-btn')).filter((btn) =>
     btn.querySelector('.mdi-chevron-right')
   ) as HTMLButtonElement[]

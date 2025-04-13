@@ -35,6 +35,12 @@ export interface Message {
   color: MessageColor
 }
 
+export interface EditShareData {
+  albumId: string
+  share: Share
+  displayName: string
+}
+
 export type Alias = z.infer<typeof AliasSchema>
 export type TagInfo = z.infer<typeof tagInfoSchema>
 export type AlbumInfo = z.infer<typeof albumInfoSchema>

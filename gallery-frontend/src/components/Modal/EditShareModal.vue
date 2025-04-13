@@ -118,7 +118,7 @@
               variant="outlined"
               readonly
               append-inner-icon="mdi-content-copy"
-              @click:append-inner="performCopy(props.share.url)"
+              @click:append-inner="performCopy(props.editShareData.share.url)"
               hide-details
             >
             </v-text-field>
@@ -135,17 +135,15 @@ import { useModalStore } from '@/store/modalStore'
 import { ref, watchEffect } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { useMessageStore } from '@/store/messageStore'
-import { Share } from '@/type/types'
+import { EditShareData } from '@/type/types'
 
 const props = defineProps<{
-  albumId: string
-  displayName: string
-  share: Share
+  editShareData: EditShareData
 }>()
 
 const modalStore = useModalStore('mainId')
 const messageStore = useMessageStore('mainId')
-const description = ref('')
+const description = ref(props.editShareData.share.description)
 const requirePassword = ref(false)
 const password = ref('')
 const willExpire = ref(false)
@@ -153,7 +151,9 @@ const allowUpload = ref(false)
 const allowDownload = ref(true)
 const showMetadata = ref(true)
 const selectedDuration = ref<number | null>(null)
-const shareUrl = ref<string>(`${window.location.origin}/share-${props.albumId}-${props.share.url}`)
+const shareUrl = ref<string>(
+  `${window.location.origin}/share-${props.editShareData.albumId}-${props.editShareData.share.url}`
+)
 
 const { copy } = useClipboard()
 
@@ -169,7 +169,7 @@ const durations = [
 ]
 
 watchEffect(() => {
-  console.log('props.share.url is', props.share.url)
+  console.log('props.share.url is', props.editShareData.share.url)
 })
 
 async function performCopy(text: string) {
