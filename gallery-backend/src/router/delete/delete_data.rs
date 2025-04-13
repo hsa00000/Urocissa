@@ -1,7 +1,7 @@
 use crate::public::redb::{ALBUM_TABLE, DATA_TABLE};
 use crate::public::tree::TREE;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
-use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::fairing::guard_auth::GuardAuthEdit;
 use crate::router::fairing::guard_read_only_mod::GuardReadOnlyMode;
 use crate::synchronizer::album::album_self_update_async;
 
@@ -15,7 +15,7 @@ pub struct DeleteList {
 }
 #[delete("/delete/delete-data", format = "json", data = "<json_data>")]
 pub async fn delete_data(
-    _auth: GuardAuth,
+    _auth: GuardAuthEdit,
     _read_only_mode: GuardReadOnlyMode,
     json_data: Json<DeleteList>,
 ) {

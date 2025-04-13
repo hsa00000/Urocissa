@@ -1,11 +1,11 @@
 use crate::public::{database_struct::database::definition::Database, tree::TREE};
-use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::fairing::guard_auth::GuardAuthEdit;
 use crate::router::fairing::guard_read_only_mod::GuardReadOnlyMode;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 #[get("/put/generate_random_data?<number>")]
 pub async fn generate_random_data(
-    _auth: GuardAuth,
+    _auth: GuardAuthEdit,
     _read_only_mode: GuardReadOnlyMode,
     number: usize,
 ) {

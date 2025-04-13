@@ -10,7 +10,7 @@ use rocket::{http::Status, post};
 use crate::public::album::Share;
 use crate::public::redb::ALBUM_TABLE;
 use crate::public::tree::TREE;
-use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::fairing::guard_auth::GuardAuthEdit;
 use crate::router::fairing::guard_read_only_mod::GuardReadOnlyMode;
 use serde::{Deserialize, Serialize};
 
@@ -28,7 +28,7 @@ pub struct CreateShare {
 
 #[post("/post/create_share", data = "<create_share>")]
 pub async fn create_share(
-    _auth: GuardAuth,
+    _auth: GuardAuthEdit,
     _read_only_mode: GuardReadOnlyMode,
     create_share: Json<CreateShare>,
 ) -> Result<String, Status> {

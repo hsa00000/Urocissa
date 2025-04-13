@@ -96,9 +96,7 @@ impl<'r> FromRequest<'r> for GuardAuth {
     }
 }
 
-pub struct GuardAuthUpload {
-    pub claims: Claims,
-}
+pub struct GuardAuthUpload;
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardAuthUpload {
@@ -115,9 +113,8 @@ impl<'r> FromRequest<'r> for GuardAuthUpload {
                 &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
                 &VALIDATION,
             ) {
-                Ok(token_data_claims) => {
-                    let claims = token_data_claims.claims;
-                    return Outcome::Success(GuardAuthUpload { claims });
+                Ok(_) => {
+                    return Outcome::Success(GuardAuthUpload);
                 }
                 _ => {
                     warn!("JWT validation failed.");
@@ -143,11 +140,41 @@ impl<'r> FromRequest<'r> for GuardAuthUpload {
                     }
                     let mut claims = Claims::new();
                     claims.album_share = Some((ArrayString::<64>::from(album_id).unwrap(), share));
-                    return Outcome::Success(GuardAuthUpload { claims });
+                    return Outcome::Success(GuardAuthUpload);
                 } else {
                     println!("{:#?}", album.value().share_list);
                 }
             }
+        }
+        return Outcome::Forward(Status::Unauthorized);
+    }
+}
+
+pub struct GuardAuthEdit;
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for GuardAuthEdit {
+    type Error = ();
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        // Check for JWT cookie
+        let cookies: &CookieJar = req.cookies();
+        if let Some(jwt_cookie) = cookies.get("jwt") {
+            let token = jwt_cookie.value();
+
+            match decode::<Claims>(
+                token,
+                &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+                &VALIDATION,
+            ) {
+                Ok(_) => {
+                    return Outcome::Success(GuardAuthEdit);
+                }
+                _ => {
+                    warn!("JWT validation failed.");
+                }
+            }
+            // No need to check for share mode
         }
         return Outcome::Forward(Status::Unauthorized);
     }

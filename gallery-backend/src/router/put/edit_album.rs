@@ -1,5 +1,5 @@
 use crate::public::{tree::TREE, tree_snapshot::TREE_SNAPSHOT};
-use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::fairing::guard_auth::{GuardAuth, GuardAuthEdit};
 use crate::router::fairing::guard_read_only_mod::GuardReadOnlyMode;
 use crate::synchronizer::album::album_self_update_async;
 use std::collections::HashSet;
@@ -83,7 +83,7 @@ pub struct SetAlbumCover {
 
 #[post("/post/set_album_cover", data = "<set_album_cover>")]
 pub async fn set_album_cover(
-    _auth: GuardAuth,
+    _auth: GuardAuthEdit,
     _read_only_mode: GuardReadOnlyMode,
     set_album_cover: Json<SetAlbumCover>,
 ) -> Result<(), Status> {
