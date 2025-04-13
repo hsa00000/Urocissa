@@ -26,7 +26,7 @@
             }"
           ></v-textarea>
         </v-list-item>
-        <v-list-item density="compact" slim>
+        <v-list-item v-if="false" density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
               <v-switch
@@ -38,7 +38,7 @@
             </v-list-item-action>
           </template>
         </v-list-item>
-        <v-list-item density="compact" slim>
+        <v-list-item v-if="false" density="compact" slim>
           <v-text-field
             v-model="password"
             label="Password"
@@ -73,7 +73,7 @@
             </v-list-item-action>
           </template>
         </v-list-item>
-        <v-list-item density="compact" slim>
+        <v-list-item v-if="false" density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
               <v-switch
@@ -85,7 +85,7 @@
             </v-list-item-action>
           </template>
         </v-list-item>
-        <v-list-item density="compact" slim>
+        <v-list-item v-if="false" density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
               <v-switch
@@ -97,7 +97,7 @@
             </v-list-item-action>
           </template>
         </v-list-item>
-        <v-list-item density="compact" slim>
+        <v-list-item v-if="false" density="compact" slim>
           <v-select
             v-model="selectedDuration"
             :items="durations"
@@ -160,7 +160,7 @@ const password = ref('')
 const willExpire = ref(false)
 const allowUpload = ref(false)
 const allowDownload = ref(true)
-const showMetadata = ref(false)
+const showMetadata = ref(true)
 const shareLink: Ref<string | null> = ref(null)
 const selectedDuration = ref<number | null>(null)
 

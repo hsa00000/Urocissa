@@ -6,15 +6,9 @@
       <v-list-item slim to="/home" prepend-icon="mdi-home" title="Home"></v-list-item>
       <v-divider></v-divider>
       <v-list-item slim to="/tags" prepend-icon="mdi-tag-multiple" title="Tags"></v-list-item>
+      <v-list-item slim to="/links" prepend-icon="mdi-link" title="Links"></v-list-item>
       <v-divider></v-divider>
       <v-list-item slim to="/albums" prepend-icon="mdi-image-album" title="Albums"></v-list-item>
-      <v-list-item
-        v-if="false"
-        slim
-        to="/links"
-        prepend-icon="mdi-link"
-        title="Links"
-      ></v-list-item>
       <v-list-item
         slim
         to="/videos"
