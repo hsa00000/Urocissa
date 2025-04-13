@@ -1,5 +1,16 @@
 <template>
   <NavBar />
+  <EditShareModal
+    v-if="
+      modalStore.showShareModal &&
+      currentEditShare !== undefined &&
+      currentEditDisplayName !== undefined &&
+      currentEditAlbumId !== undefined
+    "
+    :album-id="currentEditAlbumId"
+    :share="currentEditShare"
+    :display-name="currentEditDisplayName"
+  />
   <v-container
     v-if="albumStore.fetched"
     id="table-container"
@@ -36,7 +47,11 @@
             </template>
             <template #[`item.actions`]="{ item }">
               <div class="d-flex flex-row justify-center ga-1">
-                <v-btn icon="mdi-pencil" variant="text" />
+                <v-btn
+                  icon="mdi-pencil"
+                  variant="text"
+                  @click="clickEditShare(item.albumId, item.share, item.displayName)"
+                />
               </div>
             </template>
           </v-data-table>
@@ -53,48 +68,50 @@ import { onBeforeUnmount } from 'vue'
 import { navBarHeight } from '@/type/constants'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import { useAlbumStore } from '@/store/albumStore'
+import { useModalStore } from '@/store/modalStore'
+import { Share } from '@/type/types'
+import EditShareModal from '@/components/Modal/EditShareModal.vue'
 const initializedStore = useInitializedStore('mainId')
 const albumStore = useAlbumStore('mainId')
-
+const modalStore = useModalStore('mainId')
 const dynamicWidth = ref<number>(0)
 const tableRef = ref<HTMLElement | null>(null)
 const updateDynamicWidth = () => {
   const tableWidth = tableRef.value?.offsetWidth ?? 0
   dynamicWidth.value = tableWidth <= 300 ? 300 : tableWidth
 }
-
+const currentEditShare = ref<Share | undefined>(undefined)
+const currentEditDisplayName = ref<string | undefined>(undefined)
+const currentEditAlbumId = ref<string | undefined>(undefined)
 const headers = [
-  { title: 'Link', key: 'url' },
-  { title: 'Description', key: 'description' },
+  { title: 'Link', key: 'share.url' },
+  { title: 'Description', key: 'share.description' },
   { title: 'Edit', key: 'actions', align: 'center' as const, sortable: false }
 ]
 
 // 將 albums 資料展平成 item 陣列
 const tableItems = computed(() => {
-  const result: {
-    displayName: string
-    url: string
-    showMetadata: boolean
-    showDownload: boolean
-    password: string | null
-    description: string
-  }[] = []
+  const result: { albumId: string; displayName: string; share: Share }[] = []
 
   for (const album of albumStore.albums.values()) {
     for (const [, share] of album.shareList) {
       result.push({
+        albumId: album.albumId,
         displayName: album.displayName,
-        url: share.url,
-        showMetadata: share.showMetadata,
-        showDownload: share.showDownload,
-        password: share.password,
-        description: share.description
+        share: share
       })
     }
   }
 
   return result
 })
+
+function clickEditShare(albumId: string, share: Share, displayName: string) {
+  currentEditShare.value = share
+  currentEditDisplayName.value = displayName
+  currentEditAlbumId.value = albumId
+  modalStore.showShareModal = true
+}
 
 watch(
   () => initializedStore.initialized,

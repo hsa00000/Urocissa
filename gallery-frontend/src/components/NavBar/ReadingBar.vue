@@ -33,7 +33,7 @@
   <EditBar v-else />
   <ProgessBar isolation-id="subId" />
   <HomeTemp v-if="modalStore.showHomeTempModal" :album="props.album"> </HomeTemp>
-  <ShareModal v-if="modalStore.showShareModal" :album-id="props.album.id" />
+  <CreateShareModal v-if="modalStore.showShareModal" :album-id="props.album.id" :mode="'create'" />
 </template>
 <script setup lang="ts">
 import { useCollectionStore } from '@/store/collectionStore'
@@ -41,7 +41,7 @@ import { leave } from '@/script/navigator'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import ProgessBar from '@/components/NavBar/ProgessBar.vue'
 import HomeTemp from '@/components/Home/Page/HomeTemp.vue'
-import ShareModal from '@/components/Modal/ShareModal.vue'
+import CreateShareModal from '@/components/Modal/CreateShareModal.vue'
 import { Album } from '@type/types'
 import { useModalStore } from '@/store/modalStore'
 import { ref, watch } from 'vue'

@@ -14,7 +14,8 @@ import {
   albumInfoSchema,
   PublicConfigSchema,
   prefetchReturnSchema,
-  tokenReturnSchema
+  tokenReturnSchema,
+  ShareSchema
 } from '@type/schemas'
 
 export type Sorting = 'ascending' | 'descending' | 'random' | 'similar'
@@ -52,3 +53,4 @@ export type IsolationId = 'mainId' | 'subId' | 'tempId' | 'shareId'
 export type FetchDataMethod = 'batch' | 'single'
 export type TokenReturn = z.infer<typeof tokenReturnSchema>
 export type MessageColor = 'error' | 'success' | 'info'
+export type Share = z.infer<typeof ShareSchema>
