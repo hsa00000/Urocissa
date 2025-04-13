@@ -60,9 +60,7 @@ const updateDynamicWidth = () => {
 
 const headers = [
   { title: 'Link', key: 'url' },
-  { title: 'Metadata', key: 'showMetadata' },
-  { title: 'Download', key: 'showDownload' },
-  { title: 'Password', key: 'password' }
+  { title: 'Description', key: 'description' }
 ]
 
 // 將 albums 資料展平成 item 陣列
@@ -73,6 +71,7 @@ const tableItems = computed(() => {
     showMetadata: boolean
     showDownload: boolean
     password: string | null
+    description: string
   }[] = []
 
   for (const album of albumStore.albums.values()) {
@@ -82,7 +81,8 @@ const tableItems = computed(() => {
         url: share.url,
         showMetadata: share.showMetadata,
         showDownload: share.showDownload,
-        password: share.password
+        password: share.password,
+        description: share.description
       })
     }
   }
