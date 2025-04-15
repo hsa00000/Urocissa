@@ -103,7 +103,7 @@
         <v-list-item v-if="false" density="compact" slim>
           <v-select
             v-model="exp"
-            :items="durations"
+            :items="DURATIONS"
             label="Select a duration"
             item-title="label"
             item-value="id"
@@ -150,7 +150,7 @@ import { useMessageStore } from '@/store/messageStore'
 import axios from 'axios'
 import { ref, Ref, watchEffect } from 'vue'
 import { useClipboard } from '@vueuse/core'
-
+import { DURATIONS } from '@type/constants'
 const props = defineProps<{
   albumId: string
 }>()
@@ -168,17 +168,6 @@ const exp: Ref<number | null> = ref(null)
 const shareLink: Ref<string | null> = ref(null)
 
 const { copy } = useClipboard()
-
-const durations = [
-  { label: '30 minutes later', id: 30 },
-  { label: '1 hour later', id: 60 },
-  { label: '6 hours later', id: 360 },
-  { label: '1 day later', id: 1440 },
-  { label: '7 days later', id: 10080 },
-  { label: '30 days later', id: 43200 },
-  { label: '3 months later', id: 129600 },
-  { label: '1 year later', id: 525600 }
-]
 
 watchEffect(() => {
   console.log('exp is', exp.value)

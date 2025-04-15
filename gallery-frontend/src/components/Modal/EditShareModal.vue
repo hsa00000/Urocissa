@@ -102,7 +102,7 @@
         <v-list-item v-if="false" density="compact" slim>
           <v-select
             v-model="exp"
-            :items="durations"
+            :items="DURATIONS"
             label="Select a duration"
             item-title="label"
             item-value="id"
@@ -140,6 +140,7 @@ import { useModalStore } from '@/store/modalStore'
 import { ref, watchEffect } from 'vue'
 import { EditShareData } from '@/type/types'
 import axios from 'axios'
+import { DURATIONS } from '@/type/constants';
 
 const props = defineProps<{
   editShareData: EditShareData
@@ -154,17 +155,6 @@ const showUpload = ref(props.editShareData.share.showUpload)
 const showDownload = ref(props.editShareData.share.showDownload)
 const showMetadata = ref(props.editShareData.share.showMetadata)
 const exp = ref(props.editShareData.share.exp)
-
-const durations = [
-  { label: '30 minutes later', id: 30 },
-  { label: '1 hour later', id: 60 },
-  { label: '6 hours later', id: 360 },
-  { label: '1 day later', id: 1440 },
-  { label: '7 days later', id: 10080 },
-  { label: '30 days later', id: 43200 },
-  { label: '3 months later', id: 129600 },
-  { label: '1 year later', id: 525600 }
-]
 
 const submitEditShare = async () => {
   try {
