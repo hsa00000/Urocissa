@@ -17,10 +17,33 @@
           <v-data-table
             :headers="headers"
             :items="tableItems"
-            :group-by="[{ key: 'displayName' }]"
+            :group-by="[{ key: 'albumId' }]"
             item-value="url"
             :items-per-page="-1"
           >
+            <template #[`item.share.url`]="{ item }">
+              <div class="d-flex align-center">
+                <span class="text-truncate">
+                  {{ `${item.share.url}` }}
+                </span>
+                <v-btn
+                  icon="mdi-open-in-new"
+                  variant="text"
+                  size="small"
+                  class="ms-2"
+                  :href="`${locationOrigin}/share-${item.albumId}-${item.share.url}`"
+                  target="_blank"
+                  tag="a"
+                />
+                <v-btn
+                  icon="mdi-content-copy"
+                  variant="text"
+                  size="small"
+                  class="ms-1"
+                  @click="copy(`${locationOrigin}/share-${item.albumId}-${item.share.url}`)"
+                />
+              </div>
+            </template>
             <template #group-header="{ item, columns, toggleGroup, isGroupOpen }">
               <tr>
                 <td :colspan="columns.length">
@@ -33,7 +56,18 @@
                       variant="outlined"
                       @click="toggleGroup(item)"
                     ></v-btn>
-                    <span class="ms-4 font-weight-bold"> Album: {{ item.value }} </span>
+                    <span class="ms-4 font-weight-bold">
+                      {{ albumStore.albums.get(item.value)?.displayName }}
+                    </span>
+                    <v-btn
+                      icon="mdi-open-in-new"
+                      variant="text"
+                      size="small"
+                      class="ms-2"
+                      :href="`${`${locationOrigin}/albums/view/${item.value}/read`}`"
+                      target="_blank"
+                      tag="a"
+                    />
                   </div>
                 </td>
               </tr>
@@ -59,12 +93,16 @@ import { useAlbumStore } from '@/store/albumStore'
 import { useModalStore } from '@/store/modalStore'
 import { EditShareData } from '@/type/types'
 import EditShareModal from '@/components/Modal/EditShareModal.vue'
+import { useClipboard } from '@vueuse/core'
 
 const initializedStore = useInitializedStore('mainId')
 const albumStore = useAlbumStore('mainId')
 const modalStore = useModalStore('mainId')
 const dynamicWidth = ref<number>(0)
 const tableRef = ref<HTMLElement | null>(null)
+const locationOrigin = window.location.origin
+
+const { copy } = useClipboard()
 
 const updateDynamicWidth = () => {
   const tableWidth = tableRef.value?.offsetWidth ?? 0
