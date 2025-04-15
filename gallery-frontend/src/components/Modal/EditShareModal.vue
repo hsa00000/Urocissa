@@ -27,9 +27,7 @@
             v-model="description"
             label="Description of this link"
             hide-details="auto"
-            :style="{
-              paddingBottom: 0
-            }"
+            :style="{ paddingBottom: 0 }"
           ></v-textarea>
         </v-list-item>
         <v-list-item v-if="false" density="compact" slim>
@@ -50,16 +48,14 @@
             label="Password"
             hide-details="auto"
             :disabled="!requirePassword"
-            :style="{
-              paddingBottom: 0
-            }"
+            :style="{ paddingBottom: 0 }"
           ></v-text-field>
         </v-list-item>
         <v-list-item density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
               <v-switch
-                v-model="allowDownload"
+                v-model="showDownload"
                 color="primary"
                 :label="`Allow public user to download`"
                 hide-details
@@ -71,7 +67,7 @@
           <template #prepend>
             <v-list-item-action start>
               <v-switch
-                v-model="allowUpload"
+                v-model="showUpload"
                 color="primary"
                 :label="`Allow public user to upload`"
                 hide-details
@@ -105,7 +101,7 @@
         </v-list-item>
         <v-list-item v-if="false" density="compact" slim>
           <v-select
-            v-model="selectedDuration"
+            v-model="exp"
             :items="durations"
             label="Select a duration"
             item-title="label"
@@ -154,10 +150,10 @@ const description = ref(props.editShareData.share.description)
 const requirePassword = ref(false)
 const password = ref(props.editShareData.share.password)
 const willExpire = ref(false)
-const allowUpload = ref(props.editShareData.share.showUpload)
-const allowDownload = ref(props.editShareData.share.showDownload)
+const showUpload = ref(props.editShareData.share.showUpload)
+const showDownload = ref(props.editShareData.share.showDownload)
 const showMetadata = ref(props.editShareData.share.showMetadata)
-const selectedDuration = ref(props.editShareData.share.exp)
+const exp = ref(props.editShareData.share.exp)
 
 const durations = [
   { label: '30 minutes later', id: 30 },
@@ -177,10 +173,10 @@ const submitEditShare = async () => {
       share: {
         url: props.editShareData.share.url,
         description: description.value,
-        showDownload: allowDownload.value,
-        showUpload: allowUpload.value,
+        showDownload: showDownload.value,
+        showUpload: showUpload.value,
         showMetadata: showMetadata.value,
-        exp: selectedDuration.value,
+        exp: exp.value,
         password: requirePassword.value ? password.value : null
       }
     })

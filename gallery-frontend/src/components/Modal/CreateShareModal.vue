@@ -21,16 +21,15 @@
             v-model="description"
             label="Description of this link"
             hide-details="auto"
-            :style="{
-              paddingBottom: 0
-            }"
+            :style="{ paddingBottom: 0 }"
           ></v-textarea>
         </v-list-item>
+
         <v-list-item v-if="false" density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
               <v-switch
-                v-model="requirePassword"
+                v-model="passwordRequired"
                 color="primary"
                 :label="`Require password`"
                 hide-details
@@ -38,22 +37,22 @@
             </v-list-item-action>
           </template>
         </v-list-item>
+
         <v-list-item v-if="false" density="compact" slim>
           <v-text-field
             v-model="password"
             label="Password"
             hide-details="auto"
-            :disabled="!requirePassword"
-            :style="{
-              paddingBottom: 0
-            }"
+            :disabled="!passwordRequired"
+            :style="{ paddingBottom: 0 }"
           ></v-text-field>
         </v-list-item>
+
         <v-list-item density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
               <v-switch
-                v-model="allowDownload"
+                v-model="showDownload"
                 color="primary"
                 :label="`Allow public user to download`"
                 hide-details
@@ -61,11 +60,12 @@
             </v-list-item-action>
           </template>
         </v-list-item>
+
         <v-list-item v-if="false" density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
               <v-switch
-                v-model="allowUpload"
+                v-model="showUpload"
                 color="primary"
                 :label="`Allow public user to upload`"
                 hide-details
@@ -73,6 +73,7 @@
             </v-list-item-action>
           </template>
         </v-list-item>
+
         <v-list-item v-if="false" density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
@@ -85,11 +86,12 @@
             </v-list-item-action>
           </template>
         </v-list-item>
+
         <v-list-item v-if="false" density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
               <v-switch
-                v-model="willExpire"
+                v-model="expireEnabled"
                 color="primary"
                 :label="`Expire after`"
                 hide-details
@@ -97,17 +99,19 @@
             </v-list-item-action>
           </template>
         </v-list-item>
+
         <v-list-item v-if="false" density="compact" slim>
           <v-select
-            v-model="selectedDuration"
+            v-model="exp"
             :items="durations"
             label="Select a duration"
             item-title="label"
             item-value="id"
             hide-details="auto"
-            :disabled="!willExpire"
+            :disabled="!expireEnabled"
           />
         </v-list-item>
+
         <v-list-item density="compact" slim class="py-6">
           <v-card height="40px">
             <v-btn
@@ -132,8 +136,7 @@
               append-inner-icon="mdi-content-copy"
               @click:append-inner="performCopy(shareLink)"
               hide-details
-            >
-            </v-text-field>
+            ></v-text-field>
           </v-card>
         </v-list-item>
       </v-list>
@@ -143,10 +146,10 @@
 
 <script setup lang="ts">
 import { useModalStore } from '@/store/modalStore'
-import axios from 'axios'
-import { Ref, ref, watchEffect } from 'vue'
-import { useClipboard } from '@vueuse/core'
 import { useMessageStore } from '@/store/messageStore'
+import axios from 'axios'
+import { ref, Ref, watchEffect } from 'vue'
+import { useClipboard } from '@vueuse/core'
 
 const props = defineProps<{
   albumId: string
@@ -155,14 +158,14 @@ const props = defineProps<{
 const modalStore = useModalStore('mainId')
 const messageStore = useMessageStore('mainId')
 const description = ref('')
-const requirePassword = ref(false)
+const passwordRequired = ref(false)
 const password = ref('')
-const willExpire = ref(false)
-const allowUpload = ref(false)
-const allowDownload = ref(true)
+const expireEnabled = ref(false)
+const showUpload = ref(false)
+const showDownload = ref(true)
 const showMetadata = ref(true)
+const exp: Ref<number | null> = ref(null)
 const shareLink: Ref<string | null> = ref(null)
-const selectedDuration = ref<number | null>(null)
 
 const { copy } = useClipboard()
 
@@ -178,7 +181,7 @@ const durations = [
 ]
 
 watchEffect(() => {
-  console.log('selectedDuration is', selectedDuration.value)
+  console.log('exp is', exp.value)
   console.log('description is', description.value)
 })
 
@@ -186,11 +189,11 @@ const createLink = async () => {
   const result = await axios.post<string>('/post/create_share', {
     albumId: props.albumId,
     description: description.value,
-    password: requirePassword.value ? password.value : null,
+    password: passwordRequired.value ? password.value : null,
     showMetadata: showMetadata.value,
-    showDownload: allowDownload.value,
-    showUpload: allowUpload.value,
-    exp: selectedDuration.value ?? 0
+    showDownload: showDownload.value,
+    showUpload: showUpload.value,
+    exp: exp.value ?? 0
   })
   shareLink.value = `${window.location.origin}/share-${props.albumId}-${result.data}`
   console.log('shareLink is', shareLink)
