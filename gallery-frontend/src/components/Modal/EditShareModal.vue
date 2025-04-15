@@ -130,6 +130,7 @@
           variant="outlined"
           class="ma-2 button button-submit"
           type="submit"
+          @click="submitEditShare"
         >
           Submit
         </v-btn>
@@ -142,6 +143,7 @@
 import { useModalStore } from '@/store/modalStore'
 import { ref, watchEffect } from 'vue'
 import { EditShareData } from '@/type/types'
+import axios from 'axios'
 
 const props = defineProps<{
   editShareData: EditShareData
@@ -150,12 +152,12 @@ const props = defineProps<{
 const modalStore = useModalStore('mainId')
 const description = ref(props.editShareData.share.description)
 const requirePassword = ref(false)
-const password = ref('')
+const password = ref(props.editShareData.share.password)
 const willExpire = ref(false)
-const allowUpload = ref(false)
-const allowDownload = ref(true)
-const showMetadata = ref(true)
-const selectedDuration = ref<number | null>(null)
+const allowUpload = ref(props.editShareData.share.showUpload)
+const allowDownload = ref(props.editShareData.share.showDownload)
+const showMetadata = ref(props.editShareData.share.showMetadata)
+const selectedDuration = ref(props.editShareData.share.exp)
 
 const durations = [
   { label: '30 minutes later', id: 30 },
@@ -167,6 +169,28 @@ const durations = [
   { label: '3 months later', id: 129600 },
   { label: '1 year later', id: 525600 }
 ]
+
+const submitEditShare = async () => {
+  try {
+    const response = await axios.put('/put/edit_share', {
+      albumId: props.editShareData.albumId,
+      share: {
+        url: props.editShareData.share.url,
+        description: description.value,
+        showDownload: allowDownload.value,
+        showUpload: allowUpload.value,
+        showMetadata: showMetadata.value,
+        exp: selectedDuration.value,
+        password: requirePassword.value ? password.value : null
+      }
+    })
+
+    console.log('Share updated successfully', response.data)
+    modalStore.showEditShareModal = false
+  } catch (error) {
+    console.error('Failed to update share', error)
+  }
+}
 
 watchEffect(() => {
   console.log('props.share.url is', props.editShareData.share.url)
