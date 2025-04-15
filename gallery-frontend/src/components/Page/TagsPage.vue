@@ -9,7 +9,7 @@
     }"
     fluid
   >
-    <v-row justify="center" class="ma-0">
+    <v-row justify="center" class="ma-0 w-100">
       <v-col cols="12" sm="12" md="10" lg="8" class="d-flex justify-center">
         <v-card tile flat class="overflow-y-auto">
           <v-table hover>

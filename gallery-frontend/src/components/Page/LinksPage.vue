@@ -11,7 +11,7 @@
     :style="{ height: `calc(100% - ${navBarHeight}px)` }"
     fluid
   >
-    <v-row justify="center" class="ma-0">
+    <v-row justify="center" class="ma-0 w-100">
       <v-col cols="12" sm="12" md="10" lg="8" class="d-flex justify-center">
         <v-card tile flat class="overflow-y-auto w-100">
           <v-data-table
@@ -77,6 +77,20 @@
                 <v-btn icon="mdi-pencil" variant="text" @click="clickEditShare(item)" />
               </div>
             </template>
+            <template #[`item.share.description`]="{ item }">
+              <v-tooltip location="top" :open-on-click="true">
+                <template #activator="{ props }">
+                  <span
+                    v-bind="props"
+                    class="text-truncate"
+                    style="max-width: 200px; display: inline-block"
+                  >
+                    {{ item.share.description }}
+                  </span>
+                </template>
+                <span>{{ item.share.description }}</span>
+              </v-tooltip>
+            </template>
           </v-data-table>
         </v-card>
       </v-col>
@@ -114,7 +128,13 @@ const currentEditShareData = ref<EditShareData | undefined>(undefined)
 
 const headers = [
   { title: 'Link', key: 'share.url' },
-  { title: 'Description', key: 'share.description' },
+  {
+    title: 'Description',
+    key: 'share.description',
+    width: '200px',
+    maxWidth: '200px',
+    nowrap: true
+  },
   { title: 'Edit', key: 'actions', align: 'center' as const, sortable: false }
 ]
 
