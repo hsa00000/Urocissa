@@ -12,6 +12,7 @@ export const useModalStore = (isolationId: IsolationId) =>
       showIsolatedHomeModal: boolean
       showHomeTempModal: boolean
       showShareModal: boolean
+      showEditShareModal: boolean
     } => ({
       showEditTagsModal: false,
       showBatchEditTagsModal: false,
@@ -20,7 +21,8 @@ export const useModalStore = (isolationId: IsolationId) =>
       showUploadModal: false,
       showIsolatedHomeModal: false,
       showHomeTempModal: false,
-      showShareModal: false
+      showShareModal: false,
+      showEditShareModal: false
     }),
     actions: {}
   })()

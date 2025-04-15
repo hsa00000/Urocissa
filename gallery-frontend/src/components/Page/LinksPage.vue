@@ -1,7 +1,7 @@
 <template>
   <NavBar />
   <EditShareModal
-    v-if="modalStore.showShareModal && currentEditShareData !== undefined"
+    v-if="modalStore.showEditShareModal && currentEditShareData !== undefined"
     :edit-share-data="currentEditShareData"
   />
   <v-container
@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount, watchEffect } from 'vue'
 import { useInitializedStore } from '@/store/initializedStore'
 import { navBarHeight } from '@/type/constants'
 import NavBar from '@/components/NavBar/NavBar.vue'
@@ -137,8 +137,13 @@ const tableItems = computed<EditShareData[]>(() => {
 
 function clickEditShare(data: EditShareData) {
   currentEditShareData.value = data
-  modalStore.showShareModal = true
+  modalStore.showEditShareModal = true
 }
+
+watchEffect(() => {
+  console.log(' modalStore.showEditShareModal is', modalStore.showEditShareModal)
+  console.log('currentEditShareData is', currentEditShareData.value)
+})
 
 watch(
   () => initializedStore.initialized,

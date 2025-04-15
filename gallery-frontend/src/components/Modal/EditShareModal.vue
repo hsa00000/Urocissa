@@ -1,5 +1,11 @@
 <template>
-  <v-dialog v-model="modalStore.showShareModal" id="share-modal" variant="flat" persistent rounded>
+  <v-dialog
+    v-model="modalStore.showEditShareModal"
+    id="share-modal"
+    variant="flat"
+    persistent
+    rounded
+  >
     <v-card
       class="h-100 mx-auto w-100"
       max-width="400"
@@ -10,7 +16,7 @@
       <v-toolbar color="transparent">
         <v-toolbar-title class="text-h5" text=" Share"></v-toolbar-title>
         <template #append>
-          <v-btn icon="mdi-close" @click="modalStore.showShareModal = false"></v-btn>
+          <v-btn icon="mdi-close" @click="modalStore.showEditShareModal = false"></v-btn>
         </template>
       </v-toolbar>
       <v-divider></v-divider>
@@ -108,33 +114,33 @@
             :disabled="!willExpire"
           />
         </v-list-item>
-        <v-list-item density="compact" slim class="py-6">
-          <v-card height="40px">
-            <v-text-field
-              v-model="shareUrl"
-              rounded
-              slim
-              density="compact"
-              variant="outlined"
-              readonly
-              append-inner-icon="mdi-content-copy"
-              @click:append-inner="performCopy(props.editShareData.share.url)"
-              hide-details
-            >
-            </v-text-field>
-          </v-card>
-        </v-list-item>
       </v-list>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn
+          color="teal-accent-4"
+          variant="outlined"
+          class="ma-2 button button-submit"
+          @click="modalStore.showEditShareModal = false"
+        >
+          Cancel
+        </v-btn>
+        <v-btn
+          color="teal-accent-4"
+          variant="outlined"
+          class="ma-2 button button-submit"
+          type="submit"
+        >
+          Submit
+        </v-btn>
+      </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { useModalStore } from '@/store/modalStore'
-
 import { ref, watchEffect } from 'vue'
-import { useClipboard } from '@vueuse/core'
-import { useMessageStore } from '@/store/messageStore'
 import { EditShareData } from '@/type/types'
 
 const props = defineProps<{
@@ -142,7 +148,6 @@ const props = defineProps<{
 }>()
 
 const modalStore = useModalStore('mainId')
-const messageStore = useMessageStore('mainId')
 const description = ref(props.editShareData.share.description)
 const requirePassword = ref(false)
 const password = ref('')
@@ -151,11 +156,6 @@ const allowUpload = ref(false)
 const allowDownload = ref(true)
 const showMetadata = ref(true)
 const selectedDuration = ref<number | null>(null)
-const shareUrl = ref<string>(
-  `${window.location.origin}/share-${props.editShareData.albumId}-${props.editShareData.share.url}`
-)
-
-const { copy } = useClipboard()
 
 const durations = [
   { label: '30 minutes later', id: 30 },
@@ -171,9 +171,4 @@ const durations = [
 watchEffect(() => {
   console.log('props.share.url is', props.editShareData.share.url)
 })
-
-async function performCopy(text: string) {
-  await copy(text)
-  messageStore.success('Url copied')
-}
 </script>
