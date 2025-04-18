@@ -3,29 +3,31 @@
     <LeaveView />
     <v-spacer></v-spacer>
     <ShowInfo />
-    <v-btn
-      v-if="metadata && metadata.database"
-      :icon="metadata.database.tag.includes('_favorite') ? 'mdi-star' : 'mdi-star-outline'"
-      @click="
-        metadata.database.tag.includes('_favorite')
-          ? quickRemoveTags('_favorite', [index], isolationId)
-          : quickAddTags('_favorite', [index], isolationId)
-      "
-    ></v-btn>
-    <v-btn
-      v-if="metadata && metadata.database"
-      :icon="
-        metadata.database.tag.includes('_archived')
-          ? 'mdi-archive-arrow-up-outline'
-          : 'mdi-archive-arrow-down-outline'
-      "
-      @click="
-        metadata.database.tag.includes('_archived')
-          ? quickRemoveTags('_archived', [index], isolationId)
-          : quickAddTags('_archived', [index], isolationId)
-      "
-    ></v-btn>
-    <ViewPageToolBarDatabase
+    <template v-if="route.meta.baseName !== 'share'">
+      <v-btn
+        v-if="metadata && metadata.database"
+        :icon="metadata.database.tag.includes('_favorite') ? 'mdi-star' : 'mdi-star-outline'"
+        @click="
+          metadata.database.tag.includes('_favorite')
+            ? quickRemoveTags('_favorite', [index], isolationId)
+            : quickAddTags('_favorite', [index], isolationId)
+        "
+      ></v-btn>
+      <v-btn
+        v-if="metadata && metadata.database"
+        :icon="
+          metadata.database.tag.includes('_archived')
+            ? 'mdi-archive-arrow-up-outline'
+            : 'mdi-archive-arrow-down-outline'
+        "
+        @click="
+          metadata.database.tag.includes('_archived')
+            ? quickRemoveTags('_archived', [index], isolationId)
+            : quickAddTags('_archived', [index], isolationId)
+        "
+      ></v-btn>
+    </template>
+    <DatabaseMenu
       v-if="metadata && metadata.database"
       :database="metadata.database"
       :index="index"
@@ -44,11 +46,12 @@
 <script setup lang="ts">
 import { quickRemoveTags, quickAddTags } from '@utils/quickEditTags'
 import { AbstractData, IsolationId } from '@type/types'
-import ViewPageToolBarDatabase from '@Menu/Page/SingleMenu.vue'
+import DatabaseMenu from '@Menu/Page/SingleMenu.vue'
 import AlbumMenu from '@Menu/Page/AlbumMenu.vue'
 import LeaveView from '@Menu/MenuButton/BtnLeaveView.vue'
 import ShowInfo from '@Menu/MenuButton/BtnShowInfo.vue'
-
+import { useRoute } from 'vue-router'
+const route = useRoute()
 defineProps<{
   isolationId: IsolationId
   hash: string
