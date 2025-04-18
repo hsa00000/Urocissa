@@ -21,16 +21,36 @@
             item-value="url"
             :items-per-page="-1"
           >
+            <!-- 純顯示網址 -->
             <template #[`item.share.url`]="{ item }">
-              <div class="d-flex align-center">
-                <span class="text-truncate">
-                  {{ `${item.share.url}` }}
-                </span>
+              {{ item.share.url }}
+            </template>
+
+            <!-- 描述加 Tooltip -->
+            <template #[`item.share.description`]="{ item }">
+              <v-tooltip location="top" :open-on-click="true">
+                <template #activator="{ props }">
+                  <span v-bind="props" class="text-truncate">
+                    {{ item.share.description }}
+                  </span>
+                </template>
+                <span>{{ item.share.description }}</span>
+              </v-tooltip>
+            </template>
+
+            <!-- 所有操作按鈕集中這裡 -->
+            <template #[`item.actions`]="{ item }">
+              <div class="d-flex flex-row justify-center ga-1">
+                <v-btn
+                  icon="mdi-pencil"
+                  variant="text"
+                  size="small"
+                  @click="clickEditShare(item)"
+                />
                 <v-btn
                   icon="mdi-open-in-new"
                   variant="text"
                   size="small"
-                  class="ms-2"
                   :href="`${locationOrigin}/share-${item.albumId}-${item.share.url}`"
                   target="_blank"
                   tag="a"
@@ -39,11 +59,12 @@
                   icon="mdi-content-copy"
                   variant="text"
                   size="small"
-                  class="ms-1"
                   @click="copy(`${locationOrigin}/share-${item.albumId}-${item.share.url}`)"
                 />
               </div>
             </template>
+
+            <!-- 群組標頭 -->
             <template #group-header="{ item, columns, toggleGroup, isGroupOpen }">
               <tr>
                 <td :colspan="columns.length">
@@ -64,32 +85,13 @@
                       variant="text"
                       size="small"
                       class="ms-2"
-                      :href="`${`${locationOrigin}/albums/view/${item.value}/read`}`"
+                      :href="`${locationOrigin}/albums/view/${item.value}/read`"
                       target="_blank"
                       tag="a"
                     />
                   </div>
                 </td>
               </tr>
-            </template>
-            <template #[`item.actions`]="{ item }">
-              <div class="d-flex flex-row justify-center ga-1">
-                <v-btn icon="mdi-pencil" variant="text" @click="clickEditShare(item)" />
-              </div>
-            </template>
-            <template #[`item.share.description`]="{ item }">
-              <v-tooltip location="top" :open-on-click="true">
-                <template #activator="{ props }">
-                  <span
-                    v-bind="props"
-                    class="text-truncate"
-                    style="max-width: 200px; display: inline-block"
-                  >
-                    {{ item.share.description }}
-                  </span>
-                </template>
-                <span>{{ item.share.description }}</span>
-              </v-tooltip>
             </template>
           </v-data-table>
         </v-card>
@@ -112,18 +114,10 @@ import { useClipboard } from '@vueuse/core'
 const initializedStore = useInitializedStore('mainId')
 const albumStore = useAlbumStore('mainId')
 const modalStore = useModalStore('mainId')
-const dynamicWidth = ref<number>(0)
-const tableRef = ref<HTMLElement | null>(null)
 const locationOrigin = window.location.origin
 
 const { copy } = useClipboard()
 
-const updateDynamicWidth = () => {
-  const tableWidth = tableRef.value?.offsetWidth ?? 0
-  dynamicWidth.value = tableWidth <= 300 ? 300 : tableWidth
-}
-
-// Single reactive variable for storing edit share data (of type EditShareData)
 const currentEditShareData = ref<EditShareData | undefined>(undefined)
 
 const headers = [
@@ -135,13 +129,16 @@ const headers = [
     maxWidth: '200px',
     nowrap: true
   },
-  { title: 'Edit', key: 'actions', align: 'center' as const, sortable: false }
+  {
+    title: 'Actions',
+    key: 'actions',
+    align: 'center' as const,
+    sortable: false
+  }
 ]
 
-// Compute table items using EditShareData as the type.
 const tableItems = computed<EditShareData[]>(() => {
   const result: EditShareData[] = []
-
   for (const album of albumStore.albums.values()) {
     for (const [, share] of album.shareList) {
       result.push({
@@ -151,7 +148,6 @@ const tableItems = computed<EditShareData[]>(() => {
       })
     }
   }
-
   return result
 })
 
@@ -161,7 +157,7 @@ function clickEditShare(data: EditShareData) {
 }
 
 watchEffect(() => {
-  console.log(' modalStore.showEditShareModal is', modalStore.showEditShareModal)
+  console.log('modalStore.showEditShareModal is', modalStore.showEditShareModal)
   console.log('currentEditShareData is', currentEditShareData.value)
 })
 
@@ -169,7 +165,7 @@ watch(
   () => initializedStore.initialized,
   () => {
     if (initializedStore.initialized) {
-      updateDynamicWidth()
+      // layout update hook
     }
   }
 )
@@ -179,10 +175,8 @@ onMounted(async () => {
     await albumStore.fetchAlbums()
   }
   initializedStore.initialized = true
-
   await nextTick()
 
-  // Find all buttons with mdi-chevron-right (for unexpanded groups)
   const groupButtons = Array.from(document.querySelectorAll('button.v-btn')).filter((btn) =>
     btn.querySelector('.mdi-chevron-right')
   ) as HTMLButtonElement[]
@@ -191,6 +185,7 @@ onMounted(async () => {
     btn.click()
   }
 })
+
 onBeforeUnmount(() => {
   initializedStore.initialized = false
 })
