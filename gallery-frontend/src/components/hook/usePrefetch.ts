@@ -42,7 +42,7 @@ export function usePrefetch(
         }
 
         const prefetchReturn = await prefetch(filterJsonString, priorityId, reverse, locate)
-        await handlePrefetchReturn(prefetchReturn, isolationId)
+        await handlePrefetchReturn(prefetchReturn, isolationId, route)
         stopWatcher() // Stop the watcher after prefetching
       }
     },
@@ -51,7 +51,11 @@ export function usePrefetch(
 }
 
 // TODO optimize tags fetch
-async function handlePrefetchReturn(prefetchReturn: PrefetchReturn, isolationId: IsolationId) {
+async function handlePrefetchReturn(
+  prefetchReturn: PrefetchReturn,
+  isolationId: IsolationId,
+  route: RouteLocationNormalizedLoadedGeneric
+) {
   const configStore = useConfigStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
   const albumStore = useAlbumStore('mainId')
@@ -80,11 +84,13 @@ async function handlePrefetchReturn(prefetchReturn: PrefetchReturn, isolationId:
   initializedStore.initialized = true
 
   // Perform initialization:
-  if (!tagStore.fetched) {
-    await tagStore.fetchTags()
-  }
-  if (!albumStore.fetched) {
-    await albumStore.fetchAlbums()
+  if (route.meta.baseName !== 'share') {
+    if (!tagStore.fetched) {
+      await tagStore.fetchTags()
+    }
+    if (!albumStore.fetched) {
+      await albumStore.fetchAlbums()
+    }
   }
 
   await fetchScrollbar(isolationId)

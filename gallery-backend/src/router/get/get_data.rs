@@ -2,7 +2,7 @@ use crate::public::album::Share;
 use crate::public::config::{PUBLIC_CONFIG, PublicConfig};
 use crate::public::tree::TREE;
 use crate::public::tree::read_tags::TagInfo;
-use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::fairing::guard_auth::{GuardAuth, GuardAuthEdit};
 
 use arrayvec::ArrayString;
 use rocket::serde::json::Json;
@@ -15,7 +15,7 @@ pub async fn get_config(_auth: GuardAuth) -> Json<&'static PublicConfig> {
 }
 
 #[get("/get/get-tags")]
-pub async fn get_tags(_auth: GuardAuth) -> Json<Vec<TagInfo>> {
+pub async fn get_tags(_auth: GuardAuthEdit) -> Json<Vec<TagInfo>> {
     tokio::task::spawn_blocking(move || {
         let vec_tags_info = TREE.read_tags();
         Json(vec_tags_info)
@@ -33,7 +33,7 @@ pub struct AlbumInfo {
 }
 
 #[get("/get/get-albums")]
-pub async fn get_albums(_auth: GuardAuth) -> Json<Vec<AlbumInfo>> {
+pub async fn get_albums(_auth: GuardAuthEdit) -> Json<Vec<AlbumInfo>> {
     tokio::task::spawn_blocking(move || {
         let album_list = TREE.read_albums();
         let album_info_list = album_list
