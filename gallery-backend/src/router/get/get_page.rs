@@ -98,6 +98,13 @@ pub async fn share(_path: PathBuf) -> Option<NamedFile> {
         .ok()
 }
 
+#[get("/links")]
+pub async fn links() -> Option<NamedFile> {
+    NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
+        .await
+        .ok()
+}
+
 #[get("/archived")]
 pub async fn archived() -> Option<NamedFile> {
     NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
