@@ -52,7 +52,7 @@
                   icon="mdi-open-in-new"
                   variant="text"
                   size="small"
-                  :href="`${locationOrigin}/share-${item.albumId}-${item.share.url}`"
+                  :href="`${locationOrigin}/share/${item.albumId}-${item.share.url}`"
                   target="_blank"
                   tag="a"
                 />
@@ -60,7 +60,7 @@
                   icon="mdi-content-copy"
                   variant="text"
                   size="small"
-                  @click="copy(`${locationOrigin}/share-${item.albumId}-${item.share.url}`)"
+                  @click="copy(`${locationOrigin}/share/${item.albumId}-${item.share.url}`)"
                 />
               </div>
             </template>

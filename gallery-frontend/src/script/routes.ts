@@ -127,7 +127,7 @@ const simpleRoutes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/share-:albumId-:shareId',
+    path: '/share/:albumId-:shareId',
     component: HomeShare,
     name: 'share',
     meta: {
