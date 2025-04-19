@@ -60,7 +60,7 @@
                   icon="mdi-content-copy"
                   variant="text"
                   size="small"
-                  @click="copy(`${locationOrigin}/share/${item.albumId}-${item.share.url}`)"
+                  @click="performCopy(item)"
                 />
               </div>
             </template>
@@ -111,10 +111,12 @@ import { useModalStore } from '@/store/modalStore'
 import { EditShareData } from '@/type/types'
 import EditShareModal from '@/components/Modal/EditShareModal.vue'
 import { useClipboard } from '@vueuse/core'
+import { useMessageStore } from '@/store/messageStore'
 
 const initializedStore = useInitializedStore('mainId')
 const albumStore = useAlbumStore('mainId')
 const modalStore = useModalStore('mainId')
+const messageStore = useMessageStore('mainId')
 const locationOrigin = window.location.origin
 
 const { copy } = useClipboard()
@@ -190,6 +192,11 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   initializedStore.initialized = false
 })
+async function performCopy(item: EditShareData) {
+  const text = `${locationOrigin}/share/${item.albumId}-${item.share.url}`
+  await copy(text)
+  messageStore.success('Url copied')
+}
 </script>
 
 <style scoped>
