@@ -8,7 +8,7 @@
   >
     <v-confirm-edit
       v-model="changedTagsArray"
-      :disabled="['save']"
+      :disabled="false"
       @save="submit"
       @cancel="modalStore.showEditTagsModal = false"
     >
