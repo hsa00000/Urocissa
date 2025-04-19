@@ -8,22 +8,16 @@
         :src="getSrc(database.hash, true, database.ext, Cookies.get('jwt')!, undefined)"
       />
       <ItemDownload :index-list="[props.index]" />
-
-      <template v-if="route.meta.baseName !== 'share'">
-        <ItemFindInTimeline :hash="props.hash" />
-        <v-divider></v-divider>
-        <ItemEditTags />
-        <ItemEditAlbums />
-        <ItemDelete v-if="!database.tag.includes('_trashed')" :index-list="[props.index]" />
-        <ItemRestore v-if="database.tag.includes('_trashed')" :index-list="[props.index]" />
-        <ItemPermanentlyDelete
-          v-if="database.tag.includes('_trashed')"
-          :index-list="[props.index]"
-        />
-        <v-divider></v-divider>
-        <ItemRegenerateMetadata :index-list="[props.index]" />
-        <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
-      </template>
+      <ItemFindInTimeline :hash="props.hash" />
+      <v-divider></v-divider>
+      <ItemEditTags />
+      <ItemEditAlbums />
+      <ItemDelete v-if="!database.tag.includes('_trashed')" :index-list="[props.index]" />
+      <ItemRestore v-if="database.tag.includes('_trashed')" :index-list="[props.index]" />
+      <ItemPermanentlyDelete v-if="database.tag.includes('_trashed')" :index-list="[props.index]" />
+      <v-divider></v-divider>
+      <ItemRegenerateMetadata :index-list="[props.index]" />
+      <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
     </v-list>
   </v-menu>
 </template>
@@ -42,13 +36,11 @@ import ItemRegenerateMetadata from '@Menu/MenuItem/ItemRegenerateMetadata.vue'
 import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
 import ItemRegenerateThumbnailByFrame from '@Menu/MenuItem/ItemRegenerateThumbnailByFrame.vue'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
-import { useRoute } from 'vue-router'
 const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
   database: Database
 }>()
-const route = useRoute()
 const currentFrameStore = useCurrentFrameStore(props.isolationId)
 </script>

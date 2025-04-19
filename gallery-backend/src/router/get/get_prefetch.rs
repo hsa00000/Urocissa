@@ -1,3 +1,4 @@
+use crate::public::album::Share;
 use crate::public::expression::Expression;
 use crate::public::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::reduced_data::ReducedData;
@@ -40,11 +41,16 @@ impl Prefetch {
 pub struct PrefetchReturn {
     pub prefetch: Prefetch,
     pub token: String,
+    pub share: Option<Share>,
 }
 
 impl PrefetchReturn {
-    fn new(prefetch: Prefetch, token: String) -> Self {
-        Self { prefetch, token }
+    fn new(prefetch: Prefetch, token: String, share: Option<Share>) -> Self {
+        Self {
+            prefetch,
+            token,
+            share,
+        }
     }
 }
 
@@ -92,7 +98,7 @@ pub async fn prefetch(
                 info!(duration = &*duration; "Query cache found");
                 let claims = TimestampClaims::new(share_opt, prefetch.timestamp);
                 let token = claims.encode();
-                let prefetch_return = PrefetchReturn::new(prefetch, token);
+                let prefetch_return = PrefetchReturn::new(prefetch, token, claims.share);
 
                 return Json(prefetch_return);
             }
@@ -173,7 +179,7 @@ pub async fn prefetch(
         let token = claims.encode();
 
         let prefetch = Prefetch::new(timestamp, locate_to, data_length);
-        let prefetch_return = PrefetchReturn::new(prefetch, token);
+        let prefetch_return = PrefetchReturn::new(prefetch, token, claims.share);
 
         QUERY_SNAPSHOT.in_memory.insert(expression_hashed, prefetch);
         QUERY_SNAPSHOT.query_snapshot_flush();

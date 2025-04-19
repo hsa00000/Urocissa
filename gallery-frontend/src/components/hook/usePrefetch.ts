@@ -74,10 +74,13 @@ async function handlePrefetchReturn(
   const prefetch = prefetchReturn.prefetch
   const token = prefetchReturn.token
 
+  prefetchStore.share = prefetchReturn.share
   prefetchStore.timestamp = prefetch.timestamp
   prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
   prefetchStore.calculateLength(prefetch.dataLength)
   prefetchStore.locateTo = prefetch.locateTo
+
+  console.log('prefetchStore.share is', prefetchStore.share)
 
   await storeTimestampToken(token)
 

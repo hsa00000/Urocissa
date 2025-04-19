@@ -1,5 +1,5 @@
 import { fixedBigRowHeight, layoutBatchNumber } from '@/type/constants'
-import { IsolationId } from '@type/types'
+import { IsolationId, Share } from '@type/types'
 import { defineStore } from 'pinia'
 
 export const usePrefetchStore = (isolationId: IsolationId) =>
@@ -12,6 +12,7 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       dataLength: number // length of all photos
       rowLength: number // length of all photo batches
       locateTo: number | null
+      share: null | Share
       updateVisibleRowTrigger: boolean
       updateFetchRowTrigger: boolean
     } => ({
@@ -22,6 +23,7 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       dataLength: 0,
       rowLength: 0,
       locateTo: null,
+      share: null,
       updateVisibleRowTrigger: false,
       updateFetchRowTrigger: false
     }),

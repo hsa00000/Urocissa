@@ -28,7 +28,14 @@
       ></v-btn>
     </template>
     <DatabaseMenu
-      v-if="metadata && metadata.database"
+      v-if="metadata && metadata.database && share === null"
+      :database="metadata.database"
+      :index="index"
+      :hash="hash"
+      :isolation-id="isolationId"
+    />
+    <ShareMenu
+      v-if="metadata && metadata.database && share !== null"
       :database="metadata.database"
       :index="index"
       :hash="hash"
@@ -48,10 +55,16 @@ import { quickRemoveTags, quickAddTags } from '@utils/quickEditTags'
 import { AbstractData, IsolationId } from '@type/types'
 import DatabaseMenu from '@Menu/Page/SingleMenu.vue'
 import AlbumMenu from '@Menu/Page/AlbumMenu.vue'
+import ShareMenu from '@Menu/Page/ShareMenu.vue'
 import LeaveView from '@Menu/MenuButton/BtnLeaveView.vue'
 import ShowInfo from '@Menu/MenuButton/BtnShowInfo.vue'
 import { useRoute } from 'vue-router'
+import { usePrefetchStore } from '@/store/prefetchStore'
+
 const route = useRoute()
+const prefetchStore = usePrefetchStore('mainId')
+const share = prefetchStore.share
+
 defineProps<{
   isolationId: IsolationId
   hash: string

@@ -5,7 +5,7 @@
         <v-icon color="black">mdi-tag</v-icon>
       </v-avatar>
     </template>
-    <v-list-item-title>
+    <v-list-item-title v-if="route.meta.baseName !== 'share'">
       <v-chip
         v-if="tags.includes('_favorite')"
         prepend-icon="mdi-star"
@@ -60,7 +60,7 @@
         {{ tag }}
       </v-chip>
     </v-list-item-subtitle>
-    <v-list-item-subtitle>
+    <v-list-item-subtitle v-if="route.meta.baseName !== 'share'">
       <v-chip
         prepend-icon="mdi-pencil"
         color="black"
@@ -76,7 +76,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { IsolationId } from '@type/types'
 import { searchByTag } from '@utils/getter'
@@ -89,7 +89,7 @@ const props = defineProps<{
 }>()
 
 const modalStore = useModalStore('mainId')
-
+const route = useRoute()
 const router = useRouter()
 
 // Computed Properties

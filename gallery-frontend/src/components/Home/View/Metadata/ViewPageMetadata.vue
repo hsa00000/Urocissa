@@ -38,6 +38,7 @@
             :tags="metadata.database.tag"
           />
           <ItemAlbum
+            v-if="route.meta.baseName !== 'share'"
             :isolation-id="props.isolationId"
             :index="props.index"
             :albums="metadata.database.album"
@@ -75,6 +76,9 @@ import ItemTag from './ItemTag.vue'
 import ItemAlbum from './ItemAlbum.vue'
 import ItemTitle from './ItemTitle.vue'
 import ItemCount from './ItemCount.vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
 
 const props = defineProps<{
   isolationId: IsolationId

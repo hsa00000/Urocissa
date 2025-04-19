@@ -35,9 +35,20 @@ export const prefetchSchema = z.object({
   locateTo: z.number().nullable()
 })
 
+export const ShareSchema = z.object({
+  url: z.string().max(64),
+  description: z.string(),
+  password: z.string().nullable(),
+  showMetadata: z.boolean(),
+  showDownload: z.boolean(),
+  showUpload: z.boolean(),
+  exp: z.number()
+})
+
 export const prefetchReturnSchema = z.object({
   prefetch: prefetchSchema,
-  token: z.string()
+  token: z.string(),
+  share: ShareSchema.nullable()
 })
 
 export const DataBaseParse = z.object({
@@ -60,16 +71,6 @@ export const DataBaseSchema = DataBaseParse.extend({
   timestamp: z.number(),
   thumbhashUrl: z.string(), // need initialize
   filename: z.string() // need initialize
-})
-
-export const ShareSchema = z.object({
-  url: z.string().max(64),
-  description: z.string(),
-  password: z.string().nullable(),
-  showMetadata: z.boolean(),
-  showDownload: z.boolean(),
-  showUpload: z.boolean(),
-  exp: z.number()
 })
 
 export const AlbumParse = z.object({
