@@ -113,10 +113,11 @@
       </v-list>
       <v-card-actions>
         <v-spacer></v-spacer>
+        <v-btn color="red" variant="outlined" class="ma-2" @click="deleteShare"> Delete </v-btn>
         <v-btn
           color="teal-accent-4"
           variant="outlined"
-          class="ma-2 button button-submit"
+          class="ma-2"
           @click="modalStore.showEditShareModal = false"
         >
           Cancel
@@ -124,7 +125,7 @@
         <v-btn
           color="teal-accent-4"
           variant="outlined"
-          class="ma-2 button button-submit"
+          class="ma-2"
           type="submit"
           @click="submitEditShare"
         >
@@ -140,7 +141,7 @@ import { useModalStore } from '@/store/modalStore'
 import { ref, watchEffect } from 'vue'
 import { EditShareData } from '@/type/types'
 import axios from 'axios'
-import { DURATIONS } from '@/type/constants';
+import { DURATIONS } from '@/type/constants'
 
 const props = defineProps<{
   editShareData: EditShareData
@@ -175,6 +176,19 @@ const submitEditShare = async () => {
     modalStore.showEditShareModal = false
   } catch (error) {
     console.error('Failed to update share', error)
+  }
+}
+
+const deleteShare = async () => {
+  try {
+    const response = await axios.put('/put/delete_share', {
+      albumId: props.editShareData.albumId,
+      shareId: props.editShareData.share.url
+    })
+    console.log('Share deleted successfully', response.data)
+    modalStore.showEditShareModal = false
+  } catch (error) {
+    console.error('Failed to delete share', error)
   }
 }
 

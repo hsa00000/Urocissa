@@ -20,6 +20,7 @@
             :group-by="[{ key: 'albumId' }]"
             item-value="url"
             :items-per-page="-1"
+            :sort-by="[{ key: 'share.url', order: 'asc' }]"
           >
             <!-- 純顯示網址 -->
             <template #[`item.share.url`]="{ item }">
