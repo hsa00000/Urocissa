@@ -4,12 +4,12 @@ use crate::{public::abstract_data::AbstractData, router::fairing::guard_hash::Ha
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DataBaseTimestamp {
+pub struct DatabaseTimestamp {
     pub abstract_data: AbstractData,
     pub timestamp: u128,
 }
 
-impl DataBaseTimestamp {
+impl DatabaseTimestamp {
     pub fn new(abstract_data: AbstractData, priority_list: &[&str]) -> Self {
         let timestamp = abstract_data.compute_timestamp(priority_list);
         Self {

@@ -1,11 +1,12 @@
 use crate::public::album::Share;
+use crate::public::database_struct::database_timestamp::DatabaseTimestamp;
 use crate::public::expression::Expression;
 use crate::public::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::reduced_data::ReducedData;
 use crate::public::tree::TREE;
 use crate::public::tree::start_loop::VERSION_COUNT_TIMESTAMP;
 use crate::public::tree_snapshot::TREE_SNAPSHOT;
-use crate::router::fairing::guard_auth::{GuardAuthEdit, GuardAuthShare};
+use crate::router::fairing::guard_auth::GuardAuthShare;
 use crate::router::fairing::guard_timestamp::TimestampClaims;
 
 use bitcode::{Decode, Encode};
@@ -15,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::sync::atomic::Ordering;
+use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use std::time::{Instant, SystemTime};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "camelCase")]
@@ -54,271 +55,198 @@ impl PrefetchReturn {
     }
 }
 
-#[post("/get/prefetch?<locate>", format = "json", data = "<query_data>")]
-pub async fn prefetch(
-    _auth: GuardAuthEdit,
-    query_data: Option<Json<Expression>>,
-    locate: Option<String>,
-) -> Json<PrefetchReturn> {
-    tokio::task::spawn_blocking(move || {
-        // Start timer
-        let start_time = Instant::now();
-
-        // Step 1: Check if query cache is available
-        let find_cache_start_time = Instant::now();
-
-        let expression_opt = query_data.map(|query| query.into_inner());
-
-        let hasher = &mut DefaultHasher::new();
-
-        expression_opt.hash(hasher);
-        VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed).hash(hasher);
-        locate.hash(hasher);
-
-        let expression_hashed = hasher.finish();
-
-        match QUERY_SNAPSHOT.read_query_snapshot(expression_hashed) {
-            Ok(Some(prefetch)) => {
-                let duration = format!("{:?}", find_cache_start_time.elapsed());
-                info!(duration = &*duration; "Query cache found");
-                let claims = TimestampClaims::new(None, prefetch.timestamp);
-                let token = claims.encode();
-                let prefetch_return = PrefetchReturn::new(prefetch, token, claims.share);
-                return Json(prefetch_return);
-            }
-            _ => {
-                let duration = format!("{:?}", find_cache_start_time.elapsed());
-                info!(duration = &*duration; "Query cache not found. Generate a new one.");
-            }
+// -----------------------------------------------------------------------------
+// Convenience: &DatabaseTimestamp → ReducedData
+// -----------------------------------------------------------------------------
+impl From<&DatabaseTimestamp> for ReducedData {
+    fn from(source: &DatabaseTimestamp) -> Self {
+        Self {
+            hash: source.abstract_data.hash(),
+            width: source.abstract_data.width(),
+            height: source.abstract_data.height(),
+            date: source.timestamp,
         }
-
-        // Step 2: Filter items
-        let filter_items_start_time = Instant::now();
-        let ref_data = TREE.in_memory.read().unwrap();
-        let duration = format!("{:?}", filter_items_start_time.elapsed());
-        info!(duration = &*duration; "Filter items");
-
-        // Step 3: Compute layout
-        let layout_start_time = Instant::now();
-
-        let reduced_data: Vec<ReducedData> = match expression_opt {
-            Some(expression) => {
-                let filter = expression.generate_filter();
-                ref_data
-                    .par_iter()
-                    .filter(move |database_timestamp| filter(&database_timestamp.abstract_data))
-                    .map(|database_timestamp| ReducedData {
-                        hash: database_timestamp.abstract_data.hash(),
-                        width: database_timestamp.abstract_data.width(),
-                        height: database_timestamp.abstract_data.height(),
-                        date: database_timestamp.timestamp,
-                    })
-                    .collect()
-            }
-            None => ref_data
-                .par_iter()
-                .map(|database_timestamp| ReducedData {
-                    hash: database_timestamp.abstract_data.hash(),
-                    width: database_timestamp.abstract_data.width(),
-                    height: database_timestamp.abstract_data.height(),
-                    date: database_timestamp.timestamp,
-                })
-                .collect(),
-        };
-
-        let data_length = reduced_data.len();
-        let duration = format!("{:?}", layout_start_time.elapsed());
-        info!(duration = &*duration;  "Compute layout");
-
-        // Step 4: Locate hash
-        let locate_start_time = Instant::now();
-        let locate_to = if let Some(ref locate_hash) = locate {
-            reduced_data
-                .par_iter()
-                .position_first(|data| data.hash.as_str() == locate_hash)
-        } else {
-            None
-        };
-
-        let duration = format!("{:?}", locate_start_time.elapsed());
-        info!(duration = &*duration;  "Locate data");
-
-        // Step 5: Insert data into TREE_SNAPSHOT
-        let db_start_time = Instant::now();
-
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-
-        TREE_SNAPSHOT.in_memory.insert(timestamp, reduced_data);
-        TREE_SNAPSHOT.tree_snapshot_flush();
-
-        let duration = format!("{:?}", db_start_time.elapsed());
-        info!(duration = &*duration;   "Write cache into memory");
-
-        // Step 6: Create and return JSON response
-        let json_start_time = Instant::now();
-        let claims = TimestampClaims::new(None, timestamp);
-        let token = claims.encode();
-
-        let prefetch = Prefetch::new(timestamp, locate_to, data_length);
-        let prefetch_return = PrefetchReturn::new(prefetch, token, claims.share);
-
-        QUERY_SNAPSHOT.in_memory.insert(expression_hashed, prefetch);
-        QUERY_SNAPSHOT.query_snapshot_flush();
-
-        let json = Json(prefetch_return);
-
-        let duration = format!("{:?}", json_start_time.elapsed());
-        info!(duration = &*duration; "Create JSON response");
-
-        // Total elapsed time
-        let duration = format!("{:?}", start_time.elapsed());
-        info!(duration = &*duration; "(total time) Get_data_length complete");
-
-        json
-    })
-    .await
-    .unwrap()
+    }
 }
 
-#[post("/get/prefetch_share?<locate>", format = "json", data = "<query_data>")]
-pub async fn prefetch_share(
-    auth: GuardAuthShare,
+// -----------------------------------------------------------------------------
+// ── 1. Pure helpers (logic only, no side‑effects) ─────────────────────────────
+// -----------------------------------------------------------------------------
+
+/// Build a stable cache key from the expression, version counter and locate hash.
+fn build_query_hash(expression_option: &Option<Expression>, locate_option: &Option<String>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    expression_option.hash(&mut hasher);
+    VERSION_COUNT_TIMESTAMP
+        .load(Ordering::Relaxed)
+        .hash(&mut hasher);
+    locate_option.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Produce a vector of [`ReducedData`] that matches the expression (if any).
+fn collect_reduced_data(expression_option: Option<Expression>) -> Vec<ReducedData> {
+    let tree_guard = TREE.in_memory.read().unwrap();
+
+    match expression_option {
+        Some(expression) => {
+            let filter_fn = expression.generate_filter();
+            tree_guard
+                .par_iter()
+                .filter(|database_timestamp| filter_fn(&database_timestamp.abstract_data))
+                .map(|database_timestamp| database_timestamp.into())
+                .collect()
+        }
+        None => tree_guard
+            .par_iter()
+            .map(|database_timestamp| database_timestamp.into())
+            .collect(),
+    }
+}
+
+/// Locate the index for the requested hash, if the client supplied one.
+fn locate_index(
+    reduced_data_slice: &[ReducedData],
+    locate_option: &Option<String>,
+) -> Option<usize> {
+    locate_option.as_ref().and_then(|hash| {
+        reduced_data_slice
+            .par_iter()
+            .position_first(|reduced| reduced.hash.as_str() == hash)
+    })
+}
+
+// -----------------------------------------------------------------------------
+// ── 2. Helpers with side‑effects (snapshot, cache, JWT) ───────────────────────
+// -----------------------------------------------------------------------------
+
+/// Persist `reduced_data_vector` into `TREE_SNAPSHOT`; return `(timestamp, Prefetch)`.
+fn persist_tree_snapshot(
+    reduced_data_vector: Vec<ReducedData>,
+    locate_to_index: Option<usize>,
+) -> (u128, Prefetch) {
+    let timestamp_millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    TREE_SNAPSHOT
+        .in_memory
+        .insert(timestamp_millis, reduced_data_vector);
+    TREE_SNAPSHOT.tree_snapshot_flush();
+
+    (
+        timestamp_millis,
+        Prefetch::new(
+            timestamp_millis,
+            locate_to_index,
+            TREE_SNAPSHOT
+                .in_memory
+                .get(&timestamp_millis)
+                .unwrap()
+                .len(),
+        ),
+    )
+}
+
+/// Insert `prefetch` into the query‑level cache.
+fn cache_prefetch(query_hash: u64, prefetch: &Prefetch) {
+    QUERY_SNAPSHOT
+        .in_memory
+        .insert(query_hash, prefetch.clone());
+    QUERY_SNAPSHOT.query_snapshot_flush();
+}
+
+/// Assemble the JSON response for the **edit** path.
+fn build_edit_response(prefetch: Prefetch, timestamp_millis: u128) -> Json<PrefetchReturn> {
+    let claims = TimestampClaims::new(None, timestamp_millis);
+    Json(PrefetchReturn::new(prefetch, claims.encode(), claims.share))
+}
+
+/// Assemble the JSON response for the **share** path.
+fn build_share_response(
+    prefetch: Prefetch,
+    timestamp_millis: u128,
+    share_token: Share,
+) -> Json<PrefetchReturn> {
+    let claims = TimestampClaims::new(Some(share_token), timestamp_millis);
+    Json(PrefetchReturn::new(prefetch, claims.encode(), claims.share))
+}
+
+// -----------------------------------------------------------------------------
+// ── 3. Business helpers (edit • share) ────────────────────────────────────────
+// -----------------------------------------------------------------------------
+
+fn execute_edit_path(
+    expression_option: Option<Expression>,
+    locate_option: Option<String>,
+) -> Json<PrefetchReturn> {
+    let query_hash = build_query_hash(&expression_option, &locate_option);
+
+    // A. cache hit?
+    if let Ok(Some(prefetch)) = QUERY_SNAPSHOT.read_query_snapshot(query_hash) {
+        return build_edit_response(prefetch, prefetch.timestamp);
+    }
+
+    // B. fresh computation
+    let reduced_data_vector = collect_reduced_data(expression_option);
+    let locate_to_index = locate_index(&reduced_data_vector, &locate_option);
+    let (timestamp_millis, prefetch) = persist_tree_snapshot(reduced_data_vector, locate_to_index);
+
+    cache_prefetch(query_hash, &prefetch);
+    build_edit_response(prefetch, timestamp_millis)
+}
+
+fn execute_share_path(
+    expression_option: Option<Expression>,
+    locate_option: Option<String>,
+    share_token: Share,
+) -> Json<PrefetchReturn> {
+    let query_hash = build_query_hash(&expression_option, &locate_option);
+
+    if let Ok(Some(prefetch)) = QUERY_SNAPSHOT.read_query_snapshot(query_hash) {
+        return build_share_response(prefetch, prefetch.timestamp, share_token);
+    }
+
+    let reduced_data_vector = collect_reduced_data(expression_option);
+    let locate_to_index = locate_index(&reduced_data_vector, &locate_option);
+    let (timestamp_millis, prefetch) = persist_tree_snapshot(reduced_data_vector, locate_to_index);
+
+    cache_prefetch(query_hash, &prefetch);
+    build_share_response(prefetch, timestamp_millis, share_token)
+}
+
+// -----------------------------------------------------------------------------
+// ── 4. Single merged Rocket route ─────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+
+#[post("/get/prefetch?<locate>", format = "json", data = "<query_data>")]
+pub async fn prefetch(
+    auth_guard: GuardAuthShare,
     query_data: Option<Json<Expression>>,
     locate: Option<String>,
 ) -> Json<PrefetchReturn> {
-    tokio::task::spawn_blocking(move || {
-        // Start timer
-        let start_time = Instant::now();
+    // Combine album filter (if any) with the client‑supplied query.
+    let mut combined_expression_option = query_data.map(|wrapper| wrapper.into_inner());
 
-        // Step 1: Check if query cache is available
-        let find_cache_start_time = Instant::now();
+    let job_handle = if let Some((album_id, share_token)) = auth_guard.claims.album_share.clone() {
+        let album_filter_expression = Expression::Album(album_id);
 
-        let mut expression_opt = query_data.map(|query| query.into_inner());
-
-        let (album_id, share) = auth.claims.album_share.expect("album_share is required");
-
-        let album_expression = Expression::Album(album_id);
-        match expression_opt {
-            Some(expression) => {
-                expression_opt = Some(Expression::And(vec![album_expression, expression]));
+        combined_expression_option = Some(match combined_expression_option {
+            Some(client_expression) => {
+                Expression::And(vec![album_filter_expression, client_expression])
             }
-            None => expression_opt = Some(album_expression),
-        };
+            None => album_filter_expression,
+        });
 
-        let hasher = &mut DefaultHasher::new();
+        // heavy work on blocking thread – share path
+        tokio::task::spawn_blocking(move || {
+            execute_share_path(combined_expression_option, locate, share_token)
+        })
+    } else {
+        // edit path
+        tokio::task::spawn_blocking(move || execute_edit_path(combined_expression_option, locate))
+    };
 
-        expression_opt.hash(hasher);
-        VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed).hash(hasher);
-        locate.hash(hasher);
-
-        let expression_hashed = hasher.finish();
-
-        match QUERY_SNAPSHOT.read_query_snapshot(expression_hashed) {
-            Ok(Some(prefetch)) => {
-                let duration = format!("{:?}", find_cache_start_time.elapsed());
-                info!(duration = &*duration; "Query cache found");
-                let claims = TimestampClaims::new(Some(share), prefetch.timestamp);
-                let token = claims.encode();
-                let prefetch_return = PrefetchReturn::new(prefetch, token, claims.share);
-
-                return Json(prefetch_return);
-            }
-            _ => {
-                let duration = format!("{:?}", find_cache_start_time.elapsed());
-                info!(duration = &*duration; "Query cache not found. Generate a new one.");
-            }
-        }
-
-        // Step 2: Filter items
-        let filter_items_start_time = Instant::now();
-        let ref_data = TREE.in_memory.read().unwrap();
-        let duration = format!("{:?}", filter_items_start_time.elapsed());
-        info!(duration = &*duration; "Filter items");
-
-        // Step 3: Compute layout
-        let layout_start_time = Instant::now();
-
-        let reduced_data: Vec<ReducedData> = match expression_opt {
-            Some(expression) => {
-                let filter = expression.generate_filter();
-                ref_data
-                    .par_iter()
-                    .filter(move |database_timestamp| filter(&database_timestamp.abstract_data))
-                    .map(|database_timestamp| ReducedData {
-                        hash: database_timestamp.abstract_data.hash(),
-                        width: database_timestamp.abstract_data.width(),
-                        height: database_timestamp.abstract_data.height(),
-                        date: database_timestamp.timestamp,
-                    })
-                    .collect()
-            }
-            None => ref_data
-                .par_iter()
-                .map(|database_timestamp| ReducedData {
-                    hash: database_timestamp.abstract_data.hash(),
-                    width: database_timestamp.abstract_data.width(),
-                    height: database_timestamp.abstract_data.height(),
-                    date: database_timestamp.timestamp,
-                })
-                .collect(),
-        };
-
-        let data_length = reduced_data.len();
-        let duration = format!("{:?}", layout_start_time.elapsed());
-        info!(duration = &*duration;  "Compute layout");
-
-        // Step 4: Locate hash
-        let locate_start_time = Instant::now();
-        let locate_to = if let Some(ref locate_hash) = locate {
-            reduced_data
-                .par_iter()
-                .position_first(|data| data.hash.as_str() == locate_hash)
-        } else {
-            None
-        };
-
-        let duration = format!("{:?}", locate_start_time.elapsed());
-        info!(duration = &*duration;  "Locate data");
-
-        // Step 5: Insert data into TREE_SNAPSHOT
-        let db_start_time = Instant::now();
-
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-
-        TREE_SNAPSHOT.in_memory.insert(timestamp, reduced_data);
-        TREE_SNAPSHOT.tree_snapshot_flush();
-
-        let duration = format!("{:?}", db_start_time.elapsed());
-        info!(duration = &*duration;   "Write cache into memory");
-
-        // Step 6: Create and return JSON response
-        let json_start_time = Instant::now();
-        let claims = TimestampClaims::new(Some(share), timestamp);
-        let token = claims.encode();
-
-        let prefetch = Prefetch::new(timestamp, locate_to, data_length);
-        let prefetch_return = PrefetchReturn::new(prefetch, token, claims.share);
-
-        QUERY_SNAPSHOT.in_memory.insert(expression_hashed, prefetch);
-        QUERY_SNAPSHOT.query_snapshot_flush();
-
-        let json = Json(prefetch_return);
-
-        let duration = format!("{:?}", json_start_time.elapsed());
-        info!(duration = &*duration; "Create JSON response");
-
-        // Total elapsed time
-        let duration = format!("{:?}", start_time.elapsed());
-        info!(duration = &*duration; "(total time) Get_data_length complete");
-
-        json
-    })
-    .await
-    .unwrap()
+    job_handle.await.unwrap()
 }

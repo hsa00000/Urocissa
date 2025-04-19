@@ -1,6 +1,6 @@
 use super::Tree;
 use crate::public::abstract_data::AbstractData;
-use crate::public::database_struct::database_timestamp::DataBaseTimestamp;
+use crate::public::database_struct::database_timestamp::DatabaseTimestamp;
 use crate::public::expire::EXPIRE;
 use crate::public::utils::start_loop_util;
 
@@ -11,8 +11,8 @@ use std::collections::HashSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::Instant;
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Notify;
+use tokio::sync::mpsc::UnboundedSender;
 
 static ALLOWED_KEYS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
@@ -43,7 +43,7 @@ impl Tree {
 
             let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
-            let mut data_vec: Vec<DataBaseTimestamp> = table
+            let mut data_vec: Vec<DatabaseTimestamp> = table
                 .iter()
                 .unwrap()
                 .par_bridge()
@@ -54,20 +54,20 @@ impl Tree {
                     database
                         .exif_vec
                         .retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
-                    DataBaseTimestamp::new(AbstractData::Database(database), &priority_list)
+                    DatabaseTimestamp::new(AbstractData::Database(database), &priority_list)
                 })
                 .collect();
 
             let album_table = self.api_read_album();
 
-            let album_vec: Vec<DataBaseTimestamp> = album_table
+            let album_vec: Vec<DatabaseTimestamp> = album_table
                 .iter()
                 .unwrap()
                 .par_bridge()
                 .map(|guard| {
                     let (_, value) = guard.unwrap();
                     let album = value.value();
-                    DataBaseTimestamp::new(AbstractData::Album(album), &priority_list)
+                    DatabaseTimestamp::new(AbstractData::Album(album), &priority_list)
                 })
                 .collect();
 

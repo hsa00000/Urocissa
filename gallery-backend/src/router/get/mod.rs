@@ -43,7 +43,6 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_page::service_worker,
         get_page::sregister_sw,
         get_prefetch::prefetch,
-        get_prefetch::prefetch_share,
         get_export::get_export
     ]
 }
