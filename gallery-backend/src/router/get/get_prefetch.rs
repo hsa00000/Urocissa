@@ -150,10 +150,8 @@ fn persist_tree_snapshot(
 }
 
 /// Insert `prefetch` into the query‑level cache.
-fn cache_prefetch(query_hash: u64, prefetch: &Prefetch) {
-    QUERY_SNAPSHOT
-        .in_memory
-        .insert(query_hash, prefetch.clone());
+fn cache_prefetch(query_hash: u64, prefetch: Prefetch) {
+    QUERY_SNAPSHOT.in_memory.insert(query_hash, prefetch);
     QUERY_SNAPSHOT.query_snapshot_flush();
 }
 
@@ -193,7 +191,7 @@ fn execute_edit_path(
     let locate_to_index = locate_index(&reduced_data_vector, &locate_option);
     let (timestamp_millis, prefetch) = persist_tree_snapshot(reduced_data_vector, locate_to_index);
 
-    cache_prefetch(query_hash, &prefetch);
+    cache_prefetch(query_hash, prefetch);
     build_edit_response(prefetch, timestamp_millis)
 }
 
@@ -212,7 +210,7 @@ fn execute_share_path(
     let locate_to_index = locate_index(&reduced_data_vector, &locate_option);
     let (timestamp_millis, prefetch) = persist_tree_snapshot(reduced_data_vector, locate_to_index);
 
-    cache_prefetch(query_hash, &prefetch);
+    cache_prefetch(query_hash, prefetch);
     build_share_response(prefetch, timestamp_millis, share_token)
 }
 
@@ -229,7 +227,7 @@ pub async fn prefetch(
     // Combine album filter (if any) with the client‑supplied query.
     let mut combined_expression_option = query_data.map(|wrapper| wrapper.into_inner());
 
-    let job_handle = if let Some((album_id, share_token)) = auth_guard.claims.album_share.clone() {
+    let job_handle = if let Some((album_id, share_token)) = auth_guard.claims.album_share {
         let album_filter_expression = Expression::Album(album_id);
 
         combined_expression_option = Some(match combined_expression_option {
