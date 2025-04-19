@@ -6,44 +6,35 @@
     persistent
     id="edit-tag-overlay"
   >
-    <v-card class="mx-auto w-100" max-width="400" variant="elevated" retain-focus>
-      <v-form v-model="formIsValid" @submit.prevent="submit" validate-on="input">
-        <v-card-title> Edit Tags </v-card-title>
-        <v-container>
-          <v-combobox
-            v-model="changedTagsArray"
-            chips
-            multiple
-            item-title="tag"
-            item-value="tag"
-            :items="filteredTagList"
-            label="Tags"
-            closable-chips
-          ></v-combobox>
-        </v-container>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn
-            color="teal-accent-4"
-            variant="outlined"
-            class="ma-2 button button-submit"
-            @click="modalStore.showEditTagsModal = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="teal-accent-4"
-            variant="outlined"
-            class="ma-2 button button-submit"
-            :loading="!tagStore.fetched"
-            :disabled="!formIsValid"
-            type="submit"
-          >
-            Submit
-          </v-btn>
-        </v-card-actions>
-      </v-form>
-    </v-card>
+    <v-confirm-edit
+      v-model="changedTagsArray"
+      @save="submit"
+      @cancel="modalStore.showEditTagsModal = false"
+    >
+      <template #default="{ model: proxyModel, actions }">
+        <v-card class="mx-auto w-100" max-width="400" variant="elevated" retain-focus>
+          <template #title> Edit Tags </template>
+          <template #text>
+            <v-form v-model="formIsValid" @submit.prevent="submit" validate-on="input">
+              <v-combobox
+                v-model="proxyModel.value"
+                chips
+                multiple
+                item-title="tag"
+                item-value="tag"
+                :items="filteredTagList"
+                label="Tags"
+                closable-chips
+              />
+            </v-form>
+          </template>
+          <template #actions>
+            <v-spacer />
+            <component :is="actions" />
+          </template>
+        </v-card>
+      </template>
+    </v-confirm-edit>
   </v-dialog>
 </template>
 
