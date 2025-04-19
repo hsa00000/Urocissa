@@ -12,7 +12,7 @@ use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use super::VALIDATION_ALLOW_EXPIRED;
-use super::guard_auth::GuardAuth;
+use super::guard_auth::GuardAuthShare;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -130,7 +130,7 @@ pub struct RenewTimestampTokenReturn {
     data = "<token_request>"
 )]
 pub async fn renew_timestamp_token(
-    _auth: GuardAuth,
+    _auth: GuardAuthShare,
     token_request: Json<RenewTimestampToken>,
 ) -> Result<Json<RenewTimestampTokenReturn>, Status> {
     tokio::task::spawn_blocking(move || {

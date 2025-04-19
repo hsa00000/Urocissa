@@ -43,12 +43,12 @@ impl Claims {
     }
 }
 
-pub struct GuardAuth {
+pub struct GuardAuthShare {
     pub claims: Claims,
 }
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for GuardAuth {
+impl<'r> FromRequest<'r> for GuardAuthShare {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
@@ -64,7 +64,7 @@ impl<'r> FromRequest<'r> for GuardAuth {
             ) {
                 Ok(token_data_claims) => {
                     let claims = token_data_claims.claims;
-                    return Outcome::Success(GuardAuth { claims });
+                    return Outcome::Success(GuardAuthShare { claims });
                 }
                 _ => {
                     warn!("JWT validation failed.");
@@ -86,7 +86,7 @@ impl<'r> FromRequest<'r> for GuardAuth {
                 if let Some(share) = album.value().share_list.remove(share_id) {
                     let mut claims = Claims::new();
                     claims.album_share = Some((ArrayString::<64>::from(album_id).unwrap(), share));
-                    return Outcome::Success(GuardAuth { claims });
+                    return Outcome::Success(GuardAuthShare { claims });
                 } else {
                     println!("{:#?}", album.value().share_list);
                 }

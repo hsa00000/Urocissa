@@ -1,51 +1,108 @@
-use crate::public::album::Share;
-use crate::public::config::{PUBLIC_CONFIG, PublicConfig};
+use crate::public::abstract_data::AbstractData;
+use crate::public::constant::DEFAULT_PRIORITY_LIST;
+use crate::public::database_struct::database_timestamp::DataBaseTimestampReturn;
+use crate::public::redb::{ALBUM_TABLE, DATA_TABLE};
+use crate::public::row::{Row, ScrollBarData};
 use crate::public::tree::TREE;
-use crate::public::tree::read_tags::TagInfo;
-use crate::router::fairing::guard_auth::{GuardAuth, GuardAuthEdit};
+use crate::public::tree_snapshot::TREE_SNAPSHOT;
 
-use arrayvec::ArrayString;
+use crate::router::fairing::guard_timestamp::GuardTimestamp;
+use log::info;
+use rocket::http::Status;
+
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::serde::json::Json;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::time::Instant;
 
-#[get("/get/get-config.json")]
-pub async fn get_config(_auth: GuardAuth) -> Json<&'static PublicConfig> {
-    Json(&*PUBLIC_CONFIG)
-}
-
-#[get("/get/get-tags")]
-pub async fn get_tags(_auth: GuardAuthEdit) -> Json<Vec<TagInfo>> {
+#[get("/get/get-data?<timestamp>&<start>&<end>")]
+pub async fn get_data(
+    guard_timestamp: GuardTimestamp,
+    timestamp: u128,
+    start: usize,
+    end: usize,
+) -> Json<Vec<DataBaseTimestampReturn>> {
     tokio::task::spawn_blocking(move || {
-        let vec_tags_info = TREE.read_tags();
-        Json(vec_tags_info)
-    })
-    .await
-    .unwrap()
-}
+        let start_time = Instant::now();
+        let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
+        let read_txn = TREE.in_disk.begin_read().unwrap();
+        let table = read_txn.open_table(DATA_TABLE).unwrap();
+        let album_table = read_txn.open_table(ALBUM_TABLE).unwrap();
+        let end = end.min(tree_snapshot.len());
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct AlbumInfo {
-    pub album_id: String,
-    pub album_name: Option<String>,
-    pub share_list: HashMap<ArrayString<64>, Share>,
-}
+        // Early return if start is out of range.
+        if start >= end {
+            return Json(vec![]);
+        }
 
-#[get("/get/get-albums")]
-pub async fn get_albums(_auth: GuardAuthEdit) -> Json<Vec<AlbumInfo>> {
-    tokio::task::spawn_blocking(move || {
-        let album_list = TREE.read_albums();
-        let album_info_list = album_list
-            .into_iter()
-            .map(|album| AlbumInfo {
-                album_id: album.id.to_string(),
-                album_name: album.title,
-                share_list: album.share_list,
+        let data_vec: Vec<DataBaseTimestampReturn> = (start..end)
+            .into_par_iter()
+            .map(|index| {
+                let hash = tree_snapshot.get_hash(index);
+                let show_download = guard_timestamp
+                    .claims
+                    .share
+                    .as_ref()
+                    .map_or(true, |s| s.show_download);
+                if let Some(database) = table.get(&*hash).unwrap() {
+                    let mut database = database.value();
+                    if let Some(share) = &guard_timestamp.claims.share {
+                        if !share.show_metadata {
+                            database.tag.clear();
+                            database.album.clear();
+                            database.alias.clear();
+                        }
+                    }
+                    DataBaseTimestampReturn::new(
+                        AbstractData::Database(database),
+                        &DEFAULT_PRIORITY_LIST,
+                        timestamp,
+                        show_download,
+                    )
+                } else if let Some(album) = album_table.get(&*hash).unwrap() {
+                    let mut album = album.value();
+                    if let Some(share) = &guard_timestamp.claims.share {
+                        if !share.show_metadata {
+                            album.tag.clear();
+                        }
+                    };
+                    DataBaseTimestampReturn::new(
+                        AbstractData::Album(album),
+                        &DEFAULT_PRIORITY_LIST,
+                        timestamp,
+                        show_download,
+                    )
+                } else {
+                    panic!("Entry not found for hash: {:?}", hash);
+                }
             })
             .collect();
-        Json(album_info_list)
+        let duration = format!("{:?}", start_time.elapsed());
+        info!(duration = &*duration; "Get data: {} ~ {}", start, end);
+        Json(data_vec)
     })
     .await
     .unwrap()
+}
+
+#[get("/get/get-rows?<index>&<timestamp>")]
+pub async fn get_rows(
+    _auth: GuardTimestamp,
+    index: usize,
+    timestamp: u128,
+) -> Result<Json<Row>, Status> {
+    tokio::task::spawn_blocking(move || {
+        let start_time = Instant::now();
+        let filtered_rows = TREE_SNAPSHOT.read_row(index, timestamp)?;
+        let duration = format!("{:?}", start_time.elapsed());
+        info!(duration = &*duration; "Read rows: index = {}", index);
+        return Ok(Json(filtered_rows));
+    })
+    .await
+    .unwrap()
+}
+
+#[get("/get/get-scroll-bar?<timestamp>")]
+pub async fn get_scroll_bar(_auth: GuardTimestamp, timestamp: u128) -> Json<Vec<ScrollBarData>> {
+    let scrollbar_data = TREE_SNAPSHOT.read_scrollbar(timestamp);
+    Json(scrollbar_data)
 }
