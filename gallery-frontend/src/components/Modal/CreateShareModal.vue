@@ -184,7 +184,7 @@ const createLink = async () => {
     showUpload: showUpload.value,
     exp: exp.value ?? 0
   })
-  shareLink.value = `${window.location.origin}/share-${props.albumId}-${result.data}`
+  shareLink.value = `${window.location.origin}/share/${props.albumId}-${result.data}`
   console.log('shareLink is', shareLink)
 }
 
