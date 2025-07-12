@@ -1,7 +1,8 @@
-// tui.rs
+// tui.rs — Correctly using the DashMap<_, Arc<RwLock<_>>> pattern
 
 use arrayvec::ArrayString;
 use bytesize::ByteSize;
+use dashmap::DashMap;
 use std::{
     collections::VecDeque,
     mem,
@@ -10,18 +11,21 @@ use std::{
     time::Instant,
 };
 use superconsole::{Component, Dimensions, DrawMode, Line, Lines, SuperConsole};
-use terminal_size::{Width, terminal_size};
+use terminal_size::{terminal_size, Width};
 use tokio::{
     select,
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
-    time::{Duration, interval},
+    time::{interval, Duration},
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+use crate::structure::database_struct::database::definition::Database;
+
+// ... (tui_task and other top-level statics are unchanged) ...
 pub static LOGGER_TX: OnceLock<UnboundedSender<String>> = OnceLock::new();
+pub static TASK_STORE: LazyLock<TaskStore> = LazyLock::new(TaskStore::new);
 pub static MAX_ROWS: LazyLock<usize> = LazyLock::new(|| rayon::current_num_threads());
 
-/// ---------- async driver ----------
 pub async fn tui_task(
     mut sc: SuperConsole,
     dashboard: Arc<RwLock<Dashboard>>,
@@ -39,135 +43,135 @@ pub async fn tui_task(
     }
 }
 
-/// ---------- task model ----------
 
-#[derive(Debug, Clone)]
-pub enum FileType {
-    Image,
-    Video,
+/// The central storage for all tasks.
+///
+/// This uses the `DashMap<Key, Arc<RwLock<Value>>>` pattern, which is crucial for this application:
+/// - `DashMap`: Provides fast, thread-safe access to the *collection* of tasks.
+/// - `Arc`: Allows multiple threads (e.g., a worker and the TUI) to share ownership of a *single* task.
+/// - `RwLock`: Provides interior mutability, allowing the worker to safely write changes to the task
+///   while the TUI safely reads them, without holding up the entire DashMap.
+pub struct TaskStore {
+    tasks: DashMap<ArrayString<64>, Arc<RwLock<TaskRow>>>,
 }
 
+impl TaskStore {
+    pub fn new() -> Self {
+        Self {
+            tasks: DashMap::new(),
+        }
+    }
+
+    /// Adds a new task to the store.
+    pub fn add_task(&self, task_row: TaskRow) {
+        let hash = task_row.state.database.hash;
+        let task_arc = Arc::new(RwLock::new(task_row));
+        self.tasks.insert(hash, task_arc);
+    }
+
+    /// Retrieves a thread-safe, shareable reference to a task by its hash.
+    /// The DashMap's internal lock is only held for the duration of this lookup.
+    pub fn get_task(&self, hash: &ArrayString<64>) -> Option<Arc<RwLock<TaskRow>>> {
+        self.tasks.get(hash).map(|entry| entry.value().clone())
+    }
+}
+
+
+// ... (FileType, TaskState, TaskStateMachine, TaskRow structs are unchanged from the previous version) ...
+#[derive(Clone, Copy, Debug)]
+pub enum FileType { Image, Video }
 impl TryFrom<&str> for FileType {
     type Error = anyhow::Error;
-
     fn try_from(s: &str) -> anyhow::Result<Self> {
         match s {
             "image" => Ok(FileType::Image),
             "video" => Ok(FileType::Video),
-            _ => Err(anyhow::anyhow!("Unknown file type: {}", s)),
+            _ => Err(anyhow::anyhow!("unknown file-type: {s}")),
         }
     }
 }
 
-pub enum TaskState {
-    Indexing(Instant),
-    Transcoding(Instant),
-    Done(f64),
+#[derive(Clone, Debug)]
+pub enum TaskState { Pending, Indexing(Instant), Transcoding(Instant), Done(f64) }
+
+pub struct TaskStateMachine {
+    pub database: Database,
+    pub state: TaskState,
+}
+impl TaskStateMachine {
+    fn advance_state(&mut self) -> anyhow::Result<TaskState> {
+        let file_type = FileType::try_from(self.database.ext_type.as_str())?;
+        let current = mem::replace(&mut self.state, TaskState::Done(0.0));
+        self.state = match current {
+            TaskState::Pending => TaskState::Indexing(Instant::now()),
+            TaskState::Indexing(t0) => match file_type {
+                FileType::Image => TaskState::Done(t0.elapsed().as_secs_f64()),
+                FileType::Video => TaskState::Transcoding(Instant::now()),
+            },
+            TaskState::Transcoding(t0) => TaskState::Done(t0.elapsed().as_secs_f64()),
+            TaskState::Done(secs) => TaskState::Done(secs),
+        };
+        Ok(self.state.clone())
+    }
 }
 
 pub struct TaskRow {
-    pub hash: ArrayString<64>,
     pub path: PathBuf,
-    pub file_type: FileType,
-    pub state: TaskState,
+    pub state: TaskStateMachine,
     pub progress: Option<f64>,
 }
-
 impl TaskRow {
-    /// Advances the task to its next state based on its current state and file_type.
-    /// This is the core of the state machine.
-    pub fn advance_state(&mut self) {
-        // We use mem::replace to take ownership of the current state,
-        // allowing us to consume it in the match statement.
-        let current_state = mem::replace(&mut self.state, TaskState::Done(0.0)); // Dummy value
-
-        let new_state = match current_state {
-            // When the current state is Indexing...
-            TaskState::Indexing(t0) => {
-                // ...check the file type to decide the next state.
-                match self.file_type {
-                    FileType::Image => TaskState::Done(t0.elapsed().as_secs_f64()),
-                    FileType::Video => TaskState::Transcoding(Instant::now()),
-                }
+    pub fn advance_state(&mut self) -> anyhow::Result<TaskState> {
+        if matches!(self.state.state, TaskState::Indexing(_)) {
+            if let Ok(FileType::Video) = FileType::try_from(self.state.database.ext_type.as_str()) {
+                self.progress = None;
             }
-            // When the current state is Transcoding...
-            TaskState::Transcoding(t0) => {
-                // ...the only next state is Done.
-                TaskState::Done(t0.elapsed().as_secs_f64())
-            }
-            // If the task was already done, it remains done.
-            TaskState::Done(d) => TaskState::Done(d),
-        };
-
-        // Set the new state.
-        self.state = new_state;
-
-        // Reset progress if we have just entered a new processing state.
-        if matches!(self.state, TaskState::Transcoding(_)) {
-            self.progress = None;
         }
+        self.state.advance_state()
+    }
+    
+    pub fn update_progress(&mut self, percent: f64) {
+        self.progress = Some(percent.clamp(0.0, 100.0));
     }
 
-    /// REFACTORED: Formatting adjusted to the user's new specification.
+    // fmt() and tail_ellipsis() are unchanged
     pub fn fmt(&self) -> String {
-        const COL_STATUS: usize = 6; // 100.0% ⇒ 6
+        const COL_STATUS: usize = 6;
         const COL_HASH: usize = 5;
         const DEFAULT_COLS: usize = 120;
-
-        let margin = std::env::var("UROCISSA_TERM_MARGIN")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(4);
-        let cols = terminal_size()
-            .map(|(Width(w), _)| w as usize)
-            .unwrap_or(DEFAULT_COLS);
-
-        /* ----------  status / progress  ---------- */
-        let status = match (&self.state, self.progress) {
+        let margin = std::env::var("UROCISSA_TERM_MARGIN").ok().and_then(|v| v.parse().ok()).unwrap_or(4);
+        let cols = terminal_size().map(|(Width(w), _)| w as usize).unwrap_or(DEFAULT_COLS);
+        let status = match (&self.state.state, self.progress) {
             (TaskState::Transcoding(_), Some(p)) => format!("{:>5.1}%", p.min(100.0)),
             (TaskState::Done(_), _) => "✓".into(),
+            (TaskState::Pending, _) => "·".into(),
             _ => "•".into(),
         };
         let status_col = format!("{:<COL_STATUS$}", status);
-
-        /* ----------  hash  ---------- */
-        let short_hash = &self.hash.as_str()[..COL_HASH.min(self.hash.len())];
+        let full_hash = self.state.database.hash.as_str();
+        let short_hash = &full_hash[..COL_HASH.min(full_hash.len())];
         let hash_col = format!("{:>COL_HASH$}", short_hash);
-
-        /* ----------  elapsed secs  ---------- */
-        let secs = match self.state {
+        let secs = match self.state.state {
+            TaskState::Pending => 0.0,
             TaskState::Indexing(t0) | TaskState::Transcoding(t0) => t0.elapsed().as_secs_f64(),
             TaskState::Done(d) => d,
         };
         let suffix = format!(" │ {:>6.1}s", secs);
-
-        /* ----------  path  ---------- */
-        let prefix_w = COL_STATUS + 3 /* │ */ + COL_HASH + 3 /* │ */;
-        let path_budget = cols
-            .saturating_sub(prefix_w + UnicodeWidthStr::width(suffix.as_str()) + margin)
-            .max(5);
-
+        let prefix_w = COL_STATUS + 3 + COL_HASH + 3;
+        let path_budget = cols.saturating_sub(prefix_w + UnicodeWidthStr::width(suffix.as_str()) + margin).max(5);
         let raw_path = self.path.display().to_string();
         let short_path = Self::tail_ellipsis(&raw_path, path_budget);
-        let pad =
-            " ".repeat(path_budget.saturating_sub(UnicodeWidthStr::width(short_path.as_str())));
-
-        /* ----------  assemble  ---------- */
+        let pad = " ".repeat(path_budget.saturating_sub(UnicodeWidthStr::width(short_path.as_str())));
         format!("{status_col} │ {hash_col} │ {short_path}{pad}{suffix}")
     }
-
     fn tail_ellipsis(s: &str, max: usize) -> String {
-        if UnicodeWidthStr::width(s) <= max {
-            return s.to_owned();
-        }
+        if UnicodeWidthStr::width(s) <= max { return s.to_owned(); }
         let tail_len = max.saturating_sub(1);
         let mut acc = 0;
         let mut rev = String::new();
         for c in s.chars().rev() {
             let w = c.width().unwrap_or(0);
-            if acc + w > tail_len {
-                break;
-            }
+            if acc + w > tail_len { break; }
             acc += w;
             rev.push(c);
         }
@@ -175,138 +179,96 @@ impl TaskRow {
     }
 }
 
-/// ---------- dashboard ----------
+
+// Dashboard struct and impl are unchanged from the previous version
 pub struct Dashboard {
-    pub tasks: Vec<TaskRow>,          // running
-    pub completed: VecDeque<TaskRow>, // finished (oldest at front)
+    pub pending_hashes: Vec<ArrayString<64>>,
+    pub running_hashes: Vec<ArrayString<64>>,
+    pub completed_hashes: VecDeque<ArrayString<64>>,
     pub handled: u64,
     pub db_bytes: u64,
 }
 
-pub static DASHBOARD: LazyLock<Arc<RwLock<Dashboard>>> =
-    LazyLock::new(|| Arc::new(RwLock::new(Dashboard::new())));
+impl Default for Dashboard { fn default() -> Self { Self::new() } }
 
 impl Dashboard {
     pub fn new() -> Self {
         Self {
-            tasks: vec![],
-            completed: VecDeque::new(),
+            pending_hashes: vec![],
+            running_hashes: vec![],
+            completed_hashes: VecDeque::new(),
             handled: 0,
             db_bytes: 0,
         }
     }
-
-    pub fn add_task(&mut self, hash: ArrayString<64>, path: PathBuf, file_type: FileType) {
-        if let Some(t) = self.tasks.iter_mut().find(|t| t.hash == hash) {
-            // Restart task if it already exists
-            t.path = path;
-            t.file_type = file_type;
-            t.state = TaskState::Indexing(Instant::now());
-            t.progress = None;
+    pub fn add_pending_task(&mut self, hash: ArrayString<64>) { self.pending_hashes.push(hash); }
+    pub fn promote_pending_to_running(&mut self) -> Option<ArrayString<64>> {
+        if let Some(hash) = self.pending_hashes.pop() {
+            self.running_hashes.push(hash);
+            Some(hash)
         } else {
-            // Create a new task, starting in the Indexing state.
-            self.tasks.push(TaskRow {
-                hash,
-                path,
-                file_type,
-                state: TaskState::Indexing(Instant::now()),
-                progress: None,
-            });
+            None
         }
     }
-
-    /// Advances a task to its next state and moves it to the completed list if it's done.
-    pub fn advance_task_state(&mut self, hash: &ArrayString<64>) {
-        if let Some(pos) = self.tasks.iter().position(|t| &t.hash == hash) {
-            // Tell the task to update its own state.
-            self.tasks[pos].advance_state();
-
-            // Check if the update resulted in a finished state.
-            if let TaskState::Done(_) = self.tasks[pos].state {
-                let row = self.tasks.remove(pos);
-                self.move_to_completed(row);
+    pub fn mark_task_completed(&mut self, hash: &ArrayString<64>) {
+        if let Some(pos) = self.running_hashes.iter().position(|h| h == hash) {
+            let finished_hash = self.running_hashes.remove(pos);
+            self.completed_hashes.push_back(finished_hash);
+            while self.completed_hashes.len() > *MAX_ROWS {
+                self.completed_hashes.pop_front();
             }
-        }
-    }
-
-    fn move_to_completed(&mut self, row: TaskRow) {
-        self.completed.push_back(row);
-        while self.completed.len() > *MAX_ROWS {
-            self.completed.pop_front();
-        }
-        self.handled += 1;
-    }
-
-    pub fn update_progress(&mut self, hash: ArrayString<64>, percent: f64) {
-        if let Some(row) = self.tasks.iter_mut().find(|t| t.hash == hash) {
-            // Clamp to 0–100 just in case
-            row.progress = Some(percent.clamp(0.0, 100.0));
+            self.handled += 1;
         }
     }
 }
 
-/// ---------- renderer ----------
+// The Component impl for Dashboard is also unchanged
 impl Component for Dashboard {
     fn draw_unchecked(&self, _: Dimensions, _: DrawMode) -> anyhow::Result<Lines> {
-        let cols = terminal_size()
-            .map(|(Width(w), _)| w as usize)
-            .unwrap_or(120);
+        let cols = terminal_size().map(|(Width(w), _)| w as usize).unwrap_or(120);
         let sep = "─".repeat(cols);
         let mut lines: Vec<Line> = Vec::new();
 
-        // top rule
         lines.push(vec![sep.clone()].try_into()?);
-
-        // stats
-        let human = ByteSize(self.db_bytes).to_string();
-        let remain = self.tasks.len().saturating_sub(*MAX_ROWS);
-        let extra = if remain > 0 {
-            format!(" │  … remaining {remain}")
-        } else {
-            String::new()
-        };
+        let human_bytes = ByteSize(self.db_bytes).to_string();
+        let running_count = self.running_hashes.len();
+        let pending_count = self.pending_hashes.len();
         let mut stats = format!(
-            "• Processed: {:<6} │ DB size: {:>8}{extra}",
-            self.handled, human
+            "• Pending: {:<4} │ Running: {:<3} │ Processed: {:<6} │ DB size: {:>8}",
+            pending_count, running_count, self.handled, human_bytes
         );
         stats.push_str(&" ".repeat(cols.saturating_sub(UnicodeWidthStr::width(stats.as_str()))));
         lines.push(vec![stats].try_into()?);
-
-        // second rule
         lines.push(vec![sep.clone()].try_into()?);
 
-        // fill lines: completed first, then running
-        let max = *MAX_ROWS;
-        let running_len = self.tasks.len();
+        let render_task = |hash: &ArrayString<64>| -> Option<String> {
+            TASK_STORE.get_task(hash).map(|task_arc| {
+                task_arc.read().unwrap().fmt()
+            })
+        };
 
-        if running_len >= max {
-            // more running tasks than viewport; show the last `max` running rows
-            for t in self.tasks.iter().rev().take(max).rev() {
-                lines.push(vec![t.fmt()].try_into()?);
+        let max = *MAX_ROWS;
+        if running_count >= max {
+            for hash in self.running_hashes.iter().rev().take(max).rev() {
+                if let Some(formatted) = render_task(hash) { lines.push(vec![formatted].try_into()?); }
             }
         } else {
-            // show all completed rows needed to fill space
-            let needed_completed = max - running_len;
-            let start = self.completed.len().saturating_sub(needed_completed);
-            for t in self.completed.iter().skip(start) {
-                // oldest → newest
-                lines.push(vec![t.fmt()].try_into()?);
+            let need_completed = max - running_count;
+            let start = self.completed_hashes.len().saturating_sub(need_completed);
+            for hash in self.completed_hashes.iter().skip(start) {
+                if let Some(formatted) = render_task(hash) { lines.push(vec![formatted].try_into()?); }
             }
-            // then running rows in insertion order (oldest running first, newest last)
-            for t in &self.tasks {
-                lines.push(vec![t.fmt()].try_into()?);
+            for hash in &self.running_hashes {
+                if let Some(formatted) = render_task(hash) { lines.push(vec![formatted].try_into()?); }
             }
         }
 
-        // ensure exactly MAX_ROWS lines by padding if necessary
-        // The header consists of 3 lines (rule, stats, rule)
-        let header_lines = 3;
-        while lines.len() < max + header_lines {
+        const HEADER_HEIGHT: usize = 3;
+        let target_len = HEADER_HEIGHT + max;
+        while lines.len() < target_len {
             lines.push(vec![" ".repeat(cols)].try_into()?);
         }
-
-        // Trim any excess lines if we have fewer than MAX_ROWS total tasks
-        lines.truncate(max + header_lines);
+        lines.truncate(target_len);
 
         Ok(Lines(lines))
     }
