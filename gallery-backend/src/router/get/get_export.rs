@@ -1,4 +1,5 @@
 use crate::operations::open_db::open_data_table;
+use crate::router::AppResult;
 use crate::{
     public::structure::database_struct::database::definition::Database,
     router::fairing::guard_auth::GuardAuth,
@@ -15,11 +16,10 @@ pub struct ExportEntry {
 }
 
 #[get("/get/get-export")]
-pub async fn get_export(_auth: GuardAuth) -> ByteStream![Vec<u8>] {
-    ByteStream! {
+pub async fn get_export(_auth: GuardAuth) -> AppResult<ByteStream![Vec<u8>]> {
+    let data_table = open_data_table()?;
+    let byte_stream = ByteStream! {
         // Open DB and prepare to iterate
-        let data_table = open_data_table().unwrap();
-
         let iter = match data_table.iter() {
             Ok(it) => it,
             Err(_) => {
@@ -68,5 +68,6 @@ pub async fn get_export(_auth: GuardAuth) -> ByteStream![Vec<u8>] {
 
         // End the JSON array
         yield b"]".to_vec();
-    }
+    };
+    Ok(byte_stream)
 }
