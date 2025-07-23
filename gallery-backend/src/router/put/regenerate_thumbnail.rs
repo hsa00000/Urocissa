@@ -2,16 +2,19 @@ use crate::operations::indexation::generate_dynamic_image::generate_dynamic_imag
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
 use crate::operations::open_db::open_data_table;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::router::AppResult;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::INDEX_COORDINATOR;
+use anyhow::Context;
+use anyhow::Result;
+use anyhow::anyhow;
 use arrayvec::ArrayString;
 use rocket::form::Form;
 use rocket::form::{self, DataField, FromFormField, ValueField};
 use rocket::fs::TempFile;
-use rocket::http::Status;
 pub enum FrameData<'r> {
     Hash(ArrayString<64>),
     File(TempFile<'r>),
@@ -40,42 +43,52 @@ pub async fn regenerate_thumbnail_with_frame(
     _auth: GuardAuth,
     _read_only_mode: GuardReadOnlyMode,
     data: Form<Vec<FrameData<'_>>>,
-) -> Result<Status, Status> {
+) -> AppResult<()> {
     let mut hash: Option<ArrayString<64>> = None;
 
     for frame_data in data.into_inner() {
         match frame_data {
-            FrameData::Hash(received_hash) => {
-                hash = Some(received_hash);
-            }
+            FrameData::Hash(received_hash) => hash = Some(received_hash),
             FrameData::File(mut file) => {
-                let hash = hash.unwrap();
-                let file_path = format!("./object/compressed/{}/{}.jpg", &hash[0..2], hash);
+                let hash = hash
+                    .clone()
+                    .ok_or_else(|| anyhow!("Missing hash before frame file"))?;
 
-                if let Err(err) = file.move_copy_to(file_path).await {
-                    error!("Failed to save file: {:#?}", err);
-                    return Err(Status::InternalServerError);
-                }
-                let abstract_data = tokio::task::spawn_blocking(move || {
-                    let data_table = open_data_table();
-                    let mut database = data_table.get(&*hash).unwrap().unwrap().value();
-                    let dynamic_image = generate_dynamic_image(&database).unwrap();
-                    database.thumbhash = generate_thumbhash(&dynamic_image);
-                    database.phash = generate_phash(&dynamic_image);
-                    AbstractData::Database(database)
+                let file_path =
+                    format!("./object/compressed/{}/{}.jpg", &hash[0..2], hash.as_str());
+
+                file.move_copy_to(&file_path)
+                    .await
+                    .context("Copy frame file failed")?;
+
+                let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData> {
+                    let data_table = open_data_table().context("Open DATA_TABLE failed")?;
+                    let access_guard = data_table
+                        .get(&*hash)
+                        .context("Fetch DB record failed")?
+                        .ok_or_else(|| anyhow!("Hash not found in DB"))?;
+
+                    let mut database = access_guard.value();
+
+                    let dyn_img =
+                        generate_dynamic_image(&database).context("Decode DynamicImage failed")?;
+
+                    database.thumbhash = generate_thumbhash(&dyn_img);
+                    database.phash = generate_phash(&dyn_img);
+
+                    Ok(AbstractData::Database(database))
                 })
                 .await
-                .unwrap();
+                .context("Spawn-blocking join failed")??;
 
                 INDEX_COORDINATOR
                     .execute_batch_waiting(FlushTreeTask::insert(vec![abstract_data]))
                     .await
-                    .unwrap();
+                    .context("FlushTreeTask failed")?;
             }
         }
     }
 
     info!("Regenerating thumbnail successfully");
-
-    Ok(Status::Ok)
+    Ok(())
 }

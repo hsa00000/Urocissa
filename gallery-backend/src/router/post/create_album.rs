@@ -85,7 +85,7 @@ async fn create_album_elements(
 ) -> Result<()> {
     let element_batch = tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>> {
         let tree_snapshot = open_tree_snapshot_table(timestamp)?;
-        let data_table = open_data_table();
+        let data_table = open_data_table()?;
         elements_index
             .into_par_iter()
             .map(|idx| index_edit_album_insert(&tree_snapshot, &data_table, idx, album_id))

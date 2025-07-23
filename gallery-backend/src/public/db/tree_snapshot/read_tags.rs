@@ -1,31 +1,42 @@
 use super::TreeSnapshot;
 use crate::{operations::open_db::open_data_table, public::db::tree::read_tags::TagInfo};
+use anyhow::{Context, Result};
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use redb::ReadableTable;
 use std::sync::atomic::{AtomicUsize, Ordering};
-
 impl TreeSnapshot {
-    pub fn read_tags(&'static self) -> Vec<TagInfo> {
-        let tag_counts = DashMap::new();
-        let data_table = open_data_table();
-        data_table.iter().unwrap().par_bridge().for_each(|guard| {
-            let (_, data) = guard.unwrap();
-            for tag in data.value().tag {
-                let counter = tag_counts
-                    .entry(tag.clone())
-                    .or_insert_with(|| AtomicUsize::new(0));
-                counter.fetch_add(1, Ordering::Relaxed);
-            }
-        });
+    pub fn read_tags(&self) -> Result<Vec<TagInfo>> {
+        // Concurrent counter for each tag
+        let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
-        let tag_infos: Vec<TagInfo> = tag_counts
+        // Begin read‑only transaction and open the DATA_TABLE
+        let data_table = open_data_table().context("Open DATA_TABLE failed")?;
+
+        // Walk the table in parallel; stop on first error
+        data_table
+            .iter()
+            .context("Create iterator over DATA_TABLE failed")?
+            .par_bridge()
+            .try_for_each(|entry| -> Result<()> {
+                let (_, data) = entry.context("Read table row failed")?;
+                for tag in &data.value().tag {
+                    tag_counts
+                        .entry(tag.clone())
+                        .or_insert_with(|| AtomicUsize::new(0))
+                        .fetch_add(1, Ordering::Relaxed);
+                }
+                Ok(())
+            })?;
+
+        let tag_infos = tag_counts
             .par_iter()
-            .map(|entry| TagInfo {
-                tag: entry.key().clone(),
-                number: entry.value().load(Ordering::Relaxed),
+            .map(|e| TagInfo {
+                tag: e.key().clone(),
+                number: e.value().load(Ordering::Relaxed),
             })
             .collect();
-        tag_infos
+
+        Ok(tag_infos)
     }
 }

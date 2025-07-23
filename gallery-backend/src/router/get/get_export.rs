@@ -18,7 +18,7 @@ pub struct ExportEntry {
 pub async fn get_export(_auth: GuardAuth) -> ByteStream![Vec<u8>] {
     ByteStream! {
         // Open DB and prepare to iterate
-        let data_table = open_data_table();
+        let data_table = open_data_table().unwrap();
 
         let iter = match data_table.iter() {
             Ok(it) => it,

@@ -54,7 +54,7 @@ pub async fn edit_tag(
             BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(modified_data));
         }
 
-        Ok(TREE_SNAPSHOT.read_tags())
+        Ok(TREE_SNAPSHOT.read_tags()?)
     })
     .await
     .unwrap()?;
