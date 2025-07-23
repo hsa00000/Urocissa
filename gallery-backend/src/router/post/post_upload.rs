@@ -2,6 +2,7 @@ use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::router::fairing::guard_upload::GuardUpload;
 use crate::workflow::index_for_watch;
 use anyhow::Result;
 use anyhow::bail;
@@ -43,7 +44,7 @@ fn get_filename(file: &TempFile<'_>) -> String {
 
 #[post("/upload", data = "<data>")]
 pub async fn upload(
-    _auth: GuardAuth,
+    _auth: GuardUpload,
     _read_only_mode: GuardReadOnlyMode,
     data: Form<Vec<FileUpload<'_>>>,
 ) -> AppResult<()> {

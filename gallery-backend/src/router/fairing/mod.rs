@@ -9,6 +9,7 @@ pub mod guard_hash;
 pub mod guard_read_only_mode;
 pub mod guard_share;
 pub mod guard_timestamp;
+pub mod guard_upload;
 
 pub fn generate_fairing_routes() -> Vec<Route> {
     routes![
