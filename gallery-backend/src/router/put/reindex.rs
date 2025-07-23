@@ -2,6 +2,7 @@ use arrayvec::ArrayString;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::http::Status;
 
+use crate::operations::open_db::open_album_table;
 use crate::operations::open_db::open_data_table;
 use crate::process::info::regenerate_metadata_for_image;
 use crate::process::info::regenerate_metadata_for_video;
@@ -36,7 +37,7 @@ pub async fn reindex(
     let json_data = json_data.into_inner();
     tokio::task::spawn_blocking(move || {
         let data_table = open_data_table();
-        let album_table = TREE.api_read_album();
+        let album_table = open_album_table();
         let reduced_data_vec = TREE_SNAPSHOT
             .read_tree_snapshot(&json_data.timestamp)
             .unwrap();

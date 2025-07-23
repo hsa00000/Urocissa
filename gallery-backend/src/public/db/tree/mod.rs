@@ -1,6 +1,5 @@
 pub mod new;
 pub mod read_tags;
-pub mod read_tree;
 
 use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
