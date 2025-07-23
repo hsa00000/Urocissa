@@ -6,6 +6,7 @@ use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_share::GuardShare;
 
+use anyhow::Context;
 use arrayvec::ArrayString;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -17,13 +18,12 @@ pub async fn get_config(_auth: GuardShare) -> Json<&'static PublicConfig> {
 }
 
 #[get("/get/get-tags")]
-pub async fn get_tags(_auth: GuardAuth) -> Json<Vec<TagInfo>> {
+pub async fn get_tags(_auth: GuardAuth) -> AppResult<Json<Vec<TagInfo>>> {
     tokio::task::spawn_blocking(move || {
         let vec_tags_info = TREE.read_tags();
-        Json(vec_tags_info)
+        Ok(Json(vec_tags_info))
     })
-    .await
-    .unwrap()
+    .await?
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -37,7 +37,7 @@ pub struct AlbumInfo {
 #[get("/get/get-albums")]
 pub async fn get_albums(_auth: GuardAuth) -> AppResult<Json<Vec<AlbumInfo>>> {
     tokio::task::spawn_blocking(move || {
-        let album_list = TREE.read_albums();
+        let album_list = TREE.read_albums().context("Failed to read albums")?;
         let album_info_list = album_list
             .into_iter()
             .map(|album| AlbumInfo {

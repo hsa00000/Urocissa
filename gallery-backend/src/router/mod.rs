@@ -15,20 +15,13 @@ pub struct AppError(anyhow::Error);
 #[rocket::async_trait]
 impl<'r> Responder<'r, 'static> for AppError {
     fn respond_to(self, _req: &'r Request<'_>) -> response::Result<'static> {
-        // 1. 最外層訊息（即 context() 加的那層）
         let outer_msg = self.0.to_string();
 
-        // 2. 收集整條 error-chain
-        let chain: Vec<String> = self
-            .0
-            .chain() // ← 直接取得 Chain
-            .map(|e| e.to_string())
-            .collect();
+        let chain: Vec<String> = self.0.chain().map(|e| e.to_string()).collect();
 
-        // 3. 組 JSON
         let body = json!({
             "error": outer_msg,
-            "chain": chain,         // 也可改成 .join(": ") 變單一字串
+            "chain": chain,
         })
         .to_string();
 
@@ -40,7 +33,6 @@ impl<'r> Responder<'r, 'static> for AppError {
     }
 }
 
-// 仍然保留自動 From<anyhow::Error>
 impl<E> From<E> for AppError
 where
     anyhow::Error: From<E>,

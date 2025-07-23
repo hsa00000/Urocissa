@@ -1,11 +1,11 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::{public::constant::redb::ALBUM_TABLE, public::structure::album::Album};
+use anyhow::{Context, Result};
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use redb::ReadableTable;
 use serde::{Deserialize, Serialize};
-
-use crate::{public::constant::redb::ALBUM_TABLE, public::structure::album::Album};
 
 use super::Tree;
 
@@ -33,7 +33,7 @@ impl Tree {
                 }
             });
 
-        let tag_infos: Vec<TagInfo> = tag_counts
+        let tag_infos = tag_counts
             .par_iter()
             .map(|entry| TagInfo {
                 tag: entry.key().clone(),
@@ -42,20 +42,19 @@ impl Tree {
             .collect();
         tag_infos
     }
-    pub fn read_albums(&'static self) -> Vec<Album> {
-        let txn = self.in_disk.begin_read().unwrap();
-
-        let album_table = txn.open_table(ALBUM_TABLE).unwrap();
-
-        album_table
-            .iter()
-            .unwrap()
-            .par_bridge()
-            .map(|result| {
-                let (_, access_guard) = result.unwrap();
-                let album = access_guard.value();
-                album
-            })
-            .collect()
+    pub fn read_albums(&self) -> Result<Vec<Album>> {
+        Ok(
+            self.in_disk
+                .begin_read()
+                .context("Failed to begin read transaction")? // ①
+                .open_table(ALBUM_TABLE)
+                .context("Failed to open ALBUM_TABLE")? // ②
+                .iter()
+                .context("Failed to create iterator over ALBUM_TABLE")? // ③
+                .par_bridge()
+                .map(|entry| entry.map(|(_, guard)| guard.value()))
+                .collect::<Result<Vec<_>, _>>()
+                .context("Failed to collect album records in parallel")?, // ④
+        )
     }
 }
