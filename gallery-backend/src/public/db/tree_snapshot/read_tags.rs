@@ -11,7 +11,7 @@ impl TreeSnapshot {
         let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
         // Begin read‑only transaction and open the DATA_TABLE
-        let data_table = open_data_table().context("Open DATA_TABLE failed")?;
+        let data_table = open_data_table()?;
 
         // Walk the table in parallel; stop on first error
         data_table

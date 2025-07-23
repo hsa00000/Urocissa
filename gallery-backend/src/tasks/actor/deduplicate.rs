@@ -40,7 +40,7 @@ impl Task for DeduplicateTask {
 fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
     let mut database = Database::new(&task.path, task.hash)?;
 
-    let data_table = open_data_table();
+    let data_table = open_data_table()?;
     // File already in persistent database
 
     if let Some(guard) = data_table.get(&*database.hash).unwrap() {

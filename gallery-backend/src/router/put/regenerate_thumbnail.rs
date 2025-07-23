@@ -59,19 +59,19 @@ pub async fn regenerate_thumbnail_with_frame(
 
                 file.move_copy_to(&file_path)
                     .await
-                    .context("Copy frame file failed")?;
+                    .context("Failed to copy frame file")?;
 
                 let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData> {
-                    let data_table = open_data_table().context("Open DATA_TABLE failed")?;
+                    let data_table = open_data_table()?;
                     let access_guard = data_table
                         .get(&*hash)
-                        .context("Fetch DB record failed")?
-                        .ok_or_else(|| anyhow!("Hash not found in DB"))?;
+                        .context("Failed to fetch DB record")?
+                        .ok_or_else(|| anyhow!("Hash not found"))?;
 
                     let mut database = access_guard.value();
 
-                    let dyn_img =
-                        generate_dynamic_image(&database).context("Decode DynamicImage failed")?;
+                    let dyn_img = generate_dynamic_image(&database)
+                        .context("Failed to decode DynamicImage")?;
 
                     database.thumbhash = generate_thumbhash(&dyn_img);
                     database.phash = generate_phash(&dyn_img);
@@ -79,12 +79,12 @@ pub async fn regenerate_thumbnail_with_frame(
                     Ok(AbstractData::Database(database))
                 })
                 .await
-                .context("Spawn-blocking join failed")??;
+                .context("Failed to spawn blocking task")??;
 
                 INDEX_COORDINATOR
                     .execute_batch_waiting(FlushTreeTask::insert(vec![abstract_data]))
                     .await
-                    .context("FlushTreeTask failed")?;
+                    .context("Failed to execute FlushTreeTask")?;
             }
         }
     }
