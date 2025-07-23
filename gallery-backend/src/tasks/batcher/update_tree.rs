@@ -1,4 +1,4 @@
-use crate::operations::open_db::{open_album_table, open_data_and_album_tables, open_data_table};
+use crate::operations::open_db::open_data_and_album_tables;
 use crate::operations::utils::timestamp::get_current_timestamp_u64;
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
