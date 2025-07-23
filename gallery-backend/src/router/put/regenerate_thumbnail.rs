@@ -1,5 +1,6 @@
 use crate::operations::indexation::generate_dynamic_image::generate_dynamic_image;
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
+use crate::operations::open_db::open_data_table;
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
@@ -57,8 +58,8 @@ pub async fn regenerate_thumbnail_with_frame(
                     return Err(Status::InternalServerError);
                 }
                 let abstract_data = tokio::task::spawn_blocking(move || {
-                    let table = TREE.api_read_tree();
-                    let mut database = table.get(&*hash).unwrap().unwrap().value();
+                    let data_table = open_data_table();
+                    let mut database = data_table.get(&*hash).unwrap().unwrap().value();
                     let dynamic_image = generate_dynamic_image(&database).unwrap();
                     database.thumbhash = generate_thumbhash(&dynamic_image);
                     database.phash = generate_phash(&dynamic_image);

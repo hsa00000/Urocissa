@@ -1,10 +1,11 @@
 use crate::{
+    operations::open_db::open_data_table,
     public::{
         db::tree::TREE,
         error_data::handle_error,
         structure::{abstract_data::AbstractData, database_struct::database::definition::Database},
     },
-    tasks::{batcher::flush_tree::FlushTreeTask, BATCH_COORDINATOR},
+    tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -40,10 +41,10 @@ impl Task for DeduplicateTask {
 fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
     let mut database = Database::new(&task.path, task.hash)?;
 
-    let read_table = TREE.api_read_tree();
+    let data_table = open_data_table();
     // File already in persistent database
 
-    if let Some(guard) = read_table.get(&*database.hash).unwrap() {
+    if let Some(guard) = data_table.get(&*database.hash).unwrap() {
         let mut database_exist = guard.value();
         let file_modify = mem::take(&mut database.alias[0]);
         database_exist.alias.push(file_modify);

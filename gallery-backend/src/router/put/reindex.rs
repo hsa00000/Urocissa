@@ -2,6 +2,7 @@ use arrayvec::ArrayString;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::http::Status;
 
+use crate::operations::open_db::open_data_table;
 use crate::process::info::regenerate_metadata_for_image;
 use crate::process::info::regenerate_metadata_for_video;
 use crate::public::constant::PROCESS_BATCH_NUMBER;
@@ -34,7 +35,7 @@ pub async fn reindex(
 ) -> Status {
     let json_data = json_data.into_inner();
     tokio::task::spawn_blocking(move || {
-        let database_table = TREE.api_read_tree();
+        let data_table = open_data_table();
         let album_table = TREE.api_read_album();
         let reduced_data_vec = TREE_SNAPSHOT
             .read_tree_snapshot(&json_data.timestamp)
@@ -52,7 +53,7 @@ pub async fn reindex(
             let database_list: Vec<_> = batch
                 .into_par_iter()
                 .filter_map(|&hash| {
-                    match database_table.get(&*hash).unwrap() {
+                    match data_table.get(&*hash).unwrap() {
                         Some(guard) => {
                             let mut database = guard.value();
                             if database.ext_type == "image" {
@@ -73,7 +74,8 @@ pub async fn reindex(
                             match album_table.get(&*hash).unwrap() {
                                 Some(_) => {
                                     // album_self_update already will commit
-                                    INDEX_COORDINATOR.execute_detached(AlbumSelfUpdateTask::new(hash));
+                                    INDEX_COORDINATOR
+                                        .execute_detached(AlbumSelfUpdateTask::new(hash));
                                     None
                                 }
                                 _ => {

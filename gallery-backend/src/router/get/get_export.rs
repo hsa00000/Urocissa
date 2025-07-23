@@ -1,7 +1,8 @@
+use crate::operations::open_db::open_data_table;
 use crate::public::db::tree::TREE;
 use crate::{
-    router::fairing::guard_auth::GuardAuth,
     public::structure::database_struct::database::definition::Database,
+    router::fairing::guard_auth::GuardAuth,
 };
 use redb::ReadableTable;
 use rocket::get;
@@ -18,9 +19,9 @@ pub struct ExportEntry {
 pub async fn get_export(_auth: GuardAuth) -> ByteStream![Vec<u8>] {
     ByteStream! {
         // Open DB and prepare to iterate
-        let table =  TREE.api_read_tree();
+        let data_table = open_data_table();
 
-        let iter = match table.iter() {
+        let iter = match data_table.iter() {
             Ok(it) => it,
             Err(_) => {
                 yield b"{\"error\":\"failed to iterate\"}".to_vec();

@@ -1,3 +1,4 @@
+use crate::operations::open_db::open_data_table;
 use crate::operations::utils::timestamp::get_current_timestamp_u64;
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
@@ -41,11 +42,11 @@ impl BatchTask for UpdateTreeTask {
 
 fn update_tree_task() {
     let start_time = Instant::now();
-    let table = TREE.api_read_tree();
+    let data_table = open_data_table();
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
-    let mut data_vec: Vec<DatabaseTimestamp> = table
+    let mut database_timestamp_vec: Vec<DatabaseTimestamp> = data_table
         .iter()
         .unwrap()
         .par_bridge()
@@ -73,10 +74,10 @@ fn update_tree_task() {
         })
         .collect();
 
-    data_vec.extend(album_vec);
-    data_vec.par_sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    database_timestamp_vec.extend(album_vec);
+    database_timestamp_vec.par_sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
-    *TREE.in_memory.write().unwrap() = data_vec;
+    *TREE.in_memory.write().unwrap() = database_timestamp_vec;
 
     BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
 
