@@ -2,8 +2,7 @@ use arrayvec::ArrayString;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::http::Status;
 
-use crate::operations::open_db::open_album_table;
-use crate::operations::open_db::open_data_table;
+use crate::operations::open_db::open_data_and_album_tables;
 use crate::process::info::regenerate_metadata_for_image;
 use crate::process::info::regenerate_metadata_for_video;
 use crate::public::constant::PROCESS_BATCH_NUMBER;
@@ -35,8 +34,7 @@ pub async fn reindex(
 ) -> Status {
     let json_data = json_data.into_inner();
     tokio::task::spawn_blocking(move || {
-        let data_table = open_data_table();
-        let album_table = open_album_table();
+        let (data_table, album_table) = open_data_and_album_tables();
         let reduced_data_vec = TREE_SNAPSHOT
             .read_tree_snapshot(&json_data.timestamp)
             .unwrap();
