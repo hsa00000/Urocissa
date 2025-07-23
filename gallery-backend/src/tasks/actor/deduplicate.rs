@@ -1,7 +1,6 @@
 use crate::{
     operations::open_db::open_data_table,
     public::{
-        db::tree::TREE,
         error_data::handle_error,
         structure::{abstract_data::AbstractData, database_struct::database::definition::Database},
     },

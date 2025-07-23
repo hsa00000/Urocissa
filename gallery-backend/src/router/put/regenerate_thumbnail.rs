@@ -1,7 +1,6 @@
 use crate::operations::indexation::generate_dynamic_image::generate_dynamic_image;
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
 use crate::operations::open_db::open_data_table;
-use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 

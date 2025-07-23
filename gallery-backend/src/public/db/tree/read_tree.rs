@@ -1,10 +1,9 @@
 use crate::{
-    public::constant::redb::{ALBUM_TABLE, DATA_TABLE},
-    public::structure::{album::Album, database_struct::database::definition::Database},
+    public::constant::redb::ALBUM_TABLE,
+    public::structure::album::Album,
 };
 
 use super::Tree;
-use anyhow::Result;
 use redb::ReadOnlyTable;
 
 impl Tree {

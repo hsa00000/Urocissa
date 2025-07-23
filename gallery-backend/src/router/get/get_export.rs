@@ -1,5 +1,4 @@
 use crate::operations::open_db::open_data_table;
-use crate::public::db::tree::TREE;
 use crate::{
     public::structure::database_struct::database::definition::Database,
     router::fairing::guard_auth::GuardAuth,
