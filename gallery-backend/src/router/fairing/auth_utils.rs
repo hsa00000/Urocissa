@@ -1,36 +1,36 @@
-use arrayvec::ArrayString;
-use jsonwebtoken::{DecodingKey, Validation, decode};
-use log::warn;
-use rocket::Request;
-use serde::de::DeserializeOwned;
-
 use crate::public::constant::redb::ALBUM_TABLE;
 use crate::public::db::tree::TREE;
 use crate::public::structure::album::ResolvedShare;
 use crate::router::claims::claims::Claims;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
-
+use anyhow::Error;
+use anyhow::Result;
+use anyhow::anyhow;
+use arrayvec::ArrayString;
+use jsonwebtoken::{DecodingKey, Validation, decode};
+use rocket::Request;
+use serde::de::DeserializeOwned;
 /// Extract and validate Authorization header Bearer token
-pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str, ()> {
+pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {
     let auth_header = match req.headers().get_one("Authorization") {
         Some(header) => header,
         None => {
-            warn!("Request is missing the Authorization header");
-            return Err(());
+            return Err(anyhow!("Request is missing the Authorization header"));
         }
     };
 
     match auth_header.strip_prefix("Bearer ") {
         Some(token) => Ok(token),
         None => {
-            warn!("Authorization header format is invalid, expected 'Bearer <token>'");
-            Err(())
+            return Err(anyhow!(
+                "Authorization header format is invalid, expected 'Bearer <token>'"
+            ));
         }
     }
 }
 
 /// Decode JWT token with given claims type and validation
-pub fn decode_token<T: DeserializeOwned>(token: &str, validation: &Validation) -> Result<T, ()> {
+pub fn my_decode_token<T: DeserializeOwned>(token: &str, validation: &Validation) -> Result<T> {
     match decode::<T>(
         token,
         &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
@@ -38,14 +38,23 @@ pub fn decode_token<T: DeserializeOwned>(token: &str, validation: &Validation) -
     ) {
         Ok(token_data) => Ok(token_data.claims),
         Err(err) => {
-            warn!("Failed to decode token: {:#?}", err);
-            Err(())
+            return Err(Error::from(err).context("Failed to decode JWT token"));
         }
     }
 }
 
+/// Try to authenticate via JWT cookie and check if user is admin
+pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
+    if let Some(jwt_cookie) = req.cookies().get("jwt") {
+        let token = jwt_cookie.value();
+        let claims = my_decode_token::<Claims>(token, validation)?;
+        return Ok(claims);
+    }
+    Err(anyhow!("JWT not found in cookies"))
+}
+
 /// Extract hash from the request URL path (last segment before extension)
-pub fn extract_hash_from_path(req: &Request<'_>) -> Result<String, ()> {
+pub fn extract_hash_from_path(req: &Request<'_>) -> Result<String> {
     let hash_opt = req
         .uri()
         .path()
@@ -56,31 +65,8 @@ pub fn extract_hash_from_path(req: &Request<'_>) -> Result<String, ()> {
 
     match hash_opt {
         Some(hash) => Ok(hash),
-        None => {
-            warn!("No valid 'hash' parameter found in the uri");
-            Err(())
-        }
+        None => Err(anyhow!("No valid 'hash' parameter found in the uri")),
     }
-}
-
-/// Try to authenticate via JWT cookie and check if user is admin
-pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Option<Claims> {
-    if let Some(jwt_cookie) = req.cookies().get("jwt") {
-        let token = jwt_cookie.value();
-        match decode::<Claims>(
-            token,
-            &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-            validation,
-        ) {
-            Ok(token_data) if token_data.claims.is_admin() => {
-                return Some(token_data.claims);
-            }
-            _ => {
-                warn!("JWT validation failed");
-            }
-        }
-    }
-    None
 }
 
 /// Try to resolve album and share from headers

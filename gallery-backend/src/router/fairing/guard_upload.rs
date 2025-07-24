@@ -1,3 +1,4 @@
+use anyhow::Error;
 use rocket::Request;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
@@ -9,7 +10,7 @@ pub struct GuardUpload;
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardUpload {
-    type Error = ();
+    type Error = Error;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         // Try to authorize upload via share first
@@ -18,10 +19,14 @@ impl<'r> FromRequest<'r> for GuardUpload {
         }
 
         // Fall back to JWT cookie authentication
-        if try_jwt_cookie_auth(req, &VALIDATION).is_some() {
-            return Outcome::Success(GuardUpload);
+        match try_jwt_cookie_auth(req, &VALIDATION) {
+            Ok(_) => return Outcome::Success(GuardUpload),
+            Err(err) => {
+                return Outcome::Error((
+                    Status::InternalServerError,
+                    err.context("Authentication error"),
+                ));
+            }
         }
-
-        Outcome::Error((Status::Unauthorized, ()))
     }
 }

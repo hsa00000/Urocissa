@@ -1,3 +1,4 @@
+use anyhow::{Error, anyhow};
 use jsonwebtoken::{DecodingKey, decode};
 use log::warn;
 use rocket::Request;
@@ -12,7 +13,7 @@ use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use super::VALIDATION_ALLOW_EXPIRED;
-use super::auth_utils::{decode_token, extract_bearer_token};
+use super::auth_utils::{extract_bearer_token, my_decode_token};
 use super::guard_share::GuardShare;
 
 pub struct GuardTimestamp {
@@ -21,17 +22,17 @@ pub struct GuardTimestamp {
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardTimestamp {
-    type Error = ();
+    type Error = Error;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = match extract_bearer_token(req) {
             Ok(token) => token,
-            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
+            Err(err) => return Outcome::Error((Status::Unauthorized, err)),
         };
 
-        let claims: ClaimsTimestamp = match decode_token(token, &VALIDATION) {
+        let claims: ClaimsTimestamp = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
-            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
+            Err(err) => return Outcome::Error((Status::Unauthorized, err)),
         };
 
         let query_timestamp = req.uri().query().and_then(|query| {
@@ -44,8 +45,10 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
         let query_timestamp = match query_timestamp {
             Some(ts) => ts,
             None => {
-                warn!("No valid 'timestamp' parameter found in the query");
-                return Outcome::Error((Status::Unauthorized, ()));
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    anyhow!("No valid 'timestamp' parameter found in the query"),
+                ));
             }
         };
 
@@ -54,7 +57,7 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
                 "Timestamp does not match; received: {}; expected: {}",
                 query_timestamp, claims.timestamp
             );
-            return Outcome::Error((Status::Unauthorized, ()));
+            return Outcome::Error((Status::Unauthorized, anyhow!("Timestamp mismatch")));
         }
 
         Outcome::Success(GuardTimestamp { claims })

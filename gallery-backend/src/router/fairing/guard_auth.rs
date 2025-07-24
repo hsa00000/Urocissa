@@ -1,3 +1,4 @@
+use anyhow::Error;
 use rocket::Request;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
@@ -9,13 +10,15 @@ pub struct GuardAuth;
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardAuth {
-    type Error = ();
+    type Error = Error;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        if try_jwt_cookie_auth(req, &VALIDATION).is_some() {
-            Outcome::Success(GuardAuth)
-        } else {
-            Outcome::Error((Status::Unauthorized, ()))
+        match try_jwt_cookie_auth(req, &VALIDATION) {
+            Ok(_) => Outcome::Success(GuardAuth),
+            Err(err) => Outcome::Error((
+                Status::InternalServerError,
+                err.context("Authentication error"),
+            )),
         }
     }
 }

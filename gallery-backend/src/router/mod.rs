@@ -10,6 +10,7 @@ use rocket::response::{self, Responder, Response};
 use serde_json::json;
 use std::io::Cursor;
 
+#[derive(Debug)]
 pub struct AppError(anyhow::Error);
 
 #[rocket::async_trait]

@@ -1,3 +1,4 @@
+use anyhow::Error;
 use jsonwebtoken::{DecodingKey, decode};
 use log::warn;
 use rocket::Request;
@@ -5,37 +6,49 @@ use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
 use rocket::serde::json::Json;
 
-use serde::{Deserialize, Serialize};
-
 use crate::router::AppResult;
 use crate::router::claims::claims_hash::ClaimsHash;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
+use anyhow::anyhow;
+use serde::{Deserialize, Serialize};
 
 use super::VALIDATION_ALLOW_EXPIRED;
-use super::auth_utils::{decode_token, extract_bearer_token, extract_hash_from_path};
+use super::auth_utils::{extract_bearer_token, extract_hash_from_path, my_decode_token};
 
 pub struct GuardHash;
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardHash {
-    type Error = ();
+    type Error = Error;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = match extract_bearer_token(req) {
             Ok(token) => token,
-            Err(_) => return Outcome::Forward(Status::Unauthorized),
+            Err(err) => {
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    err.context("Bearer token extraction failed"),
+                ));
+            }
         };
 
-        let claims: ClaimsHash = match decode_token(token, &VALIDATION) {
+        let claims: ClaimsHash = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
-            Err(_) => return Outcome::Forward(Status::Unauthorized),
+            Err(err) => {
+                return Outcome::Error((Status::Unauthorized, err.context("JWT decoding failed")));
+            }
         };
 
         let data_hash = match extract_hash_from_path(req) {
             Ok(hash) => hash,
-            Err(_) => return Outcome::Forward(Status::Unauthorized),
+            Err(err) => {
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    err.context("Hash extraction failed"),
+                ));
+            }
         };
 
         // Compare hash in the token with the hash in the request path
@@ -44,7 +57,7 @@ impl<'r> FromRequest<'r> for GuardHash {
                 "Hash does not match. Received: {}, Expected: {}.",
                 data_hash, claims.hash
             );
-            return Outcome::Forward(Status::Unauthorized);
+            return Outcome::Error((Status::Unauthorized, anyhow!("Hash does not match")));
         }
         Outcome::Success(GuardHash)
     }
@@ -54,17 +67,24 @@ pub struct GuardHashOriginal;
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardHashOriginal {
-    type Error = ();
+    type Error = Error;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = match extract_bearer_token(req) {
             Ok(token) => token,
-            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
+            Err(err) => {
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    err.context("Bearer token extraction failed"),
+                ));
+            }
         };
 
-        let claims: ClaimsHash = match decode_token(token, &VALIDATION) {
+        let claims: ClaimsHash = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
-            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
+            Err(err) => {
+                return Outcome::Error((Status::Unauthorized, err.context("JWT decoding failed")));
+            }
         };
 
         if !claims.allow_original {
@@ -74,7 +94,12 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
 
         let data_hash = match extract_hash_from_path(req) {
             Ok(hash) => hash,
-            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
+            Err(err) => {
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    err.context("Hash extraction failed"),
+                ));
+            }
         };
 
         // Compare hash in the token with the hash in the request path
@@ -83,7 +108,7 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
                 "Hash does not match. Received: {}, Expected: {}.",
                 data_hash, claims.hash
             );
-            return Outcome::Error((Status::Unauthorized, ()));
+            return Outcome::Error((Status::Unauthorized, anyhow!("Hash does not match")));
         }
         Outcome::Success(GuardHashOriginal)
     }
@@ -157,7 +182,7 @@ impl<'r> FromRequest<'r> for TimestampGuardModified {
             Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
 
-        let claims: ClaimsTimestamp = match decode_token(token, &VALIDATION) {
+        let claims: ClaimsTimestamp = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
