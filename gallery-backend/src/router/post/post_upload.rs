@@ -32,11 +32,12 @@ fn get_filename(file: &TempFile<'_>) -> String {
 #[post("/upload?<presigned_album_id_opt>", data = "<form>")]
 pub async fn upload(
     auth: GuardResult<GuardUpload>,
-    _read_only_mode: GuardReadOnlyMode,
+    read_only_mode: Result<GuardReadOnlyMode>,
     presigned_album_id_opt: Option<String>,
     form: Form<UploadForm<'_>>,
 ) -> AppResult<()> {
     let _ = auth?;
+    let _ = read_only_mode?;
     let mut inner_form = form.into_inner();
 
     let presigned_album_id_opt: Option<ArrayString<64>> = if let Some(s) = presigned_album_id_opt {
