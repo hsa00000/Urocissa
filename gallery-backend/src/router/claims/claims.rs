@@ -1,5 +1,5 @@
-use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 use crate::public::structure::album::ResolvedShare;
+use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 use jsonwebtoken::{EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};

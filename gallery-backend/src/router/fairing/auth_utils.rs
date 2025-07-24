@@ -48,7 +48,11 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
     if let Some(jwt_cookie) = req.cookies().get("jwt") {
         let token = jwt_cookie.value();
         let claims = my_decode_token::<Claims>(token, validation)?;
-        return Ok(claims);
+        if claims.is_admin() {
+            return Ok(claims);
+        } else {
+            return Err(anyhow!("User is not an admin"));
+        }
     }
     Err(anyhow!("JWT not found in cookies"))
 }
