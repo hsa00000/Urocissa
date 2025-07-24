@@ -37,9 +37,10 @@ pub struct CreateAlbum {
 #[post("/post/create_empty_album")]
 pub async fn create_empty_album(
     auth: GuardResult<GuardAuth>,
-    _read_only_mode: GuardReadOnlyMode,
+    read_only_mode: Result<GuardReadOnlyMode>,
 ) -> AppResult<String> {
     let _ = auth?;
+    let _ = read_only_mode?;
     let album_id = create_album_internal(None).await?;
 
     Ok(album_id.to_string())
@@ -48,10 +49,11 @@ pub async fn create_empty_album(
 #[post("/post/create_non_empty_album", data = "<create_album>")]
 pub async fn create_non_empty_album(
     auth: GuardResult<GuardAuth>,
-    _read_only_mode: GuardReadOnlyMode,
+    read_only_mode: Result<GuardReadOnlyMode>,
     create_album: Json<CreateAlbum>,
 ) -> AppResult<String> {
     let _ = auth?;
+    let _ = read_only_mode?;
     let create_album = create_album.into_inner();
     let album_id = create_album_internal(create_album.title).await?;
     create_album_elements(

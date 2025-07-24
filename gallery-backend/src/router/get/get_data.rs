@@ -65,10 +65,11 @@ pub async fn get_data(
 
 #[get("/get/get-rows?<index>&<timestamp>")]
 pub async fn get_rows(
-    _auth: GuardTimestamp,
+    auth: GuardResult<GuardTimestamp>,
     index: usize,
     timestamp: u128,
 ) -> AppResult<Json<Row>> {
+    let _ = auth;
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
         let filtered_rows = TREE_SNAPSHOT.read_row(index, timestamp)?;
@@ -80,7 +81,11 @@ pub async fn get_rows(
 }
 
 #[get("/get/get-scroll-bar?<timestamp>")]
-pub async fn get_scroll_bar(_auth: GuardTimestamp, timestamp: u128) -> Json<Vec<ScrollBarData>> {
+pub async fn get_scroll_bar(
+    auth: GuardResult<GuardTimestamp>,
+    timestamp: u128,
+) -> Json<Vec<ScrollBarData>> {
+    let _ = auth;
     let scrollbar_data = TREE_SNAPSHOT.read_scrollbar(timestamp);
     Json(scrollbar_data)
 }

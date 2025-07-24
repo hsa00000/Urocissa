@@ -1,18 +1,18 @@
-use arrayvec::ArrayString;
-use rand::Rng;
-use rand::distr::Alphanumeric;
-use redb::{ReadableTable, WriteTransaction};
-use rocket::post;
-use rocket::serde::json::Json;
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use crate::public::db::tree::TREE;
 use crate::public::structure::album::Share;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::{public::constant::redb::ALBUM_TABLE, router::GuardResult};
+use anyhow::Result;
+use arrayvec::ArrayString;
+use rand::Rng;
+use rand::distr::Alphanumeric;
+use redb::{ReadableTable, WriteTransaction};
+use rocket::post;
+use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -29,10 +29,11 @@ pub struct CreateShare {
 #[post("/post/create_share", data = "<create_share>")]
 pub async fn create_share(
     auth: GuardResult<GuardAuth>,
-    _read_only_mode: GuardReadOnlyMode,
+    read_only_mode: Result<GuardReadOnlyMode>,
     create_share: Json<CreateShare>,
 ) -> AppResult<String> {
     let _ = auth?;
+    let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let create_share = create_share.into_inner();
         let txn = TREE.in_disk.begin_write().unwrap();

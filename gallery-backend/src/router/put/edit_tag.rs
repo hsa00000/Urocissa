@@ -22,10 +22,11 @@ pub struct EditTagsData {
 #[put("/put/edit_tag", format = "json", data = "<json_data>")]
 pub async fn edit_tag(
     auth: GuardResult<GuardAuth>,
-    _read_only_mode: GuardReadOnlyMode,
+    read_only_mode: Result<GuardReadOnlyMode>,
     json_data: Json<EditTagsData>,
 ) -> AppResult<Json<Vec<TagInfo>>> {
     let _ = auth?;
+    let _ = read_only_mode?;
     let vec_tags_info = tokio::task::spawn_blocking(move || -> Result<Vec<TagInfo>> {
         let (data_table, album_table) = open_data_and_album_tables();
         let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)?;

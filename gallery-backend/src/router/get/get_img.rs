@@ -63,10 +63,11 @@ pub async fn compressed_file(
 #[get("/object/imported/<file_path..>")]
 pub async fn imported_file(
     auth: GuardResult<GuardShare>,
-    _hash_guard: GuardHashOriginal,
+    hash_guard: GuardResult<GuardHashOriginal>,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {
     let _ = auth?;
+    let _ = hash_guard?;
     let imported_file_path = Path::new("./object/imported").join(&file_path);
     NamedFile::open(imported_file_path)
         .await

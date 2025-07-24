@@ -6,7 +6,7 @@ use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::{public::constant::redb::ALBUM_TABLE, router::AppResult};
-
+use anyhow::Result;
 use arrayvec::ArrayString;
 use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
@@ -20,10 +20,11 @@ pub struct EditShare {
 #[put("/put/edit_share", format = "json", data = "<json_data>")]
 pub async fn edit_share(
     auth: GuardResult<GuardAuth>,
-    _read_only_mode: GuardReadOnlyMode,
+    read_only_mode: Result<GuardReadOnlyMode>,
     json_data: Json<EditShare>,
 ) -> AppResult<()> {
     let _ = auth?;
+    let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let txn = TREE.in_disk.begin_write().unwrap();
         {
@@ -64,10 +65,11 @@ pub struct DeleteShare {
 #[put("/put/delete_share", format = "json", data = "<json_data>")]
 pub async fn delete_share(
     auth: GuardResult<GuardAuth>,
-    _read_only_mode: GuardReadOnlyMode,
+    read_only_mode: Result<GuardReadOnlyMode>,
     json_data: Json<DeleteShare>,
 ) -> AppResult<()> {
     let _ = auth?;
+    let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let txn = TREE.in_disk.begin_write().unwrap();
         {

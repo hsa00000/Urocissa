@@ -1,17 +1,14 @@
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
-
+use crate::public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
 use crate::public::db::{tree::TREE, tree_snapshot::TREE_SNAPSHOT};
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
-
+use crate::tasks::actor::album::AlbumSelfUpdateTask;
+use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
+use anyhow::Result;
 use std::collections::HashSet;
-
-use crate::public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
-
 use arrayvec::ArrayString;
 use futures::future::join_all;
 use redb::ReadableTable;
@@ -29,10 +26,11 @@ pub struct EditAlbumsData {
 #[put("/put/edit_album", format = "json", data = "<json_data>")]
 pub async fn edit_album(
     auth: GuardResult<GuardAuth>,
-    _read_only_mode: GuardReadOnlyMode,
+    read_only_mode: Result<GuardReadOnlyMode>,
     json_data: Json<EditAlbumsData>,
 ) -> AppResult<()> {
     let _ = auth?;
+    let _ = read_only_mode?;
     let concact_result = tokio::task::spawn_blocking(move || {
         let txn = TREE.in_disk.begin_write().unwrap();
         {
@@ -100,10 +98,11 @@ pub struct SetAlbumCover {
 #[post("/post/set_album_cover", data = "<set_album_cover>")]
 pub async fn set_album_cover(
     auth: GuardResult<GuardAuth>,
-    _read_only_mode: GuardReadOnlyMode,
+    read_only_mode: Result<GuardReadOnlyMode>,
     set_album_cover: Json<SetAlbumCover>,
 ) -> AppResult<()> {
     let _ = auth?;
+    let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let set_album_cover_inner = set_album_cover.into_inner();
         let album_id = set_album_cover_inner.album_id;
@@ -141,10 +140,11 @@ pub struct SetAlbumTitle {
 #[post("/post/set_album_title", data = "<set_album_title>")]
 pub async fn set_album_title(
     auth: GuardResult<GuardShare>,
-    _read_only_mode: GuardReadOnlyMode,
+    read_only_mode: Result<GuardReadOnlyMode>,
     set_album_title: Json<SetAlbumTitle>,
 ) -> AppResult<()> {
     let _ = auth?;
+    let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let set_album_title_inner = set_album_title.into_inner();
         let album_id = set_album_title_inner.album_id;

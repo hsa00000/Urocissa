@@ -105,7 +105,7 @@ fn set_last_modified_time(path: &str, last_modified_time: u64) -> Result<()> {
     Ok(())
 }
 
-pub fn get_extension(file: &TempFile<'_>) -> Result<String> {
+fn get_extension(file: &TempFile<'_>) -> Result<String> {
     match file.content_type() {
         Some(ct) => match ct.extension() {
             Some(ext) => Ok(ext.as_str().to_lowercase()),

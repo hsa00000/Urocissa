@@ -10,12 +10,11 @@ pub struct GuardReadOnlyMode;
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardReadOnlyMode {
     type Error = Error;
-
     async fn from_request(_req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         if PUBLIC_CONFIG.read_only_mode {
             return Outcome::Error((
                 Status::InternalServerError,
-                anyhow!("Read-only mode is enabled"),
+                anyhow!("Read-only mode is enabled").into(),
             ));
         }
 
