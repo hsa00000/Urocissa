@@ -26,12 +26,12 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = match extract_bearer_token(req) {
             Ok(token) => token,
-            Err(_) => return Outcome::Forward(Status::Unauthorized),
+            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
         };
 
         let claims: ClaimsTimestamp = match decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
-            Err(_) => return Outcome::Forward(Status::Unauthorized),
+            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
         };
 
         let query_timestamp = req.uri().query().and_then(|query| {
@@ -45,7 +45,7 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
             Some(ts) => ts,
             None => {
                 warn!("No valid 'timestamp' parameter found in the query");
-                return Outcome::Forward(Status::Unauthorized);
+                return Outcome::Error((Status::Unauthorized, ()));
             }
         };
 
@@ -54,7 +54,7 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
                 "Timestamp does not match; received: {}; expected: {}",
                 query_timestamp, claims.timestamp
             );
-            return Outcome::Forward(Status::Unauthorized);
+            return Outcome::Error((Status::Unauthorized, ()));
         }
 
         Outcome::Success(GuardTimestamp { claims })

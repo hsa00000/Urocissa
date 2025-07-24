@@ -15,7 +15,7 @@ impl<'r> FromRequest<'r> for GuardAuth {
         if try_jwt_cookie_auth(req, &VALIDATION).is_some() {
             Outcome::Success(GuardAuth)
         } else {
-            Outcome::Forward(Status::Unauthorized)
+            Outcome::Error((Status::Unauthorized, ()))
         }
     }
 }

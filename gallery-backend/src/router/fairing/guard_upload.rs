@@ -22,6 +22,6 @@ impl<'r> FromRequest<'r> for GuardUpload {
             return Outcome::Success(GuardUpload);
         }
 
-        Outcome::Forward(Status::Unauthorized)
+        Outcome::Error((Status::Unauthorized, ()))
     }
 }

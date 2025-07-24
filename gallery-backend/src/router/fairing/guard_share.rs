@@ -33,6 +33,6 @@ impl<'r> FromRequest<'r> for GuardShare {
             return Outcome::Success(GuardShare { claims });
         }
 
-        Outcome::Forward(Status::Unauthorized)
+        Outcome::Error((Status::Unauthorized, ()))
     }
 }

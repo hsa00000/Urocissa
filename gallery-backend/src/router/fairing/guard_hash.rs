@@ -59,12 +59,12 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = match extract_bearer_token(req) {
             Ok(token) => token,
-            Err(_) => return Outcome::Forward(Status::Unauthorized),
+            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
         };
 
         let claims: ClaimsHash = match decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
-            Err(_) => return Outcome::Forward(Status::Unauthorized),
+            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
         };
 
         if !claims.allow_original {
@@ -74,7 +74,7 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
 
         let data_hash = match extract_hash_from_path(req) {
             Ok(hash) => hash,
-            Err(_) => return Outcome::Forward(Status::Unauthorized),
+            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
         };
 
         // Compare hash in the token with the hash in the request path
@@ -83,7 +83,7 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
                 "Hash does not match. Received: {}, Expected: {}.",
                 data_hash, claims.hash
             );
-            return Outcome::Forward(Status::Unauthorized);
+            return Outcome::Error((Status::Unauthorized, ()));
         }
         Outcome::Success(GuardHashOriginal)
     }
