@@ -79,61 +79,51 @@ export const useUploadStore = (isolationId: IsolationId) =>
           this.uploadButton.click()
         }
       },
-      async fileUpload(files: File[]): Promise<void> {
+      async fileUpload(files: File[], albumId?: string): Promise<void> {
         const modalStore = useModalStore('mainId')
         this.status = 'Uploading'
         modalStore.showUploadModal = true
+
         const messageStore = useMessageStore('mainId')
         const formData = new FormData()
         let totalSize = 0
 
-        Array.from(files).forEach((file, i) => {
-          formData.append(`lastModified${i}`, `${file.lastModified}`)
-          formData.append(`file${i}`, file)
+        for (const file of files) {
+          formData.append('file', file)
+          formData.append('lastModified', `${file.lastModified}`)
           totalSize += file.size
-        })
+        }
 
         console.log(`Total upload size: ${totalSize} bytes`)
         const abortController = new AbortController()
         this.abortController = abortController
+
         try {
           const startTime = Date.now()
-
-          this.total = 0
-          this.loaded = 0
+          this.total = this.loaded = 0
           this.startTime = startTime
 
-          await axios.post('/upload', formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data'
-            },
+          const uploadUrl =
+            albumId === undefined ? `/upload` : `/upload?presigned_album_id_opt=${albumId}`
+
+          await axios.post(uploadUrl, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
             signal: abortController.signal,
-            onUploadProgress: (progressEvent) => {
-              if (progressEvent.total !== undefined) {
-                this.total = progressEvent.total
-                this.loaded = progressEvent.loaded
-                this.startTime = startTime
-
-                if (this.total === this.loaded) {
-                  this.status = 'Processing'
-                }
-
-                console.log(`Upload is ${this.percentComplete()}% complete`)
-                console.log(`Remaining time: ${this.remainingTime()} seconds`)
+            onUploadProgress: (e) => {
+              if (e.total !== undefined) {
+                this.total = e.total
+                this.loaded = e.loaded
+                if (this.total === this.loaded) this.status = 'Processing'
               }
             }
           })
+
           this.status = 'Completed'
-
           messageStore.success('Files uploaded successfully')
-        } catch (error) {
-          console.error('There was an error uploading the files: ', error)
-
-          if (error instanceof Error) {
-            messageStore.error(`There was an error uploading the files: ${error.message}`)
-          } else {
-            messageStore.error(`There was an error uploading the files: ${String(error)}`)
-          }
+        } catch (err) {
+          this.status = 'Canceled'
+          const msg = err instanceof Error ? err.message : String(err)
+          messageStore.error(`There was an error uploading the files: ${msg}`)
         }
       },
       async handleFileUpload(event: Event): Promise<void> {

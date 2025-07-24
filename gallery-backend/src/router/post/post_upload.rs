@@ -1,39 +1,26 @@
 use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::router::AppResult;
-use crate::router::claims::claims::Role;
+use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::router::fairing::guard_upload::GuardUpload;
-use crate::workflow::{index_for_upload, index_for_watch};
-use anyhow::Result;
-use anyhow::bail;
-use rocket::form::{self, DataField, FromFormField, ValueField};
-use rocket::{form::Form, fs::TempFile};
+use crate::workflow::index_for_watch;
+use anyhow::{Result, anyhow, bail};
+use arrayvec::ArrayString;
+use rocket::form::Form;
+use rocket::fs::TempFile;
 use std::path::PathBuf;
 use std::time::Instant;
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
-pub enum FileUpload<'r> {
-    LastModified(u64),
-    File(TempFile<'r>),
-}
 
-#[rocket::async_trait]
-impl<'r> FromFormField<'r> for FileUpload<'r> {
-    fn from_value(field: ValueField<'r>) -> form::Result<'r, Self> {
-        // Use the from_value method already implemented for u64
-        match u64::from_value(field) {
-            Ok(value) => Ok(FileUpload::LastModified(value)),
-            Err(err) => Err(err),
-        }
-    }
+#[derive(FromForm, Debug)]
+pub struct UploadForm<'r> {
+    /// 依序收到的多個檔案
+    #[field(name = "file")]
+    pub files: Vec<TempFile<'r>>,
 
-    async fn from_data(field: DataField<'r, '_>) -> form::Result<'r, Self> {
-        // Use the from_data method already implemented for TempFile
-        match TempFile::from_data(field).await {
-            Ok(temp_file) => Ok(FileUpload::File(temp_file)),
-            Err(err) => Err(err),
-        }
-    }
+    /// 與檔案順序對應的 lastModified 時戳
+    #[field(name = "lastModified")]
+    pub last_modified: Vec<u64>,
 }
 
 fn get_filename(file: &TempFile<'_>) -> String {
@@ -42,47 +29,51 @@ fn get_filename(file: &TempFile<'_>) -> String {
         .unwrap_or_else(|| "".to_string())
 }
 
-#[post("/upload", data = "<data>")]
+#[post("/upload?<presigned_album_id_opt>", data = "<form>")]
 pub async fn upload(
-    auth: GuardUpload,
+    _auth: GuardAuth,
     _read_only_mode: GuardReadOnlyMode,
-    data: Form<Vec<FileUpload<'_>>>,
+    presigned_album_id_opt: Option<String>,
+    form: Form<UploadForm<'_>>,
 ) -> AppResult<()> {
-    let mut last_modified_time = 0;
+    let mut inner_form = form.into_inner();
 
-    for file_data in data.into_inner() {
-        match file_data {
-            FileUpload::LastModified(last_modified_time_received) => {
-                last_modified_time = last_modified_time_received;
-            }
-            FileUpload::File(mut file) => {
-                let start_time = Instant::now();
-                let filename = get_filename(&file);
-                let extension = get_extension(&file)?;
+    let presigned_album_id_opt: Option<ArrayString<64>> = if let Some(s) = presigned_album_id_opt {
+        Some(
+            ArrayString::from(&s)
+                .map_err(|_| anyhow!("Failed to create ArrayString from presigned_album_id_opt"))?,
+        )
+    } else {
+        None
+    };
 
-                warn!(duration = &*format!("{:?}", start_time.elapsed()); "Get filename and extension");
-                if let Role::Share(ref resolved_share) = auth.claims.role
-                    && (VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
-                        || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str()))
-                {
-                    let final_path =
-                        save_file(&mut file, filename, extension, last_modified_time).await?;
-                    index_for_upload(PathBuf::from(final_path), resolved_share.album_id).await?;
-                } else if VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
-                    || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str())
-                {
-                    let final_path =
-                        save_file(&mut file, filename, extension, last_modified_time).await?;
-                    index_for_watch(PathBuf::from(final_path)).await?;
-                } else {
-                    error!("Invalid file type");
-                    return Err(anyhow::anyhow!("Invalid file type: {}", extension).into());
-                }
-            }
+    if inner_form.files.len() != inner_form.last_modified.len() {
+        return Err(
+            anyhow!("Mismatch between number of files and lastModified timestamps.").into(),
+        );
+    }
+
+    for (i, file) in inner_form.files.iter_mut().enumerate() {
+        let last_modified_time = inner_form.last_modified[i];
+        let start_time = Instant::now();
+        let filename = get_filename(file);
+        let extension = get_extension(file)?;
+
+        warn!(duration = &*format!("{:?}", start_time.elapsed()); "Get filename and extension");
+        if VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
+            || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str())
+        {
+            let final_path = save_file(file, filename, extension, last_modified_time).await?;
+            index_for_watch(PathBuf::from(final_path), presigned_album_id_opt).await?;
+        } else {
+            error!("Invalid file type");
+            return Err(anyhow::anyhow!("Invalid file type: {}", extension).into());
         }
     }
+
     Ok(())
 }
+
 async fn save_file(
     file: &mut TempFile<'_>,
     filename: String,

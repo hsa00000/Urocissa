@@ -81,7 +81,7 @@ fn new_watcher() -> notify::Result<RecommendedWatcher> {
                     for path in path_list {
                         // Check if the path has a valid extension before submitting
                         if is_valid_media_file(&path) {
-                            INDEX_RUNTIME.spawn(index_for_watch(path));
+                            INDEX_RUNTIME.spawn(index_for_watch(path, None));
                         }
                     }
                 }
@@ -98,7 +98,7 @@ fn new_watcher() -> notify::Result<RecommendedWatcher> {
                     for path in path_list {
                         // Check if the path has a valid extension before submitting
                         if is_valid_media_file(&path) {
-                            INDEX_RUNTIME.spawn(index_for_watch(path));
+                            INDEX_RUNTIME.spawn(index_for_watch(path, None));
                         }
                     }
                 }
