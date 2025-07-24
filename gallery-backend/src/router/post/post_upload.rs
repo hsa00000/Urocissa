@@ -1,8 +1,9 @@
 use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::router::AppResult;
+use crate::router::claims::claims::Role;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_upload::GuardUpload;
-use crate::workflow::index_for_watch;
+use crate::workflow::{index_for_upload, index_for_watch};
 use anyhow::Result;
 use anyhow::bail;
 use rocket::form::{self, DataField, FromFormField, ValueField};
@@ -43,7 +44,7 @@ fn get_filename(file: &TempFile<'_>) -> String {
 
 #[post("/upload", data = "<data>")]
 pub async fn upload(
-    _auth: GuardUpload,
+    auth: GuardUpload,
     _read_only_mode: GuardReadOnlyMode,
     data: Form<Vec<FileUpload<'_>>>,
 ) -> AppResult<()> {
@@ -60,7 +61,14 @@ pub async fn upload(
                 let extension = get_extension(&file)?;
 
                 warn!(duration = &*format!("{:?}", start_time.elapsed()); "Get filename and extension");
-                if VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
+                if let Role::Share(ref resolved_share) = auth.claims.role
+                    && (VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
+                        || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str()))
+                {
+                    let final_path =
+                        save_file(&mut file, filename, extension, last_modified_time).await?;
+                    index_for_upload(PathBuf::from(final_path), resolved_share.album_id).await?;
+                } else if VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
                     || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str())
                 {
                     let final_path =
