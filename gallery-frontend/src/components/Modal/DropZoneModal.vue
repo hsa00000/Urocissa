@@ -100,14 +100,9 @@ function onDrop(e: DragEvent) {
   const presignedAlbumId =
     typeof albumId === 'string' && typeof shareId === 'string' ? albumId : undefined
 
-  uploadStore
-    .fileUpload(files, presignedAlbumId)
-    .then((result) => {
-      console.log(result)
-    })
-    .catch((error: unknown) => {
-      console.error('Error occurred:', error)
-    })
+  uploadStore.fileUpload(files, presignedAlbumId).catch((error: unknown) => {
+    console.error('Error occurred:', error)
+  })
 }
 
 onMounted(() => {

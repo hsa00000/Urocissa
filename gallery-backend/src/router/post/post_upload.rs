@@ -31,7 +31,7 @@ fn get_filename(file: &TempFile<'_>) -> String {
 
 #[post("/upload?<presigned_album_id_opt>", data = "<form>")]
 pub async fn upload(
-    _auth: GuardUpload,
+    auth: GuardUpload,
     _read_only_mode: GuardReadOnlyMode,
     presigned_album_id_opt: Option<String>,
     form: Form<UploadForm<'_>>,

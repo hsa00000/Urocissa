@@ -14,8 +14,8 @@ use std::io::Cursor;
 pub struct AppError(anyhow::Error);
 
 #[rocket::async_trait]
-impl<'r> Responder<'r, 'static> for AppError {
-    fn respond_to(self, _req: &'r Request<'_>) -> response::Result<'static> {
+impl<'r, 'o: 'r> Responder<'r, 'o> for AppError {
+    fn respond_to(self, _req: &'r Request<'_>) -> response::Result<'o> {
         let outer_msg = self.0.to_string();
 
         let chain: Vec<String> = self.0.chain().map(|e| e.to_string()).collect();
@@ -27,7 +27,6 @@ impl<'r> Responder<'r, 'static> for AppError {
         .to_string();
 
         Response::build()
-            .status(Status::InternalServerError)
             .header(ContentType::JSON)
             .sized_body(body.len(), Cursor::new(body))
             .ok()
