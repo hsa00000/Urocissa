@@ -43,11 +43,13 @@ SOFTWARE.
   </div>
 </template>
 <script setup lang="ts">
+import { useShareStore } from '@/store/shareStore'
 import { useUploadStore } from '@/store/uploadStore'
 import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 const uploadStore = useUploadStore('mainId')
+const shareStore = useShareStore('mainId')
 const visible = ref(false)
 const lastTarget = ref<EventTarget | null>(null)
 const route = useRoute()
@@ -92,8 +94,14 @@ function onDrop(e: DragEvent) {
   const files: File[] = Array.from(e.dataTransfer?.files ?? [])
   if (files.length === 0) return
 
+  const albumId = shareStore.albumId
+  const shareId = shareStore.shareId
+
+  const presignedAlbumId =
+    typeof albumId === 'string' && typeof shareId === 'string' ? albumId : undefined
+
   uploadStore
-    .fileUpload(files)
+    .fileUpload(files, presignedAlbumId)
     .then((result) => {
       console.log(result)
     })

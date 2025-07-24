@@ -1,4 +1,3 @@
-use arrayvec::ArrayString;
 use jsonwebtoken::{DecodingKey, decode};
 use rocket::Request;
 use rocket::http::Status;
@@ -6,15 +5,12 @@ use rocket::request::{FromRequest, Outcome};
 
 use crate::public::constant::redb::ALBUM_TABLE;
 use crate::public::db::tree::TREE;
-use crate::public::structure::album::ResolvedShare;
 use crate::router::claims::claims::Claims;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use super::VALIDATION;
 
-pub struct GuardUpload {
-    pub claims: Claims,
-}
+pub struct GuardUpload;
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardUpload {
@@ -33,15 +29,11 @@ impl<'r> FromRequest<'r> for GuardUpload {
 
                 if let Some(share) = album.share_list.remove(share_id)
                     && share.show_upload
+                    && let Some(Ok(album_id_parsed)) =
+                        req.query_value::<&str>("presigned_album_id_opt")
+                    && album.id.as_str() == album_id_parsed
                 {
-                    let resolved_share = ResolvedShare::new(
-                        ArrayString::<64>::from(album_id).unwrap(),
-                        album.title,
-                        share,
-                    );
-
-                    let claims = Claims::new_share(resolved_share);
-                    return Outcome::Success(GuardUpload { claims });
+                    return Outcome::Success(GuardUpload);
                 } else {
                     return Outcome::Forward(Status::Unauthorized);
                 }
@@ -56,9 +48,7 @@ impl<'r> FromRequest<'r> for GuardUpload {
                 &VALIDATION,
             ) {
                 Ok(token_data) if token_data.claims.is_admin() => {
-                    return Outcome::Success(GuardUpload {
-                        claims: token_data.claims,
-                    });
+                    return Outcome::Success(GuardUpload);
                 }
                 _ => {
                     warn!("JWT validation failed");
