@@ -1,9 +1,8 @@
 use crate::router::{
-    AppResult,
     fairing::{
         guard_hash::{GuardHash, GuardHashOriginal},
         guard_share::GuardShare,
-    },
+    }, AppResult, GuardResult
 };
 use anyhow::Context;
 use anyhow::Result;
@@ -19,8 +18,8 @@ pub enum CompressedFileResponse<'a> {
 
 #[get("/object/compressed/<file_path..>")]
 pub async fn compressed_file(
-    auth_guard: Result<GuardShare>,
-    hash_guard: Result<GuardHash>,
+    auth_guard: GuardResult<GuardShare>,
+    hash_guard: GuardResult<GuardHash>,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {
     let _ = auth_guard?;
@@ -63,7 +62,7 @@ pub async fn compressed_file(
 
 #[get("/object/imported/<file_path..>")]
 pub async fn imported_file(
-    auth: Result<GuardShare>,
+    auth: GuardResult<GuardShare>,
     _hash_guard: GuardHashOriginal,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {

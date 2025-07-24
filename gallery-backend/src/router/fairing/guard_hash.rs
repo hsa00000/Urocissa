@@ -6,7 +6,7 @@ use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
 use rocket::serde::json::Json;
 
-use crate::router::AppResult;
+use crate::router::{AppResult, GuardError};
 use crate::router::claims::claims_hash::ClaimsHash;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::VALIDATION;
@@ -21,7 +21,7 @@ pub struct GuardHash;
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardHash {
-    type Error = Error;
+    type Error = GuardError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = match extract_bearer_token(req) {
@@ -29,7 +29,7 @@ impl<'r> FromRequest<'r> for GuardHash {
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    err.context("Bearer token extraction failed"),
+                    err.context("Bearer token extraction failed").into(),
                 ));
             }
         };
@@ -37,7 +37,7 @@ impl<'r> FromRequest<'r> for GuardHash {
         let claims: ClaimsHash = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
-                return Outcome::Error((Status::Unauthorized, err.context("JWT decoding failed")));
+                return Outcome::Error((Status::Unauthorized, err.context("JWT decoding failed").into()));
             }
         };
 
@@ -46,7 +46,7 @@ impl<'r> FromRequest<'r> for GuardHash {
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    err.context("Hash extraction failed"),
+                    err.context("Hash extraction failed").into(),
                 ));
             }
         };
@@ -57,7 +57,7 @@ impl<'r> FromRequest<'r> for GuardHash {
                 "Hash does not match. Received: {}, Expected: {}.",
                 data_hash, claims.hash
             );
-            return Outcome::Error((Status::Unauthorized, anyhow!("Hash does not match")));
+            return Outcome::Error((Status::Unauthorized, anyhow!("Hash does not match").into()));
         }
         Outcome::Success(GuardHash)
     }
@@ -67,7 +67,7 @@ pub struct GuardHashOriginal;
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardHashOriginal {
-    type Error = Error;
+    type Error = GuardError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = match extract_bearer_token(req) {
@@ -75,7 +75,7 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    err.context("Bearer token extraction failed"),
+                    err.context("Bearer token extraction failed").into(),
                 ));
             }
         };
@@ -83,7 +83,7 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
         let claims: ClaimsHash = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
-                return Outcome::Error((Status::Unauthorized, err.context("JWT decoding failed")));
+                return Outcome::Error((Status::Unauthorized, err.context("JWT decoding failed").into()));
             }
         };
 
@@ -97,7 +97,7 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    err.context("Hash extraction failed"),
+                    err.context("Hash extraction failed").into(),
                 ));
             }
         };
@@ -108,7 +108,7 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
                 "Hash does not match. Received: {}, Expected: {}.",
                 data_hash, claims.hash
             );
-            return Outcome::Error((Status::Unauthorized, anyhow!("Hash does not match")));
+            return Outcome::Error((Status::Unauthorized, anyhow!("Hash does not match").into()));
         }
         Outcome::Success(GuardHashOriginal)
     }

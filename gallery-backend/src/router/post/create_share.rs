@@ -7,7 +7,7 @@ use rocket::post;
 use rocket::serde::json::Json;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::public::constant::redb::ALBUM_TABLE;
+use crate::{public::constant::redb::ALBUM_TABLE, router::GuardResult};
 use crate::public::db::tree::TREE;
 use crate::public::structure::album::Share;
 use crate::router::AppResult;
@@ -29,7 +29,7 @@ pub struct CreateShare {
 
 #[post("/post/create_share", data = "<create_share>")]
 pub async fn create_share(
-    auth: Result<GuardAuth>,
+    auth: GuardResult<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     create_share: Json<CreateShare>,
 ) -> AppResult<String> {

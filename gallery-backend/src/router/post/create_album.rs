@@ -15,6 +15,7 @@ use crate::process::transitor::index_to_database;
 use crate::public::db::tree_snapshot::read_tree_snapshot::MyCow;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::database_struct::database::definition::Database;
+use crate::router::GuardResult;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 
 use crate::public::structure::album::Album;
@@ -35,7 +36,7 @@ pub struct CreateAlbum {
 
 #[post("/post/create_empty_album")]
 pub async fn create_empty_album(
-    auth: Result<GuardAuth>,
+    auth: GuardResult<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
 ) -> AppResult<String> {
     let _ = auth?;
@@ -46,7 +47,7 @@ pub async fn create_empty_album(
 
 #[post("/post/create_non_empty_album", data = "<create_album>")]
 pub async fn create_non_empty_album(
-    auth: Result<GuardAuth>,
+    auth: GuardResult<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     create_album: Json<CreateAlbum>,
 ) -> AppResult<String> {

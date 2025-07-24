@@ -1,4 +1,4 @@
-use anyhow::{Error, anyhow};
+use anyhow::anyhow;
 use jsonwebtoken::{DecodingKey, decode};
 use log::warn;
 use rocket::Request;
@@ -7,10 +7,10 @@ use rocket::request::{FromRequest, Outcome};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::router::AppResult;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
+use crate::router::{AppResult, GuardError, GuardResult};
 
 use super::VALIDATION_ALLOW_EXPIRED;
 use super::auth_utils::{extract_bearer_token, my_decode_token};
@@ -22,17 +22,17 @@ pub struct GuardTimestamp {
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardTimestamp {
-    type Error = Error;
+    type Error = GuardError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = match extract_bearer_token(req) {
             Ok(token) => token,
-            Err(err) => return Outcome::Error((Status::Unauthorized, err)),
+            Err(err) => return Outcome::Error((Status::Unauthorized, err.into())),
         };
 
         let claims: ClaimsTimestamp = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
-            Err(err) => return Outcome::Error((Status::Unauthorized, err)),
+            Err(err) => return Outcome::Error((Status::Unauthorized, err.into())),
         };
 
         let query_timestamp = req.uri().query().and_then(|query| {
@@ -47,7 +47,7 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
             None => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    anyhow!("No valid 'timestamp' parameter found in the query"),
+                    anyhow!("No valid 'timestamp' parameter found in the query").into(),
                 ));
             }
         };
@@ -57,7 +57,7 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
                 "Timestamp does not match; received: {}; expected: {}",
                 query_timestamp, claims.timestamp
             );
-            return Outcome::Error((Status::Unauthorized, anyhow!("Timestamp mismatch")));
+            return Outcome::Error((Status::Unauthorized, anyhow!("Timestamp mismatch").into()));
         }
 
         Outcome::Success(GuardTimestamp { claims })
@@ -82,7 +82,7 @@ pub struct RenewTimestampTokenReturn {
     data = "<token_request>"
 )]
 pub async fn renew_timestamp_token(
-    auth: Result<GuardShare>,
+    auth: GuardResult<GuardShare>,
     token_request: Json<RenewTimestampToken>,
 ) -> AppResult<Json<RenewTimestampTokenReturn>> {
     let _ = auth?;

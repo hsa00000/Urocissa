@@ -8,7 +8,7 @@ use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::database_struct::database_timestamp::DataBaseTimestampReturn;
 use crate::public::structure::row::{Row, ScrollBarData};
 
-use crate::router::AppResult;
+use crate::router::{AppResult, GuardResult};
 use crate::router::fairing::guard_timestamp::GuardTimestamp;
 use anyhow::Result;
 use log::info;
@@ -18,7 +18,7 @@ use std::time::Instant;
 
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
 pub async fn get_data(
-    guard_timestamp: Result<GuardTimestamp>,
+    guard_timestamp: GuardResult<GuardTimestamp>,
     timestamp: u128,
     start: usize,
     mut end: usize,

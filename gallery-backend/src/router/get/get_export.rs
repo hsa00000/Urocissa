@@ -1,5 +1,5 @@
 use crate::operations::open_db::open_data_table;
-use crate::router::AppResult;
+use crate::router::{AppResult, GuardResult};
 use crate::{
     public::structure::database_struct::database::definition::Database,
     router::fairing::guard_auth::GuardAuth,
@@ -16,7 +16,7 @@ pub struct ExportEntry {
 }
 
 #[get("/get/get-export")]
-pub async fn get_export(auth: Result<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
+pub async fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;
     let data_table = open_data_table()?;
     let byte_stream = ByteStream! {

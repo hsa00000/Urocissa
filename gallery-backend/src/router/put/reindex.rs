@@ -8,6 +8,7 @@ use crate::process::info::regenerate_metadata_for_video;
 use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::AppResult;
+use crate::router::GuardResult;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::INDEX_COORDINATOR;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
@@ -29,7 +30,7 @@ pub struct RegenerateData {
 
 #[post("/put/reindex", format = "json", data = "<json_data>")]
 pub async fn reindex(
-    auth: Result<GuardAuth>,
+    auth: GuardResult<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     json_data: Json<RegenerateData>,
 ) -> AppResult<Status> {

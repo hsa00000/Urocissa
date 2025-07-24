@@ -3,7 +3,7 @@ use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 
 use crate::public::db::{tree::TREE, tree_snapshot::TREE_SNAPSHOT};
-use crate::router::AppResult;
+use crate::router::{AppResult, GuardResult};
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
@@ -29,7 +29,7 @@ pub struct EditAlbumsData {
 
 #[put("/put/edit_album", format = "json", data = "<json_data>")]
 pub async fn edit_album(
-    auth: Result<GuardAuth>,
+    auth: GuardResult<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     json_data: Json<EditAlbumsData>,
 ) -> AppResult<()> {
@@ -100,7 +100,7 @@ pub struct SetAlbumCover {
 
 #[post("/post/set_album_cover", data = "<set_album_cover>")]
 pub async fn set_album_cover(
-    auth: Result<GuardAuth>,
+    auth: GuardResult<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     set_album_cover: Json<SetAlbumCover>,
 ) -> AppResult<()> {
@@ -141,7 +141,7 @@ pub struct SetAlbumTitle {
 
 #[post("/post/set_album_title", data = "<set_album_title>")]
 pub async fn set_album_title(
-    auth: Result<GuardShare>,
+    auth: GuardResult<GuardShare>,
     _read_only_mode: GuardReadOnlyMode,
     set_album_title: Json<SetAlbumTitle>,
 ) -> AppResult<()> {

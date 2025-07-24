@@ -9,6 +9,7 @@ use crate::public::structure::reduced_data::ReducedData;
 use crate::router::AppResult;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::guard_share::GuardShare;
+use crate::router::GuardResult;
 use crate::tasks::BATCH_COORDINATOR;
 
 use crate::tasks::batcher::flush_query_snapshot::FlushQuerySnapshotTask;
@@ -279,7 +280,7 @@ fn execute_prefetch_logic(
 
 #[post("/get/prefetch?<locate>", format = "json", data = "<query_data>")]
 pub async fn prefetch(
-    auth_guard: Result<GuardShare>,
+    auth_guard: GuardResult<GuardShare>,
     query_data: Option<Json<Expression>>,
     locate: Option<String>,
 ) -> AppResult<Json<PrefetchReturn>> {

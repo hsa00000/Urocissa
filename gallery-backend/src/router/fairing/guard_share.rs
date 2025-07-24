@@ -7,6 +7,7 @@ use super::auth_utils::{
     try_jwt_cookie_auth, try_resolve_share_from_headers, try_resolve_share_from_query,
 };
 use crate::router::claims::claims::Claims;
+use crate::router::GuardError;
 use anyhow::Error;
 
 pub struct GuardShare {
@@ -15,7 +16,7 @@ pub struct GuardShare {
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardShare {
-    type Error = Error;
+    type Error = GuardError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         // Try to resolve share from headers first
@@ -34,7 +35,7 @@ impl<'r> FromRequest<'r> for GuardShare {
             Err(err) => {
                 return Outcome::Error((
                     Status::InternalServerError,
-                    err.context("Authentication error"),
+                    err.context("Authentication error").into(),
                 ));
             }
         }

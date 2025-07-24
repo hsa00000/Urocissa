@@ -2,7 +2,7 @@ use crate::operations::indexation::generate_dynamic_image::generate_dynamic_imag
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
 use crate::operations::open_db::open_data_table;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::router::AppResult;
+use crate::router::{AppResult, GuardResult};
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -40,7 +40,7 @@ impl<'r> FromFormField<'r> for FrameData<'r> {
 
 #[put("/put/regenerate-thumbnail-with-frame", data = "<data>")]
 pub async fn regenerate_thumbnail_with_frame(
-    auth: Result<GuardAuth>,
+    auth: GuardResult<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     data: Form<Vec<FrameData<'_>>>,
 ) -> AppResult<()> {
