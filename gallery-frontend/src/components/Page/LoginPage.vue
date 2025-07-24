@@ -58,7 +58,6 @@ const handleLogin = async () => {
     }
   } catch (error: unknown) {
     messageStore.error(errorDisplay(error))
-    console.error('Error during login:', error)
   }
 }
 </script>

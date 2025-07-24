@@ -3,6 +3,7 @@ import { useMessageStore } from './messageStore'
 import axios from 'axios'
 import { IsolationId } from '@type/types'
 import { useModalStore } from './modalStore'
+import { errorDisplay } from '@/script/utils/errorDisplay'
 
 export const useUploadStore = (isolationId: IsolationId) =>
   defineStore('uploadStore' + isolationId, {
@@ -122,8 +123,7 @@ export const useUploadStore = (isolationId: IsolationId) =>
           messageStore.success('Files uploaded successfully')
         } catch (err) {
           this.status = 'Canceled'
-          const msg = err instanceof Error ? err.message : String(err)
-          messageStore.error(`There was an error uploading the files: ${msg}`)
+          messageStore.error(errorDisplay(err))
         }
       },
       async handleFileUpload(event: Event): Promise<void> {
