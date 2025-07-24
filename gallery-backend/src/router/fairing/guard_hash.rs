@@ -14,60 +14,28 @@ use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use super::VALIDATION_ALLOW_EXPIRED;
+use super::auth_utils::{decode_token, extract_bearer_token, extract_hash_from_path};
 
 pub struct GuardHash;
 
-#[async_trait]
+#[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardHash {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let auth_header = match req.headers().get_one("Authorization") {
-            Some(header) => header,
-            None => {
-                warn!("Request is missing the Authorization header.");
-                return Outcome::Forward(Status::Unauthorized);
-            }
+        let token = match extract_bearer_token(req) {
+            Ok(token) => token,
+            Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
 
-        let token = match auth_header.strip_prefix("Bearer ") {
-            Some(token) => token,
-            None => {
-                warn!("Authorization header format is invalid. Expected 'Bearer <token>'.");
-                return Outcome::Forward(Status::Unauthorized);
-            }
+        let claims: ClaimsHash = match decode_token(token, &VALIDATION) {
+            Ok(claims) => claims,
+            Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
 
-        // Decode the token
-        let token_data = match decode::<ClaimsHash>(
-            token,
-            &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-            &VALIDATION,
-        ) {
-            Ok(data) => data,
-            Err(err) => {
-                warn!("Failed to decode token: {:#?}", err);
-                return Outcome::Forward(Status::Unauthorized);
-            }
-        };
-
-        let claims = token_data.claims;
-
-        // Extract hash from the request URL path
-        let hash_opt = req
-            .uri()
-            .path()
-            .segments()
-            .last()
-            .and_then(|hash_with_ext| hash_with_ext.rsplit_once('.'))
-            .map(|(hash, _ext)| hash.to_string());
-
-        let data_hash = match hash_opt {
-            Some(hash) => hash,
-            None => {
-                warn!("No valid 'hash' parameter found in the uri.");
-                return Outcome::Forward(Status::Unauthorized);
-            }
+        let data_hash = match extract_hash_from_path(req) {
+            Ok(hash) => hash,
+            Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
 
         // Compare hash in the token with the hash in the request path
@@ -84,62 +52,29 @@ impl<'r> FromRequest<'r> for GuardHash {
 
 pub struct GuardHashOriginal;
 
-#[async_trait]
+#[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardHashOriginal {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let auth_header = match req.headers().get_one("Authorization") {
-            Some(header) => header,
-            None => {
-                warn!("Request is missing the Authorization header.");
-                return Outcome::Forward(Status::Unauthorized);
-            }
+        let token = match extract_bearer_token(req) {
+            Ok(token) => token,
+            Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
 
-        let token = match auth_header.strip_prefix("Bearer ") {
-            Some(token) => token,
-            None => {
-                warn!("Authorization header format is invalid. Expected 'Bearer <token>'.");
-                return Outcome::Forward(Status::Unauthorized);
-            }
+        let claims: ClaimsHash = match decode_token(token, &VALIDATION) {
+            Ok(claims) => claims,
+            Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
-
-        // Decode the token
-        let token_data = match decode::<ClaimsHash>(
-            token,
-            &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-            &VALIDATION,
-        ) {
-            Ok(data) => data,
-            Err(err) => {
-                warn!("Failed to decode token: {:#?}", err);
-                return Outcome::Forward(Status::Unauthorized);
-            }
-        };
-
-        let claims = token_data.claims;
 
         if !claims.allow_original {
             warn!("Original hash access is not allowed.");
             return Outcome::Forward(Status::Unauthorized);
         }
 
-        // Extract hash from the request URL path
-        let hash_opt = req
-            .uri()
-            .path()
-            .segments()
-            .last()
-            .and_then(|hash_with_ext| hash_with_ext.rsplit_once('.'))
-            .map(|(hash, _ext)| hash.to_string());
-
-        let data_hash = match hash_opt {
-            Some(hash) => hash,
-            None => {
-                warn!("No valid 'hash' parameter found in the uri.");
-                return Outcome::Forward(Status::Unauthorized);
-            }
+        let data_hash = match extract_hash_from_path(req) {
+            Ok(hash) => hash,
+            Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
 
         // Compare hash in the token with the hash in the request path
@@ -217,35 +152,15 @@ impl<'r> FromRequest<'r> for TimestampGuardModified {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let auth_header = match req.headers().get_one("Authorization") {
-            Some(header) => header,
-            None => {
-                warn!("Request is missing the Authorization header");
-                return Outcome::Forward(Status::Unauthorized);
-            }
+        let token = match extract_bearer_token(req) {
+            Ok(token) => token,
+            Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
 
-        let token = match auth_header.strip_prefix("Bearer ") {
-            Some(token) => token,
-            None => {
-                warn!("Authorization header format is invalid; expected 'Bearer <token>'");
-                return Outcome::Forward(Status::Unauthorized);
-            }
+        let claims: ClaimsTimestamp = match decode_token(token, &VALIDATION) {
+            Ok(claims) => claims,
+            Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
-
-        let token_data = match decode::<ClaimsTimestamp>(
-            token,
-            &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-            &VALIDATION,
-        ) {
-            Ok(data) => data,
-            Err(err) => {
-                warn!("Failed to decode token: {:#?}", err);
-                return Outcome::Forward(Status::Unauthorized);
-            }
-        };
-
-        let claims = token_data.claims;
 
         Outcome::Success(TimestampGuardModified {
             timestamp_decoded: claims.timestamp,

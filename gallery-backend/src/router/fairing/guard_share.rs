@@ -1,16 +1,13 @@
-use arrayvec::ArrayString;
-use jsonwebtoken::{DecodingKey, decode};
 use rocket::Request;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
 
-use crate::public::constant::redb::ALBUM_TABLE;
-use crate::public::db::tree::TREE;
-use crate::public::structure::album::ResolvedShare;
 use crate::router::claims::claims::Claims;
-use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use super::VALIDATION;
+use super::auth_utils::{
+    try_jwt_cookie_auth, try_resolve_share_from_headers, try_resolve_share_from_query,
+};
 
 pub struct GuardShare {
     pub claims: Claims,
@@ -21,65 +18,19 @@ impl<'r> FromRequest<'r> for GuardShare {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let album_id = req.headers().get_one("x-album-id");
-        let share_id = req.headers().get_one("x-share-id");
-
-        if let (Some(album_id), Some(share_id)) = (album_id, share_id) {
-            let read_txn = TREE.in_disk.begin_read().unwrap();
-            let table = read_txn.open_table(ALBUM_TABLE).unwrap();
-
-            if let Some(album_guard) = table.get(album_id).unwrap() {
-                let mut album = album_guard.value();
-
-                if let Some(share) = album.share_list.remove(share_id) {
-                    let resolved_share = ResolvedShare::new(
-                        ArrayString::<64>::from(album_id).unwrap(),
-                        album.title,
-                        share,
-                    );
-                    let claims = Claims::new_share(resolved_share);
-
-                    return Outcome::Success(GuardShare { claims });
-                }
-            }
+        // Try to resolve share from headers first
+        if let Some(claims) = try_resolve_share_from_headers(req) {
+            return Outcome::Success(GuardShare { claims });
         }
 
-        if let (Some(Ok(album_id)), Some(Ok(share_id))) = (
-            req.query_value::<&str>("albumId"),
-            req.query_value::<&str>("shareId"),
-        ) {
-            let read_txn = TREE.in_disk.begin_read().unwrap();
-            let table = read_txn.open_table(ALBUM_TABLE).unwrap();
-            if let Some(album_guard) = table.get(album_id).unwrap() {
-                let mut album = album_guard.value();
-                if let Some(share) = album.share_list.remove(share_id) {
-                    let resolved_share = ResolvedShare::new(
-                        ArrayString::<64>::from(album_id).unwrap(),
-                        album.title,
-                        share,
-                    );
-                    let claims = Claims::new_share(resolved_share);
-                    return Outcome::Success(GuardShare { claims });
-                }
-            }
+        // Try to resolve share from query parameters
+        if let Some(claims) = try_resolve_share_from_query(req) {
+            return Outcome::Success(GuardShare { claims });
         }
 
-        if let Some(jwt_cookie) = req.cookies().get("jwt") {
-            let token = jwt_cookie.value();
-            match decode::<Claims>(
-                token,
-                &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-                &VALIDATION,
-            ) {
-                Ok(token_data) if token_data.claims.is_admin() => {
-                    return Outcome::Success(GuardShare {
-                        claims: token_data.claims,
-                    });
-                }
-                _ => {
-                    warn!("JWT validation failed");
-                }
-            }
+        // Fall back to JWT cookie authentication
+        if let Some(claims) = try_jwt_cookie_auth(req, &VALIDATION) {
+            return Outcome::Success(GuardShare { claims });
         }
 
         Outcome::Forward(Status::Unauthorized)

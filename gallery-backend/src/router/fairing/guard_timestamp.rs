@@ -12,6 +12,7 @@ use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 
 use super::VALIDATION_ALLOW_EXPIRED;
+use super::auth_utils::{decode_token, extract_bearer_token};
 use super::guard_share::GuardShare;
 
 pub struct GuardTimestamp {
@@ -23,35 +24,16 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let auth_header = match req.headers().get_one("Authorization") {
-            Some(header) => header,
-            None => {
-                warn!("Request is missing the Authorization header");
-                return Outcome::Forward(Status::Unauthorized);
-            }
+        let token = match extract_bearer_token(req) {
+            Ok(token) => token,
+            Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
 
-        let token = match auth_header.strip_prefix("Bearer ") {
-            Some(token) => token,
-            None => {
-                warn!("Authorization header format is invalid, expected 'Bearer <token>'");
-                return Outcome::Forward(Status::Unauthorized);
-            }
+        let claims: ClaimsTimestamp = match decode_token(token, &VALIDATION) {
+            Ok(claims) => claims,
+            Err(_) => return Outcome::Forward(Status::Unauthorized),
         };
 
-        let token_data = match decode::<ClaimsTimestamp>(
-            token,
-            &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
-            &VALIDATION,
-        ) {
-            Ok(data) => data,
-            Err(err) => {
-                warn!("Failed to decode token: {:#?}", err);
-                return Outcome::Forward(Status::Unauthorized);
-            }
-        };
-
-        let claims = token_data.claims;
         let query_timestamp = req.uri().query().and_then(|query| {
             query
                 .segments()

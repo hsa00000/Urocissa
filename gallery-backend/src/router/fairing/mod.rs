@@ -3,6 +3,7 @@ use std::sync::LazyLock;
 use jsonwebtoken::{Algorithm, Validation};
 use rocket::Route;
 
+pub mod auth_utils;
 pub mod cache_control_fairing;
 pub mod guard_auth;
 pub mod guard_hash;
