@@ -1,12 +1,11 @@
 use crate::public::db::tree::TREE;
 use crate::public::structure::album::Share;
+use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::router::GuardResult;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::{public::constant::redb::ALBUM_TABLE, router::AppResult};
-use anyhow::Result;
 
 use arrayvec::ArrayString;
 use redb::ReadableTable;

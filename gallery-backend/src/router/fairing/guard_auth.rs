@@ -1,4 +1,3 @@
-use anyhow::Error;
 use rocket::Request;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};

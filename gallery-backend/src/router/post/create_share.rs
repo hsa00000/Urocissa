@@ -1,4 +1,3 @@
-use anyhow::Result;
 use arrayvec::ArrayString;
 use rand::Rng;
 use rand::distr::Alphanumeric;
@@ -7,12 +6,12 @@ use rocket::post;
 use rocket::serde::json::Json;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{public::constant::redb::ALBUM_TABLE, router::GuardResult};
 use crate::public::db::tree::TREE;
 use crate::public::structure::album::Share;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::{public::constant::redb::ALBUM_TABLE, router::GuardResult};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]

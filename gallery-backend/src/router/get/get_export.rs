@@ -4,7 +4,6 @@ use crate::{
     public::structure::database_struct::database::definition::Database,
     router::fairing::guard_auth::GuardAuth,
 };
-use anyhow::Result;
 use redb::ReadableTable;
 use rocket::get;
 use rocket::response::stream::ByteStream;

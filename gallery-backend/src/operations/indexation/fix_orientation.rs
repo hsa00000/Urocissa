@@ -1,4 +1,7 @@
-use crate::{public::constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION, public::structure::database_struct::database::definition::Database};
+use crate::{
+    public::constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION,
+    public::structure::database_struct::database::definition::Database,
+};
 use image::DynamicImage;
 
 pub fn fix_image_orientation(database: &Database, dynamic_image: &mut DynamicImage) -> () {

@@ -27,7 +27,6 @@ pub struct ResolvedShare {
     pub album_title: Option<String>,
 }
 
-
 #[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Album {

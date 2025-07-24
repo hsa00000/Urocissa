@@ -6,9 +6,8 @@ use super::VALIDATION;
 use super::auth_utils::{
     try_jwt_cookie_auth, try_resolve_share_from_headers, try_resolve_share_from_query,
 };
-use crate::router::claims::claims::Claims;
 use crate::router::GuardError;
-use anyhow::Error;
+use crate::router::claims::claims::Claims;
 
 pub struct GuardShare {
     pub claims: Claims,

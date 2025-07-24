@@ -1,11 +1,11 @@
 use crate::router::{
+    AppResult, GuardResult,
     fairing::{
         guard_hash::{GuardHash, GuardHashOriginal},
         guard_share::GuardShare,
-    }, AppResult, GuardResult
+    },
 };
 use anyhow::Context;
-use anyhow::Result;
 use rocket::fs::NamedFile;
 use rocket::response::Responder;
 use rocket_seek_stream::SeekStream;

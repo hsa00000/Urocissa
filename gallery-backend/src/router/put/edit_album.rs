@@ -3,11 +3,10 @@ use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 
 use crate::public::db::{tree::TREE, tree_snapshot::TREE_SNAPSHOT};
-use crate::router::{AppResult, GuardResult};
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
-use anyhow::Result;
+use crate::router::{AppResult, GuardResult};
 
 use std::collections::HashSet;
 

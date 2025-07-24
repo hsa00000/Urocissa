@@ -15,7 +15,6 @@ use crate::router::{AppResult, GuardError, GuardResult};
 use super::VALIDATION_ALLOW_EXPIRED;
 use super::auth_utils::{extract_bearer_token, my_decode_token};
 use super::guard_share::GuardShare;
-use anyhow::Result;
 pub struct GuardTimestamp {
     pub claims: ClaimsTimestamp,
 }

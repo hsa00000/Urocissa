@@ -7,9 +7,9 @@ use crate::public::structure::database_struct::database_timestamp::DatabaseTimes
 use crate::public::structure::expression::Expression;
 use crate::public::structure::reduced_data::ReducedData;
 use crate::router::AppResult;
+use crate::router::GuardResult;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::guard_share::GuardShare;
-use crate::router::GuardResult;
 use crate::tasks::BATCH_COORDINATOR;
 
 use crate::tasks::batcher::flush_query_snapshot::FlushQuerySnapshotTask;

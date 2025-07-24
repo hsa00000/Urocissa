@@ -9,7 +9,7 @@ use crate::{
         },
         tui::DASHBOARD,
     },
-    tasks::{batcher::flush_tree::FlushTreeTask, BATCH_COORDINATOR},
+    tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
 use anyhow::Context;
 use anyhow::Result;

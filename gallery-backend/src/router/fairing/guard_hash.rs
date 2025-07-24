@@ -1,4 +1,3 @@
-use anyhow::Error;
 use jsonwebtoken::{DecodingKey, decode};
 use log::warn;
 use rocket::Request;
@@ -6,11 +5,11 @@ use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
 use rocket::serde::json::Json;
 
-use crate::router::{AppResult, GuardError};
 use crate::router::claims::claims_hash::ClaimsHash;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::VALIDATION;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
+use crate::router::{AppResult, GuardError};
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +36,10 @@ impl<'r> FromRequest<'r> for GuardHash {
         let claims: ClaimsHash = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
-                return Outcome::Error((Status::Unauthorized, err.context("JWT decoding failed").into()));
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    err.context("JWT decoding failed").into(),
+                ));
             }
         };
 
@@ -83,7 +85,10 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
         let claims: ClaimsHash = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
-                return Outcome::Error((Status::Unauthorized, err.context("JWT decoding failed").into()));
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    err.context("JWT decoding failed").into(),
+                ));
             }
         };
 
