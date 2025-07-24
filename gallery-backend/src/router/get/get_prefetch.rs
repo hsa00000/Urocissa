@@ -279,10 +279,11 @@ fn execute_prefetch_logic(
 
 #[post("/get/prefetch?<locate>", format = "json", data = "<query_data>")]
 pub async fn prefetch(
-    auth_guard: GuardShare,
+    auth_guard: Result<GuardShare>,
     query_data: Option<Json<Expression>>,
     locate: Option<String>,
 ) -> AppResult<Json<PrefetchReturn>> {
+    let auth_guard = auth_guard?;
     // Combine album filter (if any) with the client‑supplied query.
     let mut combined_expression_option = query_data.map(|wrapper| wrapper.into_inner());
     let resolved_share_option = auth_guard.claims.get_share();
