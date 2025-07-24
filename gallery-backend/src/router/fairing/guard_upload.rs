@@ -3,8 +3,6 @@ use rocket::Request;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
 
-use crate::router::AppError;
-
 use super::VALIDATION;
 use super::auth_utils::{try_authorize_upload_via_share, try_jwt_cookie_auth};
 

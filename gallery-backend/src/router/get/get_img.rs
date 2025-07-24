@@ -1,9 +1,3 @@
-use anyhow::Context;
-use rocket::fs::NamedFile;
-use rocket::response::Responder;
-use rocket_seek_stream::SeekStream;
-use std::path::{Path, PathBuf};
-
 use crate::router::{
     AppResult,
     fairing::{
@@ -11,6 +5,12 @@ use crate::router::{
         guard_share::GuardShare,
     },
 };
+use anyhow::Context;
+use anyhow::Result;
+use rocket::fs::NamedFile;
+use rocket::response::Responder;
+use rocket_seek_stream::SeekStream;
+use std::path::{Path, PathBuf};
 #[derive(Responder)]
 pub enum CompressedFileResponse<'a> {
     SeekStream(SeekStream<'a>),
@@ -19,10 +19,12 @@ pub enum CompressedFileResponse<'a> {
 
 #[get("/object/compressed/<file_path..>")]
 pub async fn compressed_file(
-    _auth_guard: GuardShare,
-    _hash_guard: GuardHash,
+    auth_guard: Result<GuardShare>,
+    hash_guard: Result<GuardHash>,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {
+    let _ = auth_guard?;
+    let _ = hash_guard?;
     let compressed_file_path = Path::new("./object/compressed").join(&file_path);
 
     let result = match compressed_file_path
@@ -61,12 +63,12 @@ pub async fn compressed_file(
 
 #[get("/object/imported/<file_path..>")]
 pub async fn imported_file(
-    _auth: GuardShare,
+    auth: Result<GuardShare>,
     _hash_guard: GuardHashOriginal,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {
+    let _ = auth?;
     let imported_file_path = Path::new("./object/imported").join(&file_path);
-
     NamedFile::open(imported_file_path)
         .await
         .map(CompressedFileResponse::NamedFile)

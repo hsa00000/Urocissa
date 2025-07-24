@@ -40,12 +40,12 @@ impl<'r> FromFormField<'r> for FrameData<'r> {
 
 #[put("/put/regenerate-thumbnail-with-frame", data = "<data>")]
 pub async fn regenerate_thumbnail_with_frame(
-    _auth: GuardAuth,
+    auth: Result<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     data: Form<Vec<FrameData<'_>>>,
 ) -> AppResult<()> {
+    let _ = auth?;
     let mut hash: Option<ArrayString<64>> = None;
-
     for frame_data in data.into_inner() {
         match frame_data {
             FrameData::Hash(received_hash) => hash = Some(received_hash),

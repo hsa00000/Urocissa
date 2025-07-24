@@ -4,11 +4,11 @@ use crate::{
     public::structure::database_struct::database::definition::Database,
     router::fairing::guard_auth::GuardAuth,
 };
+use anyhow::Result;
 use redb::ReadableTable;
 use rocket::get;
 use rocket::response::stream::ByteStream;
 use serde::Serialize;
-
 #[derive(Debug, Serialize)]
 pub struct ExportEntry {
     key: String,
@@ -16,7 +16,8 @@ pub struct ExportEntry {
 }
 
 #[get("/get/get-export")]
-pub async fn get_export(_auth: GuardAuth) -> AppResult<ByteStream![Vec<u8>]> {
+pub async fn get_export(auth: Result<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
+    let _ = auth?;
     let data_table = open_data_table()?;
     let byte_stream = ByteStream! {
         // Open DB and prepare to iterate

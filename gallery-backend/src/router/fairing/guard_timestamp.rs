@@ -15,7 +15,7 @@ use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 use super::VALIDATION_ALLOW_EXPIRED;
 use super::auth_utils::{extract_bearer_token, my_decode_token};
 use super::guard_share::GuardShare;
-
+use anyhow::Result;
 pub struct GuardTimestamp {
     pub claims: ClaimsTimestamp,
 }
@@ -82,9 +82,10 @@ pub struct RenewTimestampTokenReturn {
     data = "<token_request>"
 )]
 pub async fn renew_timestamp_token(
-    _auth: GuardShare,
+    auth: Result<GuardShare>,
     token_request: Json<RenewTimestampToken>,
 ) -> AppResult<Json<RenewTimestampTokenReturn>> {
+    let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let token = token_request.into_inner().token;
         let token_data = match decode::<ClaimsTimestamp>(

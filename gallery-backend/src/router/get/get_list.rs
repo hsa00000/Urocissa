@@ -5,20 +5,22 @@ use crate::public::structure::album::Share;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_share::GuardShare;
-
 use anyhow::Context;
+use anyhow::Result;
 use arrayvec::ArrayString;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[get("/get/get-config.json")]
-pub async fn get_config(_auth: GuardShare) -> Json<&'static PublicConfig> {
-    Json(&*PUBLIC_CONFIG)
+pub async fn get_config(auth: Result<GuardShare>) -> AppResult<Json<&'static PublicConfig>> {
+    let _ = auth?;
+    Ok(Json(&*PUBLIC_CONFIG))
 }
 
 #[get("/get/get-tags")]
-pub async fn get_tags(_auth: GuardAuth) -> AppResult<Json<Vec<TagInfo>>> {
+pub async fn get_tags(auth: Result<GuardAuth>) -> AppResult<Json<Vec<TagInfo>>> {
+    let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let vec_tags_info = TREE.read_tags();
         Ok(Json(vec_tags_info))
@@ -35,7 +37,8 @@ pub struct AlbumInfo {
 }
 
 #[get("/get/get-albums")]
-pub async fn get_albums(_auth: GuardAuth) -> AppResult<Json<Vec<AlbumInfo>>> {
+pub async fn get_albums(auth: Result<GuardAuth>) -> AppResult<Json<Vec<AlbumInfo>>> {
+    let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let album_list = TREE.read_albums().context("Failed to read albums")?;
         let album_info_list = album_list

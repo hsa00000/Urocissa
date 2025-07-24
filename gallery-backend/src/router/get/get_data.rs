@@ -18,11 +18,12 @@ use std::time::Instant;
 
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
 pub async fn get_data(
-    guard_timestamp: GuardTimestamp,
+    guard_timestamp: Result<GuardTimestamp>,
     timestamp: u128,
     start: usize,
     mut end: usize,
 ) -> AppResult<Json<Vec<DataBaseTimestampReturn>>> {
+    let guard_timestamp = guard_timestamp?;
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
 

@@ -1,22 +1,23 @@
-use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 
 use crate::public::db::{tree::TREE, tree_snapshot::TREE_SNAPSHOT};
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
+use anyhow::Result;
 
 use std::collections::HashSet;
 
 use crate::public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
+
 use arrayvec::ArrayString;
 use futures::future::join_all;
 use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditAlbumsData {
@@ -28,10 +29,11 @@ pub struct EditAlbumsData {
 
 #[put("/put/edit_album", format = "json", data = "<json_data>")]
 pub async fn edit_album(
-    _auth: GuardAuth,
+    auth: Result<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     json_data: Json<EditAlbumsData>,
-) -> () {
+) -> AppResult<()> {
+    let _ = auth?;
     let concact_result = tokio::task::spawn_blocking(move || {
         let txn = TREE.in_disk.begin_write().unwrap();
         {
@@ -80,10 +82,13 @@ pub async fn edit_album(
         .execute_batch_waiting(UpdateTreeTask)
         .await
         .unwrap();
-    let futures = concact_result
-        .into_iter()
-        .map(async |album_id| INDEX_COORDINATOR.execute_waiting(AlbumSelfUpdateTask::new(album_id)).await);
+    let futures = concact_result.into_iter().map(async |album_id| {
+        INDEX_COORDINATOR
+            .execute_waiting(AlbumSelfUpdateTask::new(album_id))
+            .await
+    });
     join_all(futures).await;
+    Ok(())
 }
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
@@ -95,10 +100,11 @@ pub struct SetAlbumCover {
 
 #[post("/post/set_album_cover", data = "<set_album_cover>")]
 pub async fn set_album_cover(
-    _auth: GuardAuth,
+    auth: Result<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     set_album_cover: Json<SetAlbumCover>,
 ) -> AppResult<()> {
+    let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let set_album_cover_inner = set_album_cover.into_inner();
         let album_id = set_album_cover_inner.album_id;
@@ -135,10 +141,11 @@ pub struct SetAlbumTitle {
 
 #[post("/post/set_album_title", data = "<set_album_title>")]
 pub async fn set_album_title(
-    _auth: GuardShare,
+    auth: Result<GuardShare>,
     _read_only_mode: GuardReadOnlyMode,
     set_album_title: Json<SetAlbumTitle>,
 ) -> AppResult<()> {
+    let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let set_album_title_inner = set_album_title.into_inner();
         let album_id = set_album_title_inner.album_id;

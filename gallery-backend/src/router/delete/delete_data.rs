@@ -4,10 +4,10 @@ use crate::public::structure::abstract_data::AbstractData;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use futures::future::try_join_all;
@@ -20,10 +20,11 @@ pub struct DeleteList {
 }
 #[delete("/delete/delete-data", format = "json", data = "<json_data>")]
 pub async fn delete_data(
-    _auth: GuardAuth,
+    auth: Result<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     json_data: Json<DeleteList>,
 ) -> AppResult<()> {
+    let _ = auth?;
     let (abstract_data_to_remove, all_affected_album_ids) = tokio::task::spawn_blocking({
         let delete_list = json_data.delete_list.clone();
         let timestamp = json_data.timestamp;
@@ -35,7 +36,9 @@ pub async fn delete_data(
         .execute_batch_waiting(FlushTreeTask::remove(abstract_data_to_remove))
         .await?;
 
-    BATCH_COORDINATOR.execute_batch_waiting(UpdateTreeTask).await?;
+    BATCH_COORDINATOR
+        .execute_batch_waiting(UpdateTreeTask)
+        .await?;
 
     try_join_all(
         all_affected_album_ids

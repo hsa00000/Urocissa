@@ -1,11 +1,11 @@
 use crate::public::db::tree::TREE;
 use crate::public::structure::album::Share;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
-
-use crate::public::constant::redb::ALBUM_TABLE;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::tasks::BATCH_COORDINATOR;
+use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::{public::constant::redb::ALBUM_TABLE, router::AppResult};
+use anyhow::Result;
 
 use arrayvec::ArrayString;
 use redb::ReadableTable;
@@ -19,10 +19,11 @@ pub struct EditShare {
 
 #[put("/put/edit_share", format = "json", data = "<json_data>")]
 pub async fn edit_share(
-    _auth: GuardAuth,
+    auth: Result<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     json_data: Json<EditShare>,
-) {
+) -> AppResult<()> {
+    let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let txn = TREE.in_disk.begin_write().unwrap();
         {
@@ -50,6 +51,7 @@ pub async fn edit_share(
         .execute_batch_waiting(UpdateTreeTask)
         .await
         .unwrap();
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,10 +63,11 @@ pub struct DeleteShare {
 
 #[put("/put/delete_share", format = "json", data = "<json_data>")]
 pub async fn delete_share(
-    _auth: GuardAuth,
+    auth: Result<GuardAuth>,
     _read_only_mode: GuardReadOnlyMode,
     json_data: Json<DeleteShare>,
-) {
+) -> AppResult<()> {
+    let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let txn = TREE.in_disk.begin_write().unwrap();
         {
@@ -90,4 +93,5 @@ pub async fn delete_share(
         .execute_batch_waiting(UpdateTreeTask)
         .await
         .unwrap();
+    Ok(())
 }

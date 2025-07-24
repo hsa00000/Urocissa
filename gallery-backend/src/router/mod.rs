@@ -27,6 +27,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for AppError {
         .to_string();
 
         Response::build()
+            .status(Status::InternalServerError)
             .header(ContentType::JSON)
             .sized_body(body.len(), Cursor::new(body))
             .ok()
