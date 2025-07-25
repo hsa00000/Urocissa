@@ -20,10 +20,7 @@ const props = defineProps<{
 const tokenStore = useTokenStore(props.isolationId)
 
 async function handleClick() {
-  const success = await tokenStore.tryRefreshAndStoreTokenToDb(props.hash)
-  if (!success) {
-    throw new Error('Token renewal failed')
-  }
+  await tokenStore.tryRefreshAndStoreTokenToDb(props.hash)
   window.open(props.src, '_blank')
 }
 </script>

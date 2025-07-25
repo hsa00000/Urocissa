@@ -59,26 +59,35 @@ export const useTokenStore = (isolationId: IsolationId) =>
 
       // === 核心更新邏輯 ===
       async _updateTimestampToken(): Promise<void> {
-        const response = await axios.post('/post/renew-timestamp-token', {
-          token: this.timestampToken
-        })
-        const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
-        this.timestampToken = parsed.token
+        try {
+          const response = await axios.post('/post/renew-timestamp-token', {
+            token: this.timestampToken
+          })
+          const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
+          this.timestampToken = parsed.token
+        } catch (err) {
+          console.error('Failed to renew timestamp token:', err)
+        }
       },
 
-      async _updateHashToken(expiredToken: string): Promise<string> {
+      async _updateHashToken(expiredToken: string): Promise<string | null> {
         if (this.timestampToken == null) {
-          throw new Error('Missing timestampToken for authorization')
+          console.error('Missing timestampToken for authorization')
+          return null
         }
 
-        const response = await axios.post(
-          '/post/renew-hash-token',
-          { expiredHashToken: expiredToken },
-          { headers: { Authorization: `Bearer ${this.timestampToken}` } }
-        )
-
-        const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
-        return parsed.token
+        try {
+          const response = await axios.post(
+            '/post/renew-hash-token',
+            { expiredHashToken: expiredToken },
+            { headers: { Authorization: `Bearer ${this.timestampToken}` } }
+          )
+          const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
+          return parsed.token
+        } catch (err) {
+          console.error('Failed to update hash token:', err)
+          return null
+        }
       },
 
       // === 帶併發控制的 Timestamp Token 更新 ===
@@ -89,40 +98,34 @@ export const useTokenStore = (isolationId: IsolationId) =>
         }
 
         this._renewingTimestamp = (async () => {
-          try {
-            await this._updateTimestampToken()
-          } catch (err) {
-            console.error('Failed to renew timestamp token:', err)
-            throw err
-          } finally {
-            this._renewingTimestamp = null
-          }
-        })()
+          await this._updateTimestampToken()
+        })().finally(() => {
+          this._renewingTimestamp = null
+        })
 
         await this._renewingTimestamp
       },
 
       // === 通用的 Hash Token 處理邏輯 ===
-      async _ensureHashTokenFresh(hash: string): Promise<string> {
+      async _ensureHashTokenFresh(hash: string): Promise<string | null> {
         const currentToken = this.hashTokenMap.get(hash)
         if (currentToken === undefined) {
-          throw new Error(`No token found for hash: ${hash}`)
+          console.error(`No token found for hash: ${hash}`)
+          return null
         }
 
         if (!this._isTokenExpired(currentToken)) {
           return currentToken
         }
 
-        // 確保 timestamp token 最新 (與原始代碼行為一致)
+        // 確保 timestamp token 最新
         await this.refreshTimestampTokenIfExpired()
-
-        if (this.timestampToken == null) {
-          throw new Error('Missing timestampToken for authorization')
-        }
 
         // 更新 hash token
         const newToken = await this._updateHashToken(currentToken)
-        this.hashTokenMap.set(hash, newToken)
+        if (newToken !== null) {
+          this.hashTokenMap.set(hash, newToken)
+        }
         return newToken
       },
 
@@ -133,23 +136,14 @@ export const useTokenStore = (isolationId: IsolationId) =>
       },
 
       async refreshHashTokenIfExpired(hash: string): Promise<void> {
-        try {
-          await this._ensureHashTokenFresh(hash)
-        } catch (err) {
-          console.error(`Failed to renew token for hash: ${hash}`, err)
-          // 原始代碼會吞掉錯誤，所以這裡不重新拋出
-        }
+        await this._ensureHashTokenFresh(hash)
       },
 
-      async tryRefreshAndStoreTokenToDb(hash: string): Promise<boolean> {
-        try {
-          const freshToken = await this._ensureHashTokenFresh(hash)
-          await storeHashToken(hash, freshToken)
-          return true
-        } catch (err) {
-          console.error(`Failed to refresh and store token for hash: ${hash}`, err)
-          return false
-        }
+      async tryRefreshAndStoreTokenToDb(hash: string): Promise<void> {
+        const freshToken = await this._ensureHashTokenFresh(hash)
+        if (freshToken === null) return
+
+        await storeHashToken(hash, freshToken)
       }
     }
   })()

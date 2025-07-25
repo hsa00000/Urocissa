@@ -41,10 +41,7 @@ watch(videoRef, () => {
   currentFrameStore.video = videoRef.value
 })
 onMounted(async () => {
-  const success = await tokenStore.tryRefreshAndStoreTokenToDb(props.database.hash)
-  if (!success) {
-    throw new Error('Token renewal failed')
-  }
+  await tokenStore.tryRefreshAndStoreTokenToDb(props.database.hash)
   tokenReady.value = true
 })
 </script>

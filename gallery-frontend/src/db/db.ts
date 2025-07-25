@@ -1,8 +1,8 @@
 const DB_NAME = 'hashToken'
 const HASH_STORE_NAME = 'hashToken'
 
-function openHashDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+function openHashDB(): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
     const request = indexedDB.open(DB_NAME, 1)
 
     request.onupgradeneeded = (event) => {
@@ -18,18 +18,22 @@ function openHashDB(): Promise<IDBDatabase> {
 
     request.onerror = (event) => {
       const error = (event.target as IDBOpenDBRequest).error
-      reject(
-        new Error(
-          `Database error: ${error instanceof DOMException ? error.message : String(error)}`
-        )
+      console.error(
+        `Database error: ${error instanceof DOMException ? error.message : String(error)}`
       )
+      resolve(null)
     }
   })
 }
 
 export async function storeHashToken(hash: string, token: string): Promise<void> {
   const db = await openHashDB()
-  return new Promise<void>((resolve, reject) => {
+  if (!db) {
+    console.error('Failed to open database for storing hash token')
+    return
+  }
+
+  return new Promise<void>((resolve) => {
     const transaction = db.transaction(HASH_STORE_NAME, 'readwrite')
     const store = transaction.objectStore(HASH_STORE_NAME)
     const request = store.put(token, hash)
@@ -39,14 +43,20 @@ export async function storeHashToken(hash: string, token: string): Promise<void>
     }
 
     request.onerror = () => {
-      reject(new Error('Error storing hash token'))
+      console.error('Error storing hash token')
+      resolve()
     }
   })
 }
 
 export async function getHashToken(hash: string): Promise<string | null> {
   const db = await openHashDB()
-  return new Promise<string | null>((resolve, reject) => {
+  if (!db) {
+    console.error('Failed to open database for retrieving hash token')
+    return null
+  }
+
+  return new Promise<string | null>((resolve) => {
     const transaction = db.transaction(HASH_STORE_NAME, 'readonly')
     const store = transaction.objectStore(HASH_STORE_NAME)
     const request = store.get(hash)
@@ -61,14 +71,20 @@ export async function getHashToken(hash: string): Promise<string | null> {
     }
 
     request.onerror = () => {
-      reject(new Error('Error retrieving hash token'))
+      console.error('Error retrieving hash token')
+      resolve(null)
     }
   })
 }
 
 export async function deleteHashToken(hash: string): Promise<void> {
   const db = await openHashDB()
-  return new Promise<void>((resolve, reject) => {
+  if (!db) {
+    console.error('Failed to open database for deleting hash token')
+    return
+  }
+
+  return new Promise<void>((resolve) => {
     const transaction = db.transaction(HASH_STORE_NAME, 'readwrite')
     const store = transaction.objectStore(HASH_STORE_NAME)
     const request = store.delete(hash)
@@ -78,7 +94,8 @@ export async function deleteHashToken(hash: string): Promise<void> {
     }
 
     request.onerror = () => {
-      reject(new Error('Error deleting hash token'))
+      console.error('Error deleting hash token')
+      resolve()
     }
   })
 }
