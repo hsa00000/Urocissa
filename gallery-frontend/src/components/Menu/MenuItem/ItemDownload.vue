@@ -63,10 +63,11 @@ const downloadAllFiles = async () => {
           await fetchDataInWorker('single', index, isolationId)
 
           // Wait for metadata to be available
-          try {
-            metadata = await waitForMetadata(index)
-          } catch (error) {
-            console.error(error)
+          metadata = await tryWithMessageStore(isolationId, async () => {
+            return await waitForMetadata(index)
+          })
+          
+          if (!metadata) {
             return // Skip this index if metadata isn't available
           }
         }
@@ -82,7 +83,7 @@ const downloadAllFiles = async () => {
             return
           }
 
-          try {
+          const downloadResult = await tryWithMessageStore(isolationId, async () => {
             const response = await axios.get<Blob>(url, {
               responseType: 'blob',
               headers: {
@@ -90,10 +91,15 @@ const downloadAllFiles = async () => {
               }
             })
 
-            const fileName = `${hash}.${metadata.database.ext}`
-            saveAs(response.data, fileName)
-          } catch (downloadError) {
-            console.error(`Failed to download file for index ${index}:`, downloadError)
+            if (metadata.database) {
+              const fileName = `${hash}.${metadata.database.ext}`
+              saveAs(response.data, fileName)
+            }
+            return true
+          })
+          
+          if (downloadResult === undefined) {
+            console.error(`Failed to download file for index ${index}`)
           }
         }
       })

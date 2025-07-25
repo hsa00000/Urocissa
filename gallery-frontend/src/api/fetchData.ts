@@ -25,12 +25,7 @@ export async function fetchDataInWorker(
     }
   })
 
-  try {
-    await tokenStore.refreshTimestampTokenIfExpired()
-  } catch (err) {
-    console.error('Failed to refresh tokens:', err)
-    return false
-  }
+  await tokenStore.refreshTimestampTokenIfExpired()
 
   const timestamp = prefetchStore.timestamp
 

@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import axios from 'axios'
 import { TokenResponseSchema } from '@/type/schemas'
 import { storeHashToken } from '@/db/db'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 interface JwtPayload {
   timestamp: number
@@ -70,17 +71,19 @@ export const useTokenStore = (isolationId: IsolationId) =>
         }
 
         this._renewingTimestamp = (async () => {
-          try {
+          const result = await tryWithMessageStore('mainId', async () => {
             const response = await axios.post('/post/renew-timestamp-token', { token })
             const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
             this.timestampToken = parsed.token
-          } catch (err) {
-            console.error('Failed to renew timestamp token:', err)
-            throw err
-          } finally {
-            this._renewingTimestamp = null
+            return true
+          })
+
+          if (result === undefined) {
+            throw new Error('Failed to renew timestamp token')
           }
-        })()
+        })().finally(() => {
+          this._renewingTimestamp = null
+        })
 
         await this._renewingTimestamp
       },
@@ -101,7 +104,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
 
         if (!this._isExpired(decoded.exp)) return
 
-        try {
+        await tryWithMessageStore('mainId', async () => {
           await this.refreshTimestampTokenIfExpired()
 
           const timestampToken = this.timestampToken
@@ -123,23 +126,21 @@ export const useTokenStore = (isolationId: IsolationId) =>
 
           const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
           this.hashTokenMap.set(hash, parsed.token)
-        } catch (err) {
-          console.error(`Failed to renew token for hash: ${hash}`, err)
-        }
+        })
       },
 
       async tryRefreshAndStoreTokenToDb(hash: string): Promise<boolean> {
-        try {
+        const result = await tryWithMessageStore('mainId', async () => {
           await this.refreshHashTokenIfExpired(hash)
           const token = this.hashTokenMap.get(hash)
           if (token !== undefined) {
             await storeHashToken(hash, token)
             return true
           }
-        } catch (err) {
-          console.error(`Failed to refresh and store token for hash: ${hash}`, err)
-        }
-        return false
+          return false
+        })
+
+        return result ?? false
       }
     }
   })()

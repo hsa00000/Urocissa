@@ -99,6 +99,7 @@ import { useModalStore } from '@/store/modalStore'
 import type { EditShareData, Share } from '@/type/types'
 import { useMessageStore } from '@/store/messageStore'
 import { useAlbumStore } from '@/store/albumStore'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 const props = defineProps<{ editShareData: EditShareData }>()
 
@@ -129,17 +130,14 @@ onMounted(() => {
       album.shareList.set(props.editShareData.share.url, shareModel.value)
     }
 
-    try {
+    await tryWithMessageStore('mainId', async () => {
       await axios.put('/put/edit_share', {
         albumId: props.editShareData.albumId,
         share: shareModel.value
       })
 
       messageStore.success('Updated share settings successfully')
-    } catch (e) {
-      console.error('Failed to update share', e)
-      messageStore.error('Failed to update share settings')
-    }
+    })
   }
 })
 </script>

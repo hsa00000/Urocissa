@@ -13,6 +13,7 @@ import { useAlbumStore } from '@/store/albumStore'
 import { fetchScrollbar } from '@/api/fetchScrollbar'
 import { useShareStore } from '@/store/shareStore'
 import { useTokenStore } from '@/store/tokenStore'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 export function usePrefetch(
   filterJsonString: string | null,
@@ -65,14 +66,11 @@ async function handlePrefetchReturn(
   const albumStore = useAlbumStore('mainId')
   const tagStore = useTagStore('mainId')
 
-  try {
+  await tryWithMessageStore(isolationId, async () => {
     const response = await axios.get('/get/get-config.json')
     const publicConfig = PublicConfigSchema.parse(response.data)
     configStore.disableImg = publicConfig.disableImg
-  } catch (error) {
-    console.error('Error fetching config:', error)
-    throw error
-  }
+  })
 
   const prefetch = prefetchReturn.prefetch
   const token = prefetchReturn.token

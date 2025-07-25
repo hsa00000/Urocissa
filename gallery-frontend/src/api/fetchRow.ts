@@ -32,12 +32,7 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
     return // If a specific row is anchored, this make sure to fetch only that row
   }
 
-  try {
-    await tokenStore.refreshTimestampTokenIfExpired()
-  } catch (err) {
-    console.error('Failed to refresh tokens:', err)
-    return false
-  }
+  await tokenStore.refreshTimestampTokenIfExpired()
 
   const timestampToken = tokenStore.timestampToken
 

@@ -2,7 +2,8 @@ import { IsolationId, TagInfo } from '@type/types'
 import { tagInfoSchema } from '@type/schemas'
 import axios from 'axios'
 import { defineStore } from 'pinia'
-import { z, ZodError } from 'zod'
+import { z } from 'zod'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 export const useTagStore = (isolationId: IsolationId) =>
   defineStore('tagStore' + isolationId, {
@@ -15,7 +16,7 @@ export const useTagStore = (isolationId: IsolationId) =>
     }),
     actions: {
       async fetchTags() {
-        try {
+        await tryWithMessageStore('mainId', async () => {
           const response = await axios.get('/get/get-tags')
 
           if (response.status !== 200) {
@@ -28,13 +29,7 @@ export const useTagStore = (isolationId: IsolationId) =>
           this.tags = tags
           this.tags.sort((a, b) => a.tag.localeCompare(b.tag))
           this.fetched = true
-        } catch (error) {
-          if (error instanceof ZodError) {
-            console.error('Validation errors:', error.issues)
-          } else {
-            console.error('Failed to fetch tags:', error)
-          }
-        }
+        })
       },
       clearAll() {
         this.tags = []

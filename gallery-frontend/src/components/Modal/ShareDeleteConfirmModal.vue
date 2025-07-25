@@ -45,6 +45,7 @@ import { useModalStore } from '@/store/modalStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useMessageStore } from '@/store/messageStore'
 import type { EditShareData } from '@/type/types'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 const props = defineProps<{ deleteShareData: EditShareData }>()
 
@@ -59,20 +60,16 @@ const submit = ref<(() => void) | undefined>()
 
 onMounted(() => {
   submit.value = () => {
-    void axios
-      .put('/put/delete_share', {
+    void tryWithMessageStore('mainId', async () => {
+      await axios.put('/put/delete_share', {
         albumId: props.deleteShareData.albumId,
         shareId: props.deleteShareData.share.url
       })
-      .then(async () => {
-        messageStore.success('Share deleted')
-        modalStore.showDeleteShareModal = false
-        await albumStore.fetchAlbums() // 重新載入列表
-      })
-      .catch((e: unknown) => {
-        messageStore.error('Failed to delete share')
-        console.error(e)
-      })
+
+      messageStore.success('Share deleted')
+      modalStore.showDeleteShareModal = false
+      await albumStore.fetchAlbums() // 重新載入列表
+    })
   }
 })
 </script>

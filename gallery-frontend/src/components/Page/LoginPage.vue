@@ -25,14 +25,12 @@ import axios from 'axios'
 import { useRouter } from 'vue-router'
 import { z } from 'zod'
 import { useRedirectionStore } from '@/store/redirectionStore'
-import { useMessageStore } from '@/store/messageStore'
-import { errorDisplay } from '@/script/utils/errorDisplay'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 const password = ref('')
 const router = useRouter()
 const redirectionStore = useRedirectionStore('mainId')
-const messageStore = useMessageStore('mainId')
 const handleLogin = async () => {
-  try {
+  await tryWithMessageStore('mainId', async () => {
     const response = await axios.post('/post/authenticate', JSON.stringify(password.value), {
       headers: {
         'Content-Type': 'application/json'
@@ -56,9 +54,7 @@ const handleLogin = async () => {
     } else {
       await router.push({ name: 'home' })
     }
-  } catch (error: unknown) {
-    messageStore.error(errorDisplay(error))
-  }
+  })
 }
 </script>
 
