@@ -4,15 +4,16 @@ import { useAlbumStore } from '@/store/albumStore'
 import { Album, IsolationId } from '@type/types'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
+import { tryWithMessageStore } from './try_catch'
 
 export async function createNonEmptyAlbum(
   elementsIndex: number[],
   isolationId: IsolationId
 ): Promise<string | undefined> {
-  const messageStore = useMessageStore('mainId')
   const albumStore = useAlbumStore('mainId')
   const prefetchStore = usePrefetchStore(isolationId)
-  try {
+  
+  return await tryWithMessageStore('mainId', async () => {
     const createNonEmptyAlbumData = {
       title: null,
       elementsIndex: elementsIndex,
@@ -29,36 +30,32 @@ export async function createNonEmptyAlbum(
       }
     )
 
+    const messageStore = useMessageStore('mainId')
     messageStore.success('Album created successfully.')
 
     const newAlbumId = response.data
     await albumStore.fetchAlbums()
     return newAlbumId
-  } catch (error) {
-    console.error('Error creating album:', error)
-    messageStore.error('Failed to create album.')
-  }
+  })
 }
 
 export async function createEmptyAlbum(): Promise<string | undefined> {
-  const messageStore = useMessageStore('mainId')
   const albumStore = useAlbumStore('mainId')
-  try {
+  
+  return await tryWithMessageStore('mainId', async () => {
     const response = await axios.post<string>('/post/create_empty_album', {
       headers: {
         'Content-Type': 'application/json'
       }
     })
 
+    const messageStore = useMessageStore('mainId')
     messageStore.success('Album created successfully.')
 
     const newAlbumId = response.data
     await albumStore.fetchAlbums()
     return newAlbumId
-  } catch (error) {
-    console.error('Error creating album:', error)
-    messageStore.error('Failed to create album.')
-  }
+  })
 }
 
 export async function editTitle(album: Album, titleModelValue: string) {

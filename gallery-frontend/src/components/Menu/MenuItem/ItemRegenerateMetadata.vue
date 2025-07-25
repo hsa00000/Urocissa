@@ -10,6 +10,7 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import axios from 'axios'
 import { getIsolationIdByRoute } from '@utils/getter'
 import { useMessageStore } from '@/store/messageStore'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 const props = defineProps<{
   indexList: number[]
@@ -26,7 +27,8 @@ const reindex = async () => {
     indexArray: indexArray,
     timestamp: prefetchStore.timestamp
   }
-  try {
+  
+  await tryWithMessageStore('mainId', async () => {
     messageStore.info('Reindexing...')
     await axios.post('/put/reindex', regenerateData, {
       headers: {
@@ -34,8 +36,6 @@ const reindex = async () => {
       }
     })
     messageStore.success('Regenerating metadata successfully')
-  } catch (error) {
-    messageStore.error(`Regenerating metadata failed: ${String(error)}`)
-  }
+  })
 }
 </script>

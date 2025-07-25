@@ -5,6 +5,7 @@ import { tagInfoSchema } from '@/type/schemas'
 import { IsolationId, TagInfo } from '@/type/types'
 import axios from 'axios'
 import { z } from 'zod'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 export async function editTags(
   indexArray: number[],
@@ -30,7 +31,7 @@ export async function editTags(
   }
   optimisticStore.optimisticUpdateTags(payload, true)
 
-  try {
+  await tryWithMessageStore('mainId', async () => {
     const axiosResponse = await axios.put<TagInfo[]>('/put/edit_tag', {
       indexArray,
       addTagsArray,
@@ -42,8 +43,5 @@ export async function editTags(
     tagsArraySchema.parse(axiosResponse.data)
 
     messageStore.success('Successfully edited tags.')
-  } catch (error) {
-    messageStore.error('Failed to edit tags due to a network or validation error.')
-    console.error(error)
-  }
+  })
 }

@@ -12,6 +12,7 @@ import { fetchDataInWorker } from '@/api/fetchData'
 import { getIsolationIdByRoute, getSrcOriginal } from '@utils/getter'
 import { AbstractData } from '@type/types'
 import { useTokenStore } from '@/store/tokenStore'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 const props = defineProps<{
   indexList: number[]
@@ -51,7 +52,8 @@ const downloadAllFiles = async () => {
   const delay = 1000
   const delayFunction = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
   const isolationId = getIsolationIdByRoute(route)
-  try {
+
+  await tryWithMessageStore(isolationId, async () => {
     for (let i = 0; i < indexArray.length; i += concurrencyLimit) {
       const batchIndex = indexArray.slice(i, i + concurrencyLimit)
       const downloadPromises = batchIndex.map(async (index) => {
@@ -100,8 +102,6 @@ const downloadAllFiles = async () => {
       await delayFunction(delay)
     }
     console.log('All files downloaded successfully')
-  } catch (error) {
-    console.error('Error downloading files:', error)
-  }
+  })
 }
 </script>

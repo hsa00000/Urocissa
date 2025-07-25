@@ -24,13 +24,13 @@ export async function tryWithMessageStore<T>(
 
 /**
  * Synchronous version of tryWithMessageStore
- * @param tryFn - The function to execute in the try block
  * @param isolationId - The isolation ID for the message store (defaults to 'mainId')
+ * @param tryFn - The function to execute in the try block
  * @returns T | undefined - Returns the result of tryFn if successful, undefined if error occurs
  */
 export function tryWithMessageStoreSync<T>(
-  tryFn: () => T,
-  isolationId: IsolationId = 'mainId'
+  isolationId: IsolationId = 'mainId',
+  tryFn: () => T
 ): T | undefined {
   const messageStore = useMessageStore(isolationId)
 

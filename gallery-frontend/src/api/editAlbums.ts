@@ -2,6 +2,7 @@ import { useMessageStore } from '@/store/messageStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { IsolationId } from '@/type/types'
 import axios from 'axios'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 export async function editAlbums(
   indexArray: number[],
   addAlbumsArray: string[],
@@ -17,7 +18,7 @@ export async function editAlbums(
     return
   }
 
-  try {
+  await tryWithMessageStore('mainId', async () => {
     const response = await axios.put('/put/edit_album', {
       indexArray,
       addAlbumsArray,
@@ -30,8 +31,5 @@ export async function editAlbums(
     } else {
       messageStore.error(`Failed to edit albums. Server responded with status ${response.status}.`)
     }
-  } catch (error) {
-    messageStore.error('Failed to edit albums due to a network or server error.')
-    console.error(error)
-  }
+  })
 }
