@@ -51,12 +51,10 @@ pub fn hash_to_abstract_data(
 ) -> Result<AbstractData> {
     if let Some(database) = data_table.get(&*hash)? {
         let database = database.value();
-
-        Ok(AbstractData::Database(database))
+        Ok(database.into())
     } else if let Some(album) = album_table.get(&*hash)? {
         let album = album.value();
-
-        Ok(AbstractData::Album(album))
+        Ok(album.into())
     } else {
         Err(anyhow::anyhow!("No data found for hash: {}", hash))
     }

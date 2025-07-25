@@ -49,3 +49,16 @@ impl AbstractData {
         }
     }
 }
+
+impl From<Database> for AbstractData {
+    fn from(database: Database) -> Self {
+        AbstractData::Database(database)
+    }
+}
+
+impl From<Album> for AbstractData {
+    fn from(album: Album) -> Self {
+        AbstractData::Album(album)
+    }
+}
+
