@@ -3,9 +3,9 @@ use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_upload::GuardUpload;
 use crate::router::{AppResult, GuardResult};
 use crate::workflow::index_for_watch;
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use arrayvec::ArrayString;
-use rocket::form::Form;
+use rocket::form::{Errors, Form};
 use rocket::fs::TempFile;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -34,11 +34,24 @@ pub async fn upload(
     auth: GuardResult<GuardUpload>,
     read_only_mode: Result<GuardReadOnlyMode>,
     presigned_album_id_opt: Option<String>,
-    form: Form<UploadForm<'_>>,
+    form: Result<Form<UploadForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-    let mut inner_form = form.into_inner();
+    let mut inner_form = match form {
+        Ok(form) => form.into_inner(),
+        Err(errors) => {
+            let error_chain = errors
+                .iter()
+                .map(|e| anyhow!(e.to_string()))
+                .reduce(|acc, e| acc.context(e.to_string()));
+
+            return match error_chain {
+                Some(chain) => Err(chain.context("Failed to parse form").into()),
+                None => Err(anyhow!("Failed to parse form with unknown error").into()),
+            };
+        }
+    };
 
     let presigned_album_id_opt: Option<ArrayString<64>> = if let Some(s) = presigned_album_id_opt {
         Some(

@@ -11,6 +11,7 @@ import { getIsolationIdByRoute } from '@utils/getter'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { getSrc } from '@utils/getter'
 import { useMessageStore } from '@/store/messageStore'
+import { errorDisplay } from '@/script/utils/errorDisplay'
 
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
@@ -27,8 +28,8 @@ const regenerateThumbnailByFrame = async () => {
       // Append the hash first
       formData.append('hash', hash)
 
-      // Append the file
-      formData.append('file', currentFrameBlob)
+      // Append the frame file
+      formData.append('frame', currentFrameBlob)
       messageStore.info('Regenerating thumbnail...')
 
       const response = await axios.put('/put/regenerate-thumbnail-with-frame', formData, {
@@ -45,8 +46,8 @@ const regenerateThumbnailByFrame = async () => {
       messageStore.success('Regenerating thumbnail successfually')
       console.log('Response:', response.data)
     }
-  } catch (err) {
-    messageStore.error(`Regenerating thumbnail failed ${String(err)}`)
+  } catch (error: unknown) {
+    messageStore.error(errorDisplay(error))
   }
 }
 </script>
