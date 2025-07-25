@@ -11,7 +11,7 @@ import { getIsolationIdByRoute } from '@utils/getter'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { getSrc } from '@utils/getter'
 import { useMessageStore } from '@/store/messageStore'
-import { errorDisplay } from '@/script/utils/errorDisplay'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
@@ -19,7 +19,7 @@ const currentFrameStore = useCurrentFrameStore(isolationId)
 const messageStore = useMessageStore('mainId')
 
 const regenerateThumbnailByFrame = async () => {
-  try {
+  await tryWithMessageStore(isolationId, async () => {
     const hash = route.params.hash
     const currentFrameBlob = await currentFrameStore.getCapture()
     if (typeof hash === 'string' && currentFrameBlob) {
@@ -46,8 +46,6 @@ const regenerateThumbnailByFrame = async () => {
       messageStore.success('Regenerating thumbnail successfually')
       console.log('Response:', response.data)
     }
-  } catch (error: unknown) {
-    messageStore.error(errorDisplay(error))
-  }
+  })
 }
 </script>
