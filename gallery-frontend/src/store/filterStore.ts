@@ -15,28 +15,35 @@ export const useFilterStore = (isolationId: IsolationId) =>
       // Generates the filter JSON string using basicString and searchString
       // This JSON info is used to send to the backend
       generateFilterJsonString(basicString: string | null): string | null {
-        try {
-          if (typeof basicString === 'string' && typeof this.searchString !== 'string') {
-            return generateJsonString(basicString)
-          } else if (typeof basicString !== 'string' && typeof this.searchString === 'string') {
-            try {
-              return generateJsonString(this.searchString)
-            } catch {
-              return generateJsonString(`any: "${this.searchString}"`)
-            }
-          } else if (typeof basicString === 'string' && typeof this.searchString === 'string') {
-            try {
-              return generateJsonString(`and(${basicString},${this.searchString})`)
-            } catch {
-              return generateJsonString(`and(${basicString}, any: "${this.searchString}")`)
-            }
-          } else {
-            return null
-          }
-        } catch (err) {
-          console.error(err)
+        const hasBasicString = typeof basicString === 'string'
+        const searchStringStr = typeof this.searchString === 'string' ? this.searchString : null
+        const hasSearchString = searchStringStr !== null
+
+        // No valid input
+        if (!hasBasicString && !hasSearchString) {
           return null
         }
+
+        // Only basicString
+        if (hasBasicString && !hasSearchString) {
+          return generateJsonString(basicString) || null
+        }
+
+        // Only searchString
+        if (!hasBasicString && hasSearchString) {
+          return (
+            generateJsonString(searchStringStr) ||
+            generateJsonString(`any: "${searchStringStr}"`) ||
+            null
+          )
+        }
+
+        // Both strings
+        return (
+          generateJsonString(`and(${basicString},${searchStringStr})`) ||
+          generateJsonString(`and(${basicString}, any: "${searchStringStr}")`) ||
+          null
+        )
       }
     }
   })()

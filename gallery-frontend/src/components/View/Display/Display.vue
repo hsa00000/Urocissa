@@ -188,13 +188,8 @@ async function checkAndFetch(index: number): Promise<boolean> {
   }
 
   // Refresh tokens before using them
-  try {
-    await tokenStore.refreshTimestampTokenIfExpired()
-    await tokenStore.refreshHashTokenIfExpired(hash)
-  } catch (err) {
-    console.error('Failed to refresh tokens:', err)
-    return false
-  }
+  await tokenStore.refreshTimestampTokenIfExpired()
+  await tokenStore.refreshHashTokenIfExpired(hash)
 
   const timestampToken = tokenStore.timestampToken
   if (timestampToken === null) {

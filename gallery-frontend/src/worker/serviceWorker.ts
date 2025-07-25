@@ -47,13 +47,7 @@ async function handleMediaRequest(request: Request): Promise<Response> {
   const hash = filename.replace(/\.[^.]+$/, '') // remove extension
   console.log('intercepting: hash is', hash)
 
-  let token: string | null
-  try {
-    token = await getHashToken(hash)
-  } catch (err: unknown) {
-    console.error('Failed to get token from IndexedDB:', err)
-    return new Response('Internal error while accessing IndexedDB', { status: 500 })
-  }
+  const token = await getHashToken(hash)
 
   if (typeof token !== 'string' || token.trim() === '') {
     console.error('Token is missing or invalid:', token)

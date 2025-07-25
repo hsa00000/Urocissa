@@ -42,13 +42,8 @@ export async function refreshAlbumMetadata(albumId: string) {
       const coverHash = album.cover
       if (coverHash === null) return
 
-      try {
-        await tokenStore.refreshTimestampTokenIfExpired()
-        await tokenStore.refreshHashTokenIfExpired(coverHash)
-      } catch (err) {
-        console.error('Failed to refresh token(s):', err)
-        return
-      }
+      await tokenStore.refreshTimestampTokenIfExpired()
+      await tokenStore.refreshHashTokenIfExpired(coverHash)
 
       const timestampToken = tokenStore.timestampToken
       const hashToken = tokenStore.hashTokenMap.get(coverHash)
