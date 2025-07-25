@@ -1,10 +1,9 @@
-import { IsolationId } from '@type/types'
+import { IsolationId, TokenResponse } from '@type/types'
 import { jwtDecode } from 'jwt-decode'
 import { defineStore } from 'pinia'
 import axios from 'axios'
 import { TokenResponseSchema } from '@/type/schemas'
 import { storeHashToken } from '@/db/db'
-import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 interface JwtPayload {
   timestamp: number
@@ -63,7 +62,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
         const response = await axios.post('/post/renew-timestamp-token', {
           token: this.timestampToken
         })
-        const parsed = TokenResponseSchema.parse(response.data)
+        const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
         this.timestampToken = parsed.token
       },
 
@@ -78,7 +77,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
           { headers: { Authorization: `Bearer ${this.timestampToken}` } }
         )
 
-        const parsed = TokenResponseSchema.parse(response.data)
+        const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
         return parsed.token
       },
 
@@ -89,11 +88,16 @@ export const useTokenStore = (isolationId: IsolationId) =>
           return
         }
 
-        this._renewingTimestamp = tryWithMessageStore('mainId', async () => {
-          await this._updateTimestampToken()
-        }).finally(() => {
-          this._renewingTimestamp = null
-        })
+        this._renewingTimestamp = (async () => {
+          try {
+            await this._updateTimestampToken()
+          } catch (err) {
+            console.error('Failed to renew timestamp token:', err)
+            throw err
+          } finally {
+            this._renewingTimestamp = null
+          }
+        })()
 
         await this._renewingTimestamp
       },
@@ -109,9 +113,11 @@ export const useTokenStore = (isolationId: IsolationId) =>
           return currentToken
         }
 
-        // 確保 timestamp token 最新
-        if (this.timestampToken != null && this._isTokenExpired(this.timestampToken)) {
-          await this._refreshTimestampTokenWithLock()
+        // 確保 timestamp token 最新 (與原始代碼行為一致)
+        await this.refreshTimestampTokenIfExpired()
+
+        if (this.timestampToken == null) {
+          throw new Error('Missing timestampToken for authorization')
         }
 
         // 更新 hash token
@@ -127,19 +133,23 @@ export const useTokenStore = (isolationId: IsolationId) =>
       },
 
       async refreshHashTokenIfExpired(hash: string): Promise<void> {
-        await tryWithMessageStore('mainId', async () => {
+        try {
           await this._ensureHashTokenFresh(hash)
-        })
+        } catch (err) {
+          console.error(`Failed to renew token for hash: ${hash}`, err)
+          // 原始代碼會吞掉錯誤，所以這裡不重新拋出
+        }
       },
 
       async tryRefreshAndStoreTokenToDb(hash: string): Promise<boolean> {
-        const result = await tryWithMessageStore('mainId', async () => {
+        try {
           const freshToken = await this._ensureHashTokenFresh(hash)
           await storeHashToken(hash, freshToken)
           return true
-        })
-
-        return result ?? false
+        } catch (err) {
+          console.error(`Failed to refresh and store token for hash: ${hash}`, err)
+          return false
+        }
       }
     }
   })()
