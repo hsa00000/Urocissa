@@ -1,4 +1,4 @@
-import { IsolationId, TokenResponse } from '@type/types'
+import { IsolationId } from '@type/types'
 import { jwtDecode } from 'jwt-decode'
 import { defineStore } from 'pinia'
 import axios from 'axios'
@@ -25,119 +25,118 @@ export const useTokenStore = (isolationId: IsolationId) =>
     }),
 
     actions: {
+      // === 基礎工具方法 ===
       _isExpired(exp?: number): boolean {
         return typeof exp === 'number' && exp < Math.floor(Date.now() / 1000)
       },
 
-      _getTimestampFromToken(): number | null {
-        if (this.timestampToken == null) return null
+      _decodeToken(token: string): JwtPayload | null {
         try {
-          const decoded = jwtDecode<JwtPayload>(this.timestampToken)
-          return typeof decoded.timestamp === 'number' ? decoded.timestamp : null
+          return jwtDecode<JwtPayload>(token)
         } catch (err) {
           console.warn('Invalid JWT:', err)
           return null
         }
       },
 
+      _isTokenExpired(token: string): boolean {
+        const decoded = this._decodeToken(token)
+        return decoded ? this._isExpired(decoded.exp) : true
+      },
+
+      // === Token 信息獲取 ===
+      _getTimestampFromToken(): number | null {
+        if (this.timestampToken == null) return null
+        const decoded = this._decodeToken(this.timestampToken)
+        return decoded?.timestamp ?? null
+      },
+
       _getTimestampFromHashToken(hash: string): number | undefined {
         const token = this.hashTokenMap.get(hash)
         if (token === undefined) return undefined
-        try {
-          const decoded = jwtDecode<JwtPayload>(token)
-          return typeof decoded.timestamp === 'number' ? decoded.timestamp : undefined
-        } catch (err) {
-          console.warn(`Invalid JWT for hash: ${hash}`, err)
-          return undefined
-        }
+        const decoded = this._decodeToken(token)
+        return decoded?.timestamp
       },
 
-      async refreshTimestampTokenIfExpired(): Promise<void> {
-        const token = this.timestampToken
-        if (token == null) return
+      // === 核心更新邏輯 ===
+      async _updateTimestampToken(): Promise<void> {
+        const response = await axios.post('/post/renew-timestamp-token', {
+          token: this.timestampToken
+        })
+        const parsed = TokenResponseSchema.parse(response.data)
+        this.timestampToken = parsed.token
+      },
 
-        let decoded: JwtPayload
-        try {
-          decoded = jwtDecode<JwtPayload>(token)
-          if (!this._isExpired(decoded.exp)) return
-        } catch (err) {
-          console.warn('Invalid JWT:', err)
-          return
+      async _updateHashToken(expiredToken: string): Promise<string> {
+        if (this.timestampToken == null) {
+          throw new Error('Missing timestampToken for authorization')
         }
 
+        const response = await axios.post(
+          '/post/renew-hash-token',
+          { expiredHashToken: expiredToken },
+          { headers: { Authorization: `Bearer ${this.timestampToken}` } }
+        )
+
+        const parsed = TokenResponseSchema.parse(response.data)
+        return parsed.token
+      },
+
+      // === 帶併發控制的 Timestamp Token 更新 ===
+      async _refreshTimestampTokenWithLock(): Promise<void> {
         if (this._renewingTimestamp) {
           await this._renewingTimestamp
           return
         }
 
-        this._renewingTimestamp = (async () => {
-          const result = await tryWithMessageStore('mainId', async () => {
-            const response = await axios.post('/post/renew-timestamp-token', { token })
-            const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
-            this.timestampToken = parsed.token
-            return true
-          })
-
-          if (result === undefined) {
-            throw new Error('Failed to renew timestamp token')
-          }
-        })().finally(() => {
+        this._renewingTimestamp = tryWithMessageStore('mainId', async () => {
+          await this._updateTimestampToken()
+        }).finally(() => {
           this._renewingTimestamp = null
         })
 
         await this._renewingTimestamp
       },
 
-      async refreshHashTokenIfExpired(hash: string): Promise<void> {
-        const expiredToken = this.hashTokenMap.get(hash)
-        if (expiredToken === undefined) {
+      // === 通用的 Hash Token 處理邏輯 ===
+      async _ensureHashTokenFresh(hash: string): Promise<string> {
+        const currentToken = this.hashTokenMap.get(hash)
+        if (currentToken === undefined) {
           throw new Error(`No token found for hash: ${hash}`)
         }
 
-        let decoded: JwtPayload
-        try {
-          decoded = jwtDecode<JwtPayload>(expiredToken)
-        } catch (err) {
-          console.warn(`Invalid JWT for hash: ${hash}`, err)
-          return
+        if (!this._isTokenExpired(currentToken)) {
+          return currentToken
         }
 
-        if (!this._isExpired(decoded.exp)) return
+        // 確保 timestamp token 最新
+        if (this.timestampToken != null && this._isTokenExpired(this.timestampToken)) {
+          await this._refreshTimestampTokenWithLock()
+        }
 
+        // 更新 hash token
+        const newToken = await this._updateHashToken(currentToken)
+        this.hashTokenMap.set(hash, newToken)
+        return newToken
+      },
+
+      // === 公開接口 ===
+      async refreshTimestampTokenIfExpired(): Promise<void> {
+        if (this.timestampToken == null || !this._isTokenExpired(this.timestampToken)) return
+        await this._refreshTimestampTokenWithLock()
+      },
+
+      async refreshHashTokenIfExpired(hash: string): Promise<void> {
         await tryWithMessageStore('mainId', async () => {
-          await this.refreshTimestampTokenIfExpired()
-
-          const timestampToken = this.timestampToken
-          if (timestampToken == null) {
-            throw new Error('Missing timestampToken for authorization')
-          }
-
-          const response = await axios.post(
-            '/post/renew-hash-token',
-            {
-              expiredHashToken: expiredToken
-            },
-            {
-              headers: {
-                Authorization: `Bearer ${timestampToken}`
-              }
-            }
-          )
-
-          const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
-          this.hashTokenMap.set(hash, parsed.token)
+          await this._ensureHashTokenFresh(hash)
         })
       },
 
       async tryRefreshAndStoreTokenToDb(hash: string): Promise<boolean> {
         const result = await tryWithMessageStore('mainId', async () => {
-          await this.refreshHashTokenIfExpired(hash)
-          const token = this.hashTokenMap.get(hash)
-          if (token !== undefined) {
-            await storeHashToken(hash, token)
-            return true
-          }
-          return false
+          const freshToken = await this._ensureHashTokenFresh(hash)
+          await storeHashToken(hash, freshToken)
+          return true
         })
 
         return result ?? false
