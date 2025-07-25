@@ -72,6 +72,7 @@ export interface FetchRowPayload {
   windowWidth: number
   isLastRow: boolean
   timestampToken: string
+  subRowHeightScale: number
 }
 
 // === From DataWorker Payloads ===

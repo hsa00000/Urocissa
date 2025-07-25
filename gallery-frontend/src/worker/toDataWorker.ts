@@ -64,9 +64,17 @@ self.addEventListener('message', (e) => {
       }
     },
     fetchRow: async (payload) => {
-      const { index, timestamp, windowWidth, isLastRow, timestampToken } = payload
+      const { index, timestamp, windowWidth, isLastRow, timestampToken, subRowHeightScale } =
+        payload
 
-      const rowWithOffset = await fetchRow(index, timestamp, windowWidth, isLastRow, timestampToken)
+      const rowWithOffset = await fetchRow(
+        index,
+        timestamp,
+        windowWidth,
+        isLastRow,
+        timestampToken,
+        subRowHeightScale
+      )
 
       postToMainData.fetchRowReturn({
         rowWithOffset: rowWithOffset,
@@ -178,7 +186,8 @@ async function fetchRow(
   timestamp: number,
   windowWidth: number,
   isLastRow: boolean,
-  timestampToken: string
+  timestampToken: string,
+  subRowHeightScale: number
 ): Promise<RowWithOffset> {
   let row = fetchedRowData.get(index)
 
@@ -202,7 +211,7 @@ async function fetchRow(
   const subRows = KnuthPlassLayout(row, windowWidth)
 
   // Normalize subrows by scaling their widths and heights to fit within the window width
-  const scaledTotalHeight = normalizeSubrows(subRows, windowWidth, isLastRow)
+  const scaledTotalHeight = normalizeSubrows(subRows, windowWidth, isLastRow, subRowHeightScale)
 
   // Setting row.rowHeight
   row.rowHeight = scaledTotalHeight
@@ -313,11 +322,12 @@ function KnuthPlassLayout(row: Row, windowWidth: number): SubRow[] {
 function normalizeSubrows(
   subRows: SubRow[],
   windowWidth: number,
-  paddingLastSubrow: boolean
+  paddingLastSubrow: boolean,
+  subRowHeightScale: number
 ): number {
   let scaledTotalHeight = 0
   let displayTopPixelAccumulated = 0
-  const subRowHeight = Math.min(Math.round(windowWidth) / 2, 250)
+  const subRowHeight = Math.min(Math.round(windowWidth) / 2, 250) * subRowHeightScale
 
   subRows.forEach((subRow, rowIndex) => {
     let widthSum = 0

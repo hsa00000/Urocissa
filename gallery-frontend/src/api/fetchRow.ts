@@ -7,6 +7,7 @@ import { clamp } from 'lodash'
 import { bindActionDispatch } from 'typesafe-agent-events'
 import { IsolationId } from '@type/types'
 import { useTokenStore } from '@/store/tokenStore'
+import { useConstStore } from '@/store/constStore'
 
 /**
  * Fetches a row of data using a web worker if it isn't already queued.
@@ -18,6 +19,7 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
   const locationStore = useLocationStore(isolationId)
   const queueStore = useQueueStore(isolationId)
   const tokenStore = useTokenStore(isolationId)
+  const constStore = useConstStore('mainId')
   if (prefetchStore.rowLength === 0) {
     return // No data to fetch
   }
@@ -59,11 +61,12 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
   if (timestamp !== null) {
     queueStore.row.add(index)
     postToWorker.fetchRow({
-      index: index,
-      timestamp: timestamp,
+      index,
+      timestamp,
       windowWidth: prefetchStore.windowWidth,
       isLastRow: index === prefetchStore.rowLength - 1,
-      timestampToken
+      timestampToken,
+      subRowHeightScale: constStore.subRowHeightScale
     })
   }
 }
