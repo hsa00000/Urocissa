@@ -31,9 +31,6 @@ pub async fn edit_tag(
         let (data_table, album_table) = open_data_and_album_tables();
         let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)?;
 
-        // Collect all modified abstract_data objects for batch processing
-        let mut modified_data = Vec::with_capacity(json_data.index_array.len());
-
         for &index in &json_data.index_array {
             let mut abstract_data =
                 index_to_abstract_data(&tree_snapshot, &data_table, &album_table, index)?;
@@ -48,12 +45,7 @@ pub async fn edit_tag(
                 tag_set.remove(tag);
             }
 
-            modified_data.push(abstract_data);
-        }
-
-        // Batch flush all modified data at once for better efficiency
-        if !modified_data.is_empty() {
-            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(modified_data));
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]))
         }
 
         Ok(TREE_SNAPSHOT.read_tags()?)

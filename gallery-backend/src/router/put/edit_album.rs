@@ -1,19 +1,22 @@
+use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
+use crate::process::transitor::index_to_database;
 use crate::public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
-use crate::public::db::{tree::TREE, tree_snapshot::TREE_SNAPSHOT};
+use crate::public::db::tree::TREE;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
+use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use anyhow::Result;
-use std::collections::HashSet;
 use arrayvec::ArrayString;
 use futures::future::join_all;
 use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
+use std::collections::HashSet;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditAlbumsData {
@@ -31,38 +34,22 @@ pub async fn edit_album(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-    let concact_result = tokio::task::spawn_blocking(move || {
-        let txn = TREE.in_disk.begin_write().unwrap();
-        {
-            let mut write_table = txn.open_table(DATA_TABLE).unwrap();
+    let effected_album_vec = tokio::task::spawn_blocking(move || -> Result<_> {
+        let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)?;
+        let data_table = open_data_table()?;
 
-            let timestamp = &json_data.timestamp;
-            let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(timestamp).unwrap();
-
-            json_data.index_array.iter().for_each(|index| {
-                let hash = tree_snapshot.get_hash(*index).unwrap();
-                let data_opt = match write_table.get(hash.as_str()).unwrap() {
-                    Some(guard) => {
-                        let mut data = guard.value();
-                        json_data.add_albums_array.iter().for_each(|album_id| {
-                            data.album.insert(album_id.clone());
-                        });
-
-                        json_data.remove_albums_array.iter().for_each(|album_id| {
-                            data.album.remove(album_id);
-                        });
-                        Some(data)
-                    }
-                    None => None,
-                };
-                if let Some(data) = data_opt {
-                    write_table.insert(&*data.hash, &data).unwrap();
-                };
-            });
+        for &index in &json_data.index_array {
+            let mut database = index_to_database(&tree_snapshot, &data_table, index)?;
+            for album_id in &json_data.add_albums_array {
+                database.album.insert(album_id.clone());
+            }
+            for album_id in &json_data.remove_albums_array {
+                database.album.remove(album_id);
+            }
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![database.into()]));
         }
-        txn.commit().unwrap();
 
-        let concact_result: Vec<ArrayString<64>> = json_data
+        let effected_album_vec: Vec<ArrayString<64>> = json_data
             .add_albums_array
             .iter()
             .chain(json_data.remove_albums_array.iter())
@@ -70,16 +57,15 @@ pub async fn edit_album(
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();
-        concact_result
+        Ok(effected_album_vec)
     })
     .await
-    .unwrap();
+    .unwrap()?;
 
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .unwrap();
-    let futures = concact_result.into_iter().map(async |album_id| {
+        .await?;
+    let futures = effected_album_vec.into_iter().map(async |album_id| {
         INDEX_COORDINATOR
             .execute_waiting(AlbumSelfUpdateTask::new(album_id))
             .await
