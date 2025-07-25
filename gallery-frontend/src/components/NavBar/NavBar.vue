@@ -25,6 +25,24 @@
       <v-divider></v-divider>
       <v-list-item slim to="/tags" prepend-icon="mdi-tag-multiple" title="Tags"></v-list-item>
       <v-list-item slim to="/links" prepend-icon="mdi-link" title="Links"></v-list-item>
+      <v-divider></v-divider>
+      <div class="d-flex justify-center pa-2">
+        <v-btn-toggle variant="outlined" density="compact" class="elevation-0">
+          <v-btn
+            icon="mdi-minus"
+            size="small"
+            @click="constStore.decrementSubRowHeightScale()"
+            :disabled="!initializedStore.initialized"
+          ></v-btn>
+          <v-btn
+            icon="mdi-plus"
+            size="small"
+            @click="constStore.incrementSubRowHeightScale()"
+            :disabled="!initializedStore.initialized"
+          ></v-btn>
+        </v-btn-toggle>
+      </div>
+      
     </v-list>
   </v-navigation-drawer>
   <EditTagsModal v-if="modalStore.showEditTagsModal" />
@@ -46,10 +64,12 @@ import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { provide, ref } from 'vue'
 import { useInitializedStore } from '@/store/initializedStore'
+import { useConstStore } from '@/store/constStore'
 const showDrawer = ref(false)
 const route = useRoute()
 const modalStore = useModalStore('mainId')
 const initializedStore = useInitializedStore('mainId')
+const constStore = useConstStore('mainId')
 provide('showDrawer', showDrawer)
 </script>
 

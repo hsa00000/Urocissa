@@ -71,6 +71,7 @@ import { IsolationId } from '@type/types'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { useTagStore } from '@/store/tagStore'
 import { useAlbumStore } from '@/store/albumStore'
+import { useConstStore } from '@/store/constStore'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -95,6 +96,7 @@ const optimisticUpateStore = useOptimisticStore(props.isolationId)
 const albumStore = useAlbumStore(props.isolationId)
 const rerenderStore = useRerenderStore('mainId')
 const tagStore = useTagStore('mainId')
+const constStore = useConstStore('mainId')
 const mobile = isMobile()
 const route = useRoute()
 const imageContainerRef = ref<HTMLElement | null>(null)
@@ -118,7 +120,7 @@ const throttledHandleScroll = handleScroll(
   props.isolationId
 )
 
-watch(windowWidth, async () => {
+watch([windowWidth, () => constStore.subRowHeightScale], async () => {
   // Handles browser resizing.
 
   locationStore.triggerForResize()

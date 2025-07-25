@@ -8,7 +8,14 @@ export const useConstStore = (isolationId: IsolationId) =>
       subRowHeightScale: number
     } => ({
       disableImg: false,
-      subRowHeightScale: 1.0
+      subRowHeightScale: 250
     }),
-    actions: {}
+    actions: {
+      incrementSubRowHeightScale() {
+        this.subRowHeightScale = Math.min(350, this.subRowHeightScale + 50)
+      },
+      decrementSubRowHeightScale() {
+        this.subRowHeightScale = Math.max(150, this.subRowHeightScale - 50)
+      }
+    }
   })()

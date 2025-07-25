@@ -207,11 +207,13 @@ async function fetchRow(
   // Setting row.topPixelAccumulated
   row.topPixelAccumulated = row.rowIndex * fixedBigRowHeight
 
+  const subRowHeight = Math.round(Math.min(windowWidth / 2, subRowHeightScale))
+
   // Perform Algorithm to wrap row into subrows
-  const subRows = KnuthPlassLayout(row, windowWidth)
+  const subRows = KnuthPlassLayout(row, windowWidth, subRowHeight)
 
   // Normalize subrows by scaling their widths and heights to fit within the window width
-  const scaledTotalHeight = normalizeSubrows(subRows, windowWidth, isLastRow, subRowHeightScale)
+  const scaledTotalHeight = normalizeSubrows(subRows, windowWidth, isLastRow, subRowHeight)
 
   // Setting row.rowHeight
   row.rowHeight = scaledTotalHeight
@@ -282,9 +284,7 @@ function lineWrap(displayElements: number[], windowWidth: number): number[] {
  * @param windowWidth - The width of the window/container.
  * @returns An array of SubRow objects representing the layout.
  */
-function KnuthPlassLayout(row: Row, windowWidth: number): SubRow[] {
-  const subRowHeight = Math.min(Math.round(windowWidth) / 2, 250)
-
+function KnuthPlassLayout(row: Row, windowWidth: number, subRowHeight: number): SubRow[] {
   // Calculate the list of widths after scaling based on the subrow height
   const shrinkedWidthList = row.displayElements.map((displayElement) => {
     return Math.round((displayElement.displayWidth * subRowHeight) / displayElement.displayHeight)
@@ -323,11 +323,10 @@ function normalizeSubrows(
   subRows: SubRow[],
   windowWidth: number,
   paddingLastSubrow: boolean,
-  subRowHeightScale: number
+  subRowHeight: number
 ): number {
   let scaledTotalHeight = 0
   let displayTopPixelAccumulated = 0
-  const subRowHeight = Math.min(Math.round(windowWidth) / 2, 250) * subRowHeightScale
 
   subRows.forEach((subRow, rowIndex) => {
     let widthSum = 0
@@ -343,6 +342,7 @@ function normalizeSubrows(
       displayElement.displayWidth = scaledWidth
       displayElement.displayHeight = subRowHeight
     })
+
     if (!isLastSubrow) {
       // Calculate total width of elements in the subrow
       widthSum = subRow.displayElements.reduce(
