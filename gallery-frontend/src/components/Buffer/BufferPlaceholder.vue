@@ -28,9 +28,12 @@
 </template>
 
 <script setup lang="ts">
+import { useConstStore } from '@/store/constStore'
 import { paddingPixel } from '@/type/constants'
 import { getInjectValue } from '@utils/getter'
 import { computed, onMounted, Ref, ref, watchEffect } from 'vue'
+
+const constStore = useConstStore('mainId')
 
 const placeholderRef = ref<HTMLElement>()
 const windowWidth = getInjectValue<Ref<number>>('windowWidth')
@@ -46,7 +49,9 @@ defineProps<{
 }>()
 
 const placeholderWidth = computed(() => {
-  return windowWidth.value !== 0 ? Math.min(300, windowWidth.value) - 2 * paddingPixel : 300
+  return windowWidth.value !== 0
+    ? Math.min(constStore.subRowHeightScale, windowWidth.value) - 2 * paddingPixel
+    : constStore.subRowHeightScale
 })
 
 const placeholderWidthWithPadding = computed(() => {
