@@ -51,6 +51,7 @@ function getCurrentVisibleRows(
   isolationId: IsolationId
 ): Row[] {
   const rowStore = useRowStore(isolationId)
+
   let extraShift = 0
 
   // Find rows within the current viewport range that were visible in the previous frame

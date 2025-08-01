@@ -12,6 +12,7 @@ import { useModalStore } from '@/store/modalStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { useTokenStore } from '@/store/tokenStore'
+import { useConstStore } from '@/store/constStore'
 
 const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 
@@ -20,6 +21,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
   const modalStore = useModalStore('mainId')
   const redirectionStore = useRedirectionStore('mainId')
   const tagStore = useTagStore('mainId')
+  const constStore = useConstStore('mainId')
   const tokenStore = useTokenStore(isolationId)
   const dataStore = useDataStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
@@ -50,6 +52,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       const timestamp = payload.timestamp
       const rowWithOffset = payload.rowWithOffset
       const windowWidth = rowWithOffset.windowWidth
+      const subRowHeightScale = payload.subRowHeightScale
       if (windowWidth !== prefetchStore.windowWidth) {
         return
       }
@@ -61,7 +64,12 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
         return
       }
       const index = row.rowIndex
-      if (timestamp === prefetchStore.timestamp && !offsetStore.offset.has(index)) {
+
+      const timestampMatched = timestamp === prefetchStore.timestamp
+      const offsetNotComputed = !offsetStore.offset.has(index)
+      const subRowHeightScaleMatched = subRowHeightScale === constStore.subRowHeightScale
+
+      if (timestampMatched && offsetNotComputed && subRowHeightScaleMatched) {
         offsetStore.offset.set(index, offset)
         row.offset = offsetStore.accumulatedOffset(row.rowIndex)
         rowStore.rowData.forEach((row) => {

@@ -77,8 +77,9 @@ self.addEventListener('message', (e) => {
       )
 
       postToMainData.fetchRowReturn({
-        rowWithOffset: rowWithOffset,
-        timestamp: timestamp
+        rowWithOffset,
+        timestamp,
+        subRowHeightScale
       })
     }
   })

@@ -9,13 +9,5 @@ export const useConstStore = (isolationId: IsolationId) =>
     } => ({
       disableImg: false,
       subRowHeightScale: 250
-    }),
-    actions: {
-      incrementSubRowHeightScale() {
-        this.subRowHeightScale = Math.min(350, this.subRowHeightScale + 50)
-      },
-      decrementSubRowHeightScale() {
-        this.subRowHeightScale = Math.max(150, this.subRowHeightScale - 50)
-      }
-    }
+    })
   })()

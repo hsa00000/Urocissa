@@ -84,6 +84,7 @@ export interface ReturnDataPayload {
 export interface FetchRowReturnPayload {
   rowWithOffset: RowWithOffset
   timestamp: number
+  subRowHeightScale: number
 }
 
 export interface EditTagsReturnPayload {

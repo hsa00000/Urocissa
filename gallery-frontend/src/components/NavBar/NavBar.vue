@@ -26,23 +26,24 @@
       <v-list-item slim to="/tags" prepend-icon="mdi-tag-multiple" title="Tags"></v-list-item>
       <v-list-item slim to="/links" prepend-icon="mdi-link" title="Links"></v-list-item>
       <v-divider></v-divider>
-      <div class="d-flex justify-center pa-2">
-        <v-btn-toggle variant="outlined" density="compact" class="elevation-0">
-          <v-btn
-            icon="mdi-minus"
-            size="small"
-            @click="constStore.decrementSubRowHeightScale()"
-            :disabled="!initializedStore.initialized"
-          ></v-btn>
-          <v-btn
-            icon="mdi-plus"
-            size="small"
-            @click="constStore.incrementSubRowHeightScale()"
-            :disabled="!initializedStore.initialized"
-          ></v-btn>
-        </v-btn-toggle>
-      </div>
-      
+      <v-slider
+        v-model="constStore.subRowHeightScale"
+        :min="150"
+        :max="350"
+        :step="1"
+        :disabled="!initializedStore.initialized"
+        density="compact"
+        hide-details
+        thumb-size="16"
+        class="my-2"
+      >
+        <template #prepend>
+          <v-icon icon="mdi-minus" size="x-small"></v-icon>
+        </template>
+        <template #append>
+          <v-icon icon="mdi-plus" size="x-small"></v-icon>
+        </template>
+      </v-slider>
     </v-list>
   </v-navigation-drawer>
   <EditTagsModal v-if="modalStore.showEditTagsModal" />
