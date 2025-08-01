@@ -27,7 +27,7 @@
       <v-list-item slim to="/links" prepend-icon="mdi-link" title="Links"></v-list-item>
       <v-divider></v-divider>
       <v-slider
-        v-model="constStore.subRowHeightScale"
+        v-model="subRowHeightScale"
         :min="250"
         :max="450"
         :step="1"
@@ -63,7 +63,7 @@ import EditBatchAlbumsModal from '@/components/Modal/EditBatchAlbumsModal.vue'
 import ProgessBar from './ProgessBar.vue'
 import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
-import { provide, ref } from 'vue'
+import { provide, ref, computed } from 'vue'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useConstStore } from '@/store/constStore'
 const showDrawer = ref(false)
@@ -71,6 +71,17 @@ const route = useRoute()
 const modalStore = useModalStore('mainId')
 const initializedStore = useInitializedStore('mainId')
 const constStore = useConstStore('mainId')
+
+// Computed property to handle v-model with persistence
+const subRowHeightScale = computed({
+  get: () => constStore.subRowHeightScale,
+  set: (value: number) => {
+    constStore.updateSubRowHeightScale(value).catch((error: unknown) => {
+      console.error('Failed to update subRowHeightScale:', error)
+    })
+  }
+})
+
 provide('showDrawer', showDrawer)
 </script>
 

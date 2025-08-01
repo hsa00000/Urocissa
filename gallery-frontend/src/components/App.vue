@@ -16,16 +16,18 @@
 
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
-import { computed } from 'vue'
+import { computed, onBeforeMount } from 'vue'
 import { useScrollbarStore } from '@/store/scrollbarStore'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { useMessageStore } from '@/store/messageStore'
 import DropZoneModal from './Modal/DropZoneModal.vue'
 import isMobile from 'is-mobile'
+import { useConstStore } from '@/store/constStore'
 const scrollbarStore = useScrollbarStore('mainId')
 const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
 const rerenderStore = useRerenderStore('mainId')
 const messageStore = useMessageStore('mainId')
+const constStore = useConstStore('mainId')
 const route = useRoute()
 
 // The routeKey is used to ensure that the router-view reloads the Home.vue component properly.
@@ -38,5 +40,9 @@ const routeKey = computed(() => {
   const reverse = typeof route.query.reverse === 'string' ? route.query.reverse : ''
   const homeKey = rerenderStore.homeKey.toString()
   return `${currentPage}-${search}-${locate}-${priorityId}-${reverse}-${homeKey}`
+})
+onBeforeMount(async () => {
+  // Load the subRowHeightScale from constStore when the app is mounted.
+  await constStore.loadSubRowHeightScale()
 })
 </script>
