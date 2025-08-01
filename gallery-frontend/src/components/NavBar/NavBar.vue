@@ -28,8 +28,8 @@
       <v-divider></v-divider>
       <v-slider
         v-model="constStore.subRowHeightScale"
-        :min="150"
-        :max="350"
+        :min="50"
+        :max="450"
         :step="1"
         :disabled="!initializedStore.initialized"
         density="compact"
