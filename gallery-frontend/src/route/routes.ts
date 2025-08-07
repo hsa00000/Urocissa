@@ -18,24 +18,24 @@ import { PageReturnType } from './pageReturnType'
 
 type VirtualRouteName = 'home' | 'all' | 'favorite' | 'archived' | 'trashed' | 'albums' | 'videos'
 
-function createVirtualRoute(routeName: VirtualRouteName): RouteRecordRaw {
+function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
   return {
-    path: `/${routeName}`,
-    name: routeName,
+    path: `/${baseName}`,
+    name: baseName,
     meta: {
       isReadPage: false,
       isViewPage: false,
-      baseName: routeName,
+      baseName: baseName,
       getParentPage: (route) => {
         return {
-          name: routeName,
+          name: baseName,
           params: { hash: undefined, subhash: undefined },
           query: route.query
         }
       },
       getChildPage: (route, hash) => {
         return {
-          name: `${routeName}ViewPage`,
+          name: `${baseName}ViewPage`,
           params: { hash: hash, subhash: undefined },
           query: route.query
         }
@@ -45,7 +45,7 @@ function createVirtualRoute(routeName: VirtualRouteName): RouteRecordRaw {
       const basicStringStore = useBasicStringStore('mainId')
 
       let newBasicString: string
-      switch (routeName) {
+      switch (baseName) {
         case 'home':
           newBasicString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
           break
@@ -67,9 +67,6 @@ function createVirtualRoute(routeName: VirtualRouteName): RouteRecordRaw {
         case 'videos':
           newBasicString = 'and(type:"video", not(tag:"_archived"), not(tag:"_trashed"))'
           break
-        default:
-          newBasicString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
-          break
       }
 
       basicStringStore.basicString = newBasicString
@@ -79,14 +76,14 @@ function createVirtualRoute(routeName: VirtualRouteName): RouteRecordRaw {
       {
         path: '/view/:hash',
         component: ViewPageMain,
-        name: `${routeName}ViewPage`,
+        name: `${baseName}ViewPage`,
         meta: {
           isReadPage: false,
           isViewPage: true,
-          baseName: routeName,
+          baseName: baseName,
           getParentPage: (route) => {
             return {
-              name: routeName,
+              name: baseName,
               params: { hash: undefined, subhash: undefined },
               query: route.query
             }
@@ -193,7 +190,7 @@ const individualRoutes: RouteRecordRaw[] = [
   'trashed',
   'albums',
   'videos'
-].map((routeName) => createVirtualRoute(routeName as VirtualRouteName))
+].map((baseName) => createVirtualRoute(baseName as VirtualRouteName))
 
 // ======================================
 // Combine All Routes
