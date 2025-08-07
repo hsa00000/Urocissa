@@ -7,20 +7,25 @@
     class="h-100"
   >
     <v-row no-gutters class="h-100 position-relative">
-      <ViewBar :metadata="metadata" :index="index" :hash="hash" :isolation-id="isolationId" />
-      <ViewPageDisplayDatabase
-        v-if="metadata && !configStore.disableImg"
+      <ViewBar
+        :abstract-data="abstractData"
         :index="index"
         :hash="hash"
-        :metadata="metadata"
+        :isolation-id="isolationId"
+      />
+      <ViewPageDisplayDatabase
+        v-if="abstractData && !configStore.disableImg"
+        :index="index"
+        :hash="hash"
+        :abstract-data="abstractData"
         :col-width="colWidth"
         :col-height="colHeight"
         :isolation-id="isolationId"
       />
       <ViewPageDisplayAlbum
-        v-if="metadata && metadata.album && !configStore.disableImg"
+        v-if="abstractData && abstractData.album && !configStore.disableImg"
         :index="index"
-        :album="metadata.album"
+        :album="abstractData.album"
         :col-width="colWidth"
         :col-height="colHeight"
       />
@@ -78,7 +83,7 @@ const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  metadata: AbstractData | undefined
+  abstractData: AbstractData | undefined
 }>()
 
 const configStore = useConfigStore(props.isolationId)

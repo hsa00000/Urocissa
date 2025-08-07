@@ -1,16 +1,16 @@
 <template>
   <v-col
-    v-if="metadata && metadata.database"
+    v-if="abstractData && abstractData.database"
     id="col-ref"
     class="h-100 d-flex align-center justify-center"
   >
     <img
       :key="index"
-      v-if="metadata.database.ext_type === 'image' && imgStore.imgOriginal.get(index)"
+      v-if="abstractData.database.ext_type === 'image' && imgStore.imgOriginal.get(index)"
       :src="imgStore.imgOriginal.get(index)"
       :style="{
-        width: `${metadata.database.width}px`,
-        height: `${metadata.database.height}px`,
+        width: `${abstractData.database.width}px`,
+        height: `${abstractData.database.height}px`,
         maxWidth: '100%',
         maxHeight: '100%',
         objectFit: 'scale-down'
@@ -19,13 +19,13 @@
 
     <DisplayDatabaseVideo
       :key="index"
-      v-if="metadata.database.ext_type === 'video' && !metadata.database.pending"
-      :database="metadata.database"
-      :hash="metadata.database.hash"
+      v-if="abstractData.database.ext_type === 'video' && !abstractData.database.pending"
+      :database="abstractData.database"
+      :hash="abstractData.database.hash"
       :isolation-id="isolationId"
     />
     <v-card
-      v-if="metadata.database.ext_type === 'video' && metadata.database.pending"
+      v-if="abstractData.database.ext_type === 'video' && abstractData.database.pending"
       class="d-flex align-center justify-start"
       outlined
       style="padding: 16px"
@@ -57,7 +57,7 @@ const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  metadata: AbstractData
+  abstractData: AbstractData
   colWidth: number
   colHeight: number
 }>()

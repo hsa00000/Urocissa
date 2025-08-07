@@ -1,8 +1,8 @@
 <template>
   <v-col
-    id="metadata-col"
-    v-if="metadata"
-    class="h-100 metadata-css"
+    id="abstractData-col"
+    v-if="abstractData"
+    class="h-100 abstractData-css"
     cols="auto"
     :style="{ backgroundColor: 'white' }"
   >
@@ -19,43 +19,43 @@
         </v-btn>
         <v-toolbar-title class="text-h5">Info</v-toolbar-title>
       </v-toolbar>
-      <v-col v-if="metadata.database" class="h-100 w-100" cols="auto">
+      <v-col v-if="abstractData.database" class="h-100 w-100" cols="auto">
         <v-list bg-color="white" class="pa-0" height="100%" lines="two">
-          <ItemSize :database="metadata.database" />
-          <ItemPath v-if="showMetadata" :database="metadata.database" />
-          <ItemDate :database="metadata.database" />
+          <ItemSize :database="abstractData.database" />
+          <ItemPath v-if="showMetadata" :database="abstractData.database" />
+          <ItemDate :database="abstractData.database" />
           <ItemExif
             v-if="
-              metadata.database.exif_vec.Make !== undefined ||
-              metadata.database.exif_vec.Model !== undefined
+              abstractData.database.exif_vec.Make !== undefined ||
+              abstractData.database.exif_vec.Model !== undefined
             "
-            :database="metadata.database"
+            :database="abstractData.database"
           />
           <v-divider></v-divider>
           <ItemTag
             v-if="showMetadata"
             :isolation-id="props.isolationId"
             :index="props.index"
-            :tags="metadata.database.tag"
+            :tags="abstractData.database.tag"
           />
           <ItemAlbum
             v-if="route.meta.baseName !== 'share'"
             :isolation-id="props.isolationId"
             :index="props.index"
-            :albums="metadata.database.album"
+            :albums="abstractData.database.album"
           />
         </v-list>
       </v-col>
-      <v-col v-if="metadata.album" class="h-100 w-100" cols="auto">
+      <v-col v-if="abstractData.album" class="h-100 w-100" cols="auto">
         <v-list bg-color="white" class="pa-0" height="100%" lines="two">
-          <ItemTitle :title="metadata.album.title" />
-          <ItemCount :album="metadata.album" />
+          <ItemTitle :title="abstractData.album.title" />
+          <ItemCount :album="abstractData.album" />
 
           <v-divider></v-divider>
           <ItemTag
             :isolation-id="props.isolationId"
             :index="props.index"
-            :tags="metadata.album.tag"
+            :tags="abstractData.album.tag"
           />
         </v-list>
       </v-col>
@@ -86,7 +86,7 @@ const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  metadata: AbstractData
+  abstractData: AbstractData
 }>()
 
 const showMetadata = computed(() => {
@@ -102,17 +102,17 @@ function toggleInfo() {
 watch(
   () => props.hash,
   () => {
-    console.log(props.metadata)
+    console.log(props.abstractData)
   }
 )
 </script>
 <style scoped>
-.metadata-css {
+.abstractData-css {
   width: 360px;
 }
 
 @media (max-width: 720px) {
-  .metadata-css {
+  .abstractData-css {
     width: 100%;
   }
 }

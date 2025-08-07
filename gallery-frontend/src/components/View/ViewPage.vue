@@ -17,14 +17,14 @@
     >
       <v-row no-gutters class="w-100 h-100 flex-nowrap">
         <ViewPageDisplay
-          :metadata="abstractData"
+          :abstract-data="abstractData"
           :index="index"
           :hash="hash"
           :isolation-id="isolationId"
         />
         <MetadataCol
           v-if="abstractData"
-          :metadata="abstractData"
+          :abstract-data="abstractData"
           :index="index"
           :hash="hash"
           :isolation-id="isolationId"
