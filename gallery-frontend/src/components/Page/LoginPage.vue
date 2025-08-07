@@ -52,7 +52,7 @@ const handleLogin = async () => {
     if (redirection !== null) {
       await router.push(redirection)
     } else {
-      await router.push({ name: 'home' })
+      await router.push({ name: 'gallery', query: { type: 'home' } })
     }
   })
 }

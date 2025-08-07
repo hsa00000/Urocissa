@@ -30,13 +30,7 @@ declare module 'vue-router' {
 }
 
 type BaseName =
-  | 'home'
-  | 'all'
-  | 'favorite'
-  | 'archived'
-  | 'trashed'
-  | 'albums'
-  | 'videos'
+  | 'gallery'
   | 'album'
   | 'tags'
   | 'login'

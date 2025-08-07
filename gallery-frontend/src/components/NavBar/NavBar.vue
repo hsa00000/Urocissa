@@ -3,22 +3,22 @@
   <ProgessBar isolation-id="mainId" />
   <v-navigation-drawer v-model="showDrawer" temporary touchless width="150" class="no-select">
     <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized">
-      <v-list-item slim to="/home" prepend-icon="mdi-home" title="Home"></v-list-item>
+      <v-list-item slim to="/gallery?type=home" prepend-icon="mdi-home" title="Home"></v-list-item>
       <v-divider></v-divider>
-      <v-list-item slim to="/favorite" prepend-icon="mdi-star" title="Favorite"></v-list-item>
+      <v-list-item slim to="/gallery?type=favorite" prepend-icon="mdi-star" title="Favorite"></v-list-item>
       <v-list-item
         slim
-        to="/archived"
+        to="/gallery?type=archived"
         prepend-icon="mdi-archive-arrow-down"
         title="Archived"
       ></v-list-item>
-      <v-list-item slim to="/trashed" prepend-icon="mdi-trash-can" title="Trashed"></v-list-item>
-      <v-list-item slim to="/all" prepend-icon="mdi-expand-all" title="All"></v-list-item>
+      <v-list-item slim to="/gallery?type=trashed" prepend-icon="mdi-trash-can" title="Trashed"></v-list-item>
+      <v-list-item slim to="/gallery?type=all" prepend-icon="mdi-expand-all" title="All"></v-list-item>
       <v-divider></v-divider>
-      <v-list-item slim to="/albums" prepend-icon="mdi-image-album" title="Albums"></v-list-item>
+      <v-list-item slim to="/gallery?type=albums" prepend-icon="mdi-image-album" title="Albums"></v-list-item>
       <v-list-item
         slim
-        to="/videos"
+        to="/gallery?type=videos"
         prepend-icon="mdi-play-circle-outline"
         title="Videos"
       ></v-list-item>
