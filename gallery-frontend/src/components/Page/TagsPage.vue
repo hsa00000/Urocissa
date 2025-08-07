@@ -1,5 +1,4 @@
 <template>
-  <NavBar />
   <v-container
     v-if="tagStore.fetched"
     id="table-container"
@@ -50,7 +49,6 @@ import { onMounted } from 'vue'
 import { onBeforeUnmount } from 'vue'
 import { searchByTag } from '@utils/getter'
 import { navBarHeight } from '@/type/constants'
-import NavBar from '@/components/NavBar/NavBar.vue'
 const initializedStore = useInitializedStore('mainId')
 const tagStore = useTagStore('mainId')
 const router = useRouter()

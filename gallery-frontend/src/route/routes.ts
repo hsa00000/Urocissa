@@ -42,7 +42,7 @@ function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
       }
     },
     beforeEnter: (_to, _from, next) => {
-      const filterStringStore = useFilterStringStore('mainId')
+      const filterStringStore = useFilterStringStore()
 
       switch (baseName) {
         case 'home':
@@ -140,7 +140,7 @@ const shareRoute: RouteRecordRaw = {
     // Only allow route if both albumId and shareId are strings
     if (typeof albumIdOpt === 'string' && typeof shareIdOpt === 'string') {
       // Set up the basic string and store data
-      const filterStringStore = useFilterStringStore('mainId')
+      const filterStringStore = useFilterStringStore()
       const shareStore = useShareStore('mainId')
 
       filterStringStore.filterString = `and(not(tag:"_trashed"), album:"${albumIdOpt}")`

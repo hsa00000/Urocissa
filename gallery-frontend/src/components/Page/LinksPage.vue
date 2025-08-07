@@ -1,6 +1,4 @@
 <template>
-  <NavBar />
-
   <EditShareModal
     v-if="modalStore.showEditShareModal && currentEditShareData"
     :edit-share-data="currentEditShareData"
@@ -122,7 +120,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useClipboard } from '@vueuse/core'
-import NavBar from '@/components/NavBar/NavBar.vue'
 import EditShareModal from '@/components/Modal/EditShareModal.vue'
 import ShareDeleteConfirmModal from '@/components/Modal/ShareDeleteConfirmModal.vue'
 

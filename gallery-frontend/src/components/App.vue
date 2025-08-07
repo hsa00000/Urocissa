@@ -30,7 +30,7 @@ const rerenderStore = useRerenderStore('mainId')
 const messageStore = useMessageStore('mainId')
 const constStore = useConstStore('mainId')
 const route = useRoute()
-const filterStringStore = useFilterStringStore('mainId')
+const filterStringStore = useFilterStringStore()
 // The routeKey is used to ensure that the router-view reloads the Home.vue component properly.
 // Without it, Vue may cache the component for optimization, potentially causing bugs.
 const routeKey = computed(() => {
