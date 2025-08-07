@@ -4,13 +4,16 @@ import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 
 import UniversalPage from '@/components/Page/UniversalPage.vue'
+import UniversalSharePage from '@/components/Page/UniversalSharePage.vue'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
 import HomeIsolated from '@/components/Home/HomeIsolated.vue'
 import ViewPageIsolated from '@/components/View/ViewPageIsolated.vue'
+import { useBasicStringStore } from '@/store/basicStringStore'
+import { useShareStore } from '@/store/shareStore'
 import { tagsRoute } from './tagsRoute'
 import { linksRoute } from './linksRoute'
 import { loginRoute } from './loginRoute'
-import { shareRoute } from './shareRoute'
+import { PageReturnType } from './pageReturnType'
 
 // ======================================
 // Define Simple Static Routes
@@ -20,8 +23,7 @@ const simpleRoutes: RouteRecordRaw[] = [
   { path: '/', redirect: '/gallery?type=home' },
   tagsRoute,
   linksRoute,
-  loginRoute,
-  shareRoute
+  loginRoute
 ]
 
 // ======================================
@@ -131,6 +133,79 @@ const galleryRoute: RouteRecordRaw = {
   ]
 }
 
+// ======================================
+// Define Share Route
+// ======================================
+
+const shareRoute: RouteRecordRaw = {
+  path: '/share/:albumId-:shareId',
+  component: UniversalSharePage,
+  name: 'share',
+  meta: {
+    isReadPage: false,
+    isViewPage: false,
+    basicString: null,
+    baseName: 'share',
+    getParentPage: (route) => {
+      return {
+        name: 'share',
+        params: { hash: undefined, subhash: undefined },
+        query: route.query
+      }
+    },
+    getChildPage: (route, hash) => {
+      return {
+        name: `shareViewPage`,
+        params: { hash: hash, subhash: undefined },
+        query: route.query
+      }
+    }
+  },
+  beforeEnter: (to, _from, next) => {
+    const albumIdOpt = to.params.albumId
+    const shareIdOpt = to.params.shareId
+    
+    // Only allow route if both albumId and shareId are strings
+    if (typeof albumIdOpt === 'string' && typeof shareIdOpt === 'string') {
+      // Set up the basic string and store data
+      const basicStringStore = useBasicStringStore('mainId')
+      const shareStore = useShareStore('mainId')
+      
+      basicStringStore.basicString = `and(not(tag:"_trashed"), album:"${albumIdOpt}")`
+      shareStore.albumId = albumIdOpt
+      shareStore.shareId = shareIdOpt
+      
+      next()
+    } else {
+      console.error(`(albumId, shareId) is (${String(albumIdOpt)}, ${String(shareIdOpt)})`)
+      // Redirect to gallery or show error page
+      next('/gallery?type=home')
+    }
+  },
+  children: [
+    {
+      path: 'view/:hash',
+      component: ViewPageMain,
+      name: `shareViewPage`,
+      meta: {
+        isReadPage: false,
+        isViewPage: true,
+        baseName: 'share',
+        getParentPage: (route, albumId, shareId) => {
+          return {
+            name: 'share',
+            params: { albumId: albumId, shareId: shareId },
+            query: route.query
+          }
+        },
+        getChildPage: function (): PageReturnType {
+          throw new Error('Function not implemented.')
+        }
+      }
+    }
+  ]
+}
+
 // 为了兼容性，添加重定向路由
 const compatibilityRoutes: RouteRecordRaw[] = [
   { path: '/home', redirect: (to) => ({ path: '/gallery', query: { ...to.query, type: 'home' } }) },
@@ -161,7 +236,7 @@ const compatibilityRoutes: RouteRecordRaw[] = [
 // Combine All Routes
 // ======================================
 
-const routes: RouteRecordRaw[] = [...simpleRoutes, galleryRoute, ...compatibilityRoutes]
+const routes: RouteRecordRaw[] = [...simpleRoutes, galleryRoute, shareRoute, ...compatibilityRoutes]
 
 // ======================================
 // Create and Export the Router Instance
