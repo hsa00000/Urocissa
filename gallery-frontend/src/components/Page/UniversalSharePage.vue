@@ -1,10 +1,10 @@
 <template>
-  <HomeMain :basic-string="basicStringStore.basicString" />
+  <HomeMain :filter-string="filterStringStore.filterString" />
 </template>
 
 <script setup lang="ts">
 import HomeMain from '@/components/Home/HomeMain.vue'
-import { useBasicStringStore } from '@/store/basicStringStore'
+import { useFilterStringStore } from '@/store/filterStringStore'
 
-const basicStringStore = useBasicStringStore('mainId')
+const filterStringStore = useFilterStringStore('mainId')
 </script>

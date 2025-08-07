@@ -45,7 +45,7 @@ import { ref, onMounted, computed, provide, onBeforeUnmount, watch } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useCollectionStore } from '@/store/collectionStore'
-import { useFilterStore } from '@/store/filterStore'
+import { useSearchStringStore } from '@/store/searchStringStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useWorkerStore } from '@/store/workerStore'
 import { useQueueStore } from '@/store/queueStore'
@@ -75,7 +75,7 @@ import { useConstStore } from '@/store/constStore'
 
 const props = defineProps<{
   isolationId: IsolationId
-  basicString: string | null
+  filterString: string | null
   searchString: LocationQueryValue | LocationQueryValue[] | undefined
 }>()
 
@@ -83,7 +83,7 @@ const scrollTopStore = useScrollTopStore(props.isolationId)
 const offsetStore = useOffsetStore(props.isolationId)
 const rowStore = useRowStore(props.isolationId)
 const dataStore = useDataStore(props.isolationId)
-const filterStore = useFilterStore(props.isolationId)
+const searchStringStore = useSearchStringStore(props.isolationId)
 const collectionStore = useCollectionStore(props.isolationId)
 const prefetchStore = usePrefetchStore(props.isolationId)
 const workerStore = useWorkerStore(props.isolationId)
@@ -156,9 +156,9 @@ const albumHomeIsolatedKey = computed(() => {
 })
 
 onMounted(() => {
-  filterStore.searchString = props.searchString
+  searchStringStore.searchString = props.searchString
   usePrefetch(
-    filterStore.generateFilterJsonString(props.basicString),
+    searchStringStore.generateFilterJsonString(props.filterString),
     windowWidth,
     route,
     props.isolationId
@@ -179,7 +179,7 @@ onBeforeUnmount(() => {
   dataStore.clearAll()
   prefetchStore.clearAll()
   queueStore.clearAll()
-  filterStore.searchString = null
+  searchStringStore.searchString = null
   collectionStore.editModeCollection.clear()
   imgStore.clearAll()
   offsetStore.clearAll()

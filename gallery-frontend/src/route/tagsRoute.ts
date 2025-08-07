@@ -16,7 +16,7 @@ export const tagsRoute: RouteRecordRaw = {
   meta: {
     isReadPage: false,
     isViewPage: false,
-    basicString: null,
+    filterString: null,
     baseName: 'tags',
     getParentPage: (route) => {
       return {

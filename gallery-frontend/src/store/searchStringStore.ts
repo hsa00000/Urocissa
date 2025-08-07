@@ -3,8 +3,8 @@ import { generateJsonString } from '@/script/lexer/generateJson'
 import { defineStore } from 'pinia'
 import { LocationQueryValue } from 'vue-router'
 
-export const useFilterStore = (isolationId: IsolationId) =>
-  defineStore('filterStore' + isolationId, {
+export const useSearchStringStore = (isolationId: IsolationId) =>
+  defineStore('searchStringStore' + isolationId, {
     state: (): {
       // Records the gallery search filter
       searchString: LocationQueryValue | LocationQueryValue[] | undefined
@@ -12,10 +12,10 @@ export const useFilterStore = (isolationId: IsolationId) =>
       searchString: null
     }),
     actions: {
-      // Generates the filter JSON string using basicString and searchString
+      // Generates the filter JSON string using filterString and searchString
       // This JSON info is used to send to the backend
-      generateFilterJsonString(basicString: string | null): string | null {
-        const hasBasicString = typeof basicString === 'string'
+      generateFilterJsonString(filterString: string | null): string | null {
+        const hasBasicString = typeof filterString === 'string'
         const searchStringStr = typeof this.searchString === 'string' ? this.searchString : null
         const hasSearchString = searchStringStr !== null
 
@@ -24,9 +24,9 @@ export const useFilterStore = (isolationId: IsolationId) =>
           return null
         }
 
-        // Only basicString
+        // Only filterString
         if (hasBasicString && !hasSearchString) {
-          return generateJsonString(basicString) || null
+          return generateJsonString(filterString) || null
         }
 
         // Only searchString
@@ -40,8 +40,8 @@ export const useFilterStore = (isolationId: IsolationId) =>
 
         // Both strings
         return (
-          generateJsonString(`and(${basicString},${searchStringStr})`) ||
-          generateJsonString(`and(${basicString}, any: "${searchStringStr}")`) ||
+          generateJsonString(`and(${filterString},${searchStringStr})`) ||
+          generateJsonString(`and(${filterString}, any: "${searchStringStr}")`) ||
           null
         )
       }

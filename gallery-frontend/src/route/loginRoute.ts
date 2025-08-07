@@ -12,7 +12,7 @@ export const loginRoute: RouteRecordRaw = {
   meta: {
     isReadPage: false,
     isViewPage: false,
-    basicString: null,
+    filterString: null,
     baseName: 'login',
     getParentPage: (route) => {
       return {

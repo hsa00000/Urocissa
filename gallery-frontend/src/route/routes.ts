@@ -5,7 +5,7 @@ import 'vue-router'
 
 import UniversalSharePage from '@/components/Page/UniversalSharePage.vue'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
-import { useBasicStringStore } from '@/store/basicStringStore'
+import { useFilterStringStore } from '@/store/filterStringStore'
 import { useShareStore } from '@/store/shareStore'
 import { tagsRoute } from './tagsRoute'
 import { linksRoute } from './linksRoute'
@@ -42,7 +42,7 @@ function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
       }
     },
     beforeEnter: (_to, _from, next) => {
-      const basicStringStore = useBasicStringStore('mainId')
+      const filterStringStore = useFilterStringStore('mainId')
 
       let newBasicString: string
       switch (baseName) {
@@ -69,7 +69,7 @@ function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
           break
       }
 
-      basicStringStore.basicString = newBasicString
+      filterStringStore.filterString = newBasicString
       next()
     },
     children: [
@@ -119,7 +119,7 @@ const shareRoute: RouteRecordRaw = {
   meta: {
     isReadPage: false,
     isViewPage: false,
-    basicString: null,
+    filterString: null,
     baseName: 'share',
     getParentPage: (route) => {
       return {
@@ -143,10 +143,10 @@ const shareRoute: RouteRecordRaw = {
     // Only allow route if both albumId and shareId are strings
     if (typeof albumIdOpt === 'string' && typeof shareIdOpt === 'string') {
       // Set up the basic string and store data
-      const basicStringStore = useBasicStringStore('mainId')
+      const filterStringStore = useFilterStringStore('mainId')
       const shareStore = useShareStore('mainId')
 
-      basicStringStore.basicString = `and(not(tag:"_trashed"), album:"${albumIdOpt}")`
+      filterStringStore.filterString = `and(not(tag:"_trashed"), album:"${albumIdOpt}")`
       shareStore.albumId = albumIdOpt
       shareStore.shareId = shareIdOpt
 

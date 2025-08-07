@@ -23,14 +23,14 @@ import DropZoneModal from './Modal/DropZoneModal.vue'
 import HomePage from './Page/HomePage.vue'
 import isMobile from 'is-mobile'
 import { useConstStore } from '@/store/constStore'
-import { useBasicStringStore } from '@/store/basicStringStore'
+import { useFilterStringStore } from '@/store/filterStringStore'
 const scrollbarStore = useScrollbarStore('mainId')
 const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
 const rerenderStore = useRerenderStore('mainId')
 const messageStore = useMessageStore('mainId')
 const constStore = useConstStore('mainId')
 const route = useRoute()
-const basicStringStore = useBasicStringStore('mainId')
+const filterStringStore = useFilterStringStore('mainId')
 // The routeKey is used to ensure that the router-view reloads the Home.vue component properly.
 // Without it, Vue may cache the component for optimization, potentially causing bugs.
 const routeKey = computed(() => {
@@ -39,7 +39,7 @@ const routeKey = computed(() => {
   const priorityId = typeof route.query.priority_id === 'string' ? route.query.priority_id : ''
   const reverse = typeof route.query.reverse === 'string' ? route.query.reverse : ''
   const homeKey = rerenderStore.homeKey.toString()
-  return `${basicStringStore.basicString}-${search}-${locate}-${priorityId}-${reverse}-${homeKey}`
+  return `${filterStringStore.filterString}-${search}-${locate}-${priorityId}-${reverse}-${homeKey}`
 })
 
 onBeforeMount(async () => {

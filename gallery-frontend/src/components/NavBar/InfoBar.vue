@@ -66,7 +66,7 @@
 <script setup lang="ts">
 import { inject, Ref, ref, watchEffect } from 'vue'
 import { LocationQueryValue, useRoute, useRouter } from 'vue-router'
-import { useFilterStore } from '@/store/filterStore'
+import { useSearchStringStore } from '@/store/searchStringStore'
 import { useUploadStore } from '@/store/uploadStore'
 import { useAlbumStore } from '@/store/albumStore'
 import BtnCreateAlbum from '@Menu/MenuButton/BtnCreateAlbum.vue'
@@ -75,7 +75,7 @@ const showDrawer = inject('showDrawer')
 
 const albumStore = useAlbumStore('mainId')
 const uploadStore = useUploadStore('mainId')
-const filterStore = useFilterStore('mainId')
+const searchStringStore = useSearchStringStore('mainId')
 
 const route = useRoute()
 const router = useRouter()
@@ -83,7 +83,7 @@ const searchQuery: Ref<LocationQueryValue | LocationQueryValue[] | undefined> = 
 const loading = ref(false)
 
 const handleSearch = async () => {
-  filterStore.searchString = searchQuery.value
+  searchStringStore.searchString = searchQuery.value
   await router.replace({
     path: route.path,
     query: { search: searchQuery.value }
@@ -91,6 +91,6 @@ const handleSearch = async () => {
 }
 
 watchEffect(() => {
-  searchQuery.value = filterStore.searchString
+  searchQuery.value = searchStringStore.searchString
 })
 </script>

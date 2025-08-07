@@ -1,5 +1,5 @@
 <template>
-  <Home isolation-id="mainId" :basic-string="props.basicString" :search-string="searchString">
+  <Home isolation-id="mainId" :filter-string="props.filterString" :search-string="searchString">
     <template #reading-bar>
       <ShareBar />
     </template>
@@ -15,7 +15,7 @@ const route = useRoute()
 const searchString = ref<LocationQueryValue | LocationQueryValue[] | undefined>(null)
 
 const props = defineProps<{
-  basicString: string | null
+  filterString: string | null
 }>()
 
 onBeforeMount(() => {

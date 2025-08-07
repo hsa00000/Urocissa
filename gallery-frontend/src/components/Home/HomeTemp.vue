@@ -9,7 +9,7 @@
     :close-on-back="false"
     persistent
   >
-    <Home isolation-id="tempId" :basic-string="basicString" :search-string="null">
+    <Home isolation-id="tempId" :filter-string="filterString" :search-string="null">
       <template #reading-bar>
         <SelectionBar :album="album" />
       </template>
@@ -24,5 +24,5 @@ const props = defineProps<{
   album: Album
 }>()
 
-const basicString = `and(not(type:"album"), not(tag:"_trashed"), not(album:"${props.album.id}"))`
+const filterString = `and(not(type:"album"), not(tag:"_trashed"), not(album:"${props.album.id}"))`
 </script>

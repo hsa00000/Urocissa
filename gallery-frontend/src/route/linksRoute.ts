@@ -12,7 +12,7 @@ export const linksRoute: RouteRecordRaw = {
   meta: {
     isReadPage: false,
     isViewPage: false,
-    basicString: null,
+    filterString: null,
     baseName: 'links',
     getParentPage: (route) => {
       return {

@@ -56,10 +56,10 @@
 import ProgessBar from '@/components/NavBar/ProgessBar.vue'
 import { Ref, ref, watchEffect } from 'vue'
 import { LocationQueryValue, useRoute, useRouter } from 'vue-router'
-import { useFilterStore } from '@/store/filterStore'
+import { useSearchStringStore } from '@/store/searchStringStore'
 import { useShareStore } from '@/store/shareStore'
 
-const filterStore = useFilterStore('mainId')
+const searchStringStore = useSearchStringStore('mainId')
 const shareStore = useShareStore('mainId')
 
 const route = useRoute()
@@ -67,7 +67,7 @@ const router = useRouter()
 const searchQuery: Ref<LocationQueryValue | LocationQueryValue[] | undefined> = ref(null)
 
 const handleSearch = async () => {
-  filterStore.searchString = searchQuery.value
+  searchStringStore.searchString = searchQuery.value
   await router.replace({
     path: route.path,
     query: { search: searchQuery.value }
@@ -75,7 +75,7 @@ const handleSearch = async () => {
 }
 
 watchEffect(() => {
-  searchQuery.value = filterStore.searchString
+  searchQuery.value = searchStringStore.searchString
   console.log('shareStore.resolvedShare?.albumTitle is', shareStore.resolvedShare?.albumTitle)
 })
 </script>

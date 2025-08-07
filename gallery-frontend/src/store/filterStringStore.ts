@@ -6,12 +6,12 @@
 import { IsolationId } from '@type/types'
 import { defineStore } from 'pinia'
 
-export const useBasicStringStore = (isolationId: IsolationId) =>
-  defineStore('basicStringStore' + isolationId, {
+export const useFilterStringStore = (isolationId: IsolationId) =>
+  defineStore('filterStringStore' + isolationId, {
     state: (): {
-      basicString: string | null
+      filterString: string | null
     } => ({
-      basicString: null
+      filterString: null
     }),
     actions: {}
   })()
