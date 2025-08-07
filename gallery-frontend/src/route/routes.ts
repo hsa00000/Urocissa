@@ -5,8 +5,6 @@ import 'vue-router'
 
 import UniversalSharePage from '@/components/Page/UniversalSharePage.vue'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
-import HomeIsolated from '@/components/Home/HomeIsolated.vue'
-import ViewPageIsolated from '@/components/View/ViewPageIsolated.vue'
 import { useBasicStringStore } from '@/store/basicStringStore'
 import { useShareStore } from '@/store/shareStore'
 import { tagsRoute } from './tagsRoute'
@@ -50,85 +48,32 @@ const galleryRoute: RouteRecordRaw = {
         query: route.query
       }
     }
-  },
-  children: [
-    {
-      path: 'view/:hash',
-      component: ViewPageMain,
-      name: 'galleryViewPage',
-      meta: {
-        isReadPage: false,
-        isViewPage: true,
-        baseName: 'gallery',
-        getParentPage: (route) => {
-          return {
-            name: 'gallery',
-            params: { hash: undefined, subhash: undefined },
-            query: route.query
-          }
-        },
-        getChildPage: (route) => {
-          return {
-            name: 'galleryReadPage',
-            params: { hash: route.params.hash, subhash: undefined },
-            query: route.query
-          }
-        }
-      },
-      children: [
-        {
-          path: 'read',
-          component: HomeIsolated,
-          name: 'galleryReadPage',
-          meta: {
-            isReadPage: true,
-            isViewPage: false,
-            baseName: 'gallery',
-            getParentPage: (route) => {
-              return {
-                name: 'galleryViewPage',
-                params: { hash: route.params.hash, subhash: undefined },
-                query: route.query
-              }
-            },
-            getChildPage: (route, subhash) => {
-              return {
-                name: 'galleryReadViewPage',
-                params: { hash: route.params.hash, subhash: subhash },
-                query: route.query
-              }
-            }
-          },
-          children: [
-            {
-              path: 'view/:subhash',
-              name: 'galleryReadViewPage',
-              component: ViewPageIsolated,
-              meta: {
-                isReadPage: true,
-                isViewPage: true,
-                baseName: 'gallery',
-                getParentPage: (route) => {
-                  return {
-                    name: 'galleryReadPage',
-                    params: { hash: route.params.hash, subhash: undefined },
-                    query: route.query
-                  }
-                },
-                getChildPage: (route) => {
-                  return {
-                    name: 'galleryReadViewPage',
-                    params: { hash: route.params.hash, subhash: route.params.subhash },
-                    query: route.query
-                  }
-                }
-              }
-            }
-          ]
-        }
-      ]
+  }
+}
+
+const viewRoute: RouteRecordRaw = {
+  path: '/view/:hash',
+  component: ViewPageMain,
+  name: 'galleryViewPage',
+  meta: {
+    isReadPage: false,
+    isViewPage: true,
+    baseName: 'gallery',
+    getParentPage: (route) => {
+      return {
+        name: 'gallery',
+        params: { hash: undefined, subhash: undefined },
+        query: route.query
+      }
+    },
+    getChildPage: (route) => {
+      return {
+        name: 'galleryReadPage',
+        params: { hash: route.params.hash, subhash: undefined },
+        query: route.query
+      }
     }
-  ]
+  }
 }
 
 // ======================================
@@ -234,7 +179,13 @@ const compatibilityRoutes: RouteRecordRaw[] = [
 // Combine All Routes
 // ======================================
 
-const routes: RouteRecordRaw[] = [...simpleRoutes, galleryRoute, shareRoute, ...compatibilityRoutes]
+const routes: RouteRecordRaw[] = [
+  ...simpleRoutes,
+  galleryRoute,
+  viewRoute,
+  shareRoute,
+  ...compatibilityRoutes
+]
 
 // ======================================
 // Create and Export the Router Instance
