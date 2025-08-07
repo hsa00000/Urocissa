@@ -5,8 +5,6 @@ import 'vue-router'
 
 import UniversalSharePage from '@/components/Page/UniversalSharePage.vue'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
-import HomeIsolated from '@/components/Home/HomeIsolated.vue'
-import ViewPageIsolated from '@/components/View/ViewPageIsolated.vue'
 import { useFilterStringStore } from '@/store/filterStringStore'
 import { useShareStore } from '@/store/shareStore'
 import { tagsRoute } from './tagsRoute'
@@ -90,67 +88,8 @@ function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
               query: route.query
             }
           },
-          getChildPage: (route) => {
-            return {
-              name: `${baseName}ReadPage`,
-              params: { hash: route.params.hash, subhash: undefined },
-              query: route.query
-            }
-          }
-        },
-
-        children: [
-          {
-            path: 'read',
-            component: HomeIsolated,
-            name: `${baseName}ReadPage`,
-            meta: {
-              isReadPage: true,
-              isViewPage: false,
-              baseName: baseName,
-              getParentPage: (route) => {
-                return {
-                  name: `${baseName}ViewPage`,
-                  params: { hash: route.params.hash, subhash: undefined },
-                  query: route.query
-                }
-              },
-              getChildPage: (route, subhash) => {
-                return {
-                  name: `${baseName}ReadViewPage`,
-                  params: { hash: route.params.hash, subhash: subhash },
-                  query: route.query
-                }
-              }
-            },
-            children: [
-              {
-                path: 'view/:subhash',
-                name: `${baseName}ReadViewPage`,
-                component: ViewPageIsolated,
-                meta: {
-                  isReadPage: true,
-                  isViewPage: true,
-                  baseName: baseName,
-                  getParentPage: (route) => {
-                    return {
-                      name: `${baseName}ReadPage`,
-                      params: { hash: route.params.hash, subhash: undefined },
-                      query: route.query
-                    }
-                  },
-                  getChildPage: (route) => {
-                    return {
-                      name: `${baseName}ReadViewPage`,
-                      params: { hash: route.params.hash, subhash: route.params.subhash },
-                      query: route.query
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        ]
+          getChildPage: undefined
+        }
       }
     ]
   }

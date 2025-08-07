@@ -93,7 +93,7 @@
               color="teal-accent-4"
               variant="flat"
               class="ma-2 button button-submit"
-              :to="route.meta.getChildPage(route, undefined)"
+              
               @click="
                 () => {
                   albumStore.leaveAlbumPath = route.fullPath
