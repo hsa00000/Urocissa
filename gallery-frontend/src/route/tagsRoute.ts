@@ -4,7 +4,6 @@ import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 
 import TagsPage from '@/components/Page/TagsPage.vue'
-import { useFilterStringStore } from '@/store/filterStringStore'
 
 // ======================================
 // 1. Define Simple Static Routes
@@ -14,12 +13,6 @@ export const tagsRoute: RouteRecordRaw = {
   path: '/tags',
   component: TagsPage,
   name: 'tags',
-  beforeEnter: () => {
-    console.log('entering')
-
-    const filterStringStore = useFilterStringStore()
-    filterStringStore.filterString = null
-  },
   meta: {
     isReadPage: false,
     isViewPage: false,

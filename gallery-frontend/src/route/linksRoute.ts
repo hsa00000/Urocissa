@@ -4,16 +4,11 @@ import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 
 import LinksPage from '@/components/Page/LinksPage.vue'
-import { useFilterStringStore } from '@/store/filterStringStore'
 
 export const linksRoute: RouteRecordRaw = {
   path: '/links',
   component: LinksPage,
   name: 'links',
-  beforeEnter: () => {
-    const filterStringStore = useFilterStringStore()
-    filterStringStore.filterString = null
-  },
   meta: {
     isReadPage: false,
     isViewPage: false,
