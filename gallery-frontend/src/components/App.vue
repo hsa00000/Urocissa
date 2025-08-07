@@ -7,7 +7,7 @@
   >
     <v-main class="h-screen">
       <DropZoneModal v-if="!isMobile()" />
-      <UniversalPage v-if="shouldShowUniversalPage" :key="routeKey" />
+      <UniversalPage :key="routeKey" />
     </v-main>
     <v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
   </v-app>
@@ -15,7 +15,7 @@
 
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
-import { computed, onBeforeMount, watch } from 'vue'
+import { computed, onBeforeMount } from 'vue'
 import { useScrollbarStore } from '@/store/scrollbarStore'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { useMessageStore } from '@/store/messageStore'
@@ -41,55 +41,6 @@ const routeKey = computed(() => {
   const homeKey = rerenderStore.homeKey.toString()
   return `${basicStringStore.basicString}-${search}-${locate}-${priorityId}-${reverse}-${homeKey}`
 })
-
-// Check if should show UniversalPage based on route query type
-const shouldShowUniversalPage = computed(() => {
-  const type = route.query.type as string
-  const validTypes = ['home', 'all', 'favorite', 'archived', 'trashed', 'albums', 'videos']
-  return validTypes.includes(type)
-})
-
-// 监听 query type 的变化，更新 basicStringStore
-watch(
-  () => route.query.type,
-  (newType) => {
-    // 如果 query type 变成 null 则不要更新 basicStringStore
-    if (newType !== null && newType !== undefined) {
-      const type = newType as string
-      let newBasicString: string
-
-      switch (type) {
-        case 'home':
-          newBasicString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
-          break
-        case 'all':
-          newBasicString = 'not(tag:"_trashed")'
-          break
-        case 'favorite':
-          newBasicString = 'and(tag:"_favorite", not(tag:"_trashed"))'
-          break
-        case 'archived':
-          newBasicString = 'and(tag:"_archived", not(tag:"_trashed"))'
-          break
-        case 'trashed':
-          newBasicString = 'and(tag:"_trashed")'
-          break
-        case 'albums':
-          newBasicString = 'and(type:"album", not(tag:"_trashed"))'
-          break
-        case 'videos':
-          newBasicString = 'and(type:"video", not(tag:"_archived"), not(tag:"_trashed"))'
-          break
-        default:
-          newBasicString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
-          break
-      }
-
-      basicStringStore.basicString = newBasicString
-    }
-  },
-  { immediate: true }
-)
 
 onBeforeMount(async () => {
   // Load the subRowHeightScale from constStore when the app is mounted.

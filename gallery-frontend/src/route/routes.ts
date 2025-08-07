@@ -13,65 +13,103 @@ import { loginRoute } from './loginRoute'
 import { PageReturnType } from './pageReturnType'
 
 // ======================================
+// Helper Function to Create Virtual Routes
+// ======================================
+
+type VirtualRouteName = 'home' | 'all' | 'favorite' | 'archived' | 'trashed' | 'albums' | 'videos'
+
+function createVirtualRoute(routeName: VirtualRouteName): RouteRecordRaw {
+  return {
+    path: `/${routeName}`,
+    name: routeName,
+    meta: {
+      isReadPage: false,
+      isViewPage: false,
+      baseName: routeName,
+      getParentPage: (route) => {
+        return {
+          name: routeName,
+          params: { hash: undefined, subhash: undefined },
+          query: route.query
+        }
+      },
+      getChildPage: (route, hash) => {
+        return {
+          name: `${routeName}ViewPage`,
+          params: { hash: hash, subhash: undefined },
+          query: route.query
+        }
+      }
+    },
+    beforeEnter: (_to, _from, next) => {
+      const basicStringStore = useBasicStringStore('mainId')
+
+      let newBasicString: string
+      switch (routeName) {
+        case 'home':
+          newBasicString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
+          break
+        case 'all':
+          newBasicString = 'not(tag:"_trashed")'
+          break
+        case 'favorite':
+          newBasicString = 'and(tag:"_favorite", not(tag:"_trashed"))'
+          break
+        case 'archived':
+          newBasicString = 'and(tag:"_archived", not(tag:"_trashed"))'
+          break
+        case 'trashed':
+          newBasicString = 'and(tag:"_trashed")'
+          break
+        case 'albums':
+          newBasicString = 'and(type:"album", not(tag:"_trashed"))'
+          break
+        case 'videos':
+          newBasicString = 'and(type:"video", not(tag:"_archived"), not(tag:"_trashed"))'
+          break
+        default:
+          newBasicString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
+          break
+      }
+
+      basicStringStore.basicString = newBasicString
+      next()
+    },
+    children: [
+      {
+        path: '/view/:hash',
+        component: ViewPageMain,
+        name: `${routeName}ViewPage`,
+        meta: {
+          isReadPage: false,
+          isViewPage: true,
+          baseName: routeName,
+          getParentPage: (route) => {
+            return {
+              name: routeName,
+              params: { hash: undefined, subhash: undefined },
+              query: route.query
+            }
+          },
+          getChildPage: () => {
+            throw new Error('Read page temporarily unavailable')
+          }
+        }
+      }
+    ]
+  }
+}
+
+// ======================================
 // Define Simple Static Routes
 // ======================================
 
 const simpleRoutes: RouteRecordRaw[] = [
-  { path: '/', redirect: '/gallery?type=home' },
+  { path: '/', redirect: '/home' },
   tagsRoute,
   linksRoute,
   loginRoute
 ]
-
-// ======================================
-// Define Universal Gallery Route
-// ======================================
-
-const galleryRoute: RouteRecordRaw = {
-  path: '/gallery',
-  name: 'gallery',
-  meta: {
-    isReadPage: false,
-    isViewPage: false,
-    baseName: 'gallery',
-    getParentPage: (route) => {
-      return {
-        name: 'gallery',
-        params: { hash: undefined, subhash: undefined },
-        query: route.query
-      }
-    },
-    getChildPage: (route, hash) => {
-      return {
-        name: 'galleryViewPage',
-        params: { hash: hash, subhash: undefined },
-        query: route.query
-      }
-    }
-  },
-  children: [
-    {
-      path: '/view/:hash',
-      component: ViewPageMain,
-      name: 'galleryViewPage',
-      meta: {
-        isReadPage: false,
-        isViewPage: true,
-        baseName: 'gallery',
-        getParentPage: (route) => {
-          return {
-            name: 'gallery',
-            params: { hash: undefined, subhash: undefined },
-            query: route.query
-          }
-        },
-        getChildPage: () => {
-          throw new Error('Read page temporarily unavailable')
-        }
-      }
-    }
-  ]
-}
 
 // ======================================
 // Define Share Route
@@ -118,8 +156,8 @@ const shareRoute: RouteRecordRaw = {
       next()
     } else {
       console.error(`(albumId, shareId) is (${String(albumIdOpt)}, ${String(shareIdOpt)})`)
-      // Redirect to gallery or show error page
-      next('/gallery?type=home')
+      // Redirect to home page
+      next('/home')
     }
   },
   children: [
@@ -146,37 +184,22 @@ const shareRoute: RouteRecordRaw = {
   ]
 }
 
-// 为了兼容性，添加重定向路由
-const compatibilityRoutes: RouteRecordRaw[] = [
-  { path: '/home', redirect: (to) => ({ path: '/gallery', query: { ...to.query, type: 'home' } }) },
-  { path: '/all', redirect: (to) => ({ path: '/gallery', query: { ...to.query, type: 'all' } }) },
-  {
-    path: '/favorite',
-    redirect: (to) => ({ path: '/gallery', query: { ...to.query, type: 'favorite' } })
-  },
-  {
-    path: '/archived',
-    redirect: (to) => ({ path: '/gallery', query: { ...to.query, type: 'archived' } })
-  },
-  {
-    path: '/trashed',
-    redirect: (to) => ({ path: '/gallery', query: { ...to.query, type: 'trashed' } })
-  },
-  {
-    path: '/albums',
-    redirect: (to) => ({ path: '/gallery', query: { ...to.query, type: 'albums' } })
-  },
-  {
-    path: '/videos',
-    redirect: (to) => ({ path: '/gallery', query: { ...to.query, type: 'videos' } })
-  }
-]
+// 定義個別的虛擬路由
+const individualRoutes: RouteRecordRaw[] = [
+  'home',
+  'all',
+  'favorite',
+  'archived',
+  'trashed',
+  'albums',
+  'videos'
+].map((routeName) => createVirtualRoute(routeName as VirtualRouteName))
 
 // ======================================
 // Combine All Routes
 // ======================================
 
-const routes: RouteRecordRaw[] = [...simpleRoutes, galleryRoute, shareRoute, ...compatibilityRoutes]
+const routes: RouteRecordRaw[] = [...simpleRoutes, ...individualRoutes, shareRoute]
 
 // ======================================
 // Create and Export the Router Instance
