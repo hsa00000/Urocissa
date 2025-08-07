@@ -3,7 +3,6 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 
-import UniversalPage from '@/components/Page/UniversalPage.vue'
 import UniversalSharePage from '@/components/Page/UniversalSharePage.vue'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
 import HomeIsolated from '@/components/Home/HomeIsolated.vue'
@@ -32,7 +31,6 @@ const simpleRoutes: RouteRecordRaw[] = [
 
 const galleryRoute: RouteRecordRaw = {
   path: '/gallery',
-  component: UniversalPage,
   name: 'gallery',
   meta: {
     isReadPage: false,
@@ -164,17 +162,17 @@ const shareRoute: RouteRecordRaw = {
   beforeEnter: (to, _from, next) => {
     const albumIdOpt = to.params.albumId
     const shareIdOpt = to.params.shareId
-    
+
     // Only allow route if both albumId and shareId are strings
     if (typeof albumIdOpt === 'string' && typeof shareIdOpt === 'string') {
       // Set up the basic string and store data
       const basicStringStore = useBasicStringStore('mainId')
       const shareStore = useShareStore('mainId')
-      
+
       basicStringStore.basicString = `and(not(tag:"_trashed"), album:"${albumIdOpt}")`
       shareStore.albumId = albumIdOpt
       shareStore.shareId = shareIdOpt
-      
+
       next()
     } else {
       console.error(`(albumId, shareId) is (${String(albumIdOpt)}, ${String(shareIdOpt)})`)

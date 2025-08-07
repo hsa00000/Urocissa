@@ -7,10 +7,9 @@
   >
     <v-main class="h-screen">
       <DropZoneModal v-if="!isMobile()" />
-      <router-view v-slot="{ Component }" :key="routeKey">
-        <component :is="Component" />
-      </router-view> </v-main
-    ><v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
+      <UniversalPage v-if="shouldShowUniversalPage" :key="routeKey" />
+    </v-main>
+    <v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
   </v-app>
 </template>
 
@@ -21,6 +20,7 @@ import { useScrollbarStore } from '@/store/scrollbarStore'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { useMessageStore } from '@/store/messageStore'
 import DropZoneModal from './Modal/DropZoneModal.vue'
+import UniversalPage from './Page/UniversalPage.vue'
 import isMobile from 'is-mobile'
 import { useConstStore } from '@/store/constStore'
 import { useBasicStringStore } from '@/store/basicStringStore'
@@ -42,6 +42,13 @@ const routeKey = computed(() => {
   return `${basicStringStore.basicString}-${search}-${locate}-${priorityId}-${reverse}-${homeKey}`
 })
 
+// Check if should show UniversalPage based on route query type
+const shouldShowUniversalPage = computed(() => {
+  const type = route.query.type as string
+  const validTypes = ['home', 'all', 'favorite', 'archived', 'trashed', 'albums', 'videos']
+  return validTypes.includes(type)
+})
+
 // 监听 query type 的变化，更新 basicStringStore
 watch(
   () => route.query.type,
@@ -50,7 +57,7 @@ watch(
     if (newType !== null && newType !== undefined) {
       const type = newType as string
       let newBasicString: string
-      
+
       switch (type) {
         case 'home':
           newBasicString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
@@ -77,7 +84,7 @@ watch(
           newBasicString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
           break
       }
-      
+
       basicStringStore.basicString = newBasicString
     }
   },
