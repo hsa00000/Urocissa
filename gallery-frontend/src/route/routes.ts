@@ -48,32 +48,29 @@ const galleryRoute: RouteRecordRaw = {
         query: route.query
       }
     }
-  }
-}
-
-const viewRoute: RouteRecordRaw = {
-  path: '/view/:hash',
-  component: ViewPageMain,
-  name: 'galleryViewPage',
-  meta: {
-    isReadPage: false,
-    isViewPage: true,
-    baseName: 'gallery',
-    getParentPage: (route) => {
-      return {
-        name: 'gallery',
-        params: { hash: undefined, subhash: undefined },
-        query: route.query
-      }
-    },
-    getChildPage: (route) => {
-      return {
-        name: 'galleryReadPage',
-        params: { hash: route.params.hash, subhash: undefined },
-        query: route.query
+  },
+  children: [
+    {
+      path: '/view/:hash',
+      component: ViewPageMain,
+      name: 'galleryViewPage',
+      meta: {
+        isReadPage: false,
+        isViewPage: true,
+        baseName: 'gallery',
+        getParentPage: (route) => {
+          return {
+            name: 'gallery',
+            params: { hash: undefined, subhash: undefined },
+            query: route.query
+          }
+        },
+        getChildPage: () => {
+          throw new Error('Read page temporarily unavailable')
+        }
       }
     }
-  }
+  ]
 }
 
 // ======================================
@@ -179,13 +176,7 @@ const compatibilityRoutes: RouteRecordRaw[] = [
 // Combine All Routes
 // ======================================
 
-const routes: RouteRecordRaw[] = [
-  ...simpleRoutes,
-  galleryRoute,
-  viewRoute,
-  shareRoute,
-  ...compatibilityRoutes
-]
+const routes: RouteRecordRaw[] = [...simpleRoutes, galleryRoute, shareRoute, ...compatibilityRoutes]
 
 // ======================================
 // Create and Export the Router Instance
