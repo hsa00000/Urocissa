@@ -6,8 +6,10 @@
     }"
   >
     <v-main class="h-screen">
+      <NavBar />
       <DropZoneModal v-if="!isMobile()" />
-      <HomePage :key="routeKey" />
+      <HomePage v-if="shouldShowHomePage" :key="routeKey" />
+      <router-view v-else />
     </v-main>
     <v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
   </v-app>
@@ -24,6 +26,7 @@ import HomePage from './Page/HomePage.vue'
 import isMobile from 'is-mobile'
 import { useConstStore } from '@/store/constStore'
 import { useFilterStringStore } from '@/store/filterStringStore'
+import NavBar from '@/components/NavBar/NavBar.vue'
 const scrollbarStore = useScrollbarStore('mainId')
 const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
 const rerenderStore = useRerenderStore('mainId')
@@ -31,6 +34,16 @@ const messageStore = useMessageStore('mainId')
 const constStore = useConstStore('mainId')
 const route = useRoute()
 const filterStringStore = useFilterStringStore()
+
+// Define which route baseNames should show the HomePage component
+const allowedBaseNames = ['home', 'all', 'favorite', 'archived', 'trashed', 'albums', 'videos']
+
+// Check if current route should show HomePage
+const shouldShowHomePage = computed(() => {
+  const baseName = route.meta.baseName
+  return typeof baseName === 'string' && allowedBaseNames.includes(baseName)
+})
+
 // The routeKey is used to ensure that the router-view reloads the Home.vue component properly.
 // Without it, Vue may cache the component for optimization, potentially causing bugs.
 const routeKey = computed(() => {
