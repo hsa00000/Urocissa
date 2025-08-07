@@ -44,32 +44,31 @@ function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
     beforeEnter: (_to, _from, next) => {
       const filterStringStore = useFilterStringStore('mainId')
 
-      let newBasicString: string
       switch (baseName) {
         case 'home':
-          newBasicString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
+          filterStringStore.filterString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
           break
         case 'all':
-          newBasicString = 'not(tag:"_trashed")'
+          filterStringStore.filterString = 'not(tag:"_trashed")'
           break
         case 'favorite':
-          newBasicString = 'and(tag:"_favorite", not(tag:"_trashed"))'
+          filterStringStore.filterString = 'and(tag:"_favorite", not(tag:"_trashed"))'
           break
         case 'archived':
-          newBasicString = 'and(tag:"_archived", not(tag:"_trashed"))'
+          filterStringStore.filterString = 'and(tag:"_archived", not(tag:"_trashed"))'
           break
         case 'trashed':
-          newBasicString = 'and(tag:"_trashed")'
+          filterStringStore.filterString = 'and(tag:"_trashed")'
           break
         case 'albums':
-          newBasicString = 'and(type:"album", not(tag:"_trashed"))'
+          filterStringStore.filterString = 'and(type:"album", not(tag:"_trashed"))'
           break
         case 'videos':
-          newBasicString = 'and(type:"video", not(tag:"_archived"), not(tag:"_trashed"))'
+          filterStringStore.filterString =
+            'and(type:"video", not(tag:"_archived"), not(tag:"_trashed"))'
           break
       }
 
-      filterStringStore.filterString = newBasicString
       next()
     },
     children: [
