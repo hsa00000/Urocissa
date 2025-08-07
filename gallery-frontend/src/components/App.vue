@@ -7,7 +7,7 @@
   >
     <v-main class="h-screen">
       <DropZoneModal v-if="!isMobile()" />
-      <UniversalPage :key="routeKey" />
+      <HomePage :key="routeKey" />
     </v-main>
     <v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
   </v-app>
@@ -20,7 +20,7 @@ import { useScrollbarStore } from '@/store/scrollbarStore'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { useMessageStore } from '@/store/messageStore'
 import DropZoneModal from './Modal/DropZoneModal.vue'
-import UniversalPage from './Page/UniversalPage.vue'
+import HomePage from './Page/HomePage.vue'
 import isMobile from 'is-mobile'
 import { useConstStore } from '@/store/constStore'
 import { useBasicStringStore } from '@/store/basicStringStore'

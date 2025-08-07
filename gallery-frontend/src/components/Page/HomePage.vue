@@ -1,8 +1,9 @@
 <template>
-  <HomeMain :basic-string="basicString" />
+  <HomeMain :basic-string="basicStringStore.basicString" />
 </template>
 
 <script setup lang="ts">
 import HomeMain from '@/components/Home/HomeMain.vue'
-const basicString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
+import { useBasicStringStore } from '@/store/basicStringStore'
+const basicStringStore = useBasicStringStore('mainId')
 </script>
