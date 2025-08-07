@@ -10,7 +10,10 @@ export const linksRoute: RouteRecordRaw = {
   path: '/links',
   component: LinksPage,
   name: 'links',
-
+  beforeEnter: () => {
+    const filterStringStore = useFilterStringStore()
+    filterStringStore.filterString = null
+  },
   meta: {
     isReadPage: false,
     isViewPage: false,
@@ -29,10 +32,6 @@ export const linksRoute: RouteRecordRaw = {
         params: { hash: undefined, subhash: undefined },
         query: route.query
       }
-    },
-    beforeEnter: () => {
-      const filterStringStore = useFilterStringStore()
-      filterStringStore.filterString = null
     }
   }
 }

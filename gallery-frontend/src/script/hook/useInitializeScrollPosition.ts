@@ -41,11 +41,14 @@ export function useInitializeScrollPosition(
         lastScrollTop.value = bufferHeight.value / 3
 
         clientHeight.value = imageContainer.clientHeight
+        console.log('scrollTopStore.scrollTop is', scrollTopStore.scrollTop)
+        console.log('clientHeight.value is', clientHeight.value)
 
         const jumpTo = prefetchStore.locateTo
         if (jumpTo !== null) {
           const targetRowIndex = Math.floor(jumpTo / layoutBatchNumber)
           scrollTopStore.scrollTop = targetRowIndex * fixedBigRowHeight
+
           await fetchRowInWorker(targetRowIndex, isolationId)
           prefetchStore.locateTo = null
         }

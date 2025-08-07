@@ -43,7 +43,6 @@ function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
     },
     beforeEnter: (_to, _from, next) => {
       const filterStringStore = useFilterStringStore()
-
       switch (baseName) {
         case 'home':
           filterStringStore.filterString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
