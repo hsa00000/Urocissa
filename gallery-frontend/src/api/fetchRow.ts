@@ -19,7 +19,7 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
   const locationStore = useLocationStore(isolationId)
   const queueStore = useQueueStore(isolationId)
   const tokenStore = useTokenStore(isolationId)
-  const constStore = useConstStore('mainId')
+  const constStore = useConstStore()
   if (prefetchStore.rowLength === 0) {
     return // No data to fetch
   }

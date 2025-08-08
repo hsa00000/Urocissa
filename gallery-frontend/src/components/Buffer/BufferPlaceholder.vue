@@ -33,7 +33,7 @@ import { paddingPixel } from '@/type/constants'
 import { getInjectValue } from '@utils/getter'
 import { computed, onMounted, Ref, ref, watchEffect } from 'vue'
 
-const constStore = useConstStore('mainId')
+const constStore = useConstStore()
 
 const placeholderRef = ref<HTMLElement>()
 const windowWidth = getInjectValue<Ref<number>>('windowWidth')

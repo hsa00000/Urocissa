@@ -43,7 +43,7 @@ import { useConstStore } from '@/store/constStore'
 
 const modalStore = useModalStore('mainId')
 const initializedStore = useInitializedStore('mainId')
-const constStore = useConstStore('mainId')
+const constStore = useConstStore()
 
 // Local ref for immediate UI updates
 const subRowHeightScale = ref(constStore.subRowHeightScale)
