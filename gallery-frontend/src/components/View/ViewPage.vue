@@ -1,5 +1,13 @@
 <template>
-  <div id="view-page" class="d-flex" style="height: 100%; width: 100%">
+  <v-overlay
+    :model-value="true"
+    :height="'100%'"
+    :width="'100%'"
+    class="d-flex"
+    id="view-page"
+    transition="false"
+    :close-on-back="false"
+  >
     <v-container
       v-if="index !== undefined"
       fluid
@@ -32,7 +40,7 @@
         <v-progress-circular indeterminate color="primary" size="64" />
       </v-row>
     </v-container>
-  </div>
+  </v-overlay>
 </template>
 
 <script setup lang="ts">
