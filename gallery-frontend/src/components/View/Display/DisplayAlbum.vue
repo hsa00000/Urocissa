@@ -1,7 +1,5 @@
 <template>
-  <router-view v-slot="{ Component }">
-    <component :is="Component" />
-  </router-view>
+  <HomeIsolatedModal v-if="modalStore.showHomeIsolatedModal" :album-id="props.album.id" />
   <v-col class="h-100 d-flex align-center justify-center">
     <v-row>
       <v-col
@@ -93,10 +91,11 @@
               color="teal-accent-4"
               variant="flat"
               class="ma-2 button button-submit"
-              
               @click="
                 () => {
-                  albumStore.leaveAlbumPath = route.fullPath
+                  console.log('open')
+
+                  modalStore.showHomeIsolatedModal = true
                 }
               "
             >
@@ -111,7 +110,6 @@
 
 <script setup lang="ts">
 import { useImgStore } from '@/store/imgStore'
-import { useAlbumStore } from '@/store/albumStore'
 import { VCol } from 'vuetify/components'
 import { filesize } from 'filesize'
 import { useRoute } from 'vue-router'
@@ -119,12 +117,12 @@ import { dater } from '@utils/dater'
 import { Album } from '@type/types'
 import { ref, watch } from 'vue'
 import { editTitle } from '@utils/createAlbums'
-
+import { useModalStore } from '@/store/modalStore'
+import HomeIsolatedModal from '@/components/Home/HomeIsolatedModal.vue'
 const titleModel = ref('')
 
 const route = useRoute()
-
-const albumStore = useAlbumStore('mainId')
+const modalStore = useModalStore('mainId')
 const imgStore = useImgStore('mainId')
 
 const props = defineProps<{

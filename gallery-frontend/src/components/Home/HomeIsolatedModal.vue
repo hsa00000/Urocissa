@@ -26,25 +26,21 @@ import Home from './Home.vue'
 import ReadingBar from '@/components/NavBar/ReadingBar.vue'
 import { Album } from '@type/types'
 import { onBeforeMount, Ref, ref } from 'vue'
-import { useRoute } from 'vue-router'
 import { useDataStore } from '@/store/dataStore'
 
-const route = useRoute()
+const props = defineProps<{
+  albumId: string
+}>()
+
 const dataStore = useDataStore('mainId')
 const album: Ref<Album | undefined> = ref(undefined)
 const filterString: Ref<string | null> = ref(null)
 
 onBeforeMount(() => {
-  const hash = route.params.hash
-  if (typeof hash === 'string') {
-    const index = dataStore.hashMapData.get(hash)
-    if (index !== undefined) {
-      album.value = dataStore.data.get(index)?.album
-    }
+  const index = dataStore.hashMapData.get(props.albumId)
+  if (index !== undefined) {
+    album.value = dataStore.data.get(index)?.album
   }
-  const album_id = route.params.hash
-  if (typeof album_id === 'string') {
-    filterString.value = `and(album:"${album_id}", not(tag:"_trashed"))`
-  }
+  filterString.value = `and(album:"${props.albumId}", not(tag:"_trashed"))`
 })
 </script>
