@@ -15,7 +15,7 @@ export async function fetchDataInWorker(
   if (workerStore.worker === null) {
     workerStore.initializeWorker(isolationId)
   }
-  const tokenStore = useTokenStore(isolationId)
+  const tokenStore = useTokenStore()
   const prefetchStore = usePrefetchStore(isolationId)
   const dataWorker = workerStore.worker
 

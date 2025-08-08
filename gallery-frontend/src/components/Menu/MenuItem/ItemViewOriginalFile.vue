@@ -10,14 +10,12 @@
 </template>
 <script setup lang="ts">
 import { useTokenStore } from '@/store/tokenStore'
-import { IsolationId } from '@/type/types'
 
 const props = defineProps<{
   src: string
   hash: string
-  isolationId: IsolationId
 }>()
-const tokenStore = useTokenStore(props.isolationId)
+const tokenStore = useTokenStore()
 
 async function handleClick() {
   await tokenStore.tryRefreshAndStoreTokenToDb(props.hash)

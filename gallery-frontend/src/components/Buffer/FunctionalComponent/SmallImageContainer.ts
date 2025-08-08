@@ -116,7 +116,7 @@ async function checkAndFetch(
   isolationId: IsolationId
 ) {
   const workerStore = useWorkerStore(isolationId)
-  const tokenStore = useTokenStore(isolationId)
+  const tokenStore = useTokenStore()
   const shareStore = useShareStore('mainId')
   const workerIndex = index % workerStore.concurrencyNumber
 

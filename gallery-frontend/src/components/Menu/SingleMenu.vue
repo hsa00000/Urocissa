@@ -6,7 +6,6 @@
     <v-list>
       <ItemViewOriginalFile
         :src="getSrc(database.hash, true, database.ext)"
-        :isolation-id="props.isolationId"
         :hash="database.hash"
       />
       <ItemDownload :index-list="[props.index]" />

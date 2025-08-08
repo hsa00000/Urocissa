@@ -61,7 +61,7 @@ async function handlePrefetchReturn(
   const configStore = useConfigStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
   const initializedStore = useInitializedStore(isolationId)
-  const tokenStore = useTokenStore(isolationId)
+  const tokenStore = useTokenStore()
   const shareStore = useShareStore('mainId')
   const albumStore = useAlbumStore('mainId')
   const tagStore = useTagStore('mainId')

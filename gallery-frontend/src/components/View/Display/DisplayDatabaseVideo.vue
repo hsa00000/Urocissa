@@ -32,7 +32,7 @@ const props = defineProps<{
 
 const tokenReady = ref(false)
 
-const tokenStore = useTokenStore(props.isolationId)
+const tokenStore = useTokenStore()
 const currentFrameStore = useCurrentFrameStore(props.isolationId)
 
 const videoRef = ref<HTMLVideoElement | null>(null)

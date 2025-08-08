@@ -21,7 +21,7 @@ const props = defineProps<{
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const dataStore = useDataStore(isolationId)
-const tokenStore = useTokenStore(isolationId)
+const tokenStore = useTokenStore()
 
 const waitForMetadata = (index: number, timeout = 5000, interval = 100): Promise<AbstractData> => {
   console.log(`data with index ${index} not fetch; waiting...`)

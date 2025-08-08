@@ -8,7 +8,7 @@ import { useTokenStore } from '@/store/tokenStore'
 
 export async function fetchScrollbar(isolationId: IsolationId) {
   const prefetchStore = usePrefetchStore(isolationId)
-  const tokenStore = useTokenStore(isolationId)
+  const tokenStore = useTokenStore()
   const scrollbarStore = useScrollbarStore(isolationId)
 
   const timestamp = prefetchStore.timestamp

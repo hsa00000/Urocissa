@@ -22,7 +22,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
   const redirectionStore = useRedirectionStore()
   const tagStore = useTagStore('mainId')
   const constStore = useConstStore()
-  const tokenStore = useTokenStore(isolationId)
+  const tokenStore = useTokenStore()
   const dataStore = useDataStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
   const offsetStore = useOffsetStore(isolationId)
