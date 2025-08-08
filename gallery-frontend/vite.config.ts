@@ -1,4 +1,4 @@
-import { resolve } from 'path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -7,27 +7,27 @@ export default defineConfig({
   plugins: [
     vue(),
     VitePWA({
-      srcDir: 'src/worker', // 指定 Service Worker 位置
-      filename: 'serviceWorker.ts', // Service Worker 檔案名稱
-      strategies: 'injectManifest', // 使用 injectManifest，不啟用 PWA
-      /* injectRegister: false, // 不自動註冊 Service Worker */
-      manifest: false, // 不啟用 Web App Manifest
+      srcDir: 'src/worker', // Specify Service Worker directory
+      filename: 'serviceWorker.ts', // Service Worker filename
+      strategies: 'injectManifest', // Use injectManifest; do not enable full PWA
+      injectRegister: 'script', // Auto-inject a registration script (no manual code needed)
+      manifest: false, // Disable Web App Manifest
       injectManifest: {
-        injectionPoint: undefined // 不插入預快取清單
+        injectionPoint: undefined // Do not inject a precache manifest
       },
       devOptions: {
-        enabled: true, // 在開發模式啟用 Service Worker
-        type: 'module' // 如果你的 SW 內有 import，要設為 "module"
+        enabled: true, // Enable Service Worker in development mode
+        type: 'module' // Set to "module" if your SW uses imports
       }
     })
   ],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
-      '@Menu': resolve(__dirname, 'src/components/Menu'),
-      '@worker': resolve(__dirname, 'src/worker'),
-      '@utils': resolve(__dirname, 'src/script/utils'),
-      '@type': resolve(__dirname, 'src/type')
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@Menu': fileURLToPath(new URL('./src/components/Menu', import.meta.url)),
+      '@worker': fileURLToPath(new URL('./src/worker', import.meta.url)),
+      '@utils': fileURLToPath(new URL('./src/script/utils', import.meta.url)),
+      '@type': fileURLToPath(new URL('./src/type', import.meta.url))
     }
   },
   build: {
@@ -95,13 +95,6 @@ export default defineConfig({
       '/object': {
         target: 'http://127.0.0.1:5673',
         changeOrigin: true
-      }
-    }
-  },
-  css: {
-    preprocessorOptions: {
-      scss: {
-        api: 'modern'
       }
     }
   }
