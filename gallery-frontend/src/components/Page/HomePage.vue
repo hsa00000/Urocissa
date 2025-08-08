@@ -1,18 +1,17 @@
 <template>
   <Home
     isolation-id="mainId"
-    :filter-string="filterStringStore.filterString"
+  :filter-string="filterString"
     :search-string="searchString"
   >
   </Home>
 </template>
 
 <script setup lang="ts">
-import { useFilterStringStore } from '@/store/filterStringStore'
 import { onBeforeMount, ref } from 'vue'
 import { LocationQueryValue, useRoute } from 'vue-router'
 import Home from '../Home/Home.vue'
-const filterStringStore = useFilterStringStore()
+defineProps<{ filterString: string }>()
 const route = useRoute()
 const searchString = ref<LocationQueryValue | LocationQueryValue[] | undefined>(null)
 

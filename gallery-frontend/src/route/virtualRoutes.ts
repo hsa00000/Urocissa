@@ -1,7 +1,6 @@
 import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
-import { useFilterStringStore } from '@/store/filterStringStore'
 import { virtualRouteNames, VirtualRouteName } from './pageReturnType'
 
 function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
@@ -27,35 +26,7 @@ function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
         }
       }
     },
-    beforeEnter: (_to, _from, next) => {
-      const filterStringStore = useFilterStringStore()
-      switch (baseName) {
-        case 'home':
-          filterStringStore.filterString = 'and(not(tag:"_archived"), not(tag:"_trashed"))'
-          break
-        case 'all':
-          filterStringStore.filterString = 'not(tag:"_trashed")'
-          break
-        case 'favorite':
-          filterStringStore.filterString = 'and(tag:"_favorite", not(tag:"_trashed"))'
-          break
-        case 'archived':
-          filterStringStore.filterString = 'and(tag:"_archived", not(tag:"_trashed"))'
-          break
-        case 'trashed':
-          filterStringStore.filterString = 'and(tag:"_trashed")'
-          break
-        case 'albums':
-          filterStringStore.filterString = 'and(type:"album", not(tag:"_trashed"))'
-          break
-        case 'videos':
-          filterStringStore.filterString =
-            'and(type:"video", not(tag:"_archived"), not(tag:"_trashed"))'
-          break
-      }
-
-      next()
-    },
+  // No beforeEnter needed; filter string is computed locally in App.vue based on route meta.
     children: [
       {
         path: '/view/:hash',

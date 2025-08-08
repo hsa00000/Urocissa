@@ -8,8 +8,10 @@
     <v-main class="h-screen">
       <NavBar />
       <DropZoneModal v-if="!isMobile()" />
-      <HomePage v-if="shouldShowHomePage" :key="routeKey" />
-      <router-view v-else />
+      <HomePage v-if="shouldShowHomePage" :key="routeKey" :filter-string="filterString" />
+      <router-view v-else v-slot="{ Component }">
+        <component :is="Component" :filter-string="filterString" />
+      </router-view>
     </v-main>
     <v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
   </v-app>
@@ -25,7 +27,6 @@ import DropZoneModal from './Modal/DropZoneModal.vue'
 import HomePage from './Page/HomePage.vue'
 import isMobile from 'is-mobile'
 import { useConstStore } from '@/store/constStore'
-import { useFilterStringStore } from '@/store/filterStringStore'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import { virtualRouteNames } from '@/route/pageReturnType'
 
@@ -35,7 +36,33 @@ const rerenderStore = useRerenderStore('mainId')
 const messageStore = useMessageStore()
 const constStore = useConstStore()
 const route = useRoute()
-const filterStringStore = useFilterStringStore()
+
+const filterString = computed(() => {
+  const baseName = route.meta.baseName
+  if (typeof baseName !== 'string') return ''
+  switch (baseName) {
+    case 'home':
+      return 'and(not(tag:"_archived"), not(tag:"_trashed"))'
+    case 'all':
+      return 'not(tag:"_trashed")'
+    case 'favorite':
+      return 'and(tag:"_favorite", not(tag:"_trashed"))'
+    case 'archived':
+      return 'and(tag:"_archived", not(tag:"_trashed"))'
+    case 'trashed':
+      return 'and(tag:"_trashed")'
+    case 'albums':
+      return 'and(type:"album", not(tag:"_trashed"))'
+    case 'videos':
+      return 'and(type:"video", not(tag:"_archived"), not(tag:"_trashed"))'
+    case 'share': {
+      const albumIdOpt = route.params.albumId
+      return typeof albumIdOpt === 'string' ? `and(not(tag:"_trashed"), album:"${albumIdOpt}")` : ''
+    }
+    default:
+      return ''
+  }
+})
 
 // Check if current route should show HomePage
 const shouldShowHomePage = computed(() => {
@@ -51,7 +78,7 @@ const routeKey = computed(() => {
   const priorityId = typeof route.query.priority_id === 'string' ? route.query.priority_id : ''
   const reverse = typeof route.query.reverse === 'string' ? route.query.reverse : ''
   const homeKey = rerenderStore.homeKey.toString()
-  return `${filterStringStore.filterString}-${search}-${locate}-${priorityId}-${reverse}-${homeKey}`
+  return `${filterString.value}-${search}-${locate}-${priorityId}-${reverse}-${homeKey}`
 })
 
 onBeforeMount(async () => {

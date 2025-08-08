@@ -2,7 +2,6 @@ import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 import UniversalSharePage from '@/components/Page/UniversalSharePage.vue'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
-import { useFilterStringStore } from '@/store/filterStringStore'
 import { useShareStore } from '@/store/shareStore'
 import { PageReturnType } from './pageReturnType'
 
@@ -31,17 +30,14 @@ export const shareRoute: RouteRecordRaw[] = [
         }
       }
     },
-    beforeEnter: (to, _from, next) => {
+  beforeEnter: (to, _from, next) => {
       const albumIdOpt = to.params.albumId
       const shareIdOpt = to.params.shareId
 
       // Only allow route if both albumId and shareId are strings
       if (typeof albumIdOpt === 'string' && typeof shareIdOpt === 'string') {
-        // Set up the basic string and store data
-        const filterStringStore = useFilterStringStore()
+        // Set up store data
         const shareStore = useShareStore('mainId')
-
-        filterStringStore.filterString = `and(not(tag:"_trashed"), album:"${albumIdOpt}")`
         shareStore.albumId = albumIdOpt
         shareStore.shareId = shareIdOpt
 
