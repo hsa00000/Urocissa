@@ -19,7 +19,7 @@ const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 export function handleDataWorkerReturn(dataWorker: Worker, isolationId: IsolationId) {
   const messageStore = useMessageStore('mainId')
   const modalStore = useModalStore('mainId')
-  const redirectionStore = useRedirectionStore('mainId')
+  const redirectionStore = useRedirectionStore()
   const tagStore = useTagStore('mainId')
   const constStore = useConstStore()
   const tokenStore = useTokenStore(isolationId)

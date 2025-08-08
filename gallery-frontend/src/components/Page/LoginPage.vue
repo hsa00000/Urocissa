@@ -28,7 +28,7 @@ import { useRedirectionStore } from '@/store/redirectionStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 const password = ref('')
 const router = useRouter()
-const redirectionStore = useRedirectionStore('mainId')
+const redirectionStore = useRedirectionStore()
 const handleLogin = async () => {
   await tryWithMessageStore('mainId', async () => {
     const response = await axios.post('/post/authenticate', JSON.stringify(password.value), {

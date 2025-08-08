@@ -9,7 +9,7 @@ const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 export function handleImgWorker(imgWorker: Worker, isolationId: IsolationId) {
   const imgStore = useImgStore(isolationId)
   const messageStore = useMessageStore('mainId')
-  const redirectionStore = useRedirectionStore('mainId')
+  const redirectionStore = useRedirectionStore()
 
   const handler = createHandler<typeof fromImgWorker>({
     smallImageProcessed({ index, url }) {
