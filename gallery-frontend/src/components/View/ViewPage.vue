@@ -6,7 +6,8 @@
     class="d-flex"
     id="view-page"
     transition="false"
-    :close-on-back="false"
+    persistent
+    no-click-animation
   >
     <v-container
       v-if="index !== undefined"
