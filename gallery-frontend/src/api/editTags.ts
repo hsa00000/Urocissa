@@ -1,5 +1,4 @@
 import { useMessageStore } from '@/store/messageStore'
-import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { tagInfoSchema } from '@/type/schemas'
 import { IsolationId, TagInfo } from '@/type/types'
@@ -16,22 +15,13 @@ export async function editTags(
   const prefetchStore = usePrefetchStore(isolationId)
   const timestamp = prefetchStore.timestamp
   const messageStore = useMessageStore()
-  const optimisticStore = useOptimisticStore(isolationId)
 
   if (timestamp === null) {
     messageStore.error('Cannot edit tags because timestamp is missing.')
     return
   }
 
-  const payload = {
-    indexSet: new Set(indexArray),
-    addTagsArray: [...addTagsArray],
-    removeTagsArray: [...removeTagsArray],
-    timestamp: timestamp
-  }
-  optimisticStore.optimisticUpdateTags(payload, true)
-
-  await tryWithMessageStore( async () => {
+  await tryWithMessageStore(async () => {
     const axiosResponse = await axios.put<TagInfo[]>('/put/edit_tag', {
       indexArray,
       addTagsArray,

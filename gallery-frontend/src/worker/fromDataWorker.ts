@@ -9,7 +9,7 @@ import { useOffsetStore } from '@/store/offsetStore'
 import { useRowStore } from '@/store/rowStore'
 import { useLocationStore } from '@/store/locationStore'
 import { useModalStore } from '@/store/modalStore'
-import { useOptimisticStore } from '@/store/optimisticUpateStore'
+
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { useTokenStore } from '@/store/tokenStore'
 import { useConstStore } from '@/store/constStore'
@@ -28,7 +28,6 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
   const offsetStore = useOffsetStore(isolationId)
   const rowStore = useRowStore(isolationId)
   const locationStore = useLocationStore(isolationId)
-  const optimisticUpateStore = useOptimisticStore(isolationId)
 
   const handler = createHandler<typeof fromDataWorker>({
     returnData: (payload) => {
@@ -46,7 +45,6 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
         }
       })
       dataStore.batchFetched.set(payload.batch, true)
-      optimisticUpateStore.selfUpdate()
     },
     fetchRowReturn: (payload) => {
       const timestamp = payload.timestamp

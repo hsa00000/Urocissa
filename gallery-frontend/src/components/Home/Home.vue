@@ -64,7 +64,7 @@ import { useLocationStore } from '@/store/locationStore'
 import { fetchRowInWorker } from '@/api/fetchRow'
 import HomeEmptyCard from '@/components/Home/HomeEmptyCard.vue'
 import { useScrollTopStore } from '@/store/scrollTopStore'
-import { useOptimisticStore } from '@/store/optimisticUpateStore'
+
 import { IsolationId } from '@type/types'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { useTagStore } from '@/store/tagStore'
@@ -89,7 +89,6 @@ const initializedStore = useInitializedStore(props.isolationId)
 const queueStore = useQueueStore(props.isolationId)
 const imgStore = useImgStore(props.isolationId)
 const locationStore = useLocationStore(props.isolationId)
-const optimisticUpateStore = useOptimisticStore(props.isolationId)
 // albumStore should not use 'mainId'; otherwise clearAll will be called when the 'props.isolationId' component is unmounted.
 const albumStore = useAlbumStore(props.isolationId)
 const rerenderStore = useRerenderStore('mainId')
@@ -183,7 +182,6 @@ onBeforeUnmount(() => {
   offsetStore.clearAll()
   rowStore.clearAll()
   locationStore.clearAll()
-  optimisticUpateStore.clearAll()
   tagStore.clearAll()
   albumStore.clearAll()
 })
