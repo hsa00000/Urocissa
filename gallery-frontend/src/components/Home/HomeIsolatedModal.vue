@@ -1,13 +1,11 @@
 <template>
-  <v-overlay
-    :model-value="true"
-    :height="'100%'"
-    :width="'100%'"
-    class="d-flex"
+  <OverlayModal
+    v-model="open"
     id="home-isolated"
-    transition="false"
-    :close-on-back="false"
-    persistent
+    :close-on-back="true"
+    :persistent="false"
+    :transition="false"
+    overlay-class="d-flex"
   >
     <Home
       v-if="album !== undefined && filterString !== null"
@@ -19,18 +17,32 @@
         <ReadingBar :album="album" />
       </template>
     </Home>
-  </v-overlay>
+  </OverlayModal>
+  
 </template>
 <script setup lang="ts">
 import Home from './Home.vue'
 import ReadingBar from '@/components/NavBar/ReadingBar.vue'
+import OverlayModal from '@/components/Modal/OverlayModal.vue'
 import { Album } from '@type/types'
-import { onBeforeMount, Ref, ref } from 'vue'
+import { onBeforeMount, Ref, ref, watch } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 
 const props = defineProps<{
   albumId: string
+  modelValue: boolean
 }>()
+
+const emit = defineEmits<(e: 'update:modelValue', v: boolean) => void>()
+
+const open = ref(props.modelValue)
+watch(
+  () => props.modelValue,
+  v => (open.value = v)
+)
+watch(open, v => {
+  emit('update:modelValue', v)
+})
 
 const dataStore = useDataStore('mainId')
 const album: Ref<Album | undefined> = ref(undefined)

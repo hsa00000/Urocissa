@@ -1,5 +1,8 @@
 <template>
-  <HomeIsolatedModal v-if="modalStore.showHomeIsolatedModal" :album-id="props.album.id" />
+  <HomeIsolatedModal
+    v-model="modalStore.showHomeIsolatedModal"
+    :album-id="props.album.id"
+  />
   <v-col class="h-100 d-flex align-center justify-center">
     <v-row>
       <v-col

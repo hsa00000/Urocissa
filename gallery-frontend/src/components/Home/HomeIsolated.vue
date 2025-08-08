@@ -1,14 +1,5 @@
 <template>
-  <v-overlay
-    :model-value="true"
-    :height="'100%'"
-    :width="'100%'"
-    class="d-flex"
-    id="home-isolated"
-    transition="false"
-    :close-on-back="false"
-    persistent
-  >
+  <div id="home-isolated" class="d-flex" style="height: 100%; width: 100%">
     <Home
       v-if="album !== undefined && filterString !== null"
       isolation-id="subId"
@@ -19,7 +10,7 @@
         <ReadingBar :album="album" />
       </template>
     </Home>
-  </v-overlay>
+  </div>
 </template>
 <script setup lang="ts">
 import Home from './Home.vue'

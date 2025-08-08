@@ -32,7 +32,7 @@
   </v-toolbar>
   <EditBar v-else />
   <ProgessBar isolation-id="subId" />
-  <HomeTemp v-if="modalStore.showHomeTempModal" :album="props.album"> </HomeTemp>
+  <HomeTemp v-model="modalStore.showHomeTempModal" :album="props.album" />
   <CreateShareModal v-if="modalStore.showShareModal" :album-id="props.album.id" :mode="'create'" />
 </template>
 <script setup lang="ts">
