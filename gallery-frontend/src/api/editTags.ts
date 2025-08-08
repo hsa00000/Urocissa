@@ -15,7 +15,7 @@ export async function editTags(
 ) {
   const prefetchStore = usePrefetchStore(isolationId)
   const timestamp = prefetchStore.timestamp
-  const messageStore = useMessageStore('mainId')
+  const messageStore = useMessageStore()
   const optimisticStore = useOptimisticStore(isolationId)
 
   if (timestamp === null) {
@@ -31,7 +31,7 @@ export async function editTags(
   }
   optimisticStore.optimisticUpdateTags(payload, true)
 
-  await tryWithMessageStore('mainId', async () => {
+  await tryWithMessageStore( async () => {
     const axiosResponse = await axios.put<TagInfo[]>('/put/edit_tag', {
       indexArray,
       addTagsArray,

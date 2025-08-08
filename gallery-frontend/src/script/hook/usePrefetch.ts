@@ -66,7 +66,7 @@ async function handlePrefetchReturn(
   const albumStore = useAlbumStore('mainId')
   const tagStore = useTagStore('mainId')
 
-  await tryWithMessageStore(isolationId, async () => {
+  await tryWithMessageStore( async () => {
     const response = await axios.get('/get/get-config.json')
     const publicConfig = PublicConfigSchema.parse(response.data)
     configStore.disableImg = publicConfig.disableImg

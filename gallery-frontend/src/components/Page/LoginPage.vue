@@ -30,7 +30,7 @@ const password = ref('')
 const router = useRouter()
 const redirectionStore = useRedirectionStore()
 const handleLogin = async () => {
-  await tryWithMessageStore('mainId', async () => {
+  await tryWithMessageStore( async () => {
     const response = await axios.post('/post/authenticate', JSON.stringify(password.value), {
       headers: {
         'Content-Type': 'application/json'

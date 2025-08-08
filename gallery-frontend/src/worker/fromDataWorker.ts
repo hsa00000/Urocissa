@@ -17,7 +17,7 @@ import { useConstStore } from '@/store/constStore'
 const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 
 export function handleDataWorkerReturn(dataWorker: Worker, isolationId: IsolationId) {
-  const messageStore = useMessageStore('mainId')
+  const messageStore = useMessageStore()
   const modalStore = useModalStore('mainId')
   const redirectionStore = useRedirectionStore()
   const tagStore = useTagStore('mainId')

@@ -18,7 +18,7 @@ export const useAlbumStore = (isolationId: IsolationId) =>
     }),
     actions: {
       async fetchAlbums() {
-        await tryWithMessageStore('mainId', async () => {
+        await tryWithMessageStore( async () => {
           const response = await axios.get('/get/get-albums')
 
           if (response.status !== 200) {

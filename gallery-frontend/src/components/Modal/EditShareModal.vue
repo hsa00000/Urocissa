@@ -104,7 +104,7 @@ import { tryWithMessageStore } from '@/script/utils/try_catch'
 const props = defineProps<{ editShareData: EditShareData }>()
 
 const modalStore = useModalStore('mainId')
-const messageStore = useMessageStore('mainId')
+const messageStore = useMessageStore()
 const albumStore = useAlbumStore('mainId')
 
 const shareModel = ref<Share>({
@@ -130,7 +130,7 @@ onMounted(() => {
       album.shareList.set(props.editShareData.share.url, shareModel.value)
     }
 
-    await tryWithMessageStore('mainId', async () => {
+    await tryWithMessageStore( async () => {
       await axios.put('/put/edit_share', {
         albumId: props.editShareData.albumId,
         share: shareModel.value

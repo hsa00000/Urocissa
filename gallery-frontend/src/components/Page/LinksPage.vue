@@ -134,7 +134,7 @@ import { ShareSchema } from '@/type/schemas'
 const initializedStore = useInitializedStore('mainId')
 const albumStore = useAlbumStore('mainId')
 const modalStore = useModalStore('mainId')
-const messageStore = useMessageStore('mainId')
+const messageStore = useMessageStore()
 
 const locationOrigin = window.location.origin
 const { copy } = useClipboard()

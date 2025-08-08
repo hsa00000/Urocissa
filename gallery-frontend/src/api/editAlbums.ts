@@ -11,14 +11,14 @@ export async function editAlbums(
 ) {
   const prefetchStore = usePrefetchStore(isolationId)
   const timestamp = prefetchStore.timestamp
-  const messageStore = useMessageStore('mainId')
+  const messageStore = useMessageStore()
 
   if (timestamp === null) {
     messageStore.error('Cannot edit albums because timestamp is missing.')
     return
   }
 
-  await tryWithMessageStore('mainId', async () => {
+  await tryWithMessageStore( async () => {
     const response = await axios.put('/put/edit_album', {
       indexArray,
       addAlbumsArray,

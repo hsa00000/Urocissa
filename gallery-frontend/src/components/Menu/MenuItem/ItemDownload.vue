@@ -53,7 +53,7 @@ const downloadAllFiles = async () => {
   const delayFunction = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
   const isolationId = getIsolationIdByRoute(route)
 
-  await tryWithMessageStore(isolationId, async () => {
+  await tryWithMessageStore( async () => {
     for (let i = 0; i < indexArray.length; i += concurrencyLimit) {
       const batchIndex = indexArray.slice(i, i + concurrencyLimit)
       const downloadPromises = batchIndex.map(async (index) => {
@@ -63,7 +63,7 @@ const downloadAllFiles = async () => {
           await fetchDataInWorker('single', index, isolationId)
 
           // Wait for metadata to be available
-          metadata = await tryWithMessageStore(isolationId, async () => {
+          metadata = await tryWithMessageStore( async () => {
             return await waitForMetadata(index)
           })
           
@@ -83,7 +83,7 @@ const downloadAllFiles = async () => {
             return
           }
 
-          const downloadResult = await tryWithMessageStore(isolationId, async () => {
+          const downloadResult = await tryWithMessageStore( async () => {
             const response = await axios.get<Blob>(url, {
               responseType: 'blob',
               headers: {

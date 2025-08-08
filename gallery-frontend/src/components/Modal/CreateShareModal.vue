@@ -156,7 +156,7 @@ const props = defineProps<{
 }>()
 
 const modalStore = useModalStore('mainId')
-const messageStore = useMessageStore('mainId')
+const messageStore = useMessageStore()
 const description = ref('')
 const passwordRequired = ref(false)
 const password = ref('')

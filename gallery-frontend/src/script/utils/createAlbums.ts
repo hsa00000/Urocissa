@@ -13,7 +13,7 @@ export async function createNonEmptyAlbum(
   const albumStore = useAlbumStore('mainId')
   const prefetchStore = usePrefetchStore(isolationId)
   
-  return await tryWithMessageStore('mainId', async () => {
+  return await tryWithMessageStore( async () => {
     const createNonEmptyAlbumData = {
       title: null,
       elementsIndex: elementsIndex,
@@ -30,7 +30,7 @@ export async function createNonEmptyAlbum(
       }
     )
 
-    const messageStore = useMessageStore('mainId')
+    const messageStore = useMessageStore()
     messageStore.success('Album created successfully.')
 
     const newAlbumId = response.data
@@ -42,14 +42,14 @@ export async function createNonEmptyAlbum(
 export async function createEmptyAlbum(): Promise<string | undefined> {
   const albumStore = useAlbumStore('mainId')
   
-  return await tryWithMessageStore('mainId', async () => {
+  return await tryWithMessageStore( async () => {
     const response = await axios.post<string>('/post/create_empty_album', {
       headers: {
         'Content-Type': 'application/json'
       }
     })
 
-    const messageStore = useMessageStore('mainId')
+    const messageStore = useMessageStore()
     messageStore.success('Album created successfully.')
 
     const newAlbumId = response.data

@@ -14,7 +14,7 @@ import { tryWithMessageStore } from '@/script/utils/try_catch'
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const prefetchStore = usePrefetchStore(isolationId)
-const messageStore = useMessageStore('mainId')
+const messageStore = useMessageStore()
 const props = defineProps<{
   indexList: number[]
 }>()
@@ -23,7 +23,7 @@ const deleteData = async () => {
   const timestamp = prefetchStore.timestamp
   if (timestamp === null) return
 
-  await tryWithMessageStore('mainId', async () => {
+  await tryWithMessageStore( async () => {
     await axios.delete('/delete/delete-data', {
       data: { deleteList: props.indexList, timestamp }
     })

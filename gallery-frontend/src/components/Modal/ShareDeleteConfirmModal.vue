@@ -51,7 +51,7 @@ const props = defineProps<{ deleteShareData: EditShareData }>()
 
 const modalStore = useModalStore('mainId')
 const albumStore = useAlbumStore('mainId')
-const messageStore = useMessageStore('mainId')
+const messageStore = useMessageStore()
 
 const dummy = ref(true) // v-confirm-edit 需要的綁定值
 const shareUrl = `${window.location.origin}/share/${props.deleteShareData.albumId}-${props.deleteShareData.share.url}`
@@ -60,7 +60,7 @@ const submit = ref<(() => void) | undefined>()
 
 onMounted(() => {
   submit.value = () => {
-    void tryWithMessageStore('mainId', async () => {
+    void tryWithMessageStore( async () => {
       await axios.put('/put/delete_share', {
         albumId: props.deleteShareData.albumId,
         shareId: props.deleteShareData.share.url

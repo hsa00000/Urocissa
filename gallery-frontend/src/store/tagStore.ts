@@ -16,7 +16,7 @@ export const useTagStore = (isolationId: IsolationId) =>
     }),
     actions: {
       async fetchTags() {
-        await tryWithMessageStore('mainId', async () => {
+        await tryWithMessageStore( async () => {
           const response = await axios.get('/get/get-tags')
 
           if (response.status !== 200) {

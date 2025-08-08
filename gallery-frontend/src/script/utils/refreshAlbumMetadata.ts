@@ -10,7 +10,7 @@ import { useTokenStore } from '@/store/tokenStore'
 export async function refreshAlbumMetadata(albumId: string) {
   const dataStore = useDataStore('mainId')
   const workerStore = useWorkerStore('mainId')
-  const messageStore = useMessageStore('mainId')
+  const messageStore = useMessageStore()
   const shareStore = useShareStore('mainId')
   const tokenStore = useTokenStore('mainId')
 

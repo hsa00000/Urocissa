@@ -85,7 +85,7 @@ export const useUploadStore = (isolationId: IsolationId) =>
         this.status = 'Uploading'
         modalStore.showUploadModal = true
 
-        const messageStore = useMessageStore('mainId')
+        const messageStore = useMessageStore()
         const formData = new FormData()
         let totalSize = 0
 

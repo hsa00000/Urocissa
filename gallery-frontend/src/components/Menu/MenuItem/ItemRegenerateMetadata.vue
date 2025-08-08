@@ -19,7 +19,7 @@ const props = defineProps<{
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const prefetchStore = usePrefetchStore(isolationId)
-const messageStore = useMessageStore('mainId')
+const messageStore = useMessageStore()
 
 const reindex = async () => {
   const indexArray = props.indexList
@@ -28,7 +28,7 @@ const reindex = async () => {
     timestamp: prefetchStore.timestamp
   }
   
-  await tryWithMessageStore('mainId', async () => {
+  await tryWithMessageStore( async () => {
     messageStore.info('Reindexing...')
     await axios.post('/put/reindex', regenerateData, {
       headers: {

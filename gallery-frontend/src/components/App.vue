@@ -30,7 +30,7 @@ import NavBar from '@/components/NavBar/NavBar.vue'
 const scrollbarStore = useScrollbarStore('mainId')
 const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
 const rerenderStore = useRerenderStore('mainId')
-const messageStore = useMessageStore('mainId')
+const messageStore = useMessageStore()
 const constStore = useConstStore()
 const route = useRoute()
 const filterStringStore = useFilterStringStore()

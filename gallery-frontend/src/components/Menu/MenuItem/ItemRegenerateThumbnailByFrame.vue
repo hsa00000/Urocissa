@@ -16,10 +16,10 @@ import { tryWithMessageStore } from '@/script/utils/try_catch'
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const currentFrameStore = useCurrentFrameStore(isolationId)
-const messageStore = useMessageStore('mainId')
+const messageStore = useMessageStore()
 
 const regenerateThumbnailByFrame = async () => {
-  await tryWithMessageStore(isolationId, async () => {
+  await tryWithMessageStore( async () => {
     const hash = route.params.hash
     const currentFrameBlob = await currentFrameStore.getCapture()
     if (typeof hash === 'string' && currentFrameBlob) {
