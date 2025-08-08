@@ -27,6 +27,8 @@ import isMobile from 'is-mobile'
 import { useConstStore } from '@/store/constStore'
 import { useFilterStringStore } from '@/store/filterStringStore'
 import NavBar from '@/components/NavBar/NavBar.vue'
+import { virtualRouteNames } from '@/route/pageReturnType'
+
 const scrollbarStore = useScrollbarStore('mainId')
 const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
 const rerenderStore = useRerenderStore('mainId')
@@ -35,13 +37,10 @@ const constStore = useConstStore()
 const route = useRoute()
 const filterStringStore = useFilterStringStore()
 
-// Define which route baseNames should show the HomePage component
-const allowedBaseNames = ['home', 'all', 'favorite', 'archived', 'trashed', 'albums', 'videos']
-
 // Check if current route should show HomePage
 const shouldShowHomePage = computed(() => {
   const baseName = route.meta.baseName
-  return typeof baseName === 'string' && allowedBaseNames.includes(baseName)
+  return typeof baseName === 'string' && (virtualRouteNames as readonly string[]).includes(baseName)
 })
 
 // The routeKey is used to ensure that the router-view reloads the Home.vue component properly.

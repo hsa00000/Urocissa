@@ -42,3 +42,15 @@ type BaseName =
   | 'trashed'
   | 'albums'
   | 'videos'
+
+export const virtualRouteNames = [
+  'home',
+  'all',
+  'favorite',
+  'archived',
+  'trashed',
+  'albums',
+  'videos'
+] as const
+
+export type VirtualRouteName = (typeof virtualRouteNames)[number]
