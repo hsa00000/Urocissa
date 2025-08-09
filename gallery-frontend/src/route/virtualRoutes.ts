@@ -2,10 +2,12 @@ import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
 import { virtualRouteNames, VirtualRouteName } from './pageReturnType'
+import HomePage from '@/components/Page/HomePage.vue'
 
 function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
   return {
     path: `/${baseName}`,
+    component: HomePage,
     name: baseName,
     meta: {
       isReadPage: false,
@@ -26,10 +28,10 @@ function createVirtualRoute(baseName: VirtualRouteName): RouteRecordRaw {
         }
       }
     },
-  // No beforeEnter needed; filter string is computed locally in App.vue based on route meta.
+    // No beforeEnter needed; filter string is computed locally in App.vue based on route meta.
     children: [
       {
-        path: '/view/:hash',
+        path: ':hash',
         component: ViewPageMain,
         name: `${baseName}ViewPage`,
         meta: {

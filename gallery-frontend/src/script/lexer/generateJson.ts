@@ -1,5 +1,7 @@
 import { MyLexer, MyParser, MyVisitor } from '@/script/lexer/lexer'
 export function generateJsonString(inputText: string): string {
+  console.log('nputText is', inputText)
+
   const lexingResult = MyLexer.tokenize(inputText)
   if (lexingResult.errors.length) {
     console.warn(lexingResult.errors)

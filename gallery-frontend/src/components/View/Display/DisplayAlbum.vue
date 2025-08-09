@@ -1,5 +1,4 @@
 <template>
-  <HomeIsolatedModal :album-id="props.album.id" />
   <v-col class="h-100 d-flex align-center justify-center">
     <v-row>
       <v-col
@@ -114,7 +113,6 @@ import { dater } from '@utils/dater'
 import { Album } from '@type/types'
 import { ref, watch } from 'vue'
 import { editTitle } from '@utils/createAlbums'
-import HomeIsolatedModal from '@/components/Home/HomeIsolatedModal.vue'
 const titleModel = ref('')
 
 const route = useRoute()

@@ -1,9 +1,11 @@
 import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
+import HomePage from '@/components/Page/HomePage.vue'
 
 const albumRoute: RouteRecordRaw = {
   path: `/album-:albumId`,
+  component: HomePage,
   name: 'album',
   meta: {
     isReadPage: false,
@@ -27,7 +29,7 @@ const albumRoute: RouteRecordRaw = {
   // No beforeEnter needed; filter string is computed locally in App.vue based on route meta.
   children: [
     {
-      path: '/view/:hash',
+      path: ':hash',
       component: ViewPageMain,
       name: 'albumViewPage',
       meta: {

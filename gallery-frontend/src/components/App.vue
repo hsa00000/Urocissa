@@ -7,9 +7,7 @@
   >
     <v-main class="h-screen">
       <DropZoneModal v-if="!isMobile()" />
-      <HomePage v-if="shouldShowHomePage" :key="routeKey" :filter-string="filterString" />
-      <HomePage v-if="shouldShowAlbumPage" :key="routeKey" :filter-string="filterString" />
-      <router-view v-else v-slot="{ Component }">
+      <router-view v-slot="{ Component }" :key="routeKey">
         <component :is="Component" :filter-string="filterString" />
       </router-view>
     </v-main>
@@ -24,10 +22,9 @@ import { useScrollbarStore } from '@/store/scrollbarStore'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { useMessageStore } from '@/store/messageStore'
 import DropZoneModal from './Modal/DropZoneModal.vue'
-import HomePage from './Page/HomePage.vue'
+
 import isMobile from 'is-mobile'
 import { useConstStore } from '@/store/constStore'
-import { virtualRouteNames } from '@/route/pageReturnType'
 
 const scrollbarStore = useScrollbarStore('mainId')
 const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
@@ -57,22 +54,12 @@ const filterString = computed(() => {
     case 'album':
     case 'share': {
       const albumIdOpt = route.params.albumId
+      console.log('route.params.albumId is', route.params.albumId)
       return typeof albumIdOpt === 'string' ? `and(not(tag:"_trashed"), album:"${albumIdOpt}")` : ''
     }
     default:
       return ''
   }
-})
-
-// Check if current route should show HomePage
-const shouldShowHomePage = computed(() => {
-  const baseName = route.meta.baseName
-  return typeof baseName === 'string' && (virtualRouteNames as readonly string[]).includes(baseName)
-})
-
-const shouldShowAlbumPage = computed(() => {
-  const baseName = route.meta.baseName
-  return typeof baseName === 'string' && baseName === 'album'
 })
 
 // The routeKey is used to ensure that the router-view reloads the Home.vue component properly.
