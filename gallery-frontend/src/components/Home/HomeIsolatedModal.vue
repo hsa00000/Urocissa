@@ -1,7 +1,7 @@
 <template>
   <OverlayModal
     v-if="album !== undefined && filterString !== null"
-    v-model="open"
+    v-model="modalStore.showHomeIsolatedModal"
     id="home-isolated"
     :close-on-back="true"
     :persistent="false"
@@ -19,15 +19,14 @@ import OverlayModal from '@/components/Modal/OverlayModal.vue'
 import { Album } from '@type/types'
 import { onBeforeMount, Ref, ref } from 'vue'
 import { useDataStore } from '@/store/dataStore'
+import { useModalStore } from '@/store/modalStore'
 
 const props = defineProps<{
   albumId: string
 }>()
 
-// Use defineModel to bind the component's v-model directly (required boolean)
-const open = defineModel<boolean>({ required: true })
-
 const dataStore = useDataStore('mainId')
+const modalStore = useModalStore('mainId')
 const album: Ref<Album | undefined> = ref(undefined)
 const filterString: Ref<string | null> = ref(null)
 

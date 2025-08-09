@@ -15,7 +15,7 @@
       backgroundColor: '#212121'
     }"
   >
-    <v-btn icon="mdi mdi-arrow-left" @click="leave(router)"></v-btn>
+    <v-btn icon="mdi mdi-arrow-left" @click="modalStore.showHomeIsolatedModal = false"></v-btn>
     <v-card elevation="0" class="w-100">
       <v-card-title>
         <v-text-field
@@ -37,7 +37,7 @@
 </template>
 <script setup lang="ts">
 import { useCollectionStore } from '@/store/collectionStore'
-import { leave } from '@/route/navigator'
+
 import EditBar from '@/components/NavBar/EditBar.vue'
 import ProgessBar from '@/components/NavBar/ProgessBar.vue'
 import HomeTemp from '@/components/Home/HomeTemp.vue'
@@ -46,13 +46,10 @@ import { Album } from '@type/types'
 import { useModalStore } from '@/store/modalStore'
 import { ref, watch } from 'vue'
 import { editTitle } from '@utils/createAlbums'
-import { useRouter } from 'vue-router'
 
 const props = defineProps<{
   album: Album
 }>()
-
-const router = useRouter()
 
 const modalStore = useModalStore('mainId')
 const collectionStore = useCollectionStore('subId')
