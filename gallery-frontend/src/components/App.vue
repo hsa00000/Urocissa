@@ -6,9 +6,9 @@
     }"
   >
     <v-main class="h-screen">
-
       <DropZoneModal v-if="!isMobile()" />
       <HomePage v-if="shouldShowHomePage" :key="routeKey" :filter-string="filterString" />
+      <HomePage v-if="shouldShowAlbumPage" :key="routeKey" :filter-string="filterString" />
       <router-view v-else v-slot="{ Component }">
         <component :is="Component" :filter-string="filterString" />
       </router-view>
@@ -54,6 +54,7 @@ const filterString = computed(() => {
       return 'and(type:"album", not(tag:"_trashed"))'
     case 'videos':
       return 'and(type:"video", not(tag:"_archived"), not(tag:"_trashed"))'
+    case 'album':
     case 'share': {
       const albumIdOpt = route.params.albumId
       return typeof albumIdOpt === 'string' ? `and(not(tag:"_trashed"), album:"${albumIdOpt}")` : ''
@@ -67,6 +68,11 @@ const filterString = computed(() => {
 const shouldShowHomePage = computed(() => {
   const baseName = route.meta.baseName
   return typeof baseName === 'string' && (virtualRouteNames as readonly string[]).includes(baseName)
+})
+
+const shouldShowAlbumPage = computed(() => {
+  const baseName = route.meta.baseName
+  return typeof baseName === 'string' && baseName === 'album'
 })
 
 // The routeKey is used to ensure that the router-view reloads the Home.vue component properly.

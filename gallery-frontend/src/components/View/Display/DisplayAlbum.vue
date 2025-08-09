@@ -91,14 +91,12 @@
               color="teal-accent-4"
               variant="flat"
               class="ma-2 button button-submit"
-              @click="
-                () => {
-                  console.log('open')
-                  modalStore.showHomeIsolatedModal = true
-                }
-              "
+              :to="`/album-${props.album.id}`"
+              target="_blank"
+              rel="noopener"
+              append-icon="mdi-open-in-new"
             >
-              Enter Album
+              Open Album
             </v-btn>
           </v-card-actions>
         </v-card>
@@ -116,12 +114,10 @@ import { dater } from '@utils/dater'
 import { Album } from '@type/types'
 import { ref, watch } from 'vue'
 import { editTitle } from '@utils/createAlbums'
-import { useModalStore } from '@/store/modalStore'
 import HomeIsolatedModal from '@/components/Home/HomeIsolatedModal.vue'
 const titleModel = ref('')
 
 const route = useRoute()
-const modalStore = useModalStore('mainId')
 const imgStore = useImgStore('mainId')
 
 const props = defineProps<{
