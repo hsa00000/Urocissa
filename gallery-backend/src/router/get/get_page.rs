@@ -38,8 +38,8 @@ pub async fn home() -> Option<NamedFile> {
         .ok()
 }
 
-#[get("/home/view/<_path..>")]
-pub async fn home_view(_path: PathBuf) -> Option<NamedFile> {
+#[get("/view/<_path..>")]
+pub async fn view(_path: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
         .await
         .ok()
@@ -52,22 +52,8 @@ pub async fn favorite() -> Option<NamedFile> {
         .ok()
 }
 
-#[get("/favorite/view/<_path..>")]
-pub async fn favorite_view(_path: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
-        .await
-        .ok()
-}
-
 #[get("/albums")]
 pub async fn albums() -> Option<NamedFile> {
-    NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
-        .await
-        .ok()
-}
-
-#[get("/albums/view/<_path..>")]
-pub async fn albums_view(_path: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
         .await
         .ok()
@@ -98,22 +84,8 @@ pub async fn archived() -> Option<NamedFile> {
         .ok()
 }
 
-#[get("/archived/view/<_path..>")]
-pub async fn archived_view(_path: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
-        .await
-        .ok()
-}
-
 #[get("/trashed")]
 pub async fn trashed() -> Option<NamedFile> {
-    NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
-        .await
-        .ok()
-}
-
-#[get("/trashed/view/<_path..>")]
-pub async fn trashed_view(_path: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
         .await
         .ok()
@@ -126,22 +98,8 @@ pub async fn all() -> Option<NamedFile> {
         .ok()
 }
 
-#[get("/all/view/<_path..>")]
-pub async fn all_view(_path: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
-        .await
-        .ok()
-}
-
 #[get("/videos")]
 pub async fn videos() -> Option<NamedFile> {
-    NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
-        .await
-        .ok()
-}
-
-#[get("/videos/view/<_path..>")]
-pub async fn videos_view(_path: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new("../gallery-frontend/dist/index.html"))
         .await
         .ok()
