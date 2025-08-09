@@ -17,24 +17,15 @@ import Home from './Home.vue'
 import ReadingBar from '@/components/NavBar/ReadingBar.vue'
 import OverlayModal from '@/components/Modal/OverlayModal.vue'
 import { Album } from '@type/types'
-import { onBeforeMount, Ref, ref, watch } from 'vue'
+import { onBeforeMount, Ref, ref } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 
 const props = defineProps<{
   albumId: string
-  modelValue: boolean
 }>()
 
-const emit = defineEmits<(e: 'update:modelValue', v: boolean) => void>()
-
-const open = ref(props.modelValue)
-watch(
-  () => props.modelValue,
-  (v) => (open.value = v)
-)
-watch(open, (v) => {
-  emit('update:modelValue', v)
-})
+// Use defineModel to bind the component's v-model directly (required boolean)
+const open = defineModel<boolean>({ required: true })
 
 const dataStore = useDataStore('mainId')
 const album: Ref<Album | undefined> = ref(undefined)
