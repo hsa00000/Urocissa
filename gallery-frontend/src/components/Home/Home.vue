@@ -1,7 +1,9 @@
 <template>
   <!-- This router-view contains the ViewPage.vue -->
   <router-view :key="albumHomeIsolatedKey"></router-view>
+  <slot name="reading-bar" />
   <ScrollBar v-if="imageContainerRef" :isolation-id="props.isolationId" />
+
   <div
     id="image-container"
     ref="imageContainerRef"

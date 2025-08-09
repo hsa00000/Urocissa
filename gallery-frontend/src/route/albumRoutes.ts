@@ -1,12 +1,13 @@
 import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
-import HomePage from '@/components/Page/HomePage.vue'
+import AlbumPage from '@/components/Page/AlbumPage.vue'
 
 const albumRoute: RouteRecordRaw = {
   path: `/album-:albumId`,
-  component: HomePage,
+  component: AlbumPage,
   name: 'album',
+  props: true,
   meta: {
     isReadPage: false,
     isViewPage: false,

@@ -1,6 +1,9 @@
 <template>
-  <NavBar />
-  <Home isolation-id="mainId" :filter-string="filterString" :search-string="searchString"> </Home>
+  <Home isolation-id="mainId" :filter-string="filterString" :search-string="searchString">
+    <template #reading-bar>
+      <NavBar />
+    </template>
+  </Home>
 </template>
 
 <script setup lang="ts">
