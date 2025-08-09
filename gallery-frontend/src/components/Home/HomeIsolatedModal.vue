@@ -1,5 +1,6 @@
 <template>
   <OverlayModal
+    v-if="album !== undefined && filterString !== null"
     v-model="open"
     id="home-isolated"
     :close-on-back="true"
@@ -7,18 +8,9 @@
     :transition="false"
     overlay-class="d-flex"
   >
-    <Home
-      v-if="album !== undefined && filterString !== null"
-      isolation-id="subId"
-      :filter-string="filterString"
-      :search-string="null"
-    >
-      <template #reading-bar>
-        <ReadingBar :album="album" />
-      </template>
-    </Home>
+    <ReadingBar :album="album" />
+    <Home isolation-id="subId" :filter-string="filterString" :search-string="null"> </Home>
   </OverlayModal>
-  
 </template>
 <script setup lang="ts">
 import Home from './Home.vue'
@@ -38,9 +30,9 @@ const emit = defineEmits<(e: 'update:modelValue', v: boolean) => void>()
 const open = ref(props.modelValue)
 watch(
   () => props.modelValue,
-  v => (open.value = v)
+  (v) => (open.value = v)
 )
-watch(open, v => {
+watch(open, (v) => {
   emit('update:modelValue', v)
 })
 

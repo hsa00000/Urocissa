@@ -1,16 +1,13 @@
 <template>
-  <Home
-    isolation-id="mainId"
-  :filter-string="filterString"
-    :search-string="searchString"
-  >
-  </Home>
+  <NavBar />
+  <Home isolation-id="mainId" :filter-string="filterString" :search-string="searchString"> </Home>
 </template>
 
 <script setup lang="ts">
 import { onBeforeMount, ref } from 'vue'
 import { LocationQueryValue, useRoute } from 'vue-router'
-import Home from '../Home/Home.vue'
+import Home from '@/components/Home/Home.vue'
+import NavBar from '@/components/NavBar/NavBar.vue'
 defineProps<{ filterString: string }>()
 const route = useRoute()
 const searchString = ref<LocationQueryValue | LocationQueryValue[] | undefined>(null)

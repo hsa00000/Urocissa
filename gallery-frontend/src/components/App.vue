@@ -6,7 +6,7 @@
     }"
   >
     <v-main class="h-screen">
-      <NavBar />
+
       <DropZoneModal v-if="!isMobile()" />
       <HomePage v-if="shouldShowHomePage" :key="routeKey" :filter-string="filterString" />
       <router-view v-else v-slot="{ Component }">
@@ -27,7 +27,6 @@ import DropZoneModal from './Modal/DropZoneModal.vue'
 import HomePage from './Page/HomePage.vue'
 import isMobile from 'is-mobile'
 import { useConstStore } from '@/store/constStore'
-import NavBar from '@/components/NavBar/NavBar.vue'
 import { virtualRouteNames } from '@/route/pageReturnType'
 
 const scrollbarStore = useScrollbarStore('mainId')

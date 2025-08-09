@@ -97,7 +97,6 @@
               @click="
                 () => {
                   console.log('open')
-
                   modalStore.showHomeIsolatedModal = true
                 }
               "
