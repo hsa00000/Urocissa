@@ -1,13 +1,9 @@
 <template>
   <v-app
+    :class="{ 'no-select': scrollbarStore.isDragging || scrollbarStoreInsideAlbum.isDragging }"
     @dragstart.prevent
     @dragover.prevent
     @drop.prevent
-    @selectstart.prevent
-    :style="{
-      userSelect:
-        scrollbarStore.isDragging || scrollbarStoreInsideAlbum.isDragging ? 'none' : 'auto' // Prevent accidental selection while scrolling.
-    }"
   >
     <v-main class="h-screen">
       <DropZoneModal v-if="!configStore.isMobile" />
@@ -65,10 +61,9 @@ const routeKey = computed(() => {
 })
 
 onBeforeMount(async () => {
-  // Load the subRowHeightScale / showInfo / concurrencyNumber from constStore when the app is mounted.
   await constStore.loadSubRowHeightScale()
   await constStore.loadShowInfo()
-  await constStore.loadConcurrencyNumber() // ← 新增
+  await constStore.loadConcurrencyNumber()
   configStore.isMobile = isMobile()
 })
 </script>
@@ -83,28 +78,33 @@ canvas {
   -webkit-user-drag: none;
 }
 
-/* Disable text selection across the app */
-.v-application,
-.v-application * {
-  user-select: none;
-  -webkit-user-select: none; /* Safari */
-  -moz-user-select: none; /* Firefox */
+/* Disable text selection only while dragging: applied to the root node with .no-select */
+.no-select,
+.no-select * {
+  user-select: none !important;
+  -webkit-user-select: none !important; /* Safari */
+  -moz-user-select: none !important; /* Firefox */
   -webkit-touch-callout: none; /* iOS long-press menu */
 }
 
-/* Explicitly ensure images and common wrappers are not selectable */
+/* Always allow selection for input elements (including Vuetify structures) */
+input,
+textarea,
+[contenteditable='true'],
+.v-field__input,
+.v-field__input input,
+.v-input input,
+.v-text-field input {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+}
+
+/* Explicitly prevent images and videos from being selectable */
 img,
 video {
   user-select: none !important;
   -webkit-user-select: none !important;
   -moz-user-select: none !important;
-}
-
-/* Allow selection where it makes sense */
-input,
-textarea,
-[contenteditable='true'] {
-  user-select: text;
-  -webkit-user-select: text;
 }
 </style>
