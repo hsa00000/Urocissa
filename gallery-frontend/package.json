@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "npm ci && vue-tsc --noEmit && vite build",
     "build:only": "vue-tsc --noEmit && vite build",
-    "lint": "eslint .",
+  "lint": "eslint \"src/**/*.{js,ts,vue}\"",
     "generateLexer": "ts-node-esm ./src/script/lexer/generateCstDts.ts"
   },
   "dependencies": {

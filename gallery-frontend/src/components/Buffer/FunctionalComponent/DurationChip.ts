@@ -1,4 +1,5 @@
 import { FunctionalComponent, h } from 'vue'
+import { ZIndex } from '@/constants/zIndex'
 import { VChip } from 'vuetify/components'
 
 interface DurationChipProps {
@@ -19,7 +20,7 @@ const DurationChip: FunctionalComponent<DurationChipProps> = (props) => {
       style: {
         bottom: '0px',
         right: '0px',
-        zIndex: 4
+        zIndex: ZIndex.componentOverlay
       }
     },
     () => props.label

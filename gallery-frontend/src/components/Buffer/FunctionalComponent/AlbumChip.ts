@@ -1,4 +1,5 @@
 import { FunctionalComponent, h } from 'vue'
+import { ZIndex } from '@/constants/zIndex'
 import { VChip } from 'vuetify/components'
 
 // Define the props interface for AlbumChip
@@ -21,7 +22,7 @@ const AlbumChip: FunctionalComponent<AlbumChipProps> = (props) => {
       style: {
         bottom: '0px',
         right: '0px',
-        zIndex: 4
+        zIndex: ZIndex.componentOverlay
       }
     },
     () => [

@@ -12,6 +12,8 @@ import { createPinia } from 'pinia'
 // Importing global styles and icons
 import '@/style/common.scss'
 import '@mdi/font/css/materialdesignicons.css'
+// z-index design tokens
+import '@/styles/z-index.css'
 
 // Importing Vuetify UI framework and configuration
 import { createVuetify } from 'vuetify'

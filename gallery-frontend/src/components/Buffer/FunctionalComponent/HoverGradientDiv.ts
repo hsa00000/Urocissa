@@ -1,4 +1,5 @@
 import { FunctionalComponent, h } from 'vue'
+import { ZIndex } from '@/constants/zIndex'
 
 interface HoverGradientDivProps {
   mobile: boolean
@@ -13,7 +14,7 @@ const HoverGradientDiv: FunctionalComponent<HoverGradientDivProps> = (props) => 
     id: 'hover-gradient-div',
     class: 'position-absolute w-100 child',
     style: {
-      zIndex: 3,
+      zIndex: ZIndex.componentOverlay,
       height: '40px',
       background: 'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(255,255,255,0) 100%)',
       pointerEvents: 'none'

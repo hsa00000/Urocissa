@@ -14,7 +14,7 @@
           :style="{
             pointerEvents: 'none',
             position: 'absolute',
-            zIndex: 100,
+            zIndex: 'var(--z-navbar)',
             border:
               collectionStore.editModeOn &&
               collectionStore.editModeCollection.has(row.start + subIndex)
@@ -45,7 +45,7 @@
           id="grey-background-placeholder"
           :style="{
             position: 'absolute',
-            zIndex: 0
+            zIndex: 'var(--z-base)'
           }"
           @click="(event: MouseEvent) => handleClick(event, row.start + subIndex)"
           class="w-100 h-100 bg-grey-darken-2"
