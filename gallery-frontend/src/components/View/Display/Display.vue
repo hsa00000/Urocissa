@@ -20,7 +20,13 @@
       v-if="!configStore.isMobile && previousHash !== undefined"
       color="transparent"
       class="navigate-left d-flex align-center justify-center h-50"
-      style="position: absolute; left: 0; top: 50%; transform: translateY(-50%); z-index: 1"
+      style="
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: var(--z-content);
+      "
       :to="previousPage"
       replace
     >
@@ -31,7 +37,13 @@
       v-if="!configStore.isMobile && nextHash !== undefined"
       color="transparent"
       class="navigate-right d-flex align-center justify-center h-50"
-      style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 1"
+      style="
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: var(--z-content);
+      "
       :to="nextPage"
       replace
     >

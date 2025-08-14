@@ -1,4 +1,5 @@
 import { FunctionalComponent, h } from 'vue'
+import { ZIndex } from '@/constants/zIndex'
 import { VChip } from 'vuetify/components'
 
 const ProcessingChip: FunctionalComponent = () => {
@@ -15,7 +16,7 @@ const ProcessingChip: FunctionalComponent = () => {
       style: {
         top: '0px',
         right: '0px',
-        zIndex: 4
+        zIndex: ZIndex.componentOverlay
       }
     },
     'Processing'

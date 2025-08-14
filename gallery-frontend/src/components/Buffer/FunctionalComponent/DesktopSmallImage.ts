@@ -1,4 +1,5 @@
 import { FunctionalComponent, h, PropType } from 'vue'
+import { ZIndex } from '@/constants/zIndex'
 
 interface DesktopSmallImageProps {
   hasBorder: boolean
@@ -10,7 +11,7 @@ const DesktopSmallImage: FunctionalComponent<DesktopSmallImageProps> = (props) =
   return h('img', {
     onClick: props.onClick,
     style: {
-      zIndex: 2,
+      zIndex: ZIndex.content,
       position: 'absolute',
       objectFit: 'cover',
       border: props.hasBorder ? '8px solid white' : undefined

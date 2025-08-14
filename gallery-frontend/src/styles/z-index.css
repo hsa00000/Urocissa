@@ -1,0 +1,15 @@
+:root {
+  /* z-index design tokens (semantic) */
+  --z-base: 0;
+  --z-content: 1;
+  --z-navbar: 100;
+  --z-scrollbar: 200;
+  --z-component-overlay: 500;
+  --z-dropdown: 800;
+  /* Align modal with Vuetify overlay/dialog range */
+  --z-modal: 2400;
+  --z-top: 3000;
+  --z-fullscreen: 10000;
+  /* highest z-index token for upload modal (keep as the topmost stacking value) */
+  --z-upload-modal-max: 20000;
+}

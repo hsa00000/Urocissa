@@ -1,0 +1,2 @@
+# Ignore generated dev distribution files that break eslint/ts parsing
+dev-dist

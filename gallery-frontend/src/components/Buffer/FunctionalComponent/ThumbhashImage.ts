@@ -1,4 +1,5 @@
 import { FunctionalComponent, h, Transition } from 'vue'
+import { ZIndex } from '@/constants/zIndex'
 
 interface ThumbhashImageProps {
   src: string | undefined
@@ -9,7 +10,7 @@ const ThumbhashImage: FunctionalComponent<ThumbhashImageProps> = (props) => {
     h('img', {
       style: {
         position: 'absolute',
-        zIndex: 1
+        zIndex: ZIndex.content
       },
       class: 'thumbhash-image w-100 h-100 bg-grey-darken-2',
       src: props.src

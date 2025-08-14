@@ -9,7 +9,7 @@
         width: `${scrollBarWidth}px`,
         height: `calc(100% - 100px)`,
         right: `${0}`,
-        zIndex: `3`,
+        zIndex: 'var(--z-component-overlay)',
         cursor: `vertical-text`,
         backgroundColor: `#424242`,
         marginTop: '8px'
@@ -71,7 +71,7 @@
               backgroundColor: '#3a3a3a',
               borderTop: '1px solid deepskyblue',
               height: `25px`,
-              zIndex: 2,
+              zIndex: 'var(--z-content)',
               userSelect: 'none'
             }"
           >

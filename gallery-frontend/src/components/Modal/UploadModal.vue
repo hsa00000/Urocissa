@@ -14,7 +14,7 @@
     :style="{
       bottom: '50px',
       left: '50px',
-      zIndex: 50000
+      zIndex: ZIndex.uploadModalMax
     }"
   >
     <template #prepend>
@@ -65,6 +65,7 @@ import { useModalStore } from '@/store/modalStore'
 import { useUploadStore } from '@/store/uploadStore'
 import humanizeDuration from 'humanize-duration'
 import { computed } from 'vue'
+import { ZIndex } from '@/constants/zIndex'
 const uploadStore = useUploadStore('mainId')
 const modalStore = useModalStore('mainId')
 

@@ -1,4 +1,5 @@
 import { FunctionalComponent, h, PropType } from 'vue'
+import { ZIndex } from '@/constants/zIndex'
 import { VIcon } from 'vuetify/components'
 
 interface DesktopIconWrapperProps {
@@ -21,7 +22,7 @@ const DesktopHoverIcon: FunctionalComponent<DesktopIconWrapperProps> = (props) =
         style: {
           position: 'absolute',
           margin: '8px',
-          zIndex: 4
+          zIndex: ZIndex.componentOverlay
         }
       })
     ]

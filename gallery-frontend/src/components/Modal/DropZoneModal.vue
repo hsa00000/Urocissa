@@ -143,7 +143,7 @@ onUnmounted(() => {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 10000;
+  z-index: var(--z-fullscreen);
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.4);
