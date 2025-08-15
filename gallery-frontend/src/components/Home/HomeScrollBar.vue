@@ -1,5 +1,12 @@
 <template>
-  <v-sheet class="position-fixed w-100 h-100" :style="{ backgroundColor: `#424242` }">
+  <!-- 用「背景色 + 對應前景色」當全頁底色 -->
+  <v-sheet
+    class="position-fixed w-100 h-100"
+    :style="{
+      backgroundColor: 'rgb(var(--v-theme-background))',
+      color: 'rgb(var(--v-theme-on-background))'
+    }"
+  >
     <v-sheet
       v-if="imageContainerRef"
       ref="scrollbarRef"
@@ -8,10 +15,13 @@
       :style="{
         width: `${scrollBarWidth}px`,
         height: `calc(100% - 100px)`,
-        right: `${0}`,
+        right: '0px',
         zIndex: 'var(--z-component-overlay)',
-        cursor: `vertical-text`,
-        backgroundColor: `#424242`,
+        cursor: 'vertical-text',
+        /* 用 surface 作為側邊卷軸容器背景 */
+        backgroundColor: 'rgb(var(--v-theme-background))',
+        /* 對應的前景色（文字/圖示）*/
+        color: 'rgb(var(--v-theme-on-surface))',
         marginTop: '8px'
       }"
       @click="handleClick"
@@ -23,60 +33,60 @@
       @touchend="handleTouchEnd"
       @touchmove="handleMove"
     >
-      <v-sheet
-        class="position-relative w-100 h-100"
-        :style="{
-          pointerEvents: 'none'
-        }"
-      >
-        <!-- Sheet to used as a visual indicator (a dash line) representing the timestamp of the currentscroll position within the view. -->
+      <v-sheet class="position-relative w-100 h-100" :style="{ pointerEvents: 'none' }">
+        <!-- 以 info 色當時間線指示線 -->
         <v-sheet
           v-if="scrollbarStore.initialized"
           id="current-date-chip"
           class="w-100 position-absolute"
           :style="{
             height: `calc(${(currentDateChipIndex / rowLength) * 100}% + 1px)`,
-            borderBottom: '1px solid deepskyblue'
+            borderBottom: '1px solid rgb(var(--v-theme-primary))'
           }"
         ></v-sheet>
-        <!-- Chips to show the all year labels. -->
+
+        <!-- 年份標籤：用 on-surface -->
         <v-chip
           v-for="scrollbarData in displayScrollbarDataArrayYear"
           :key="scrollbarData.index"
           size="x-small"
           variant="text"
-          class="w-100 position-absolute text-grey-lighten-2 pa-0 ma-0 d-flex align-center justify-center"
+          class="w-100 position-absolute pa-0 ma-0 d-flex align-center justify-center"
           :style="{
             top: `${(Math.floor(scrollbarData.index / layoutBatchNumber) / rowLength) * 100}%`,
-            userSelect: 'none'
+            userSelect: 'none',
+            color: 'var(--v-theme-on-surface)'
           }"
         >
           {{ scrollbarData.year }}
         </v-chip>
-        <!-- This sheet's height is adjusted to visually indicate the size of the current row block. -->
+
+        <!-- 目前區塊高亮：用 on-surface-light 做低不透明度的蓋板 -->
         <v-sheet
           v-if="scrollbarRef"
           id="block-chip"
-          class="w-100 position-absolute bg-grey-darken-2"
+          class="w-100 position-absolute"
           :style="{
             height: `${scrollbarHeight / rowLength}px`,
-            top: `${(hoverLabelRowIndex / rowLength) * 100}%`
+            top: `${(hoverLabelRowIndex / rowLength) * 100}%`,
+            backgroundColor: 'rgb(var(--v-theme-surface-light))'
           }"
         >
-          <!-- Chip to show the current view year and month label. -->
+          <!-- 目前視窗年月標籤：用 surface 當底、info 當上邊框 -->
           <v-sheet
             id="day-chip"
             class="position-absolte w-100 d-flex align-center justify-center text-caption"
             :style="{
-              backgroundColor: '#3a3a3a',
-              borderTop: '1px solid deepskyblue',
-              height: `25px`,
+              backgroundColor: 'rgb(var(--v-theme-surface))',
+              borderTop: '1px solid rgb(var(--v-theme-primary))',
+              color: 'rgb(var(--v-theme-on-surface))',
+              height: '25px',
               zIndex: 'var(--z-content)',
               userSelect: 'none'
             }"
           >
-            {{ hoverLabelDate }}</v-sheet
-          >
+            {{ hoverLabelDate }}
+          </v-sheet>
         </v-sheet>
       </v-sheet>
     </v-sheet>
