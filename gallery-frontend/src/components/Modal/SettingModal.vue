@@ -10,7 +10,8 @@
           <v-col>
             <v-slider
               show-ticks="always"
-              v-model="subRowHeightScale"
+              :model-value="subRowHeightScaleValue"
+              @update:model-value="onSubRowHeightScaleUpdate"
               :min="250"
               :max="450"
               :step="10"
@@ -31,7 +32,8 @@
           </v-col>
           <v-col>
             <v-switch
-              v-model="limitRatio"
+              :model-value="limitRatioValue"
+              @update:model-value="onLimitRatioUpdate"
               :disabled="!initializedStore.initialized"
               hide-details
             ></v-switch>
@@ -47,8 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { watchDebounced } from '@vueuse/core'
+import { computed } from 'vue'
 import { useModalStore } from '@/store/modalStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useConstStore } from '@/store/constStore'
@@ -57,51 +58,38 @@ const modalStore = useModalStore('mainId')
 const initializedStore = useInitializedStore('mainId')
 const constStore = useConstStore('mainId')
 
-// Local ref for immediate UI updates
-const subRowHeightScale = ref(constStore.subRowHeightScale)
-// Local ref for limitRatio toggle
-const limitRatio = ref(constStore.limitRatio)
+// Read-only computed for subRowHeightScale (source of truth is constStore)
+const subRowHeightScaleValue = computed(() => constStore.subRowHeightScale)
+// Read-only computed for limitRatio (source of truth is constStore)
+const limitRatioValue = computed(() => constStore.limitRatio)
 
-// Watch store changes to sync local ref
-watch(
-  () => constStore.subRowHeightScale,
-  (newValue) => {
-    subRowHeightScale.value = newValue
-  }
-)
+// Handler invoked when the slider updates its model value
+const onSubRowHeightScaleUpdate = (newValue: number | null) => {
+  const value = Number(newValue ?? constStore.subRowHeightScale)
+  const clamped = Math.max(250, Math.min(450, value))
+  constStore.updateSubRowHeightScale(clamped).catch((error: unknown) => {
+    console.error('Failed to update subRowHeightScale:', error)
+  })
+}
 
-watchDebounced(
-  subRowHeightScale,
-  (newValue: number) => {
-    constStore.updateSubRowHeightScale(newValue).catch((error: unknown) => {
-      console.error('Failed to update subRowHeightScale:', error)
-    })
-  },
-  { debounce: 50 }
-)
-
-// Watch and persist limitRatio immediately
-watch(
-  () => constStore.limitRatio,
-  (newValue) => {
-    limitRatio.value = newValue
-  }
-)
-
-watch(limitRatio, (newValue: boolean) => {
-  constStore.updateLimitRation(newValue).catch((error: unknown) => {
+// Handler invoked when the switch updates its model value
+const onLimitRatioUpdate = (newValue: boolean | null) => {
+  const value = !!newValue
+  constStore.updateLimitRation(value).catch((error: unknown) => {
     console.error('Failed to update limitRatio:', error)
   })
-})
+}
 
 // Function to adjust thumbnail size with icons
 const adjustThumbnailSize = (delta: number) => {
-  const currentValue = subRowHeightScale.value
+  const currentValue = constStore.subRowHeightScale
   const newValue = Math.max(250, Math.min(450, currentValue + delta))
 
   // Only update if the value would actually change
   if (newValue !== currentValue) {
-    subRowHeightScale.value = newValue
+    constStore.updateSubRowHeightScale(newValue).catch((error: unknown) => {
+      console.error('Failed to update subRowHeightScale via adjustThumbnailSize:', error)
+    })
   }
 }
 </script>
