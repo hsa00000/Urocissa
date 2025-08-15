@@ -12,7 +12,7 @@
         <v-toolbar
           color="white"
           :style="{
-            backgroundColor: '#212121'
+            backgroundColor: 'rgb(var(--v-theme-surface))'
           }"
         >
           <!-- Icon button with increased size -->

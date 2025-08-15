@@ -4,14 +4,14 @@
     height="2"
     class="no-select"
     :style="{
-      backgroundColor: '#212121'
+      backgroundColor: 'rgb(var(--v-theme-surface))'
     }"
   />
   <v-toolbar
     v-if="!collectionStore.editModeOn"
     class="position-relative"
     :style="{
-      backgroundColor: '#212121'
+      backgroundColor: 'rgb(var(--v-theme-surface))'
     }"
   >
     <LeaveView />
