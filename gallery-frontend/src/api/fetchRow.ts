@@ -66,7 +66,8 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
       windowWidth: prefetchStore.windowWidth,
       isLastRow: index === prefetchStore.rowLength - 1,
       timestampToken,
-      subRowHeightScale: constStore.subRowHeightScale
+      subRowHeightScale: constStore.subRowHeightScale,
+      limitRatio: constStore.limitRatio
     })
   }
 }

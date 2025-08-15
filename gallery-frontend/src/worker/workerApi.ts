@@ -16,6 +16,7 @@ export interface ProcessSmallImagePayload {
   shareId: null | string
   timestampToken: string
   hashToken: string
+  limitRatio: boolean
 }
 
 export interface ProcessImagePayload {
@@ -73,6 +74,7 @@ export interface FetchRowPayload {
   isLastRow: boolean
   timestampToken: string
   subRowHeightScale: number
+  limitRatio: boolean
 }
 
 // === From DataWorker Payloads ===
