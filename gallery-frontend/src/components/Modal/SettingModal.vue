@@ -28,7 +28,7 @@
         </v-row>
         <v-row align="center" no-gutters class="mt-4">
           <v-col cols="auto">
-            <v-chip variant="text"> Limit Ration </v-chip>
+            <v-chip variant="text"> Limit Ratio </v-chip>
           </v-col>
           <v-col>
             <v-switch
