@@ -199,9 +199,10 @@ async function fetchRow(
   subRowHeightScale: number,
   limitRatio: boolean
 ): Promise<RowWithOffset> {
-  let row = fetchedRowData.get(index)
+  // Retrieve the cached row (if any) but always operate on a clone
+  let cachedRow = fetchedRowData.get(index)
 
-  if (row === undefined) {
+  if (cachedRow === undefined) {
     const response = await workerAxios.get<Row>(
       `/get/get-rows?index=${index}&timestamp=${timestamp}&window_width=${Math.round(windowWidth)}`,
       {
@@ -210,9 +211,13 @@ async function fetchRow(
         }
       }
     )
-    row = rowSchema.parse(response.data)
-    fetchedRowData.set(row.rowIndex, structuredClone(row))
+    cachedRow = rowSchema.parse(response.data)
+    // store a clone so the stored value remains immutable for future reuse
+    fetchedRowData.set(cachedRow.rowIndex, structuredClone(cachedRow))
   }
+
+  // Work on a fresh clone to avoid mutating the cached reference
+  const row = structuredClone(cachedRow)
 
   if (limitRatio) {
     for (const displayElement of row.displayElements) {
