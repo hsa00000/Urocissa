@@ -150,7 +150,8 @@ async function checkAndFetch(
       albumId: shareStore.albumId,
       shareId: shareStore.shareId,
       timestampToken,
-      hashToken
+      hashToken,
+      limitRatio: constStore.limitRatio
     })
   } else if (abstractData.album?.cover != null) {
     const hash = abstractData.album.cover
@@ -170,7 +171,8 @@ async function checkAndFetch(
       albumId: shareStore.albumId,
       shareId: shareStore.shareId,
       timestampToken,
-      hashToken
+      hashToken,
+      limitRatio: constStore.limitRatio
     })
   }
 }

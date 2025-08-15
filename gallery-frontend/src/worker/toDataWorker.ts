@@ -64,8 +64,15 @@ self.addEventListener('message', (e) => {
       }
     },
     fetchRow: async (payload) => {
-      const { index, timestamp, windowWidth, isLastRow, timestampToken, subRowHeightScale } =
-        payload
+      const {
+        index,
+        timestamp,
+        windowWidth,
+        isLastRow,
+        timestampToken,
+        subRowHeightScale,
+        limitRatio
+      } = payload
 
       const rowWithOffset = await fetchRow(
         index,
@@ -73,7 +80,8 @@ self.addEventListener('message', (e) => {
         windowWidth,
         isLastRow,
         timestampToken,
-        subRowHeightScale
+        subRowHeightScale,
+        limitRatio
       )
 
       postToMainData.fetchRowReturn({
@@ -188,7 +196,8 @@ async function fetchRow(
   windowWidth: number,
   isLastRow: boolean,
   timestampToken: string,
-  subRowHeightScale: number
+  subRowHeightScale: number,
+  limitRatio: boolean
 ): Promise<RowWithOffset> {
   let row = fetchedRowData.get(index)
 
@@ -203,6 +212,16 @@ async function fetchRow(
     )
     row = rowSchema.parse(response.data)
     fetchedRowData.set(row.rowIndex, structuredClone(row))
+  }
+
+  if (limitRatio) {
+    for (const displayElement of row.displayElements) {
+      if (displayElement.displayWidth > displayElement.displayHeight * 2) {
+        displayElement.displayWidth = displayElement.displayHeight * 2
+      } else if (displayElement.displayHeight > displayElement.displayWidth * 2) {
+        displayElement.displayHeight = displayElement.displayWidth * 2
+      }
+    }
   }
 
   // Setting row.topPixelAccumulated
