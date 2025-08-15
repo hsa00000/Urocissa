@@ -1,7 +1,7 @@
 <template>
   <v-toolbar
     :style="{
-      backgroundColor: '#212121'
+      backgroundColor: 'rgb(var(--v-theme-surface))'
     }"
   >
     <LeaveEdit />

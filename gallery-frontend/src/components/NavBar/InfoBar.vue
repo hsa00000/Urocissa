@@ -1,7 +1,7 @@
 <template>
   <v-toolbar
     :style="{
-      backgroundColor: '#212121'
+      backgroundColor: 'rgb(var(--v-theme-surface))'
     }"
   >
     <v-btn v-if="route.meta.level === 1" @click="showDrawer = !showDrawer" icon="mdi-menu"> </v-btn>

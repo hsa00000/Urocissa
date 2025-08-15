@@ -4,14 +4,14 @@
     height="2"
     class="no-select"
     :style="{
-      backgroundColor: '#212121'
+      backgroundColor: 'rgb(var(--v-theme-surface))'
     }"
   >
   </v-toolbar>
   <v-toolbar
     class="position-relative"
     :style="{
-      backgroundColor: '#212121'
+      backgroundColor: 'rgb(var(--v-theme-surface))'
     }"
   >
     <v-card elevation="0" class="w-50">

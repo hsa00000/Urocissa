@@ -4,7 +4,7 @@
     height="2"
     class="no-select"
     :style="{
-      backgroundColor: '#212121'
+      backgroundColor: 'rgb(var(--v-theme-surface))'
     }"
   >
     <v-progress-linear
@@ -14,7 +14,7 @@
       height="2"
       :style="{
         border: 0,
-        backgroundColor: '#212121'
+        backgroundColor: 'rgb(var(--v-theme-surface))'
       }"
     >
     </v-progress-linear>

@@ -1,7 +1,7 @@
 <template>
   <v-toolbar
     :style="{
-      backgroundColor: '#212121'
+      backgroundColor: 'rgb(var(--v-theme-surface))'
     }"
     ><v-btn icon="mdi-close" @click="modalStore.showHomeTempModal = false"></v-btn>
     <v-card
