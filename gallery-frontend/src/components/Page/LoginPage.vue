@@ -1,21 +1,50 @@
 <template>
-  <div class="login-container">
-    <div class="login">
-      <div class="header">Welcome Back!</div>
-      <form @submit.prevent="handleLogin" class="login-form">
-        <div class="input-group">
-          <input
-            id="password-holder"
-            type="password"
-            v-model="password"
-            placeholder="Password"
-            required
-          />
-        </div>
-        <button type="submit" class="login-button">Login</button>
-      </form>
-    </div>
-  </div>
+  <v-app>
+    <v-main>
+      <v-container class="fill-height" fluid>
+        <v-row align="center" justify="center">
+          <v-col cols="12" sm="8" md="5" lg="4">
+            <v-card class="pa-6" elevation="10">
+              <v-row class="mb-4" align="center" justify="center">
+                <v-avatar size="56" class="mb-2" color="primary">
+                  <v-icon size="32">mdi-lock-outline</v-icon>
+                </v-avatar>
+              </v-row>
+
+              <v-card-title class="justify-center">Welcome back</v-card-title>
+
+              <v-card-text>
+                <v-form ref="formRef" @submit.prevent="handleLogin">
+                  <v-text-field
+                    v-model="password"
+                    :type="showPassword ? 'text' : 'password'"
+                    label="Password"
+                    required
+                    prepend-inner-icon="mdi-key-variant"
+                    :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
+                    @click:append-inner="toggleShowPassword"
+                    autocomplete="current-password"
+                  />
+
+                  <v-row class="mt-4" justify="center">
+                    <v-col cols="12">
+                      <v-btn type="submit" color="primary" class="ma-0" block>
+                        Sign in
+                      </v-btn>
+                    </v-col>
+                  </v-row>
+                </v-form>
+              </v-card-text>
+
+              <v-card-actions class="justify-center">
+                <small class="text--secondary">Powered by Urocissa</small>
+              </v-card-actions>
+            </v-card>
+          </v-col>
+        </v-row>
+      </v-container>
+    </v-main>
+  </v-app>
 </template>
 
 <script setup lang="ts">
@@ -26,26 +55,35 @@ import { useRouter } from 'vue-router'
 import { z } from 'zod'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
+
 const password = ref('')
+const showPassword = ref(false)
+const formRef = ref()
 const router = useRouter()
 const redirectionStore = useRedirectionStore('mainId')
+
+function toggleShowPassword() {
+  showPassword.value = !showPassword.value
+}
+
 const handleLogin = async () => {
   await tryWithMessageStore('mainId', async () => {
+    // Simple form guard
+    if (!password.value || password.value.trim() === '') return
+
     const response = await axios.post('/post/authenticate', JSON.stringify(password.value), {
       headers: {
         'Content-Type': 'application/json'
       }
     })
 
-    // Validate response.data using Zod
-    const tokenValue = z.string().parse(response.data) // Ensures response.data is a string
+    const tokenValue = z.string().parse(response.data)
 
-    // Store the JWT in a cookie with security attributes
     Cookies.set('jwt', tokenValue, {
-      httpOnly: false, // Set to true for better security (cannot access via JavaScript)
-      secure: true, // Ensure it's only sent over HTTPS
-      sameSite: 'Strict', // Prevent CSRF attacks
-      expires: 14 // Optional: Expires in 1 day
+      httpOnly: false,
+      secure: true,
+      sameSite: 'Strict',
+      expires: 14
     })
 
     const redirection = redirectionStore.redirection
@@ -59,67 +97,12 @@ const handleLogin = async () => {
 </script>
 
 <style scoped>
-.login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  background-color: #3d3d3d;
+/* Minimal local tweaks; Vuetify handles the bulk of styling */
+.v-application {
+  background: linear-gradient(180deg, #1e1e1e 0%, #2b2b2b 100%);
 }
 
-.login {
-  max-width: 400px;
-  width: 100%;
-  padding: 40px;
-  background-color: #3d3d3d;
-  border: 1px solid gainsboro;
-  border-radius: 10px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-}
-
-.header {
-  font-size: 24px;
-  margin-bottom: 20px;
-  color: gainsboro;
-  text-align: center;
-}
-
-.login-form {
-  display: flex;
-  flex-direction: column;
-}
-
-.input-group {
-  margin-bottom: 20px;
-}
-
-input {
-  box-sizing: border-box;
-  font-size: 18px;
-  border-radius: 5px;
-  border: 1px solid #ccc;
-  color: gainsboro;
-  background-color: #2c2c2c;
-  width: 100%;
-  padding: 10px;
-}
-
-input::placeholder {
-  color: #aaa;
-}
-
-.login-button {
-  padding: 10px;
-  font-size: 18px;
-  background-color: #28a745;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
-
-.login-button:hover {
-  background-color: #218838;
+.v-card {
+  border-radius: 12px;
 }
 </style>
