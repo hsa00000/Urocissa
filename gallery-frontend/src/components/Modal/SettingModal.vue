@@ -25,6 +25,18 @@
             ></v-slider>
           </v-col>
         </v-row>
+        <v-row align="center" no-gutters class="mt-4">
+          <v-col cols="auto">
+            <v-chip variant="text"> Limit Ration </v-chip>
+          </v-col>
+          <v-col>
+            <v-switch
+              v-model="limitRatio"
+              :disabled="!initializedStore.initialized"
+              hide-details
+            ></v-switch>
+          </v-col>
+        </v-row>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
@@ -47,6 +59,8 @@ const constStore = useConstStore('mainId')
 
 // Local ref for immediate UI updates
 const subRowHeightScale = ref(constStore.subRowHeightScale)
+// Local ref for limitRatio toggle
+const limitRatio = ref(constStore.limitRatio)
 
 // Watch store changes to sync local ref
 watch(
@@ -65,6 +79,20 @@ watchDebounced(
   },
   { debounce: 50 }
 )
+
+// Watch and persist limitRatio immediately
+watch(
+  () => constStore.limitRatio,
+  (newValue) => {
+    limitRatio.value = newValue
+  }
+)
+
+watch(limitRatio, (newValue: boolean) => {
+  constStore.updateLimitRation(newValue).catch((error: unknown) => {
+    console.error('Failed to update limitRatio:', error)
+  })
+})
 
 // Function to adjust thumbnail size with icons
 const adjustThumbnailSize = (delta: number) => {

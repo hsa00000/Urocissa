@@ -117,7 +117,7 @@ const throttledHandleScroll = handleScroll(
   props.isolationId
 )
 
-watch([windowWidth, () => constStore.subRowHeightScale], async () => {
+watch([windowWidth, () => constStore.subRowHeightScale, () => constStore.limitRatio], async () => {
   // Handles browser resizing.
 
   locationStore.triggerForResize()
