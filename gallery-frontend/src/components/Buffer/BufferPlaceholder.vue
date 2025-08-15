@@ -9,13 +9,14 @@
     <div class="d-flex flex-wrap" v-for="index in placeholderRowNumScaled" :key="`extra-${index}`">
       <div
         v-for="subindex in placeholderColNum"
-        class="bg-grey-darken-2 ma-1"
+        class="ma-1"
         ref="placeholderRowRef"
         :key="`extra-${subindex}`"
         :style="{
           flexGrow: '1',
           position: 'relative',
-          width: `${placeholderWidth}px`
+          width: `${placeholderWidth}px`,
+          backgroundColor: 'rgb(var(--v-theme-surface-light))'
         }"
       >
         <i
