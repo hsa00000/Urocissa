@@ -7,9 +7,10 @@
   <div
     id="image-container"
     ref="imageContainerRef"
-    class="d-flex flex-wrap position-relative pa-1 pb-2 h-100 bg-grey-darken-3"
+    class="d-flex flex-wrap position-relative pa-1 pb-2 h-100"
     :style="{
-      width: `calc(100% - ${scrollBarWidth}px)`
+      width: `calc(100% - ${scrollBarWidth}px)`,
+      backgroundColor: `rgb(var(--v-theme-surface-light))`
     }"
     :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
     @scroll="

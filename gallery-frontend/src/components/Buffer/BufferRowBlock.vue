@@ -45,10 +45,11 @@
           id="grey-background-placeholder"
           :style="{
             position: 'absolute',
-            zIndex: 'var(--z-base)'
+            zIndex: 'var(--z-base)',
+            backgroundColor: `rgb(var(--v-theme-surface-variant))`
           }"
           @click="(event: MouseEvent) => handleClick(event, row.start + subIndex)"
-          class="w-100 h-100 bg-grey-darken-2"
+          class="w-100 h-100"
         ></div>
       </div>
     </div>

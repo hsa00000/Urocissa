@@ -28,21 +28,16 @@
       <v-card-text class="pa-0">
         <v-text-field
           id="nav-search-input"
-          rounded
-          class="ma-0"
           v-model="searchQuery"
-          bg-color="grey-darken-2"
-          @click:prepend-inner="handleSearch"
-          @click:clear="handleSearch"
-          @keyup.enter="handleSearch"
-          clearable
-          persistent-clear
+          rounded="xl"
           variant="solo"
           flat
+          bg-color="rgb(var(--v-theme-surface-light))"
+          clearable
+          persistent-clear
           prepend-inner-icon="mdi-magnify"
           single-line
           hide-details
-          style="margin-right: 10px"
         >
           <template #label>
             <span class="text-caption">Search</span>

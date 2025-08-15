@@ -12,7 +12,7 @@ const ThumbhashImage: FunctionalComponent<ThumbhashImageProps> = (props) => {
         position: 'absolute',
         zIndex: ZIndex.content
       },
-      class: 'thumbhash-image w-100 h-100 bg-grey-darken-2',
+      class: 'thumbhash-image w-100 h-100',
       src: props.src
     })
   )
