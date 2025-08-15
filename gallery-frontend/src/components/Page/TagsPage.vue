@@ -3,7 +3,7 @@
   <v-container
     v-if="tagStore.fetched"
     id="table-container"
-    class="pa-1 bg-grey-darken-3 d-flex align-start"
+    class="pa-1 d-flex align-start"
     :style="{
       height: `calc(100% - ${navBarHeight}px)`
     }"
@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
   position: relative;
   padding: 4px;
   padding-top: 4px;
-  background-color: #3d3d3d;
+  background-color: rgb(var(--v-theme-surface-light));
   overflow-y: scroll;
   height: 100dvh;
   width: 100%;
