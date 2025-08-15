@@ -7,12 +7,14 @@ import { toImgWorker } from '@/worker/workerApi'
 import { watch } from 'vue'
 import { useShareStore } from '@/store/shareStore'
 import { useTokenStore } from '@/store/tokenStore'
+import { useConstStore } from '@/store/constStore'
 export async function refreshAlbumMetadata(albumId: string) {
   const dataStore = useDataStore('mainId')
   const workerStore = useWorkerStore('mainId')
   const messageStore = useMessageStore('mainId')
   const shareStore = useShareStore('mainId')
   const tokenStore = useTokenStore('mainId')
+  const constStore = useConstStore('mainId')
 
   const albumIndex = dataStore.hashMapData.get(albumId)
   if (albumIndex === undefined) {
@@ -78,7 +80,8 @@ export async function refreshAlbumMetadata(albumId: string) {
         albumId: shareStore.albumId,
         shareId: shareStore.shareId,
         timestampToken,
-        hashToken
+        hashToken,
+        limitRatio: constStore.limitRatio
       })
 
       messageStore.success(`Album cover updated successfully`)
