@@ -18,7 +18,7 @@
             border:
               collectionStore.editModeOn &&
               collectionStore.editModeCollection.has(row.start + subIndex)
-                ? '4px solid #81D4FA'
+                ? '4px solid rgb(var(--v-theme-primary))'
                 : '4px solid transparent'
           }"
           @click="(event: MouseEvent) => handleClick(event, row.start + subIndex)"
@@ -201,7 +201,7 @@ onBeforeUnmount(() => {
   display: none;
 }
 .icon-hover {
-  color: #fafafa;
+  color: white;
   transition: color 0.3s;
   cursor: pointer;
 }
