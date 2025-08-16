@@ -1,6 +1,9 @@
 <template>
   <v-app
-    :class="{ 'no-select': scrollbarStore.isDragging || scrollbarStoreInsideAlbum.isDragging, 'theme-light': constStore.theme === 'light' }"
+    :class="{
+      'no-select': scrollbarStore.isDragging || scrollbarStoreInsideAlbum.isDragging,
+      'theme-light': constStore.theme === 'light'
+    }"
     @dragstart.prevent
     @dragover.prevent
     @drop.prevent
