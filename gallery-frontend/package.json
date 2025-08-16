@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "npm ci && vue-tsc --noEmit && vite build",
     "build:only": "vue-tsc --noEmit && vite build",
-  "lint": "eslint \"src/**/*.{js,ts,vue}\"",
+    "lint": "eslint \"src/**/*.{js,ts,vue}\"",
     "generateLexer": "ts-node-esm ./src/script/lexer/generateCstDts.ts"
   },
   "dependencies": {
@@ -53,6 +53,7 @@
     "typescript-eslint": "^8.39.1",
     "vite": "^7.1.2",
     "vite-plugin-pwa": "^1.0.2",
+    "vite-plugin-vue-devtools": "^8.0.0",
     "vite-tsconfig-paths": "^5.1.4",
     "vue-eslint-parser": "^10.2.0",
     "vue-tsc": "^3.0.5"
