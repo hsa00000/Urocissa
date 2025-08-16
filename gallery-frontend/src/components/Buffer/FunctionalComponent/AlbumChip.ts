@@ -15,14 +15,15 @@ const AlbumChip: FunctionalComponent<AlbumChipProps> = (props) => {
       id: 'album-chip',
       density: 'comfortable',
       size: 'small',
-      color: 'black',
       variant: 'flat',
       prependIcon: 'mdi-image-album',
       class: 'position-absolute ma-2',
       style: {
         bottom: '0px',
         right: '0px',
-        zIndex: ZIndex.componentOverlay
+        zIndex: ZIndex.componentOverlay,
+        backgroundColor: 'rgb(var(--v-theme-background))',
+        color: 'rgb(var(--v-theme-on-background))'
       }
     },
     () => [

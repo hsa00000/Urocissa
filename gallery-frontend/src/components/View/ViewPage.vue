@@ -19,7 +19,7 @@
       v-if="index !== undefined"
       fluid
       class="pa-0 h-100 overflow-hidden position-relative"
-      :style="{ backgroundColor: 'black' }"
+      :style="{ backgroundColor: 'rgb(var(--v-theme-background))' }"
     >
       <v-row no-gutters class="w-100 h-100 flex-nowrap">
         <ViewPageDisplay
@@ -41,7 +41,7 @@
       v-else
       fluid
       class="pa-0 h-100 overflow-hidden position-relative"
-      :style="{ backgroundColor: 'black' }"
+      :style="{ backgroundColor: 'rgb(var(--v-theme-background))' }"
     >
       <v-row class="fill-height" align="center" justify="center">
         <v-col cols="12" class="d-flex align-center justify-center">
