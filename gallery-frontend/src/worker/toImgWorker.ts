@@ -30,8 +30,6 @@ axiosRetry(workerAxios, {
 const handler = createHandler<typeof toImgWorker>({
   async processSmallImage(event: ProcessSmallImagePayload) {
     try {
-      console.log('event is', event)
-
       const controller = new AbortController()
       controllerMap.set(event.index, controller)
 
