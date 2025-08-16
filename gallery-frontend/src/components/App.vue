@@ -8,7 +8,8 @@
     @dragover.prevent
     @drop.prevent
   >
-    <v-main class="h-screen">
+    <NavBar />
+    <v-main>
       <DropZoneModal v-if="!configStore.isMobile" />
       <router-view v-slot="{ Component }" :key="routeKey">
         <component :is="Component" />
@@ -40,6 +41,7 @@ import EditAlbumsModal from '@/components/Modal/EditAlbumsModal.vue'
 import EditBatchAlbumsModal from '@/components/Modal/EditBatchAlbumsModal.vue'
 import SettingModal from '@/components/Modal/SettingModal.vue'
 import { useModalStore } from '@/store/modalStore'
+import NavBar from '@/components/NavBar/NavBar.vue'
 
 const modalStore = useModalStore('mainId')
 const scrollbarStore = useScrollbarStore('mainId')

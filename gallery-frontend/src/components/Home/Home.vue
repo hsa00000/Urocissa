@@ -1,6 +1,6 @@
 <template>
   <!-- This bar is used inside album reading page -->
-<!--   <slot name="reading-bar"> </slot> -->
+  <!--   <slot name="reading-bar"> </slot> -->
   <!-- This router-view contains the ViewPage.vue -->
   <router-view :key="albumHomeIsolatedKey"></router-view>
 
@@ -35,11 +35,7 @@
       </v-col>
       <!-- Right: scrollbar (fixed width) -->
       <v-col cols="auto" class="align-stretch" :style="{ width: `${scrollBarWidth}px` }">
-        <ScrollBar
-          v-if="imageContainerRef"
-          :isolation-id="props.isolationId"
-          :style="{ height: '100%' }"
-        />
+        <ScrollBar v-if="imageContainerRef" :isolation-id="props.isolationId" />
       </v-col>
     </v-row>
   </v-container>
