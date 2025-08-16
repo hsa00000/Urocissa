@@ -1,7 +1,14 @@
 <template>
   <ProgessBar isolation-id="mainId" />
   <AppBar />
-  <v-navigation-drawer v-model="showDrawer" temporary touchless width="150" class="no-select">
+  <v-navigation-drawer
+    order="-1"
+    v-model="showDrawer"
+    temporary
+    touchless
+    width="150"
+    class="no-select"
+  >
     <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized">
       <v-list-item slim to="/home" prepend-icon="mdi-home" title="Home"></v-list-item>
       <v-divider></v-divider>
