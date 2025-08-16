@@ -1,16 +1,15 @@
 <template>
-  <v-toolbar flat height="2" class="no-select">
-    <v-progress-linear
-      v-if="!initializedStore.initialized"
-      indeterminate
-      height="2"
-      :style="{
-        border: 0,
-        backgroundColor: 'rgb(var(--v-theme-surface))'
-      }"
-    >
-    </v-progress-linear>
-  </v-toolbar>
+  <v-progress-linear
+    id="progress-bar"
+    class="position-absolute w-100"
+    indeterminate
+    height="2"
+    :style="{
+      zIndex: 100
+    }"
+    :color="initializedStore.initialized ? 'transparent' : 'primary'"
+  >
+  </v-progress-linear>
 </template>
 <script setup lang="ts">
 import { IsolationId } from '@type/types'

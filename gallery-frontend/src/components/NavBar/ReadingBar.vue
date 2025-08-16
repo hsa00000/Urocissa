@@ -1,13 +1,5 @@
 <template>
   <v-toolbar
-    flat
-    height="2"
-    class="no-select"
-    :style="{
-      backgroundColor: 'rgb(var(--v-theme-surface))'
-    }"
-  />
-  <v-toolbar
     v-if="!collectionStore.editModeOn"
     class="position-relative"
     :style="{

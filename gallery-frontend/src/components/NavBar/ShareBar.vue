@@ -1,5 +1,4 @@
 <template>
-  <v-toolbar flat height="2" class="no-select"> </v-toolbar>
   <v-toolbar class="position-relative">
     <v-card elevation="0" class="w-50">
       <v-card-title> {{ shareStore.resolvedShare?.albumTitle }} </v-card-title>
