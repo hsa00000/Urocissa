@@ -29,9 +29,8 @@
         <v-text-field
           id="nav-search-input"
           v-model="searchQuery"
-          variant="solo"
+          variant="solo-filled"
           flat
-          bg-color="rgb(var(--v-theme-surface-light))"
           clearable
           persistent-clear
           prepend-inner-icon="mdi-magnify"
