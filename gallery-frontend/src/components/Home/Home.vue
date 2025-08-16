@@ -1,33 +1,48 @@
 <template>
   <!-- This bar is used inside album reading page -->
-  <slot name="reading-bar"> </slot>
+<!--   <slot name="reading-bar"> </slot> -->
   <!-- This router-view contains the ViewPage.vue -->
   <router-view :key="albumHomeIsolatedKey"></router-view>
-  <ScrollBar v-if="imageContainerRef" :isolation-id="props.isolationId" />
-  <div
-    id="image-container"
-    ref="imageContainerRef"
-    class="d-flex flex-wrap position-relative pa-1 pb-2 h-100"
-    :style="{
-      width: `calc(100% - ${scrollBarWidth}px)`,
-      backgroundColor: `rgb(var(--v-theme-surface-light))`
-    }"
-    :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
-    @scroll="
-      // If prefetchStore.locateTo triggers initializeScrollPosition, prevent the user from triggering the scrolling function.
-      prefetchStore.locateTo === null ? throttledHandleScroll() : () => {}
-    "
-  >
-    <Buffer
-      v-if="initializedStore.initialized && prefetchStore.dataLength > 0"
-      :buffer-height="bufferHeight"
-      :isolation-id="props.isolationId"
-    />
-    <HomeEmptyCard
-      v-if="initializedStore.initialized && prefetchStore.dataLength === 0"
-      :isolation-id="props.isolationId"
-    />
-  </div>
+
+  <v-container class="pa-0 ma-0 h-screen" fluid style="height: calc(100vh)">
+    <v-row class="pa-0 ma-0" no-gutters style="height: 100%">
+      <!-- Left: image container (takes remaining space) -->
+      <v-col class="h-100 pa-0 ma-0" style="height: 100%">
+        <div
+          id="image-container"
+          ref="imageContainerRef"
+          class="pa-1 pb-2 h-100"
+          :style="{
+            height: '100%',
+            backgroundColor: `rgb(var(--v-theme-surface-light))`
+          }"
+          :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
+          @scroll="
+            // If prefetchStore.locateTo triggers initializeScrollPosition, prevent the user from triggering the scrolling function.
+            prefetchStore.locateTo === null ? throttledHandleScroll() : () => {}
+          "
+        >
+          <Buffer
+            v-if="initializedStore.initialized && prefetchStore.dataLength > 0"
+            :buffer-height="bufferHeight"
+            :isolation-id="props.isolationId"
+          />
+          <HomeEmptyCard
+            v-if="initializedStore.initialized && prefetchStore.dataLength === 0"
+            :isolation-id="props.isolationId"
+          />
+        </div>
+      </v-col>
+      <!-- Right: scrollbar (fixed width) -->
+      <v-col cols="auto" class="align-stretch" :style="{ width: `${scrollBarWidth}px` }">
+        <ScrollBar
+          v-if="imageContainerRef"
+          :isolation-id="props.isolationId"
+          :style="{ height: '100%' }"
+        />
+      </v-col>
+    </v-row>
+  </v-container>
 </template>
 
 <script setup lang="ts">

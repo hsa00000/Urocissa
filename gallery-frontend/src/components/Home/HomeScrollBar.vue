@@ -1,101 +1,95 @@
 <template>
   <!-- 用「背景色 + 對應前景色」當全頁底色 -->
-  <v-sheet class="position-fixed w-100 h-100">
-    <v-sheet
-      v-if="imageContainerRef"
-      ref="scrollbarRef"
-      class="position-fixed"
-      id="scroll-bar"
-      :style="{
-        width: `${scrollBarWidth}px`,
-        height: `calc(100% - 100px)`,
-        right: '0px',
-        zIndex: 'var(--z-component-overlay)',
-        cursor: 'vertical-text',
-        /* 用 surface 作為側邊卷軸容器背景 */
-        /* 對應的前景色（文字/圖示）*/
-        marginTop: '8px'
-      }"
-      @click="handleClick"
-      @mousedown="handleMouseDown"
-      @mouseup="handleMouseUp"
-      @mousemove="handleHover"
-      @mouseleave="handleMouseLeave"
-      @touchstart="handleTouchStart"
-      @touchend="handleTouchEnd"
-      @touchmove="handleMove"
-    >
-      <v-sheet class="position-relative w-100 h-100" :style="{ pointerEvents: 'none' }">
-        <!-- 以 info 色當時間線指示線 -->
-        <v-divider
-          v-if="scrollbarStore.initialized"
-          id="current-date-indicator"
-          class="position-absolute"
-          opacity="1"
-          :style="{
-            top: `${(currentDateChipIndex / rowLength) * 100}%`,
-            left: 0,
-            right: 0,
-            pointerEvents: 'none'
-          }"
-          color="primary"
-        />
+  <v-sheet
+    v-if="imageContainerRef"
+    ref="scrollbarRef"
+    id="scroll-bar"
+    class="position-relative"
+    :style="{
+      width: `${scrollBarWidth}px`,
+      height: '100%',
+      zIndex: 'var(--z-component-overlay)',
+      cursor: 'vertical-text'
+    }"
+    @click="handleClick"
+    @mousedown="handleMouseDown"
+    @mouseup="handleMouseUp"
+    @mousemove="handleHover"
+    @mouseleave="handleMouseLeave"
+    @touchstart="handleTouchStart"
+    @touchend="handleTouchEnd"
+    @touchmove="handleMove"
+  >
+    <v-sheet class="position-relative w-100 h-100" :style="{ pointerEvents: 'none' }">
+      <!-- 以 info 色當時間線指示線 -->
+      <v-divider
+        v-if="scrollbarStore.initialized"
+        id="current-date-indicator"
+        class="position-absolute"
+        opacity="1"
+        :style="{
+          top: `${(currentDateChipIndex / rowLength) * 100}%`,
+          left: 0,
+          right: 0,
+          pointerEvents: 'none'
+        }"
+        color="primary"
+      />
 
-        <!-- 年份標籤：用 on-surface -->
-        <v-chip
-          v-for="scrollbarData in displayScrollbarDataArrayYear"
-          :key="scrollbarData.index"
-          size="x-small"
-          variant="text"
-          class="w-100 position-absolute pa-0 ma-0 d-flex align-center justify-center"
+      <!-- 年份標籤：用 on-surface -->
+      <v-chip
+        v-for="scrollbarData in displayScrollbarDataArrayYear"
+        :key="scrollbarData.index"
+        size="x-small"
+        variant="text"
+        class="w-100 position-absolute pa-0 ma-0 d-flex align-center justify-center"
+        :style="{
+          top: `${(Math.floor(scrollbarData.index / layoutBatchNumber) / rowLength) * 100}%`,
+          userSelect: 'none'
+        }"
+      >
+        {{ scrollbarData.year }}
+      </v-chip>
+
+      <!-- 目前區塊高亮：用 on-surface-light 做低不透明度的蓋板 -->
+      <v-card
+        flat
+        :rounded="false"
+        variant="tonal"
+        v-if="scrollbarRef"
+        id="block-chip"
+        class="w-100 position-absolute"
+        :style="{
+          height: `${scrollbarHeight / rowLength}px`,
+          top: `${(hoverLabelRowIndex / rowLength) * 100}%`
+        }"
+      >
+        <!-- 目前視窗年月標籤：用 surface 當底、info 當上邊框 -->
+        <v-sheet
+          id="day-chip"
+          class="position-absolte w-100 d-flex align-center justify-center text-caption"
           :style="{
-            top: `${(Math.floor(scrollbarData.index / layoutBatchNumber) / rowLength) * 100}%`,
+            height: '25px',
+            zIndex: 'var(--z-content)',
             userSelect: 'none'
           }"
         >
-          {{ scrollbarData.year }}
-        </v-chip>
-
-        <!-- 目前區塊高亮：用 on-surface-light 做低不透明度的蓋板 -->
-        <v-card
-          flat
-          :rounded="false"
-          variant="tonal"
-          v-if="scrollbarRef"
-          id="block-chip"
-          class="w-100 position-absolute"
-          :style="{
-            height: `${scrollbarHeight / rowLength}px`,
-            top: `${(hoverLabelRowIndex / rowLength) * 100}%`
-          }"
-        >
-          <!-- 目前視窗年月標籤：用 surface 當底、info 當上邊框 -->
-          <v-sheet
-            id="day-chip"
-            class="position-absolte w-100 d-flex align-center justify-center text-caption"
+          <v-divider
+            v-if="scrollbarStore.initialized"
+            id="current-date-indicator"
+            class="position-absolute"
+            opacity="1"
             :style="{
-              height: '25px',
-              zIndex: 'var(--z-content)',
-              userSelect: 'none'
+              top: 0,
+              left: 0,
+              right: 0,
+              pointerEvents: 'none'
             }"
-          >
-            <v-divider
-              v-if="scrollbarStore.initialized"
-              id="current-date-indicator"
-              class="position-absolute"
-              opacity="1"
-              :style="{
-                top: 0,
-                left: 0,
-                right: 0,
-                pointerEvents: 'none'
-              }"
-              color="primary"
-            />
-            {{ hoverLabelDate }}
-          </v-sheet>
-        </v-card>
-      </v-sheet>
+            color="primary"
+          />
+          {{ hoverLabelDate }}
+        </v-sheet>
+      </v-card>
     </v-sheet>
   </v-sheet>
 </template>
