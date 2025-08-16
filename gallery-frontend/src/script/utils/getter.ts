@@ -77,7 +77,7 @@ export function getMapValue<K, V>(map: Map<K, V>, key: K): V {
 }
 
 export function getScrollUpperBound(totalHeight: number, windowHeight: number): number {
-  return totalHeight - windowHeight
+  return totalHeight - windowHeight - 4
 }
 
 export async function searchByTag(tag: string, router: Router) {
