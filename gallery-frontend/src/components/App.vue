@@ -8,12 +8,12 @@
     @dragover.prevent
     @drop.prevent
   >
-    <v-app-bar />
     <v-main class="main-viewport">
-      <DropZoneModal v-if="!configStore.isMobile" />
-      <router-view v-slot="{ Component }" :key="routeKey">
-        <component :is="Component" />
-      </router-view>
+      <v-container fluid class="ma-0 pa-0 h-100">
+        <DropZoneModal v-if="!configStore.isMobile" />
+        <router-view v-slot="{ Component }" :key="routeKey">
+          <component :is="Component" /> </router-view
+      ></v-container>
     </v-main>
     <v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
     <EditTagsModal v-if="modalStore.showEditTagsModal" />

@@ -21,12 +21,12 @@
           retain-focus
           rounded="xl"
         >
-          <v-toolbar color="transparent">
-            <v-toolbar-title class="text-h5">Share</v-toolbar-title>
+          <v-app-bar color="transparent">
+            <v-app-bar-title class="text-h5">Share</v-app-bar-title>
             <template #append>
               <v-btn icon="mdi-close" @click="modalStore.showEditShareModal = false" />
             </template>
-          </v-toolbar>
+          </v-app-bar>
           <v-divider />
           <v-list class="px-6">
             <v-list-item>

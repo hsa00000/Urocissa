@@ -1,5 +1,6 @@
 <template>
-  <v-toolbar
+  <v-app-bar
+    elevation="0"
     :style="{
       backgroundColor: 'rgb(var(--v-theme-surface))'
     }"
@@ -56,7 +57,7 @@
       :loading="loading"
       @click="uploadStore.triggerFileInput"
     />
-  </v-toolbar>
+  </v-app-bar>
 </template>
 
 <script setup lang="ts">

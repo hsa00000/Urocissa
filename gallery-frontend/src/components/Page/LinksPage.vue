@@ -14,7 +14,7 @@
   <v-container
     v-if="albumStore.fetched"
     id="table-container"
-    class="pa-1 d-flex align-start"
+    class="pa-1 d-flex align-start w-100 h-100"
     :style="{
       /* moved from scoped css */
       display: 'flex',
@@ -22,10 +22,7 @@
       position: 'relative',
       padding: '4px',
       overflowY: 'scroll',
-      width: '100%',
-
       /* existing inline values kept to resolve duplicates in favor of inline */
-      height: `calc(100% - ${navBarHeight}px)`,
       backgroundColor: `rgb(var(--v-theme-surface-light))`
     }"
     fluid
@@ -142,8 +139,6 @@ import { useClipboard } from '@vueuse/core'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import EditShareModal from '@/components/Modal/EditShareModal.vue'
 import ShareDeleteConfirmModal from '@/components/Modal/ShareDeleteConfirmModal.vue'
-
-import { navBarHeight } from '@/type/constants'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useModalStore } from '@/store/modalStore'

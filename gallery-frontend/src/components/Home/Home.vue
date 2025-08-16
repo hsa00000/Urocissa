@@ -1,6 +1,6 @@
 <template>
   <!-- This bar is used inside album reading page -->
-  <!--  <slot name="reading-bar"> </slot> -->
+  <slot name="reading-bar"> </slot> 
   <!-- This router-view contains the ViewPage.vue -->
   <router-view :key="albumHomeIsolatedKey"></router-view>
 
