@@ -163,7 +163,7 @@ onUnmounted(() => {
   align-items: center;
   width: 100%;
   height: 100%;
-  color: #fff;
+  color: white;
   font-size: 4em;
 }
 
