@@ -8,13 +8,14 @@
     @dragover.prevent
     @drop.prevent
   >
-    <NavBar />
-    <v-main>
+    <v-app-bar />
+    <v-main class="main-viewport">
       <DropZoneModal v-if="!configStore.isMobile" />
       <router-view v-slot="{ Component }" :key="routeKey">
         <component :is="Component" />
-      </router-view> </v-main
-    ><v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
+      </router-view>
+    </v-main>
+    <v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
     <EditTagsModal v-if="modalStore.showEditTagsModal" />
     <EditAlbumsModal v-if="modalStore.showEditAlbumsModal" />
     <EditBatchTagsModal v-if="modalStore.showBatchEditTagsModal" />
@@ -76,7 +77,15 @@ onBeforeMount(async () => {
 </script>
 
 <style>
-/* Disable native dragging on common elements across the app */
+/* 讓 v-main 永遠只佔滿視窗剩下的高度（會自動扣掉 app-bar / footer 的 padding） */
+.main-viewport {
+  /* 先給 100vh，接著用 100dvh 覆蓋以支援行動裝置動態位移的瀏覽器工具列 */
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden; /* 只在 v-main 裡面滾動 */
+}
+
+/* 你原本的樣式保留 */
 img,
 a,
 svg,
@@ -85,16 +94,14 @@ canvas {
   -webkit-user-drag: none;
 }
 
-/* Disable text selection only while dragging: applied to the root node with .no-select */
 .no-select,
 .no-select * {
   user-select: none !important;
-  -webkit-user-select: none !important; /* Safari */
-  -moz-user-select: none !important; /* Firefox */
-  -webkit-touch-callout: none; /* iOS long-press menu */
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -webkit-touch-callout: none;
 }
 
-/* Always allow selection for input elements (including Vuetify structures) */
 input,
 textarea,
 [contenteditable='true'],
@@ -107,7 +114,6 @@ textarea,
   -moz-user-select: text !important;
 }
 
-/* Explicitly prevent images and videos from being selectable */
 img,
 video {
   user-select: none !important;

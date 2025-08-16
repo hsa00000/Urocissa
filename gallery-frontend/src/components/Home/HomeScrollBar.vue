@@ -4,10 +4,9 @@
     v-if="imageContainerRef"
     ref="scrollbarRef"
     id="scroll-bar"
-    class="position-relative"
+    class="position-relative h-100"
     :style="{
       width: `${scrollBarWidth}px`,
-      height: '100%',
       zIndex: 'var(--z-component-overlay)',
       cursor: 'vertical-text'
     }"

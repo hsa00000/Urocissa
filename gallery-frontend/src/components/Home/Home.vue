@@ -1,19 +1,18 @@
 <template>
   <!-- This bar is used inside album reading page -->
-  <!--   <slot name="reading-bar"> </slot> -->
+  <!--  <slot name="reading-bar"> </slot> -->
   <!-- This router-view contains the ViewPage.vue -->
   <router-view :key="albumHomeIsolatedKey"></router-view>
 
-  <v-container class="pa-0 ma-0 h-screen" fluid style="height: calc(100vh)">
-    <v-row class="pa-0 ma-0" no-gutters style="height: 100%">
+  <v-container class="pa-0 ma-0 h-100" fluid>
+    <v-row class="pa-0 ma-0 h-100" no-gutters>
       <!-- Left: image container (takes remaining space) -->
-      <v-col class="h-100 pa-0 ma-0" style="height: 100%">
+      <v-col class="h-100 pa-0 ma-0">
         <div
           id="image-container"
           ref="imageContainerRef"
           class="pa-1 pb-2 h-100"
           :style="{
-            height: '100%',
             backgroundColor: `rgb(var(--v-theme-surface-light))`
           }"
           :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
