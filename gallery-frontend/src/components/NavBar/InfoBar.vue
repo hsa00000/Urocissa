@@ -29,7 +29,6 @@
         <v-text-field
           id="nav-search-input"
           v-model="searchQuery"
-          rounded="xl"
           variant="solo"
           flat
           bg-color="rgb(var(--v-theme-surface-light))"
@@ -38,6 +37,11 @@
           prepend-inner-icon="mdi-magnify"
           single-line
           hide-details
+          rounded
+          class="ma-0"
+          @click:prepend-inner="handleSearch"
+          @click:clear="handleSearch"
+          @keyup.enter="handleSearch"
         >
           <template #label>
             <span class="text-caption">Search</span>
