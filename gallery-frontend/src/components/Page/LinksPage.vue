@@ -16,6 +16,15 @@
     id="table-container"
     class="pa-1 d-flex align-start"
     :style="{
+      /* moved from scoped css */
+      display: 'flex',
+      justifyContent: 'center',
+      position: 'relative',
+      padding: '4px',
+      overflowY: 'scroll',
+      width: '100%',
+
+      /* existing inline values kept to resolve duplicates in favor of inline */
       height: `calc(100% - ${navBarHeight}px)`,
       backgroundColor: `rgb(var(--v-theme-surface-light))`
     }"
@@ -142,6 +151,15 @@ import { useMessageStore } from '@/store/messageStore'
 import type { EditShareData } from '@/type/types'
 import { ShareSchema } from '@/type/schemas'
 
+type Header = {
+  title: string
+  key: string
+  sortable?: boolean
+  width?: string
+  maxWidth?: string
+  nowrap?: boolean
+}
+
 const initializedStore = useInitializedStore('mainId')
 const albumStore = useAlbumStore('mainId')
 const modalStore = useModalStore('mainId')
@@ -153,7 +171,7 @@ const { copy } = useClipboard()
 const currentEditShareData = ref<EditShareData | null>(null)
 const currentDeleteShareData = ref<EditShareData | null>(null)
 
-const headers = [
+const headers: Header[] = [
   { title: 'Link', key: 'share.url' },
   {
     title: 'Description',
@@ -162,18 +180,9 @@ const headers = [
     maxWidth: '200px',
     nowrap: true
   },
-  {
-    title: 'Allow Download',
-    key: 'share.showDownload'
-  },
-  {
-    title: 'Allow Upload',
-    key: 'share.showUpload'
-  },
-  {
-    title: 'Show Metadata',
-    key: 'share.showMetadata'
-  },
+  { title: 'Allow Download', key: 'share.showDownload' },
+  { title: 'Allow Upload', key: 'share.showUpload' },
+  { title: 'Show Metadata', key: 'share.showMetadata' },
   { title: 'Actions', key: 'actions', sortable: false }
 ]
 
@@ -183,7 +192,11 @@ const tableItems = computed<EditShareData[]>(() => {
     for (const [, share] of album.shareList) {
       // Validate the share object to ensure type safety
       const validatedShare = ShareSchema.parse(share)
-      arr.push({ albumId: album.albumId, displayName: album.displayName, share: validatedShare })
+      arr.push({
+        albumId: album.albumId,
+        displayName: album.displayName,
+        share: validatedShare
+      })
     }
   }
   return arr
@@ -231,16 +244,3 @@ onBeforeUnmount(() => {
   initializedStore.initialized = false
 })
 </script>
-
-<style scoped>
-#table-container {
-  display: flex;
-  justify-content: center;
-  position: relative;
-  padding: 4px;
-  background-color: #3d3d3d;
-  overflow-y: scroll;
-  height: 100dvh;
-  width: 100%;
-}
-</style>
