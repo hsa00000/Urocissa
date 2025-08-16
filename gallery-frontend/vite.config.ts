@@ -2,15 +2,16 @@ import { resolve } from 'path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+import vueDevTools from 'vite-plugin-vue-devtools'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
+    vueDevTools(),
     VitePWA({
       srcDir: 'src/worker', // 指定 Service Worker 位置
       filename: 'serviceWorker.ts', // Service Worker 檔案名稱
       strategies: 'injectManifest', // 使用 injectManifest，不啟用 PWA
-      /* injectRegister: false, // 不自動註冊 Service Worker */
       manifest: false, // 不啟用 Web App Manifest
       injectManifest: {
         injectionPoint: undefined // 不插入預快取清單
