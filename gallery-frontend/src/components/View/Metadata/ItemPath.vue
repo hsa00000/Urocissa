@@ -2,7 +2,7 @@
   <v-list-item>
     <template #prepend>
       <v-avatar>
-        <v-icon color="black">mdi-folder</v-icon>
+        <v-icon>mdi-folder</v-icon>
       </v-avatar>
     </template>
     <v-list-item-title class="text-wrap">{{

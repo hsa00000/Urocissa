@@ -2,7 +2,7 @@
   <v-list-item>
     <template #prepend>
       <v-avatar>
-        <v-icon color="black">mdi-calendar</v-icon>
+        <v-icon>mdi-calendar</v-icon>
       </v-avatar>
     </template>
     <v-list-item-title class="text-wrap">{{ dater(props.database.timestamp) }}</v-list-item-title>
