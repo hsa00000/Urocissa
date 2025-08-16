@@ -24,12 +24,13 @@
           @click="(event: MouseEvent) => handleClick(event, row.start + subIndex)"
           class="w-100 h-100"
         ></div>
+        <HoverGradientDiv :mobile="mobile" />
         <DesktopHoverIcon
           class="icon-hover child"
           v-if="!mobile"
           :on-click="(event: MouseEvent) => handleClickIcon(event, row.start + subIndex)"
         />
-        <HoverGradientDiv :mobile="mobile" />
+
         <MainBlock
           v-if="subIndex < timeInterval"
           :index="row.start + subIndex"
