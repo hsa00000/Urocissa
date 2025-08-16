@@ -1,20 +1,9 @@
 <template>
-  <v-col
-    id="abstractData-col"
-    v-if="abstractData"
-    class="h-100 abstractData-css"
-    cols="auto"
-    :style="{ backgroundColor: 'white' }"
-  >
-    <v-row no-gutters class="position-relative">
+  <v-col id="abstractData-col" v-if="abstractData" class="h-100 abstractData-css" cols="auto">
+    <v-row no-gutters class="position-relative h-100">
       <!-- Toolbars should not be direct children of v-row; wrap in a column -->
       <v-col cols="12">
-        <v-toolbar
-          color="white"
-          :style="{
-            backgroundColor: 'rgb(var(--v-theme-surface))'
-          }"
-        >
+        <v-toolbar>
           <!-- Icon button with increased size -->
           <v-btn icon @click="toggleInfo">
             <v-icon>mdi-close</v-icon>
@@ -22,8 +11,8 @@
           <v-toolbar-title class="text-h5">Info</v-toolbar-title>
         </v-toolbar>
       </v-col>
-  <v-col v-if="abstractData.database" class="h-100 w-100" cols="auto">
-        <v-list bg-color="white" class="pa-0" height="100%" lines="two">
+      <v-col v-if="abstractData.database" class="h-100 w-100" cols="auto">
+        <v-list class="pa-0" height="100%" lines="two">
           <ItemSize :database="abstractData.database" />
           <ItemPath v-if="showMetadata" :database="abstractData.database" />
           <ItemDate :database="abstractData.database" />
@@ -50,7 +39,7 @@
         </v-list>
       </v-col>
       <v-col v-if="abstractData.album" class="h-100 w-100" cols="auto">
-        <v-list bg-color="white" class="pa-0" height="100%" lines="two">
+        <v-list class="pa-0" height="100%" lines="two">
           <ItemTitle :title="abstractData.album.title" />
           <ItemCount :album="abstractData.album" />
 

@@ -1,10 +1,5 @@
 <template>
-  <v-toolbar
-    class="position-absolute my-toolbar"
-    :style="{
-      paddingTop: '2px'
-    }"
-  >
+  <v-toolbar>
     <LeaveView />
     <v-spacer></v-spacer>
     <ShowInfo />
@@ -78,14 +73,3 @@ defineProps<{
   abstractData: AbstractData | undefined
 }>()
 </script>
-<style scoped>
-.my-toolbar {
-  z-index: var(--z-navbar);
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.5) 0%,
-    rgba(0, 0, 0, 0.25) 50%,
-    rgba(0, 0, 0, 0) 100%
-  );
-}
-</style>
