@@ -2,7 +2,6 @@ import { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { inject } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import { escapeAndWrap } from '@utils/escape'
-import { navBarHeight } from '../../type/constants'
 import { useShareStore } from '@/store/shareStore'
 
 export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded) {
@@ -78,7 +77,7 @@ export function getMapValue<K, V>(map: Map<K, V>, key: K): V {
 }
 
 export function getScrollUpperBound(totalHeight: number, windowHeight: number): number {
-  return totalHeight - windowHeight + navBarHeight
+  return totalHeight - windowHeight
 }
 
 export async function searchByTag(tag: string, router: Router) {
