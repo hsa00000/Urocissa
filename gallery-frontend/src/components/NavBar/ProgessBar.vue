@@ -1,16 +1,8 @@
 <template>
-  <v-toolbar
-    flat
-    height="2"
-    class="no-select"
-    :style="{
-      backgroundColor: 'rgb(var(--v-theme-surface))'
-    }"
-  >
+  <v-toolbar flat height="2" class="no-select">
     <v-progress-linear
       v-if="!initializedStore.initialized"
       indeterminate
-      color="primary"
       height="2"
       :style="{
         border: 0,

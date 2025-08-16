@@ -23,7 +23,6 @@
     <v-btn
       :loading="waiting"
       :disabled="collectionStore.editModeCollection.size === 0"
-      color="teal-accent-4"
       variant="flat"
       class="ma-2 button button-submit"
       @click="submit"
