@@ -1,6 +1,6 @@
 <template>
   <v-app
-    :class="{ 'no-select': scrollbarStore.isDragging || scrollbarStoreInsideAlbum.isDragging }"
+    :class="{ 'no-select': scrollbarStore.isDragging || scrollbarStoreInsideAlbum.isDragging, 'theme-light': constStore.theme === 'light' }"
     @dragstart.prevent
     @dragover.prevent
     @drop.prevent
@@ -65,6 +65,7 @@ onBeforeMount(async () => {
   await constStore.loadShowInfo()
   await constStore.loadLimitRation()
   await constStore.loadConcurrencyNumber()
+  await constStore.loadTheme()
   configStore.isMobile = isMobile()
 })
 </script>

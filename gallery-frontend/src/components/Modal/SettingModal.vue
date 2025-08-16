@@ -39,6 +39,19 @@
             ></v-switch>
           </v-col>
         </v-row>
+        <v-row align="center" no-gutters class="mt-4">
+          <v-col cols="auto">
+            <v-chip variant="text"> Theme </v-chip>
+          </v-col>
+          <v-col>
+            <v-switch
+              :model-value="themeIsLight"
+              @update:model-value="onThemeUpdate"
+              :disabled="!initializedStore.initialized"
+              hide-details
+            ></v-switch>
+          </v-col>
+        </v-row>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
@@ -53,15 +66,20 @@ import { computed } from 'vue'
 import { useModalStore } from '@/store/modalStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useConstStore } from '@/store/constStore'
+import { useTheme } from 'vuetify'
 
 const modalStore = useModalStore('mainId')
 const initializedStore = useInitializedStore('mainId')
 const constStore = useConstStore('mainId')
+const vuetifyTheme = useTheme()
 
 // Read-only computed for subRowHeightScale (source of truth is constStore)
 const subRowHeightScaleValue = computed(() => constStore.subRowHeightScale)
 // Read-only computed for limitRatio (source of truth is constStore)
 const limitRatioValue = computed(() => constStore.limitRatio)
+
+// computed boolean for light theme switch
+const themeIsLight = computed(() => constStore.theme === 'light')
 
 // Handler invoked when the slider updates its model value
 const onSubRowHeightScaleUpdate = (newValue: number | null) => {
@@ -78,6 +96,21 @@ const onLimitRatioUpdate = (newValue: boolean | null) => {
   constStore.updateLimitRation(value).catch((error: unknown) => {
     console.error('Failed to update limitRatio:', error)
   })
+}
+
+// Handler for theme switch
+const onThemeUpdate = async (newValue: boolean | null) => {
+  const wantLight = !!newValue
+  const newTheme = wantLight ? 'light' : 'dark'
+  try {
+    await constStore.updateTheme(newTheme)
+    // update Vuetify theme instance
+    if (vuetifyTheme && typeof vuetifyTheme.change === 'function') {
+      vuetifyTheme.change(newTheme)
+    }
+  } catch (err) {
+    console.error('Failed to update theme:', err)
+  }
 }
 
 // Function to adjust thumbnail size with icons

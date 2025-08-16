@@ -22,6 +22,7 @@ import * as directives from 'vuetify/directives'
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { useShareStore } from '@/store/shareStore'
+import { useConstStore } from '@/store/constStore'
 
 // Request interceptor
 axios.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -49,20 +50,25 @@ axios.interceptors.response.use(
 // Create Vue application instance
 const app = createApp(App)
 
-// Configure Vuetify with a dark theme
+// Setup state management (Pinia) early so stores can be used outside components
+const pinia = createPinia()
+app.use(pinia)
+
+// Ensure const store is available and load theme preference before creating Vuetify
+const constStore = useConstStore('mainId')
+await constStore.loadTheme()
+
+// Configure Vuetify and set default theme (use Vuetify's built-in theme palettes)
 const vuetify = createVuetify({
   components,
   directives,
   theme: {
-    defaultTheme: 'dark'
+    // 'light' | 'dark' | 'system'
+    defaultTheme: constStore.theme === 'light' ? 'light' : 'dark'
   }
 })
 
-// Setup state management (Pinia)
-const pinia = createPinia()
-
 // Apply necessary plugins and mount the app
-app.use(pinia)
 app.use(router)
 app.use(vuetify)
 app.mount('#app')
