@@ -318,3 +318,78 @@ export async function deleteLimitRation(): Promise<void> {
     }
   })
 }
+
+// Theme persistence: store string 'dark' or 'light'
+export async function storeTheme(value: 'dark' | 'light'): Promise<void> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for storing theme')
+    return
+  }
+
+  return new Promise<void>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.put(value, 'theme')
+
+    request.onsuccess = () => {
+      resolve()
+    }
+
+    request.onerror = () => {
+      console.error('Error storing theme')
+      resolve()
+    }
+  })
+}
+
+export async function getTheme(): Promise<'dark' | 'light' | null> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for retrieving theme')
+    return null
+  }
+
+  return new Promise<'dark' | 'light' | null>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readonly')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.get('theme')
+
+    request.onsuccess = () => {
+      const rawResult: unknown = request.result
+      if (rawResult === 'dark' || rawResult === 'light') {
+        resolve(rawResult)
+      } else {
+        resolve(null)
+      }
+    }
+
+    request.onerror = () => {
+      console.error('Error retrieving theme')
+      resolve(null)
+    }
+  })
+}
+
+export async function deleteTheme(): Promise<void> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for deleting theme')
+    return
+  }
+
+  return new Promise<void>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.delete('theme')
+
+    request.onsuccess = () => {
+      resolve()
+    }
+
+    request.onerror = () => {
+      console.error('Error deleting theme')
+      resolve()
+    }
+  })
+}

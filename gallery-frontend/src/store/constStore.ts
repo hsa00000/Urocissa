@@ -9,6 +9,7 @@ import {
   getConcurrencyNumber,
   storeLimitRation,
   getLimitRation
+  ,storeTheme,getTheme
 } from '@/db/settingsDb'
 
 export const useConstStore = (isolationId: IsolationId) =>
@@ -18,12 +19,15 @@ export const useConstStore = (isolationId: IsolationId) =>
       showInfo: boolean
       concurrencyNumber: number
       limitRatio: boolean
+  theme: 'dark' | 'light'
     } => ({
       subRowHeightScale: 250,
       showInfo: false,
       concurrencyNumber: Math.max(Math.floor(navigator.hardwareConcurrency / 2), 1),
       // default: false
       limitRatio: false
+  // default theme: dark
+  ,theme: 'dark'
     }),
     actions: {
       async updateSubRowHeightScale(value: number): Promise<void> {
@@ -72,6 +76,18 @@ export const useConstStore = (isolationId: IsolationId) =>
         const stored = await getLimitRation()
         if (typeof stored === 'boolean') {
           this.limitRatio = stored
+        }
+      }
+      ,
+      async updateTheme(value: 'dark' | 'light'): Promise<void> {
+        this.theme = value
+        await storeTheme(value)
+      },
+
+      async loadTheme(): Promise<void> {
+        const stored = await getTheme()
+        if (stored === 'dark' || stored === 'light') {
+          this.theme = stored
         }
       }
     }
