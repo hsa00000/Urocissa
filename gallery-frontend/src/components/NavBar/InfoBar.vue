@@ -1,10 +1,5 @@
 <template>
-  <v-app-bar
-    elevation="0"
-    :style="{
-      backgroundColor: 'rgb(var(--v-theme-surface))'
-    }"
-  >
+  <v-app-bar elevation="0">
     <v-btn v-if="route.meta.level === 1" @click="showDrawer = !showDrawer" icon="mdi-menu"> </v-btn>
     <v-btn
       v-else

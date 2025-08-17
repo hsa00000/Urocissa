@@ -1,9 +1,5 @@
 <template>
-  <v-toolbar
-    :style="{
-      backgroundColor: 'rgb(var(--v-theme-surface))'
-    }"
-  >
+  <v-app-bar>
     <LeaveEdit />
     <v-card
       variant="flat"
@@ -22,7 +18,7 @@
     />
     <SelectClear v-else :isolation-id="isolationId" />
     <BatchMenu />
-  </v-toolbar>
+  </v-app-bar>
 </template>
 
 <script lang="ts" setup>
