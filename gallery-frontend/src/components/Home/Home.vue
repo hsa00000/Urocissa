@@ -1,6 +1,6 @@
 <template>
   <!-- This bar is used inside album reading page -->
-  <slot name="reading-bar"> </slot> 
+  <slot name="reading-bar"> </slot>
   <!-- This router-view contains the ViewPage.vue -->
   <router-view :key="albumHomeIsolatedKey"></router-view>
 
@@ -12,9 +12,6 @@
           id="image-container"
           ref="imageContainerRef"
           class="pa-1 pb-2 h-100"
-          :style="{
-            backgroundColor: `rgb(var(--v-theme-surface-light))`
-          }"
           :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
           @scroll="
             // If prefetchStore.locateTo triggers initializeScrollPosition, prevent the user from triggering the scrolling function.

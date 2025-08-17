@@ -16,7 +16,7 @@
           flexGrow: '1',
           position: 'relative',
           width: `${placeholderWidth}px`,
-          backgroundColor: 'rgb(var(--v-theme-surface-light))'
+          backgroundColor: `rgb(var(--v-theme-surface-light))`
         }"
       >
         <i

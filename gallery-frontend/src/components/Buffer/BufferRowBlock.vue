@@ -47,7 +47,7 @@
           :style="{
             position: 'absolute',
             zIndex: 'var(--z-base)',
-            backgroundColor: `rgb(var(--v-theme-surface-variant))`
+            backgroundColor: `rgb(var(--v-theme-surface-light))`
           }"
           @click="(event: MouseEvent) => handleClick(event, row.start + subIndex)"
           class="w-100 h-100"
