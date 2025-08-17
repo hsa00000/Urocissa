@@ -64,7 +64,12 @@ const vuetify = createVuetify({
   directives,
   theme: {
     // 'light' | 'dark' | 'system'
-    defaultTheme: constStore.theme === 'light' ? 'light' : 'dark'
+    defaultTheme: constStore.theme === 'light' ? 'light' : 'dark',
+    variations: {
+      colors: ['surface'], // generate surface-[lighten/darken]-N
+      lighten: 0, // we don't need lighten variants
+      darken: 3 // creates ...-darken-1 and ...-darken-2
+    }
   }
 })
 

@@ -7,7 +7,6 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 export default defineConfig({
   plugins: [
     vue(),
-    vueDevTools(),
     VitePWA({
       srcDir: 'src/worker', // 指定 Service Worker 位置
       filename: 'serviceWorker.ts', // Service Worker 檔案名稱

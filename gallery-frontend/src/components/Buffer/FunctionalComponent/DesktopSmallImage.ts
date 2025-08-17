@@ -14,7 +14,7 @@ const DesktopSmallImage: FunctionalComponent<DesktopSmallImageProps> = (props) =
       zIndex: ZIndex.content,
       position: 'absolute',
       objectFit: 'cover',
-      border: props.hasBorder ? '8px solid white' : undefined
+      border: props.hasBorder ? '8px solid rgb(var(--v-theme-surface-darken-3))' : undefined
     },
     class: 'desktop-small-image w-100 h-100',
     src: props.src
