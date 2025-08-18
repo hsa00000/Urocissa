@@ -135,7 +135,7 @@
     <!-- Desktop version without swiper -->
     <template v-if="!configStore.isMobile">
       <ViewPageDisplayDatabase
-        v-if="abstractData && !configStore.disableImg"
+        v-if="abstractData  && abstractData.database && !configStore.disableImg"
         :index="index"
         :hash="hash"
         :abstract-data="abstractData"
