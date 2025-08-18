@@ -17,6 +17,7 @@
       >
       <v-chip
         v-else
+        color="grey"
         prepend-icon="mdi-star-outline"
         variant="tonal"
         class="ma-1"
@@ -35,6 +36,7 @@
       >
       <v-chip
         v-else
+        color="grey"
         prepend-icon="mdi-archive-arrow-down"
         variant="tonal"
         class="ma-1"
@@ -43,7 +45,7 @@
         >archived</v-chip
       >
     </v-list-item-title>
-    <v-list-item-subtitle class="text-wrap">
+    <v-list-item-title class="text-wrap">
       <v-chip
         variant="flat"
         v-for="tag in filteredTags"
@@ -54,7 +56,7 @@
       >
         {{ tag }}
       </v-chip>
-    </v-list-item-subtitle>
+    </v-list-item-title>
     <v-list-item-subtitle v-if="route.meta.baseName !== 'share'">
       <v-chip
         prepend-icon="mdi-pencil"

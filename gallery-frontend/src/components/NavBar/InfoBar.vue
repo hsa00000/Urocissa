@@ -34,6 +34,7 @@
           hide-details
           rounded
           class="ma-0"
+          bg-color="surface-light"
           @click:prepend-inner="handleSearch"
           @click:clear="handleSearch"
           @keyup.enter="handleSearch"

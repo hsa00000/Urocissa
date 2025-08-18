@@ -1,7 +1,7 @@
 <template>
-  <v-container class="d-flex align-center justify-center" fluid>
+  <v-container class="d-flex align-center justify-center h-100" fluid>
     <!-- No search results -->
-    <v-row v-if="ui.isSearchEmpty" justify="center">
+    <v-row v-if="ui.isSearchEmpty">
       <v-col class="w-100" cols="12" md="6" lg="4">
         <v-hover v-slot="{ isHovering, props: hoverProps }">
           <v-card

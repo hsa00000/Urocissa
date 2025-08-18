@@ -4,7 +4,7 @@
   <!-- This router-view contains the ViewPage.vue -->
   <router-view :key="albumHomeIsolatedKey"></router-view>
 
-  <v-container class="pa-0 ma-0 h-100" fluid>
+  <v-container class="pa-0 ma-0 h-100 bg-surface-light" fluid>
     <v-row class="pa-0 ma-0 h-100" no-gutters>
       <!-- Left: image container (takes remaining space) -->
       <v-col class="h-100 pa-0 ma-0">

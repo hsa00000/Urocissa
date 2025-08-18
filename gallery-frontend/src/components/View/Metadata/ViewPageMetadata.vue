@@ -3,7 +3,7 @@
     <v-row no-gutters class="position-relative h-100">
       <!-- Toolbars should not be direct children of v-row; wrap in a column -->
       <v-col cols="12">
-        <v-toolbar>
+        <v-toolbar color="surface">
           <!-- Icon button with increased size -->
           <v-btn icon @click="toggleInfo">
             <v-icon>mdi-close</v-icon>

@@ -5,7 +5,7 @@
         <v-icon>mdi-image-album</v-icon>
       </v-avatar>
     </template>
-    <v-list-item-subtitle class="text-wrap">
+    <v-list-item-title class="text-wrap">
       <v-chip
         variant="flat"
         v-for="albumId in props.albums"
@@ -16,7 +16,7 @@
       >
         {{ albumStore.albums.get(albumId)?.displayName }}
       </v-chip>
-    </v-list-item-subtitle>
+    </v-list-item-title>
     <v-list-item-subtitle>
       <v-chip
         prepend-icon="mdi-pencil"
