@@ -55,7 +55,7 @@
     </v-card>
 
     <!-- Swiper container for mobile with preview -->
-    <v-row v-if="configStore.isMobile" class="flex-grow-1" no-gutters style="min-height: 0">
+    <template v-if="configStore.isMobile">
       <swiper
         id="slider"
         :modules="modules"
@@ -72,76 +72,68 @@
       >
         <!-- Previous slide -->
         <swiper-slide v-if="previousHash !== undefined">
-          <div class="w-100 h-100">
-            <ViewPageDisplayDatabase
-              v-if="
-                previousAbstractData && previousAbstractData.database && !configStore.disableImg
-              "
-              :index="index - 1"
-              :hash="previousAbstractData.database.hash"
-              :abstract-data="previousAbstractData"
-              :col-width="colWidth"
-              :col-height="colHeight"
-              :isolation-id="isolationId"
-            />
-            <ViewPageDisplayAlbum
-              v-if="previousAbstractData && previousAbstractData.album && !configStore.disableImg"
-              :index="index - 1"
-              :album="previousAbstractData.album"
-              :col-width="colWidth"
-              :col-height="colHeight"
-            />
-          </div>
+          <ViewPageDisplayDatabase
+            v-if="previousAbstractData && previousAbstractData.database && !configStore.disableImg"
+            :index="index - 1"
+            :hash="previousAbstractData.database.hash"
+            :abstract-data="previousAbstractData"
+            :col-width="colWidth"
+            :col-height="colHeight"
+            :isolation-id="isolationId"
+          />
+          <ViewPageDisplayAlbum
+            v-if="previousAbstractData && previousAbstractData.album && !configStore.disableImg"
+            :index="index - 1"
+            :album="previousAbstractData.album"
+            :col-width="colWidth"
+            :col-height="colHeight"
+          />
         </swiper-slide>
 
         <!-- Current slide -->
         <swiper-slide>
-          <div class="w-100 h-100">
-            <ViewPageDisplayDatabase
-              v-if="abstractData && abstractData.database && !configStore.disableImg"
-              :index="index"
-              :hash="hash"
-              :abstract-data="abstractData"
-              :col-width="colWidth"
-              :col-height="colHeight"
-              :isolation-id="isolationId"
-            />
-            <ViewPageDisplayAlbum
-              v-if="abstractData && abstractData.album && !configStore.disableImg"
-              :index="index"
-              :album="abstractData.album"
-              :col-width="colWidth"
-              :col-height="colHeight"
-            />
-          </div>
+          <ViewPageDisplayDatabase
+            v-if="abstractData && abstractData.database && !configStore.disableImg"
+            :index="index"
+            :hash="hash"
+            :abstract-data="abstractData"
+            :col-width="colWidth"
+            :col-height="colHeight"
+            :isolation-id="isolationId"
+          />
+          <ViewPageDisplayAlbum
+            v-if="abstractData && abstractData.album && !configStore.disableImg"
+            :index="index"
+            :album="abstractData.album"
+            :col-width="colWidth"
+            :col-height="colHeight"
+          />
         </swiper-slide>
 
         <!-- Next slide -->
         <swiper-slide v-if="nextHash !== undefined">
-          <div class="w-100 h-100">
-            <ViewPageDisplayDatabase
-              v-if="nextAbstractData && nextAbstractData.database && !configStore.disableImg"
-              :index="index + 1"
-              :hash="nextAbstractData.database.hash"
-              :abstract-data="nextAbstractData"
-              :col-width="colWidth"
-              :col-height="colHeight"
-              :isolation-id="isolationId"
-            />
-            <ViewPageDisplayAlbum
-              v-if="nextAbstractData && nextAbstractData.album && !configStore.disableImg"
-              :index="index + 1"
-              :album="nextAbstractData.album"
-              :col-width="colWidth"
-              :col-height="colHeight"
-            />
-          </div>
+          <ViewPageDisplayDatabase
+            v-if="nextAbstractData && nextAbstractData.database && !configStore.disableImg"
+            :index="index + 1"
+            :hash="nextAbstractData.database.hash"
+            :abstract-data="nextAbstractData"
+            :col-width="colWidth"
+            :col-height="colHeight"
+            :isolation-id="isolationId"
+          />
+          <ViewPageDisplayAlbum
+            v-if="nextAbstractData && nextAbstractData.album && !configStore.disableImg"
+            :index="index + 1"
+            :album="nextAbstractData.album"
+            :col-width="colWidth"
+            :col-height="colHeight"
+          />
         </swiper-slide>
       </swiper>
-    </v-row>
+    </template>
 
     <!-- Desktop version without swiper -->
-    <v-row v-if="!configStore.isMobile" no-gutters class="flex-grow-1" style="min-height: 0">
+    <template v-if="!configStore.isMobile">
       <ViewPageDisplayDatabase
         v-if="abstractData && !configStore.disableImg"
         :index="index"
@@ -158,7 +150,7 @@
         :col-width="colWidth"
         :col-height="colHeight"
       />
-    </v-row>
+    </template>
   </v-col>
 </template>
 

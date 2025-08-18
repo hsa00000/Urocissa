@@ -1,5 +1,5 @@
 <template>
-  <v-row class="h-100 w-100" no-gutters>
+  <v-row class="h-100 flex-grow-1" no-gutters style="min-height: 0">
     <v-col
       v-if="abstractData && abstractData.database"
       id="col-ref"
