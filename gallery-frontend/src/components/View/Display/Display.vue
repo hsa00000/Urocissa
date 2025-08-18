@@ -7,7 +7,7 @@
     class="h-100 flex-grow-1 position-relative d-flex flex-column"
   >
     <!-- Overlay toolbar positioned absolutely within the column scope -->
-    <v-row class="flex-grow-0">
+    <v-row class="flex-grow-0" no-gutters>
       <v-col>
         <ViewBar
           :abstract-data="abstractData"
@@ -55,8 +55,9 @@
     </v-card>
 
     <!-- Swiper container for mobile with preview -->
-    <v-row v-if="configStore.isMobile">
+    <v-row v-if="configStore.isMobile" class="flex-grow-1" no-gutters style="min-height: 0">
       <swiper
+        id="slider"
         :modules="modules"
         :slides-per-view="1"
         :space-between="10"
@@ -67,10 +68,11 @@
         :allow-touch-move="canHandleNav()"
         @slide-change="onSlideChange"
         @swiper="onSwiper"
+        class="w-100 h-100"
       >
         <!-- Previous slide -->
         <swiper-slide v-if="previousHash !== undefined">
-          <div class="slide-content">
+          <div class="w-100 h-100">
             <ViewPageDisplayDatabase
               v-if="
                 previousAbstractData && previousAbstractData.database && !configStore.disableImg
@@ -94,7 +96,7 @@
 
         <!-- Current slide -->
         <swiper-slide>
-          <div class="slide-content">
+          <div class="w-100 h-100">
             <ViewPageDisplayDatabase
               v-if="abstractData && abstractData.database && !configStore.disableImg"
               :index="index"
@@ -116,7 +118,7 @@
 
         <!-- Next slide -->
         <swiper-slide v-if="nextHash !== undefined">
-          <div class="slide-content">
+          <div class="w-100 h-100">
             <ViewPageDisplayDatabase
               v-if="nextAbstractData && nextAbstractData.database && !configStore.disableImg"
               :index="index + 1"
@@ -139,12 +141,7 @@
     </v-row>
 
     <!-- Desktop version without swiper -->
-    <v-row
-      v-if="!configStore.isMobile"
-      no-gutters
-      class="h-100 flex-grow-1"
-      style="min-height: 0"
-    >
+    <v-row v-if="!configStore.isMobile" no-gutters class="flex-grow-1" style="min-height: 0">
       <ViewPageDisplayDatabase
         v-if="abstractData && !configStore.disableImg"
         :index="index"

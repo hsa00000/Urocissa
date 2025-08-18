@@ -2,7 +2,7 @@
   <v-col
     v-if="abstractData && abstractData.database"
     id="col-ref"
-    class="h-100 d-flex align-center justify-center"
+    class="h-100 d-flex align-center justify-center pa-0"
   >
     <img
       :key="index"
