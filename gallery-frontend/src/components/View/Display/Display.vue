@@ -4,15 +4,19 @@
     ref="colRef"
     cols="auto"
     :class="{ 'show-info': constStore.showInfo, 'not-show-info': !constStore.showInfo }"
-    class="h-100 position-relative"
+    class="h-100 position-relative d-flex flex-column"
   >
     <!-- Overlay toolbar positioned absolutely within the column scope -->
-    <ViewBar
-      :abstract-data="abstractData"
-      :index="index"
-      :hash="hash"
-      :isolation-id="isolationId"
-    />
+    <v-row class="flex-grow-0">
+      <v-col>
+        <ViewBar
+          :abstract-data="abstractData"
+          :index="index"
+          :hash="hash"
+          :isolation-id="isolationId"
+        />
+      </v-col>
+    </v-row>
 
     <!-- Navigation overlays (not grid children) -->
     <v-card
@@ -51,7 +55,7 @@
     </v-card>
 
     <!-- Swiper container for mobile with preview -->
-    <div v-if="configStore.isMobile" class="swiper-container h-100">
+    <v-row v-if="configStore.isMobile">
       <swiper
         :modules="modules"
         :slides-per-view="1"
@@ -63,7 +67,6 @@
         :allow-touch-move="canHandleNav()"
         @slide-change="onSlideChange"
         @swiper="onSwiper"
-        class="h-100"
       >
         <!-- Previous slide -->
         <swiper-slide v-if="previousHash !== undefined">
@@ -133,12 +136,10 @@
           </div>
         </swiper-slide>
       </swiper>
-    </div>
+    </v-row>
 
     <!-- Desktop version without swiper -->
-
-    <!-- Desktop version without swiper -->
-    <v-row v-if="!configStore.isMobile" no-gutters class="h-100">
+    <v-row v-if="!configStore.isMobile" no-gutters>
       <ViewPageDisplayDatabase
         v-if="abstractData && !configStore.disableImg"
         :index="index"
@@ -453,34 +454,5 @@ watch(
 
 .not-show-info {
   width: 100%;
-}
-
-/* Swiper container styles */
-.swiper-container {
-  width: 100%;
-  overflow: hidden;
-}
-
-.slide-content {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Override swiper default styles for better integration */
-:deep(.swiper) {
-  width: 100%;
-  height: 100%;
-}
-
-:deep(.swiper-slide) {
-  text-align: center;
-  font-size: 18px;
-  background: transparent;
-  display: flex;
-  justify-content: center;
-  align-items: center;
 }
 </style>

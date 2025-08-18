@@ -37,7 +37,7 @@
       </v-row>
     </v-container>
     <v-container v-else fluid class="pa-0 h-100 overflow-hidden position-relative bg-background">
-      <v-row class="fill-height" align="center" justify="center">
+      <v-row no-gutters class="fill-height" align="center" justify="center">
         <v-col cols="12" class="d-flex align-center justify-center">
           <v-progress-circular indeterminate color="primary" size="64" />
         </v-col>
