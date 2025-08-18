@@ -4,7 +4,7 @@
     ref="colRef"
     cols="auto"
     :class="{ 'show-info': constStore.showInfo, 'not-show-info': !constStore.showInfo }"
-    class="h-100 position-relative d-flex flex-column"
+    class="h-100 flex-grow-1 position-relative d-flex flex-column"
   >
     <!-- Overlay toolbar positioned absolutely within the column scope -->
     <v-row class="flex-grow-0">
@@ -139,7 +139,7 @@
     </v-row>
 
     <!-- Desktop version without swiper -->
-    <v-row v-if="!configStore.isMobile" no-gutters>
+    <v-row v-if="!configStore.isMobile" no-gutters class="w-100 h-100">
       <ViewPageDisplayDatabase
         v-if="abstractData && !configStore.disableImg"
         :index="index"
