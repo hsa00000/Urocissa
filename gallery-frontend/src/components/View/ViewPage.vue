@@ -20,7 +20,7 @@
       fluid
       class="pa-0 h-100 overflow-hidden position-relative bg-background"
     >
-      <v-row no-gutters class="w-100 h-100 flex-nowrap">
+      <v-row no-gutters class="h-100 flex-nowrap">
         <ViewPageDisplay
           :abstract-data="abstractData"
           :index="index"
@@ -36,8 +36,13 @@
         />
       </v-row>
     </v-container>
-    <v-container v-else fluid class="pa-0 h-100 overflow-hidden position-relative bg-background">
-      <v-row no-gutters class="fill-height" align="center" justify="center">
+    <v-container
+      id="loading-view-page-container"
+      v-else
+      fluid
+      class="pa-0 h-100 overflow-hidden position-relative bg-background"
+    >
+      <v-row no-gutters class="h-100" align="center" justify="center">
         <v-col cols="12" class="d-flex align-center justify-center">
           <v-progress-circular indeterminate color="primary" size="64" />
         </v-col>

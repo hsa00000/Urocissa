@@ -142,7 +142,7 @@
     <v-row
       v-if="!configStore.isMobile"
       no-gutters
-      class="w-100 h-100 flex-grow-1"
+      class="h-100 flex-grow-1"
       style="min-height: 0"
     >
       <ViewPageDisplayDatabase
