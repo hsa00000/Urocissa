@@ -12,12 +12,12 @@
     ]"
   >
     <v-card
-      :class="[colWidth < colHeight ? 'h-50 w-50' : 'w-50']"
+      :class="sizeClass"
       :style="{
         aspectRatio: '1',
         maxWidth: '500px',
         maxHeight: '500px',
-        border: '16px solid white'
+        border: '8px solid white'
       }"
     >
       <img
@@ -42,7 +42,7 @@
       }"
       outlined
       style="padding: 16px"
-      :class="[colWidth < colHeight ? 'h-50 w-50' : 'w-50']"
+      :class="sizeClass"
       class="d-flex flex-column"
     >
       <v-card-item>
@@ -96,7 +96,7 @@ import { filesize } from 'filesize'
 import { useRoute } from 'vue-router'
 import { dater } from '@utils/dater'
 import { Album } from '@type/types'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { editTitle } from '@utils/createAlbums'
 
 const titleModel = ref('')
@@ -112,6 +112,19 @@ const props = defineProps<{
   colWidth: number
   colHeight: number
 }>()
+
+const sizeClass = computed(() => {
+  const w = props.colWidth
+  const h = props.colHeight
+
+  if (2 * w < h) return 'w-100'
+  if (w < h && h < 2 * w) return 'h-50'
+  if (h < w && w < 2 * h) return 'w-50'
+  if (2 * h < w) return 'h-100'
+
+  // boundaries (==) fallback
+  return w <= h ? 'h-50' : 'w-50'
+})
 
 watch(
   () => props.album.title,
