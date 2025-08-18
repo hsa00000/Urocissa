@@ -1,5 +1,5 @@
 <template>
-  <v-toolbar color="background">
+  <v-toolbar>
     <LeaveView />
     <v-spacer></v-spacer>
     <ShowInfo />
