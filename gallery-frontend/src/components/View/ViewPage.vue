@@ -8,8 +8,8 @@
         }
       }
     "
-    :height="'100%'"
-    :width="'100%'"
+    height="100%"
+    width="100%"
     class="d-flex"
     id="view-page"
     transition="false"

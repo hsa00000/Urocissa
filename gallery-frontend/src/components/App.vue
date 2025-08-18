@@ -8,12 +8,13 @@
     @dragover.prevent
     @drop.prevent
   >
-    <v-main class="main-viewport">
+    <v-main class="h-screen height-screen overflow-hidden">
       <v-container fluid class="ma-0 pa-0 h-100">
         <DropZoneModal v-if="!configStore.isMobile" />
         <router-view v-slot="{ Component }" :key="routeKey">
-          <component :is="Component" /> </router-view
-      ></v-container>
+          <component :is="Component" />
+        </router-view>
+      </v-container>
     </v-main>
     <v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
     <EditTagsModal v-if="modalStore.showEditTagsModal" />
@@ -76,14 +77,6 @@ onBeforeMount(async () => {
 </script>
 
 <style>
-/* 讓 v-main 永遠只佔滿視窗剩下的高度（會自動扣掉 app-bar / footer 的 padding） */
-.main-viewport {
-  /* 先給 100vh，接著用 100dvh 覆蓋以支援行動裝置動態位移的瀏覽器工具列 */
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden; /* 只在 v-main 裡面滾動 */
-}
-
 /* 你原本的樣式保留 */
 img,
 a,
