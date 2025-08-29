@@ -1,4 +1,8 @@
-import { rowSchema, rowWithOffsetSchema, databaseTimestampSchema } from '@type/schemas'
+import {
+  rowSchema,
+  rowWithOffsetSchema,
+  databaseTimestampSchema
+} from '@type/schemas'
 import {
   AbstractData,
   Database,
@@ -18,11 +22,14 @@ import axios from 'axios'
 import { bindActionDispatch, createHandler } from 'typesafe-agent-events'
 import { fromDataWorker, toDataWorker } from './workerApi'
 import { z } from 'zod'
+import { setupAxiosInterceptor } from './axiosInterceptor'
 
 const shouldProcessBatch: number[] = []
 const fetchedRowData = new Map<number, Row>()
 const postToMainData = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
 const workerAxios = axios.create()
+
+setupAxiosInterceptor(workerAxios, postToMainData.notification)
 
 self.addEventListener('message', (e) => {
   const handler = createHandler<typeof toDataWorker>({
