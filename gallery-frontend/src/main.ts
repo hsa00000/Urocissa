@@ -1,22 +1,18 @@
-// This file initializes the Vue 3 application, sets up the router, state management (Pinia), and Vuetify UI framework.
-// It is referenced in index.html to bootstrap the app, configures the application with a dark theme, and mounts it to the DOM.
+// main.ts
 
-// Importing core dependencies and main component
 import { createApp } from 'vue'
 import App from '@/components/App.vue'
 
-// Importing router and state management
 import router from '@/route/routes'
 import { createPinia } from 'pinia'
 
-// Importing global styles and icons
 import '@/style/common.scss'
 import '@mdi/font/css/materialdesignicons.css'
 
-// Importing Vuetify UI framework and configuration
+import 'vuetify/styles'
+
 import { createVuetify } from 'vuetify'
-import * as components from 'vuetify/components'
-import * as directives from 'vuetify/directives'
+
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { useShareStore } from '@/store/shareStore'
@@ -58,8 +54,6 @@ await constStore.loadTheme()
 
 // Configure Vuetify and set default theme (use Vuetify's built-in theme palettes)
 const vuetify = createVuetify({
-  components,
-  directives,
   theme: {
     // 'light' | 'dark' | 'system'
     defaultTheme: constStore.theme === 'light' ? 'light' : 'dark'
