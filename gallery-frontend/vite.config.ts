@@ -1,23 +1,35 @@
+// vite.config.ts
+
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+
+import vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    vue(),
+    vue({
+      template: { transformAssetUrls }
+    }),
+
+    vuetify({
+      autoImport: true
+    }),
+
     VitePWA({
-      srcDir: 'src/worker', // 指定 Service Worker 位置
-      filename: 'serviceWorker.ts', // Service Worker 檔案名稱
-      strategies: 'injectManifest', // 使用 injectManifest，不啟用 PWA
-      /* injectRegister: false, // 不自動註冊 Service Worker */
-      manifest: false, // 不啟用 Web App Manifest
+      srcDir: 'src/worker', // Specify Service Worker location
+      filename: 'serviceWorker.ts', // Service Worker filename
+      strategies: 'injectManifest', // Use injectManifest, disable PWA
+      /* injectRegister: false, // Do not auto-register Service Worker */
+      manifest: false, // Disable Web App Manifest
       injectManifest: {
-        injectionPoint: undefined // 不插入預快取清單
+        injectionPoint: undefined // Do not insert precache manifest
       },
       devOptions: {
-        enabled: true, // 在開發模式啟用 Service Worker
-        type: 'module' // 如果你的 SW 內有 import，要設為 "module"
+        enabled: true, // Enable Service Worker in development mode
+        type: 'module' // Set to "module" if SW contains imports
       }
     })
   ],
@@ -40,62 +52,20 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/json': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/assets': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/put': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/delete': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/edit_album': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/edit_sync_path': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/edit_priority_list': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/import_path': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/upload': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/create_album': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/query': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/get': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/post': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      },
-      '/object': {
-        target: 'http://127.0.0.1:5673',
-        changeOrigin: true
-      }
+      '/json': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/assets': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/put': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/delete': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/edit_album': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/edit_sync_path': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/edit_priority_list': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/import_path': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/upload': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/create_album': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/query': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/get': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/post': { target: 'http://127.0.0.1:5673', changeOrigin: true },
+      '/object': { target: 'http://127.0.0.1:5673', changeOrigin: true }
     }
   }
 })
