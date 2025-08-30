@@ -1,5 +1,3 @@
-// vite.config.ts
-
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -7,7 +5,6 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 import vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     vue({
@@ -46,6 +43,20 @@ export default defineConfig({
     rollupOptions: {
       input: {
         app: './index.html' // Entry point
+      },
+      output: {
+        manualChunks(id) {
+          // 將 node_modules 中的依賴項打包到 vendor chunk 中
+          if (id.includes('node_modules')) {
+            // 特別處理 vuetify，將其打包成一個獨立的 chunk
+            // 這有助於分析 vuetify 本身的大小
+            if (id.includes('vuetify')) {
+              return 'vuetify'
+            }
+            // 其他 node_modules 的依賴打包到 vendor
+            return 'vendor'
+          }
+        }
       }
     },
     chunkSizeWarningLimit: 1000 // Increase warning limit to 1MB if warnings are acceptable
