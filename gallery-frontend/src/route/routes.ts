@@ -1,25 +1,12 @@
-// src/router.ts
-
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 import 'vue-router'
 
-import HomeMain from '@/components/Page/HomePage.vue'
-import AllPage from '@/components/Page/AllPage.vue'
-import FavoritePage from '@/components/Page/FavoritePage.vue'
-import ArchivedPage from '@/components/Page/ArchivedPage.vue'
-import TrashedPage from '@/components/Page/TrashedPage.vue'
-import AlbumsPage from '@/components/Page/AlbumsPage.vue'
-import VideosPage from '@/components/Page/VideosPage.vue'
 import { createRoute } from './createRoute'
 import { tagsRoute } from './tagsRoute'
 import { linksRoute } from './linksRoute'
 import { loginRoute } from './loginRoute'
 import { shareRoute } from './shareRoute'
-
-// ======================================
-// Define Simple Static Routes
-// ======================================
 
 const simpleRoutes: RouteRecordRaw[] = [
   { path: '/', redirect: '/home' },
@@ -29,27 +16,25 @@ const simpleRoutes: RouteRecordRaw[] = [
   shareRoute
 ]
 
-// ======================================
-// Create Routes Using the Helper Function
-// ======================================
+const homePageRoutes = createRoute('home', () => import('@/components/Page/HomePage.vue'))
 
-const homePageRoutes = createRoute('home', HomeMain)
+const allPageRoutes = createRoute('all', () => import('@/components/Page/AllPage.vue'))
 
-const allPageRoutes = createRoute('all', AllPage)
+const favoritePageRoutes = createRoute(
+  'favorite',
+  () => import('@/components/Page/FavoritePage.vue')
+)
 
-const favoritePageRoutes = createRoute('favorite', FavoritePage)
+const archivedPageRoutes = createRoute(
+  'archived',
+  () => import('@/components/Page/ArchivedPage.vue')
+)
 
-const archivedPageRoutes = createRoute('archived', ArchivedPage)
+const trashedPageRoutes = createRoute('trashed', () => import('@/components/Page/TrashedPage.vue'))
 
-const trashedPageRoutes = createRoute('trashed', TrashedPage)
+const albumsPageRoutes = createRoute('albums', () => import('@/components/Page/AlbumsPage.vue'))
 
-const albumsPageRoutes = createRoute('albums', AlbumsPage)
-
-const videosPageRoutes = createRoute('videos', VideosPage)
-
-// ======================================
-// Combine All Routes
-// ======================================
+const videosPageRoutes = createRoute('videos', () => import('@/components/Page/VideosPage.vue'))
 
 const routes: RouteRecordRaw[] = [
   ...simpleRoutes,
@@ -62,16 +47,11 @@ const routes: RouteRecordRaw[] = [
   ...videosPageRoutes
 ]
 
-// ======================================
-// Create and Export the Router Instance
-// ======================================
-
 const router = createRouter({
   history: createWebHistory(),
   routes
 })
 
-// Update the browser tab title based on the current route
 router.afterEach((to) => {
   const baseName =
     typeof to.meta.baseName === 'string'
@@ -131,15 +111,17 @@ router.afterEach((to) => {
 // synthesize the parent entry in history so a simple router.back() returns to it.
 void router.isReady().then(async () => {
   const to = router.currentRoute.value
-
   const meta = to.meta
 
   // Only act on initial load for nested pages (read/view)
   const isNested = meta.level > 1
   if (isNested) {
-    const routeName = typeof to.name === 'string' ? to.name : undefined
-    const baseName = typeof meta.baseName === 'string' ? meta.baseName : undefined
-    if (routeName === undefined || baseName === undefined) return
+    const routeName = to.name
+    const baseName = meta.baseName
+
+    if (typeof routeName !== 'string' || typeof baseName !== 'string') {
+      return
+    }
 
     const q = to.query
     const hashParam = typeof to.params.hash === 'string' ? to.params.hash : undefined
