@@ -20,36 +20,36 @@ export const useFilterStore = (isolationId: IsolationId) =>
         const hasSearchString = searchStringStr !== null
         const stripQuotes = (s: string) => s.replace(/"/g, '')
 
-        try {
-          if (!hasBasicString && !hasSearchString) return null
+        if (!hasBasicString && !hasSearchString) return null
 
-          if (hasBasicString && !hasSearchString) {
+        if (hasBasicString && !hasSearchString) {
+          try {
             return generateJsonString(basicString)
+          } catch (err) {
+            console.error(err)
+            return null
           }
-
-          if (!hasBasicString && hasSearchString) {
-            try {
-              return generateJsonString(searchStringStr)
-            } catch {
-              const s = stripQuotes(searchStringStr)
-              return generateJsonString(`any: "${s}"`)
-            }
-          }
-
-          if (hasBasicString && hasSearchString) {
-            try {
-              return generateJsonString(`and(${basicString},${searchStringStr})`)
-            } catch {
-              const s = stripQuotes(searchStringStr)
-              return generateJsonString(`and(${basicString}, any: "${s}")`)
-            }
-          }
-
-          return null
-        } catch (err) {
-          console.error(err)
-          return null
         }
+
+        if (!hasBasicString && hasSearchString) {
+          try {
+            return generateJsonString(searchStringStr)
+          } catch {
+            const s = stripQuotes(searchStringStr)
+            return generateJsonString(`any: "${s}"`)
+          }
+        }
+
+        if (hasBasicString && hasSearchString) {
+          try {
+            return generateJsonString(`and(${basicString},${searchStringStr})`)
+          } catch {
+            const s = stripQuotes(searchStringStr)
+            return generateJsonString(`and(${basicString}, any: "${s}")`)
+          }
+        }
+
+        return null
       }
     }
   })()
