@@ -259,6 +259,7 @@ const handleClick = (event?: MouseEvent | TouchEvent) => {
   }
 
   locationStore.anchor = targetRowIndex
+  locationStore.locationIndex = targetRowIndex * layoutBatchNumber
 
   offsetStore.clearAll()
   queueStore.clearAll()
@@ -366,7 +367,7 @@ watchEffect(() => {
 
 watch([() => locationStore.locationIndex, reachBottom], () => {
   isScrolling.value = true
-  hoverLabelRowIndex.value = undefined
+  hoverLabelRowIndex.value = currentBatchIndex.value
   if (reachBottom.value) {
     currentDateChipIndex.value = rowLength.value - 1
   } else {
