@@ -366,6 +366,7 @@ watchEffect(() => {
 
 watch([() => locationStore.locationIndex, reachBottom], () => {
   isScrolling.value = true
+  hoverLabelRowIndex.value = undefined
   if (reachBottom.value) {
     currentDateChipIndex.value = rowLength.value - 1
   } else {
