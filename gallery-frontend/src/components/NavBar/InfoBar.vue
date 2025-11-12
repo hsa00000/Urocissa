@@ -50,7 +50,6 @@
     <v-btn
       v-if="route.meta.level === 1"
       :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
-      :disabled="!initializedStore.initialized"
       @click="themeIsLight = !themeIsLight"
     />
     <BtnCreateAlbum v-if="route.meta.level === 1" v-model="loading" />
@@ -69,7 +68,6 @@ import { LocationQueryValue, useRoute, useRouter } from 'vue-router'
 import { useFilterStore } from '@/store/filterStore'
 import { useUploadStore } from '@/store/uploadStore'
 import { useAlbumStore } from '@/store/albumStore'
-import { useInitializedStore } from '@/store/initializedStore'
 import { useConstStore } from '@/store/constStore'
 import BtnCreateAlbum from '@Menu/MenuButton/BtnCreateAlbum.vue'
 import { useTheme } from 'vuetify'
@@ -79,7 +77,6 @@ const showDrawer = inject('showDrawer')
 const albumStore = useAlbumStore('mainId')
 const uploadStore = useUploadStore('mainId')
 const filterStore = useFilterStore('mainId')
-const initializedStore = useInitializedStore('mainId')
 const constStore = useConstStore('mainId')
 const vuetifyTheme = useTheme()
 
