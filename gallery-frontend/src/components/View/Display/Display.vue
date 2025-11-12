@@ -210,6 +210,8 @@ const handleKeyDown = (event: KeyboardEvent) => {
     (route.meta.level === 4 && props.isolationId === 'subId')
   ) {
     if (modalStore.showEditTagsModal) return
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
+      return
     if (event.key === 'ArrowRight' && nextPage.value) {
       router.replace(nextPage.value).catch((error: unknown) => {
         console.error('Navigation Error:', error)
