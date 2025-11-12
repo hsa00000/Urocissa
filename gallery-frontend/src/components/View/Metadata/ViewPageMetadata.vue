@@ -17,6 +17,23 @@
           <v-toolbar-title class="text-h5">Info</v-toolbar-title>
         </v-toolbar>
       </div>
+      <v-card-item>
+        <v-textarea
+          v-model="userDefinedDescriptionModel"
+          variant="underlined"
+          rows="1"
+          auto-grow
+          @blur="
+            editUserDefinedDescription(
+              props.abstractData,
+              userDefinedDescriptionModel,
+              props.index,
+              props.isolationId
+            )
+          "
+          :placeholder="userDefinedDescriptionModel === '' ? 'Add description' : undefined"
+        />
+      </v-card-item>
       <div v-if="abstractData.database" class="h-100 w-100">
         <v-list class="pa-0" height="100%" lines="two">
           <ItemSize :database="abstractData.database" />
@@ -61,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, watch, ref } from 'vue'
 import { useConstStore } from '@/store/constStore'
 
 import { AbstractData, IsolationId } from '@type/types'
@@ -76,8 +93,11 @@ import ItemTitle from './ItemTitle.vue'
 import ItemCount from './ItemCount.vue'
 import { useRoute } from 'vue-router'
 import { useShareStore } from '@/store/shareStore'
+import { editUserDefinedDescription } from '@utils/editDescription'
 
 const route = useRoute()
+
+const userDefinedDescriptionModel = ref('')
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -96,11 +116,21 @@ function toggleInfo() {
   void constStore.updateShowInfo(!constStore.showInfo)
 }
 
+function getUserDefinedDescription(abstractData: AbstractData): string {
+  if (abstractData.database) {
+    return abstractData.database.exif_vec._user_defined_description ?? ''
+  } else if (abstractData.album) {
+    return abstractData.album.userDefinedMetadata._user_defined_description?.[0] ?? ''
+  }
+  return ''
+}
+
 watch(
   () => props.hash,
   () => {
-    console.log(props.abstractData)
-  }
+    userDefinedDescriptionModel.value = getUserDefinedDescription(props.abstractData)
+  },
+  { immediate: true }
 )
 </script>
 

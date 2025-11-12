@@ -12,7 +12,7 @@ export async function createNonEmptyAlbum(
 ): Promise<string | undefined> {
   const albumStore = useAlbumStore('mainId')
   const prefetchStore = usePrefetchStore(isolationId)
-  
+
   return await tryWithMessageStore('mainId', async () => {
     const createNonEmptyAlbumData = {
       title: null,
@@ -41,7 +41,7 @@ export async function createNonEmptyAlbum(
 
 export async function createEmptyAlbum(): Promise<string | undefined> {
   const albumStore = useAlbumStore('mainId')
-  
+
   return await tryWithMessageStore('mainId', async () => {
     const response = await axios.post<string>('/post/create_empty_album', {
       headers: {
@@ -85,3 +85,5 @@ export async function editTitle(album: Album, titleModelValue: string) {
     }
   }
 }
+
+

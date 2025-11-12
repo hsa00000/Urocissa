@@ -1,6 +1,7 @@
 use rocket::Route;
 
 pub mod edit_album;
+pub mod edit_description;
 pub mod edit_share;
 pub mod edit_tag;
 pub mod random;
@@ -11,6 +12,7 @@ pub fn generate_put_routes() -> Vec<Route> {
         edit_album::edit_album,
         edit_album::set_album_cover,
         edit_album::set_album_title,
+        edit_description::set_user_defined_description,
         edit_share::edit_share,
         edit_share::delete_share,
         edit_tag::edit_tag,
