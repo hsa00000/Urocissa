@@ -97,7 +97,7 @@ pub struct SetAlbumCover {
     pub cover_hash: ArrayString<64>,
 }
 
-#[post("/post/set_album_cover", data = "<set_album_cover>")]
+#[put("/put/set_album_cover", data = "<set_album_cover>")]
 pub async fn set_album_cover(
     auth: GuardResult<GuardAuth>,
     read_only_mode: Result<GuardReadOnlyMode>,
@@ -139,7 +139,7 @@ pub struct SetAlbumTitle {
     pub title: Option<String>,
 }
 
-#[post("/post/set_album_title", data = "<set_album_title>")]
+#[put("/put/set_album_title", data = "<set_album_title>")]
 pub async fn set_album_title(
     auth: GuardResult<GuardShare>,
     read_only_mode: Result<GuardReadOnlyMode>,

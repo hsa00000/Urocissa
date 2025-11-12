@@ -65,7 +65,7 @@ export async function editTitle(album: Album, titleModelValue: string) {
   if ((album.title ?? '') !== titleModelValue) {
     const id = album.id
     const title = titleModelValue === '' ? null : titleModelValue
-    await axios.post('/post/set_album_title', {
+    await axios.put('/put/set_album_title', {
       albumId: id,
       title: title
     })
