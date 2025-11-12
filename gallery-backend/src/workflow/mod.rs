@@ -5,7 +5,7 @@ use crate::tasks::{
         index::IndexTask, open_file::OpenFileTask, video::VideoTask,
     },
 };
-use anyhow::{Result, bail};
+use anyhow::Result;
 use arrayvec::ArrayString;
 use dashmap::DashSet;
 use log::warn;
