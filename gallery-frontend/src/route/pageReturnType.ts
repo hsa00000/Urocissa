@@ -1,4 +1,4 @@
-import { LocationQuery } from 'vue-router'
+import { LocationQuery, RouteLocationNormalizedLoaded } from 'vue-router'
 
 export interface PageReturnType {
   name: string
@@ -17,12 +17,12 @@ declare module 'vue-router' {
     level: number
     baseName: BaseName
     getParentPage: (
-      router: RouteLocationNormalizedLoadedGeneric,
+      router: RouteLocationNormalizedLoaded,
       albumId?: string,
       shareId?: string
     ) => PageReturnType
     getChildPage: (
-      router: RouteLocationNormalizedLoadedGeneric,
+      router: RouteLocationNormalizedLoaded,
       hash: string | undefined
     ) => PageReturnType
   }
