@@ -1,10 +1,12 @@
 use std::sync::LazyLock;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use arrayvec::ArrayString;
 use rusqlite::{OptionalExtension, params, ToSql};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use crate::public::structure::{
-    album::Album,
-    database_struct::database::definition::Database,
+    album::{Album, Share},
+    database_struct::{database::definition::Database, file_modify::FileModify},
     expression::Expression,
     tag_info::TagInfo,
 };
@@ -32,14 +34,17 @@ impl Sqlite {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS objects (
                 id TEXT PRIMARY KEY,
-                data BLOB,
                 size INTEGER,
                 width INTEGER,
                 height INTEGER,
                 ext TEXT,
                 ext_type TEXT,
                 pending BOOLEAN,
-                timestamp INTEGER
+                timestamp INTEGER,
+                thumbhash BLOB,
+                phash BLOB,
+                exif TEXT,
+                alias TEXT
             )",
             [],
         )
@@ -48,12 +53,20 @@ impl Sqlite {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS albums (
                 id TEXT PRIMARY KEY,
-                data BLOB,
                 title TEXT,
                 created_time INTEGER,
                 pending BOOLEAN,
                 width INTEGER,
-                height INTEGER
+                height INTEGER,
+                start_time INTEGER,
+                end_time INTEGER,
+                last_modified_time INTEGER,
+                cover TEXT,
+                thumbhash BLOB,
+                user_defined_metadata TEXT,
+                share_list TEXT,
+                item_count INTEGER,
+                item_size INTEGER
             )",
             [],
         )
@@ -70,6 +83,34 @@ impl Sqlite {
         )
         .expect("Failed to create snapshots table");
 
+        // Phase 5: Normalization
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS object_tags (
+                object_id TEXT,
+                tag TEXT,
+                PRIMARY KEY (object_id, tag)
+            )",
+            [],
+        ).expect("Failed to create object_tags table");
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS album_objects (
+                album_id TEXT,
+                object_id TEXT,
+                PRIMARY KEY (album_id, object_id)
+            )",
+            [],
+        ).expect("Failed to create album_objects table");
+        
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS album_tags (
+                album_id TEXT,
+                tag TEXT,
+                PRIMARY KEY (album_id, tag)
+            )",
+            [],
+        ).expect("Failed to create album_tags table");
+
         Self {
             pool,
         }
@@ -77,66 +118,160 @@ impl Sqlite {
 
     pub fn get_database(&self, hash: &str) -> rusqlite::Result<Option<Database>> {
         let conn = self.pool.get().unwrap();
-        let mut stmt = conn.prepare("SELECT data FROM objects WHERE id = ?")?;
-        let data: Option<Vec<u8>> = stmt
-            .query_row(params![hash], |row| row.get(0))
-            .optional()?;
+        let mut stmt = conn.prepare("SELECT id, size, width, height, ext, ext_type, pending, thumbhash, phash, exif, alias FROM objects WHERE id = ?")?;
+        
+        let result = stmt.query_row(params![hash], |row| {
+            let id: String = row.get(0)?;
+            let size: u64 = row.get(1)?;
+            let width: u32 = row.get(2)?;
+            let height: u32 = row.get(3)?;
+            let ext: String = row.get(4)?;
+            let ext_type: String = row.get(5)?;
+            let pending: bool = row.get(6)?;
+            let thumbhash: Vec<u8> = row.get(7)?;
+            let phash: Vec<u8> = row.get(8)?;
+            let exif_json: String = row.get(9)?;
+            let alias_json: String = row.get(10)?;
+            
+            let exif_vec: BTreeMap<String, String> = serde_json::from_str(&exif_json).unwrap_or_default();
+            let alias: Vec<FileModify> = serde_json::from_str(&alias_json).unwrap_or_default();
+            
+            Ok(Database {
+                hash: ArrayString::from(&id).unwrap_or_default(),
+                size,
+                width,
+                height,
+                thumbhash,
+                phash,
+                ext,
+                exif_vec,
+                tag: HashSet::new(), // Will fill later
+                album: HashSet::new(), // Will fill later
+                alias,
+                ext_type,
+                pending,
+            })
+        }).optional()?;
 
-        match data {
-            Some(bytes) => {
-                let database: Database = serde_json::from_slice(&bytes).map_err(|e| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        0,
-                        rusqlite::types::Type::Blob,
-                        Box::new(e),
-                    )
-                })?;
-                Ok(Some(database))
+        if let Some(mut database) = result {
+            // Fetch tags
+            let mut stmt_tags = conn.prepare("SELECT tag FROM object_tags WHERE object_id = ?")?;
+            let tags_iter = stmt_tags.query_map(params![hash], |row| row.get(0))?;
+            for tag in tags_iter {
+                database.tag.insert(tag?);
             }
-            None => Ok(None),
+            
+            // Fetch albums
+            let mut stmt_albums = conn.prepare("SELECT album_id FROM album_objects WHERE object_id = ?")?;
+            let albums_iter = stmt_albums.query_map(params![hash], |row| row.get(0))?;
+            for album_id in albums_iter {
+                let aid: String = album_id?;
+                database.album.insert(ArrayString::from(&aid).unwrap_or_default());
+            }
+            
+            Ok(Some(database))
+        } else {
+            Ok(None)
         }
     }
 
     pub fn get_album(&self, id: &str) -> rusqlite::Result<Option<Album>> {
         let conn = self.pool.get().unwrap();
-        let mut stmt = conn.prepare("SELECT data FROM albums WHERE id = ?")?;
-        let data: Option<Vec<u8>> = stmt
-            .query_row(params![id], |row| row.get(0))
-            .optional()?;
+        let mut stmt = conn.prepare("SELECT id, title, created_time, pending, width, height, start_time, end_time, last_modified_time, cover, thumbhash, user_defined_metadata, share_list, item_count, item_size FROM albums WHERE id = ?")?;
+        
+        let result = stmt.query_row(params![id], |row| {
+            let id: String = row.get(0)?;
+            let title: Option<String> = row.get(1)?;
+            let created_time: i64 = row.get(2)?;
+            let pending: bool = row.get(3)?;
+            let width: u32 = row.get(4)?;
+            let height: u32 = row.get(5)?;
+            let start_time: Option<i64> = row.get(6)?;
+            let end_time: Option<i64> = row.get(7)?;
+            let last_modified_time: i64 = row.get(8)?;
+            let cover: Option<String> = row.get(9)?;
+            let thumbhash: Option<Vec<u8>> = row.get(10)?;
+            let user_meta_json: String = row.get(11)?;
+            let share_list_json: String = row.get(12)?;
+            let item_count: usize = row.get(13)?;
+            let item_size: i64 = row.get(14)?;
+            
+            let user_defined_metadata: HashMap<String, Vec<String>> = serde_json::from_str(&user_meta_json).unwrap_or_default();
+            let share_list: HashMap<ArrayString<64>, Share> = serde_json::from_str(&share_list_json).unwrap_or_default();
+            
+            Ok(Album {
+                id: ArrayString::from(&id).unwrap_or_default(),
+                title,
+                created_time: created_time as u128,
+                start_time: start_time.map(|t| t as u128),
+                end_time: end_time.map(|t| t as u128),
+                last_modified_time: last_modified_time as u128,
+                cover: cover.map(|c| ArrayString::from(&c).unwrap_or_default()),
+                thumbhash,
+                user_defined_metadata,
+                share_list,
+                tag: HashSet::new(), // Will fill later
+                width,
+                height,
+                item_count,
+                item_size: item_size as u64,
+                pending,
+            })
+        }).optional()?;
 
-        match data {
-            Some(bytes) => {
-                let album: Album = serde_json::from_slice(&bytes).map_err(|e| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        0,
-                        rusqlite::types::Type::Blob,
-                        Box::new(e),
-                    )
-                })?;
-                Ok(Some(album))
+        if let Some(mut album) = result {
+            // Calculate stats on-read
+            let (count, size, start, end, cover_db) = self.get_album_stats(id)?;
+            
+            album.item_count = count;
+            album.item_size = size;
+            album.start_time = start;
+            album.end_time = end;
+
+            // Validate cover
+            let current_cover_valid = if let Some(cover_id) = &album.cover {
+                self.is_object_in_album(cover_id, id).unwrap_or(false)
+            } else {
+                false
+            };
+
+            if !current_cover_valid {
+                if let Some(db) = cover_db {
+                    album.cover = Some(db.hash);
+                    album.thumbhash = Some(db.thumbhash);
+                    album.width = db.width;
+                    album.height = db.height;
+                } else {
+                    album.cover = None;
+                    album.thumbhash = None;
+                    album.width = 0;
+                    album.height = 0;
+                }
             }
-            None => Ok(None),
+
+            // Fetch tags
+            let mut stmt_tags = conn.prepare("SELECT tag FROM album_tags WHERE album_id = ?")?;
+            let tags_iter = stmt_tags.query_map(params![id], |row| row.get(0))?;
+            for tag in tags_iter {
+                album.tag.insert(tag?);
+            }
+            
+            Ok(Some(album))
+        } else {
+            Ok(None)
         }
     }
 
     pub fn get_all_albums(&self) -> rusqlite::Result<Vec<Album>> {
         let conn = self.pool.get().unwrap();
-        let mut stmt = conn.prepare("SELECT data FROM albums")?;
-        let album_iter = stmt.query_map([], |row| {
-            let bytes: Vec<u8> = row.get(0)?;
-            let album: Album = serde_json::from_slice(&bytes).map_err(|e| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    0,
-                    rusqlite::types::Type::Blob,
-                    Box::new(e),
-                )
-            })?;
-            Ok(album)
-        })?;
+        let mut stmt = conn.prepare("SELECT id FROM albums")?;
+        let ids_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
 
         let mut albums = Vec::new();
-        for album in album_iter {
-            albums.push(album?);
+        for id in ids_iter {
+            if let Ok(Some(album)) = self.get_album(&id?) {
+                albums.push(album);
+            }
         }
         Ok(albums)
     }
@@ -144,9 +279,9 @@ impl Sqlite {
     pub fn get_all_tags(&self) -> rusqlite::Result<Vec<TagInfo>> {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT value, COUNT(*) 
-             FROM objects, json_each(objects.data, '$.tag') 
-             GROUP BY value"
+            "SELECT tag, COUNT(*) 
+             FROM object_tags 
+             GROUP BY tag"
         )?;
         
         let iter = stmt.query_map([], |row| {
@@ -168,15 +303,16 @@ impl Sqlite {
         
         // Aggregates
         let mut stmt = conn.prepare(
-            "SELECT COUNT(*), SUM(size), MIN(timestamp), MAX(timestamp) 
-             FROM objects 
-             WHERE EXISTS (SELECT 1 FROM json_each(objects.data, '$.album') WHERE value = ?)"
+            "SELECT COUNT(*), IFNULL(SUM(objects.size), 0), MIN(objects.timestamp), MAX(objects.timestamp) 
+             FROM album_objects 
+             JOIN objects ON album_objects.object_id = objects.id 
+             WHERE album_objects.album_id = ?"
         )?;
         
         let (count, size, start, end) = stmt.query_row(params![album_id], |row| {
             Ok((
                 row.get::<_, usize>(0)?,
-                row.get::<_, Option<u64>>(1)?.unwrap_or(0),
+                row.get::<_, i64>(1)? as u64,
                 row.get::<_, Option<i64>>(2)?.map(|t| t as u128),
                 row.get::<_, Option<i64>>(3)?.map(|t| t as u128),
             ))
@@ -186,25 +322,20 @@ impl Sqlite {
              return Ok((0, 0, None, None, None));
         }
 
-        // Cover (First item)
+        // Cover (First item by timestamp)
         let mut stmt = conn.prepare(
-            "SELECT data 
-             FROM objects 
-             WHERE EXISTS (SELECT 1 FROM json_each(objects.data, '$.album') WHERE value = ?) 
-             ORDER BY timestamp ASC 
+            "SELECT objects.id 
+             FROM album_objects 
+             JOIN objects ON album_objects.object_id = objects.id 
+             WHERE album_objects.album_id = ? 
+             ORDER BY objects.timestamp ASC 
              LIMIT 1"
         )?;
         
-        let cover_data: Option<Vec<u8>> = stmt.query_row(params![album_id], |row| row.get(0)).optional()?;
+        let cover_id: Option<String> = stmt.query_row(params![album_id], |row| row.get(0)).optional()?;
         
-        let cover_db = if let Some(bytes) = cover_data {
-             Some(serde_json::from_slice(&bytes).map_err(|e| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    0,
-                    rusqlite::types::Type::Blob,
-                    Box::new(e),
-                )
-            })?)
+        let cover_db = if let Some(id) = cover_id {
+             self.get_database(&id)?
         } else {
             None
         };
@@ -215,18 +346,16 @@ impl Sqlite {
     pub fn is_object_in_album(&self, object_id: &str, album_id: &str) -> rusqlite::Result<bool> {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT 1 FROM objects 
-             WHERE id = ? AND EXISTS (SELECT 1 FROM json_each(objects.data, '$.album') WHERE value = ?)"
+            "SELECT 1 FROM album_objects WHERE album_id = ? AND object_id = ?"
         )?;
-        Ok(stmt.exists(params![object_id, album_id])?)
+        Ok(stmt.exists(params![album_id, object_id])?)
     }
 
     pub fn get_objects_in_album(&self, album_id: &str) -> rusqlite::Result<Vec<String>> {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id FROM objects 
-             WHERE EXISTS (SELECT 1 FROM json_each(objects.data, '$.album') WHERE value = ?)
-            ")?;
+            "SELECT object_id FROM album_objects WHERE album_id = ?"
+        )?;
         let iter = stmt.query_map(params![album_id], |row| row.get(0))?;
         let mut ids = Vec::new();
         for id in iter {

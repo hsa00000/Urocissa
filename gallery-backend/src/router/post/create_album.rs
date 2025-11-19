@@ -14,7 +14,6 @@ use crate::process::transitor::index_to_database;
 use crate::public::db::tree_snapshot::read_tree_snapshot::SnapshotReader;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::GuardResult;
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
 
 use crate::public::structure::album::Album;
 use crate::router::AppResult;
@@ -101,9 +100,6 @@ async fn create_album_elements(
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateExpireTask)
         .await?;
-    BATCH_COORDINATOR
-        .execute_waiting(AlbumSelfUpdateTask::new(album_id))
-        .await??;
 
     Ok(())
 }

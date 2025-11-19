@@ -13,8 +13,6 @@ use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::INDEX_COORDINATOR;
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use anyhow::Result;
@@ -69,8 +67,6 @@ pub async fn reindex(
                         }
                     } else if let Ok(Some(_)) = SQLITE.get_album(&*hash) {
                         // album_self_update already will commit
-                        INDEX_COORDINATOR
-                            .execute_detached(AlbumSelfUpdateTask::new(hash));
                         None
                     } else {
                         error!(

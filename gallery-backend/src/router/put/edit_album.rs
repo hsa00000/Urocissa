@@ -6,13 +6,11 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
-use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
+use crate::tasks::BATCH_COORDINATOR;
 use anyhow::Result;
 use arrayvec::ArrayString;
-use futures::{StreamExt, TryStreamExt, stream};
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
 #[derive(Debug, Deserialize)]
@@ -34,8 +32,8 @@ pub async fn edit_album(
     let _ = read_only_mode?;
 
     // 在 blocking 執行緒產生所有要寫入的 payload 與受影響相簿
-    let (to_flush, effected_album_vec) =
-        tokio::task::spawn_blocking(move || -> Result<(Vec<_>, Vec<ArrayString<64>>)> {
+    let to_flush =
+        tokio::task::spawn_blocking(move || -> Result<Vec<_>> {
             let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)?;
 
             let mut to_flush = Vec::with_capacity(json_data.index_array.len());
@@ -50,16 +48,7 @@ pub async fn edit_album(
                 to_flush.push(database.into());
             }
 
-            let effected_album_vec = json_data
-                .add_albums_array
-                .iter()
-                .chain(json_data.remove_albums_array.iter())
-                .cloned()
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
-                .collect();
-
-            Ok((to_flush, effected_album_vec))
+            Ok(to_flush)
         })
         .await
         .map_err(|e| anyhow::anyhow!("join error: {e}"))??;
@@ -71,18 +60,6 @@ pub async fn edit_album(
 
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateExpireTask)
-        .await?;
-
-    // 受影響相簿：全部等待（有界並行）
-    const ALBUM_CONC: usize = 8;
-    stream::iter(effected_album_vec)
-        .map(|album_id| async move {
-            INDEX_COORDINATOR
-                .execute_waiting(AlbumSelfUpdateTask::new(album_id))
-                .await
-        })
-        .buffer_unordered(ALBUM_CONC)
-        .try_collect::<Vec<_>>()
         .await?;
 
     Ok(())
