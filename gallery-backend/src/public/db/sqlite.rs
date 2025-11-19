@@ -111,6 +111,9 @@ impl Sqlite {
             [],
         ).expect("Failed to create album_tags table");
 
+        // Clear snapshots on startup
+        conn.execute("DELETE FROM snapshots", []).expect("Failed to clear snapshots");
+
         Self {
             pool,
         }
@@ -351,7 +354,7 @@ impl Sqlite {
         Ok(stmt.exists(params![album_id, object_id])?)
     }
 
-    pub fn get_objects_in_album(&self, album_id: &str) -> rusqlite::Result<Vec<String>> {
+    pub fn _get_objects_in_album(&self, album_id: &str) -> rusqlite::Result<Vec<String>> {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
             "SELECT object_id FROM album_objects WHERE album_id = ?"
@@ -466,13 +469,6 @@ impl Sqlite {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare("SELECT idx FROM snapshots WHERE timestamp = ? AND hash = ?")?;
         stmt.query_row(params![timestamp as i64, hash], |row| row.get(0)).optional()
-    }
-
-    pub fn get_latest_snapshot_timestamp(&self) -> rusqlite::Result<Option<u128>> {
-        let conn = self.pool.get().unwrap();
-        let mut stmt = conn.prepare("SELECT MAX(timestamp) FROM snapshots")?;
-        let timestamp: Option<i64> = stmt.query_row([], |row| row.get(0)).optional()?;
-        Ok(timestamp.map(|t| t as u128))
     }
 
     pub fn delete_expired_snapshots(&self, timestamp_threshold: u128) -> rusqlite::Result<usize> {
