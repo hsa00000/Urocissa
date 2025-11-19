@@ -11,11 +11,6 @@ pub struct FileModify {
     pub modified: u128,
     pub scan_time: u128,
 }
-#[derive(Debug, Default, Clone, Deserialize, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
-pub struct FileModifySize {
-    pub file_modify: FileModify,
-    pub size: u64,
-}
 
 impl FileModify {
     pub fn new(file: &Path, modified: u128) -> Self {
