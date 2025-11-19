@@ -1,14 +1,13 @@
-use crate::public::db::tree::TREE;
+use crate::public::db::sqlite::SQLITE;
 use crate::public::structure::album::Share;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::{public::constant::redb::ALBUM_TABLE, router::GuardResult};
+use crate::router::GuardResult;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rand::Rng;
 use rand::distr::Alphanumeric;
-use redb::{ReadableTable, WriteTransaction};
 use rocket::post;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -34,31 +33,10 @@ pub async fn create_share(
 ) -> AppResult<String> {
     let _ = auth?;
     let _ = read_only_mode?;
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || -> AppResult<String> {
         let create_share = create_share.into_inner();
-        let txn = TREE.in_disk.begin_write().unwrap();
-        match create_and_insert_share(&txn, create_share) {
-            Ok(link) => {
-                txn.commit().unwrap();
-                return Ok(link);
-            }
-            Err(err) => return Err(err),
-        }
-    })
-    .await
-    .unwrap()
-}
-
-fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) -> AppResult<String> {
-    let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-
-    let album_opt = album_table
-        .get(&*create_share.album_id)
-        .unwrap()
-        .map(|guard| guard.value());
-
-    match album_opt {
-        Some(mut album) => {
+        
+        if let Some(mut album) = SQLITE.get_album(&create_share.album_id)? {
             let link: String = rand::rng()
                 .sample_iter(&Alphanumeric)
                 .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
@@ -79,9 +57,13 @@ fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) ->
                     .as_secs(),
             };
             album.share_list.insert(share_id, share);
-            album_table.insert(&*create_share.album_id, album).unwrap();
+            SQLITE.update_album(&album)?;
             Ok(link)
+        } else {
+            Err(anyhow::anyhow!("Album not found").into())
         }
-        None => Err(anyhow::anyhow!("Album not found").into()),
-    }
+    })
+    .await
+    .unwrap()
 }
+

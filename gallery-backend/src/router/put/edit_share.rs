@@ -1,14 +1,13 @@
-use crate::public::db::tree::TREE;
+use crate::public::db::sqlite::SQLITE;
 use crate::public::structure::album::Share;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::{public::constant::redb::ALBUM_TABLE, router::AppResult};
+use crate::router::AppResult;
 use anyhow::Result;
 use arrayvec::ArrayString;
-use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,29 +24,17 @@ pub async fn edit_share(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-    tokio::task::spawn_blocking(move || {
-        let txn = TREE.in_disk.begin_write().unwrap();
-        {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-
-            let album_opt = album_table
-                .get(json_data.album_id.as_str())
-                .unwrap() // error-check result if needed
-                .map(|guard| guard.value());
-
-            if let Some(mut album) = album_opt {
-                album
-                    .share_list
-                    .insert(json_data.share.url, json_data.share.clone());
-                album_table
-                    .insert(json_data.album_id.as_str(), &album)
-                    .unwrap();
-            }
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        if let Some(mut album) = SQLITE.get_album(json_data.album_id.as_str())? {
+            album
+                .share_list
+                .insert(json_data.share.url, json_data.share.clone());
+            SQLITE.update_album(&album)?;
         }
-        txn.commit().unwrap();
+        Ok(())
     })
     .await
-    .unwrap();
+    .unwrap()?;
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
         .await
@@ -70,30 +57,19 @@ pub async fn delete_share(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-    tokio::task::spawn_blocking(move || {
-        let txn = TREE.in_disk.begin_write().unwrap();
-        {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-
-            let album_opt = album_table
-                .get(json_data.album_id.as_str())
-                .unwrap() // error-check result if needed
-                .map(|guard| guard.value());
-
-            if let Some(mut album) = album_opt {
-                album.share_list.remove(&json_data.share_id);
-                album_table
-                    .insert(json_data.album_id.as_str(), &album)
-                    .unwrap();
-            }
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        if let Some(mut album) = SQLITE.get_album(json_data.album_id.as_str())? {
+            album.share_list.remove(&json_data.share_id);
+            SQLITE.update_album(&album)?;
         }
-        txn.commit().unwrap();
+        Ok(())
     })
     .await
-    .unwrap();
+    .unwrap()?;
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
         .await
         .unwrap();
     Ok(())
 }
+

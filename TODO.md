@@ -37,19 +37,19 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
 ## Phase 3: Cleanup & Cutover
 *Goal: Remove `redb` and legacy caching code.*
 
-- [ ] **Stop Dual Write**:
+- [x] **Stop Dual Write**:
     - Remove `redb` write logic from `flush_tree.rs` and `flush_tree_snapshot.rs`.
-- [ ] **Ensure Version Persistence**:
+- [x] **Ensure Version Persistence**:
     - Ensure `VERSION_COUNT_TIMESTAMP` initializes from SQLite `snapshots` table on startup.
-- [ ] **Remove Redb Dependencies**:
+- [x] **Remove Redb Dependencies**:
     - Remove `redb` from `Cargo.toml`.
     - Delete `src/public/db/tree.rs` (or the redb parts of it).
     - Delete `src/public/constant/redb.rs`.
-- [ ] **Retire Redb Backend for Snapshots**:
+- [x] **Retire Redb Backend for Snapshots**:
     - Keep `TreeSnapshot` struct as the API interface.
     - Remove `in_disk` (Redb) field from `TreeSnapshot`.
     - Ensure all snapshot logic is pure SQLite.
-- [ ] **Remove Legacy Caches**:
+- [x] **Remove Legacy Caches**:
     - Delete `cache_db` related code.
     - Delete `expire_db` related code.
 - [ ] **Final Polish**:

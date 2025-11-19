@@ -19,9 +19,7 @@ use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::looper::start_expire_check_loop;
 
-use public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
-use public::db::tree::TREE;
-use redb::ReadableTableMetadata;
+use crate::public::db::sqlite::SQLITE;
 use rocket::fs::FileServer;
 use router::fairing::cache_control_fairing::cache_control_fairing;
 use router::fairing::generate_fairing_routes;
@@ -51,17 +49,19 @@ fn main() -> Result<()> {
         INDEX_RUNTIME.block_on(async {
             let rx = initialize();
             let start_time = Instant::now();
-            let txn = TREE.in_disk.begin_write().unwrap();
-            {
-                let table = txn.open_table(DATA_TABLE).unwrap();
-                info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", table.len().unwrap());
-                let album_table = txn.open_table(ALBUM_TABLE).unwrap();
-                info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", album_table.len().unwrap());
+            
+            // Log counts from SQLite instead of Redb
+            if let Ok(objects) = SQLITE.get_all_objects() {
+                 info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", objects.len());
             }
-            txn.commit().unwrap();
+            if let Ok(albums) = SQLITE.get_all_albums() {
+                 info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", albums.len());
+            }
+
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
             BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
             start_expire_check_loop();
+
 
             if let Some(sc) = superconsole::SuperConsole::new() {
                 INDEX_RUNTIME.spawn(async move {

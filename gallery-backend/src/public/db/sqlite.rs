@@ -384,6 +384,13 @@ impl Sqlite {
         }
         Ok(dates)
     }
+
+    pub fn get_latest_snapshot_timestamp(&self) -> rusqlite::Result<Option<u128>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT MAX(timestamp) FROM snapshots")?;
+        let timestamp: Option<i64> = stmt.query_row([], |row| row.get(0)).optional()?;
+        Ok(timestamp.map(|t| t as u128))
+    }
 }
 
 pub static SQLITE: LazyLock<Sqlite> = LazyLock::new(|| Sqlite::new());
