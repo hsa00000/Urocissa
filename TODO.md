@@ -6,14 +6,14 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
 ## Phase 1: Infrastructure & Dual Write
 *Goal: Establish SQLite presence and ensure new data is persisted to both databases without breaking existing functionality.*
 
-- [ ] **Add Dependencies**: Add `rusqlite` (with `bundled` feature) to `Cargo.toml`.
-- [ ] **Initialize SQLite**:
+- [x] **Add Dependencies**: Add `rusqlite` (with `bundled` feature) to `Cargo.toml`.
+- [x] **Initialize SQLite**:
     - Create `src/public/db/sqlite.rs`.
     - Implement database connection setup (enable WAL mode).
     - Create tables:
         - `objects` (id TEXT PRIMARY KEY, data BLOB)
         - `albums` (id TEXT PRIMARY KEY, data BLOB)
-- [ ] **Implement Dual Write**:
+- [x] **Implement Dual Write**:
     - Modify `src/tasks/batcher/flush_tree.rs`.
     - In `flush_tree_task`, insert/delete data into SQLite *in addition to* the existing `redb` operations.
     - Ensure SQLite errors are logged but do not crash the application (initially).

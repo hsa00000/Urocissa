@@ -1,9 +1,10 @@
 use mini_executor::BatchTask;
+use rusqlite::params;
 
 use crate::{
     public::{
         constant::redb::{ALBUM_TABLE, DATA_TABLE},
-        db::tree::TREE,
+        db::{sqlite::SQLITE, tree::TREE},
         structure::abstract_data::AbstractData,
     },
     tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
@@ -70,5 +71,52 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
             });
     };
     write_txn.commit().unwrap();
+
+    // SQLite Dual Write
+    let sqlite_result = (|| -> rusqlite::Result<()> {
+        let mut conn = SQLITE.conn.lock().unwrap();
+        let txn = conn.transaction()?;
+        {
+            let mut stmt_insert_obj =
+                txn.prepare("INSERT OR REPLACE INTO objects (id, data) VALUES (?, ?)")?;
+            let mut stmt_insert_alb =
+                txn.prepare("INSERT OR REPLACE INTO albums (id, data) VALUES (?, ?)")?;
+            let mut stmt_delete_obj = txn.prepare("DELETE FROM objects WHERE id = ?")?;
+            let mut stmt_delete_alb = txn.prepare("DELETE FROM albums WHERE id = ?")?;
+
+            for abstract_data in &insert_list {
+                match abstract_data {
+                    AbstractData::Database(database) => {
+                        if let Ok(data) = serde_json::to_vec(database) {
+                            stmt_insert_obj.execute(params![database.hash.as_str(), data])?;
+                        }
+                    }
+                    AbstractData::Album(album) => {
+                        if let Ok(data) = serde_json::to_vec(album) {
+                            stmt_insert_alb.execute(params![album.id.as_str(), data])?;
+                        }
+                    }
+                }
+            }
+
+            for abstract_data in &remove_list {
+                match abstract_data {
+                    AbstractData::Database(database) => {
+                        stmt_delete_obj.execute(params![database.hash.as_str()])?;
+                    }
+                    AbstractData::Album(album) => {
+                        stmt_delete_alb.execute(params![album.id.as_str()])?;
+                    }
+                }
+            }
+        }
+        txn.commit()?;
+        Ok(())
+    })();
+
+    if let Err(e) = sqlite_result {
+        log::error!("SQLite Dual Write Failed: {}", e);
+    }
+
     BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
 }
