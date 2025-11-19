@@ -18,16 +18,7 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
     - In `flush_tree_task`, insert/delete data into SQLite *in addition to* the existing `redb` operations.
     - Ensure SQLite errors are logged but do not crash the application (initially).
 
-## Phase 2: Data Backfill (Temporary)
-*Goal: Populate SQLite with existing data so we can switch reads safely.*
-
-- [ ] **Create Migration Task**:
-    - Create a temporary function/task that runs on startup.
-    - Iterate through all records in `redb` (`DATA_TABLE` and `ALBUM_TABLE`).
-    - Insert them into SQLite if they don't exist.
-    - *Note: This ensures that when we switch reads, the data is there.*
-
-## Phase 3: Migrate Reads (Incremental)
+## Phase 2: Migrate Reads (Incremental)
 *Goal: Switch read operations from `redb`/`tree_snapshots` to SQLite one by one.*
 
 - [ ] **Migrate Basic Object/Album Lookup**:
@@ -40,7 +31,7 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
 - [ ] **Migrate Expiration Logic**:
     - If `expire_db` is used for TTL, implement a cleanup task using a simple SQL query (e.g., `DELETE FROM objects WHERE ...`).
 
-## Phase 4: Cleanup & Cutover
+## Phase 3: Cleanup & Cutover
 *Goal: Remove `redb` and legacy caching code.*
 
 - [ ] **Stop Dual Write**:
@@ -55,5 +46,4 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
     - Delete `expire_db` related code.
     - Remove `VERSION_COUNT_TIMESTAMP` and `TREE_SNAPSHOT` global variables.
 - [ ] **Final Polish**:
-    - Remove the temporary migration task from Phase 2.
     - Verify all tests/flows work with pure SQLite.
