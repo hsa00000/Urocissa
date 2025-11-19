@@ -413,19 +413,16 @@ impl Sqlite {
     ) -> rusqlite::Result<(u32, u32)> {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT COALESCE(o.width, a.width), COALESCE(o.height, a.height)
+            "SELECT objects.width, objects.height
              FROM snapshots s
-             LEFT JOIN objects o ON s.hash = o.id
-             LEFT JOIN albums a ON s.hash = a.id
+             JOIN objects ON s.hash = objects.id
              WHERE s.timestamp = ? AND s.idx = ?",
         )?;
-
+        
         stmt.query_row(params![timestamp as i64, idx], |row| {
             Ok((row.get(0)?, row.get(1)?))
         })
-    }
-
-    pub fn get_all_objects(&self) -> rusqlite::Result<Vec<Database>> {
+    }    pub fn get_all_objects(&self) -> rusqlite::Result<Vec<Database>> {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare("SELECT id, size, width, height, ext, ext_type, pending, thumbhash, phash, exif, alias FROM objects")?;
         let iter = stmt.query_map([], |row| {
@@ -492,14 +489,13 @@ impl Sqlite {
     pub fn get_snapshot_dates(&self, timestamp: u128) -> rusqlite::Result<Vec<(usize, i64)>> {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT s.idx, COALESCE(o.timestamp, a.created_time)
+            "SELECT s.idx, objects.timestamp
              FROM snapshots s
-             LEFT JOIN objects o ON s.hash = o.id
-             LEFT JOIN albums a ON s.hash = a.id
+             JOIN objects ON s.hash = objects.id
              WHERE s.timestamp = ?
              ORDER BY s.idx ASC",
         )?;
-
+        
         let iter = stmt.query_map(params![timestamp as i64], |row| {
             Ok((row.get(0)?, row.get(1)?))
         })?;
@@ -509,9 +505,7 @@ impl Sqlite {
             dates.push(date?);
         }
         Ok(dates)
-    }
-
-    pub fn generate_snapshot(
+    }    pub fn generate_snapshot(
         &self,
         timestamp: u128,
         expression: &Option<Expression>,
