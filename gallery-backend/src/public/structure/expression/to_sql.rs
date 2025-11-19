@@ -38,7 +38,7 @@ impl Expression {
                 if hide_metadata {
                     ("1=0".to_string(), vec![])
                 } else {
-                    ("EXISTS (SELECT 1 FROM json_each(objects.data, '$.tag') WHERE value = ?)".to_string(), vec![Box::new(tag.clone())])
+                    ("EXISTS (SELECT 1 FROM object_tags WHERE object_tags.object_id = objects.id AND object_tags.tag = ?)".to_string(), vec![Box::new(tag.clone())])
                 }
             },
             Expression::ExtType(ext_type) => (
@@ -53,7 +53,7 @@ impl Expression {
                 if hide_metadata {
                     if let Some(shared_id) = shared_album_id {
                         if album_id.as_str() == shared_id {
-                             ("EXISTS (SELECT 1 FROM json_each(objects.data, '$.album') WHERE value = ?)".to_string(), vec![Box::new(album_id.to_string())])
+                             ("EXISTS (SELECT 1 FROM album_objects WHERE album_objects.object_id = objects.id AND album_objects.album_id = ?)".to_string(), vec![Box::new(album_id.to_string())])
                         } else {
                             ("1=0".to_string(), vec![])
                         }
@@ -61,22 +61,22 @@ impl Expression {
                         ("1=0".to_string(), vec![])
                     }
                 } else {
-                    ("EXISTS (SELECT 1 FROM json_each(objects.data, '$.album') WHERE value = ?)".to_string(), vec![Box::new(album_id.to_string())])
+                    ("EXISTS (SELECT 1 FROM album_objects WHERE album_objects.object_id = objects.id AND album_objects.album_id = ?)".to_string(), vec![Box::new(album_id.to_string())])
                 }
             },
             Expression::Model(model) => (
-                "json_extract(data, '$.exif_vec.Model') = ?".to_string(),
+                "json_extract(exif, '$.Model') = ?".to_string(),
                 vec![Box::new(model.clone())],
             ),
             Expression::Make(make) => (
-                "json_extract(data, '$.exif_vec.Make') = ?".to_string(),
+                "json_extract(exif, '$.Make') = ?".to_string(),
                 vec![Box::new(make.clone())],
             ),
             Expression::Path(path) => {
                 if hide_metadata {
                     ("1=0".to_string(), vec![])
                 } else {
-                    ("EXISTS (SELECT 1 FROM json_each(objects.data, '$.alias') WHERE json_extract(value, '$.path') LIKE ?)".to_string(), vec![Box::new(format!("%{}%", path))])
+                    ("EXISTS (SELECT 1 FROM json_each(alias) WHERE json_extract(value, '$.path') LIKE ?)".to_string(), vec![Box::new(format!("%{}%", path))])
                 }
             },
             Expression::Any(query) => {
@@ -87,7 +87,7 @@ impl Expression {
                         Box::new(format!("%{}%", query)),
                     ])
                 } else {
-                    ("(ext LIKE ? OR ext_type LIKE ? OR EXISTS (SELECT 1 FROM json_each(objects.data, '$.tag') WHERE value LIKE ?))".to_string(),
+                    ("(ext LIKE ? OR ext_type LIKE ? OR EXISTS (SELECT 1 FROM object_tags WHERE object_tags.object_id = objects.id AND object_tags.tag LIKE ?))".to_string(),
                     vec![
                         Box::new(format!("%{}%", query)),
                         Box::new(format!("%{}%", query)),
