@@ -71,48 +71,6 @@ impl Sqlite {
         }
     }
 
-    pub fn insert_snapshot(&self, timestamp: u128, hashes: Vec<String>) -> rusqlite::Result<()> {
-        let mut conn = self.conn.lock().unwrap();
-        let txn = conn.transaction()?;
-        {
-            let mut stmt = txn.prepare("INSERT INTO snapshots (timestamp, idx, hash) VALUES (?, ?, ?)")?;
-            for (idx, hash) in hashes.into_iter().enumerate() {
-                stmt.execute(params![timestamp as i64, idx, hash])?;
-            }
-        }
-        txn.commit()?;
-        Ok(())
-    }
-
-    pub fn query_objects(&self, expression: &Option<Expression>, hide_metadata: bool, shared_album_id: Option<&str>) -> rusqlite::Result<Vec<ReducedData>> {
-        let conn = self.conn.lock().unwrap();
-        let (where_clause, params) = if let Some(expr) = expression {
-            expr.to_sql(hide_metadata, shared_album_id)
-        } else {
-            ("1=1".to_string(), vec![])
-        };
-
-        let sql = format!("SELECT id, width, height, timestamp FROM objects WHERE {} ORDER BY timestamp DESC", where_clause);
-        let mut stmt = conn.prepare(&sql)?;
-
-        let params_refs: Vec<&dyn ToSql> = params.iter().map(|p| &**p as &dyn ToSql).collect();
-
-        let iter = stmt.query_map(params_refs.as_slice(), |row| {
-            Ok(ReducedData {
-                hash: row.get::<_, String>(0)?.as_str().try_into().unwrap_or_default(),
-                width: row.get(1)?,
-                height: row.get(2)?,
-                date: row.get::<_, i64>(3)? as u128,
-            })
-        })?;
-
-        let mut result = Vec::new();
-        for item in iter {
-            result.push(item?);
-        }
-        Ok(result)
-    }
-
     pub fn get_database(&self, hash: &str) -> rusqlite::Result<Option<Database>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT data FROM objects WHERE id = ?")?;
@@ -383,6 +341,41 @@ impl Sqlite {
             dates.push(date?);
         }
         Ok(dates)
+    }
+
+    pub fn generate_snapshot(&self, timestamp: u128, expression: &Option<Expression>, hide_metadata: bool, shared_album_id: Option<&str>) -> rusqlite::Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        let (where_clause, params) = if let Some(expr) = expression {
+            expr.to_sql(hide_metadata, shared_album_id)
+        } else {
+            ("1=1".to_string(), vec![])
+        };
+
+        // Note: timestamp is cast to i64 for SQLite INTEGER compatibility
+        let sql = format!(
+            "INSERT INTO snapshots (timestamp, idx, hash)
+             SELECT ?, ROW_NUMBER() OVER (ORDER BY timestamp DESC) - 1, id
+             FROM objects
+             WHERE {}",
+            where_clause
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+        
+        // Combine timestamp param with expression params
+        let timestamp_i64 = timestamp as i64;
+        let mut sql_params: Vec<&dyn ToSql> = vec![&timestamp_i64];
+        let params_refs: Vec<&dyn ToSql> = params.iter().map(|p| &**p as &dyn ToSql).collect();
+        sql_params.extend(params_refs);
+
+        let count = stmt.execute(sql_params.as_slice())?;
+        Ok(count)
+    }
+
+    pub fn get_snapshot_index(&self, timestamp: u128, hash: &str) -> rusqlite::Result<Option<usize>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT idx FROM snapshots WHERE timestamp = ? AND hash = ?")?;
+        stmt.query_row(params![timestamp as i64, hash], |row| row.get(0)).optional()
     }
 
     pub fn get_latest_snapshot_timestamp(&self) -> rusqlite::Result<Option<u128>> {
