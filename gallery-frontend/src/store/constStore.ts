@@ -32,7 +32,7 @@ export const useConstStore = (isolationId: IsolationId) =>
       limitRatio: false,
       // default theme: dark
       theme: 'dark',
-      showFilenameChip: true
+      showFilenameChip: false
     }),
     actions: {
       async toggleTheme(vuetifyTheme?: { global: { name: { value: string } } }): Promise<void> {
