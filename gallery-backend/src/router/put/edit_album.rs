@@ -8,7 +8,7 @@ use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -70,7 +70,7 @@ pub async fn edit_album(
         .await?;
 
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await?;
 
     // 受影響相簿：全部等待（有界並行）
@@ -125,7 +125,7 @@ pub async fn set_album_cover(
     .await
     .unwrap()?;
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await
         .unwrap();
     Ok(())
@@ -164,7 +164,7 @@ pub async fn set_album_title(
     .await
     .unwrap()?;
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await
         .unwrap();
 

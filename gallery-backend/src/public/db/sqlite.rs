@@ -345,6 +345,12 @@ impl Sqlite {
         let timestamp: Option<i64> = stmt.query_row([], |row| row.get(0)).optional()?;
         Ok(timestamp.map(|t| t as u128))
     }
+
+    pub fn delete_expired_snapshots(&self, timestamp_threshold: u128) -> rusqlite::Result<usize> {
+        let conn = self.pool.get().unwrap();
+        let mut stmt = conn.prepare("DELETE FROM snapshots WHERE timestamp < ?")?;
+        stmt.execute(params![timestamp_threshold as i64])
+    }
 }
 
 pub static SQLITE: LazyLock<Sqlite> = LazyLock::new(|| Sqlite::new());

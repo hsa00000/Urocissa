@@ -3,7 +3,7 @@ use crate::{
         hash_to_abstract_data, hash_to_database, index_to_hash,
     },
     public::{
-        db::tree_snapshot::read_tree_snapshot::MyCow,
+        db::tree_snapshot::read_tree_snapshot::SnapshotReader,
         structure::{
             database_struct::database::definition::Database,
         },
@@ -13,7 +13,7 @@ use crate::{
 use anyhow::{Result, anyhow};
 
 pub fn index_to_database(
-    tree_snapshot: &MyCow,
+    tree_snapshot: &SnapshotReader,
     index: usize,
 ) -> Result<Database> {
     let hash = index_to_hash(&tree_snapshot, index)
@@ -24,7 +24,7 @@ pub fn index_to_database(
 }
 
 pub fn index_to_abstract_data(
-    tree_snapshot: &MyCow,
+    tree_snapshot: &SnapshotReader,
     index: usize,
 ) -> Result<crate::public::structure::abstract_data::AbstractData> {
     let hash = index_to_hash(&tree_snapshot, index)

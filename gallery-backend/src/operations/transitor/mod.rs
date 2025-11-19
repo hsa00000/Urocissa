@@ -1,5 +1,5 @@
 use crate::public::{
-    db::{sqlite::SQLITE, tree_snapshot::read_tree_snapshot::MyCow},
+    db::{sqlite::SQLITE, tree_snapshot::read_tree_snapshot::SnapshotReader},
     structure::{
         abstract_data::AbstractData,
         database_struct::{
@@ -11,7 +11,7 @@ use crate::public::{
 use anyhow::Result;
 use arrayvec::ArrayString;
 
-pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
+pub fn index_to_hash(tree_snapshot: &SnapshotReader, index: usize) -> Result<ArrayString<64>> {
     if index >= tree_snapshot.len() {
         return Err(anyhow::anyhow!("Index out of bounds: {}", index));
     }

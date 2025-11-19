@@ -11,7 +11,7 @@ use crate::operations::hash::generate_random_hash;
 use crate::operations::open_db::open_tree_snapshot_table;
 use crate::process::transitor::index_to_database;
 
-use crate::public::db::tree_snapshot::read_tree_snapshot::MyCow;
+use crate::public::db::tree_snapshot::read_tree_snapshot::SnapshotReader;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::GuardResult;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
@@ -22,7 +22,7 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::batcher::update_expire::UpdateExpireTask;
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -74,7 +74,7 @@ async fn create_album_internal(title: Option<String>) -> Result<ArrayString<64>>
         .await?;
 
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await?;
 
     info!(duration = &*format!("{:?}", start_time.elapsed()); "Create album");
@@ -99,7 +99,7 @@ async fn create_album_elements(
         .execute_batch_waiting(FlushTreeTask::insert(element_batch))
         .await?;
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await?;
     BATCH_COORDINATOR
         .execute_waiting(AlbumSelfUpdateTask::new(album_id))
@@ -109,7 +109,7 @@ async fn create_album_elements(
 }
 
 pub fn index_edit_album_insert(
-    tree_snapshot: &MyCow,
+    tree_snapshot: &SnapshotReader,
     database_index: usize,
     album_id: ArrayString<64>,
 ) -> Result<AbstractData> {

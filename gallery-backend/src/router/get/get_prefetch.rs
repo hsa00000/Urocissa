@@ -1,8 +1,6 @@
 use crate::public::db::sqlite::SQLITE;
 use crate::public::structure::album::ResolvedShare;
-use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
 use crate::public::structure::expression::Expression;
-use crate::public::structure::reduced_data::ReducedData;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
@@ -48,20 +46,6 @@ impl PrefetchReturn {
             prefetch,
             token,
             resolved_share_opt,
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Convenience: &DatabaseTimestamp → ReducedData
-// -----------------------------------------------------------------------------
-impl From<&DatabaseTimestamp> for ReducedData {
-    fn from(source: &DatabaseTimestamp) -> Self {
-        Self {
-            hash: source.abstract_data.hash(),
-            width: source.abstract_data.width(),
-            height: source.abstract_data.height(),
-            date: source.timestamp,
         }
     }
 }

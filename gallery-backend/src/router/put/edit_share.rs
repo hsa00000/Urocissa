@@ -6,7 +6,7 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use crate::router::AppResult;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -40,7 +40,7 @@ pub async fn edit_share(
     .await
     .unwrap()?;
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await
         .unwrap();
     Ok(())
@@ -73,7 +73,7 @@ pub async fn delete_share(
     .await
     .unwrap()?;
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await
         .unwrap();
     Ok(())

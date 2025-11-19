@@ -20,8 +20,7 @@ fn update_expire_task() {
     let last_timestamp = VERSION_COUNT_TIMESTAMP.swap(current_timestamp, Ordering::SeqCst);
 
     if last_timestamp > 0 {
-        // TODO: Implement SQLite expiration logic if needed
-        // For now, we just trigger the check task
+        // Trigger the check task to clean up old snapshots
         BATCH_COORDINATOR.execute_batch_detached(ExpireCheckTask);
     }
 }

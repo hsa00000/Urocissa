@@ -6,14 +6,8 @@ pub mod read_tree_snapshot;
 
 use std::sync::LazyLock;
 
-use dashmap::DashMap;
-
-use crate::public::structure::reduced_data::ReducedData;
-
 #[derive(Debug)]
-pub struct TreeSnapshot {
-    pub in_memory: &'static DashMap<u128, Vec<ReducedData>>,
-}
+pub struct TreeSnapshot;
 
 
 pub static TREE_SNAPSHOT: LazyLock<TreeSnapshot> = LazyLock::new(|| TreeSnapshot::new());

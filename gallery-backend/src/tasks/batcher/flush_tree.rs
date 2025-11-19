@@ -7,7 +7,7 @@ use crate::{
         db::sqlite::SQLITE,
         structure::abstract_data::AbstractData,
     },
-    tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
+    tasks::{BATCH_COORDINATOR, batcher::update_expire::UpdateExpireTask},
 };
 
 pub struct FlushTreeTask {
@@ -102,6 +102,6 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
     }
     txn.commit().unwrap();
 
-    BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
+    BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
 }
 

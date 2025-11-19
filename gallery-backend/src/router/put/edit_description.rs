@@ -8,7 +8,7 @@ use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use anyhow::Result;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
@@ -68,7 +68,7 @@ pub async fn set_user_defined_description(
     .await
     .unwrap()?;
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await
         .unwrap();
 

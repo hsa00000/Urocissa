@@ -16,7 +16,7 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::INDEX_COORDINATOR;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use anyhow::Result;
 use rocket::serde::json::Json;
 use serde::Deserialize;
@@ -86,6 +86,6 @@ pub async fn reindex(
     })
     .await
     .unwrap();
-    BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
+    BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
     Ok(Status::Ok)
 }

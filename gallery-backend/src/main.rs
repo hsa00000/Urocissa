@@ -16,7 +16,7 @@ use crate::public::error_data::handle_error;
 use crate::public::tui::{DASHBOARD, tui_task};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::start_watcher::StartWatcherTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use crate::tasks::looper::start_expire_check_loop;
 
 use crate::public::db::sqlite::SQLITE;
@@ -59,7 +59,7 @@ fn main() -> Result<()> {
             }
 
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
-            BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
+            BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
             start_expire_check_loop();
 
 

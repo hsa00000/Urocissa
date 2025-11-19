@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use arrayvec::ArrayString;
 use serde::{Deserialize, Serialize};
 
 use super::{album::Album, database_struct::database::definition::Database};
@@ -16,24 +15,6 @@ impl AbstractData {
         match self {
             AbstractData::Database(database) => database.compute_timestamp(priority_list),
             AbstractData::Album(album) => album.created_time,
-        }
-    }
-    pub fn hash(self: &Self) -> ArrayString<64> {
-        match self {
-            AbstractData::Database(database) => database.hash,
-            AbstractData::Album(album) => album.id,
-        }
-    }
-    pub fn width(self: &Self) -> u32 {
-        match self {
-            AbstractData::Database(database) => database.width,
-            AbstractData::Album(_) => 300,
-        }
-    }
-    pub fn height(self: &Self) -> u32 {
-        match self {
-            AbstractData::Database(database) => database.height,
-            AbstractData::Album(_) => 300,
         }
     }
     pub fn tag_mut(self: &mut Self) -> &mut HashSet<String> {

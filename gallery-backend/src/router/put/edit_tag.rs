@@ -8,7 +8,7 @@ use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use anyhow::Result;
 use rocket::serde::{Deserialize, json::Json};
 #[derive(Debug, Deserialize)]
@@ -53,7 +53,7 @@ pub async fn edit_tag(
     .unwrap()?;
 
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await
         .unwrap();
 

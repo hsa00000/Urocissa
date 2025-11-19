@@ -6,7 +6,7 @@ use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -37,7 +37,7 @@ pub async fn delete_data(
         .await?;
 
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await?;
 
     try_join_all(

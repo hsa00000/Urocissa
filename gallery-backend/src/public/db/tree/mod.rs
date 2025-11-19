@@ -1,16 +1,12 @@
-pub mod new;
 pub mod read_tags;
 
-use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
-use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
+use std::sync::{LazyLock, atomic::AtomicU64};
 use crate::public::db::sqlite::SQLITE;
 use std::sync::atomic::Ordering;
 
-pub struct Tree {
-    pub in_memory: &'static Arc<RwLock<Vec<DatabaseTimestamp>>>,
-}
+pub struct Tree;
 
-pub static TREE: LazyLock<Tree> = LazyLock::new(|| Tree::new());
+pub static TREE: LazyLock<Tree> = LazyLock::new(|| Tree);
 
 
 pub static VERSION_COUNT_TIMESTAMP: AtomicU64 = AtomicU64::new(0);

@@ -3,7 +3,7 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use crate::{
     public::structure::database_struct::database::definition::Database,
     tasks::batcher::flush_tree::FlushTreeTask,
@@ -25,7 +25,7 @@ pub async fn generate_random_data(
         .collect();
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(database_list));
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
+        .execute_batch_waiting(UpdateExpireTask)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to update tree: {}", e))?;
     info!("Insert random data complete");
