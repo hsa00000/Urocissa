@@ -18,15 +18,19 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
     - In `flush_tree_task`, insert/delete data into SQLite *in addition to* the existing `redb` operations.
     - Ensure SQLite errors are logged but do not crash the application (initially).
 
-## Phase 2: Migrate Reads (Incremental)
-*Goal: Switch read operations from `redb`/`tree_snapshots` to SQLite one by one.*
+## Phase 2: Migrate Reads & Expand Schema (Incremental)
+*Goal: Switch read operations to SQLite and expose data fields for SQL querying.*
 
 - [ ] **Migrate Basic Object/Album Lookup**:
     - Identify functions reading single objects/albums from `redb`.
-    - Replace implementation to query SQLite `objects` / `albums` tables.
+    - Replace implementation to query SQLite `objects` / `albums` tables (using ID).
+- [ ] **Expand Schema for Querying**:
+    - Identify fields needed for sorting/filtering (e.g., `timestamp`, `file_type`, `is_deleted`).
+    - Add these columns to `objects` and `albums` tables via `ALTER TABLE` or migration script.
+    - Update `flush_tree.rs` (Dual Write) to populate these new columns.
 - [ ] **Migrate List/Search Operations (Remove Tree Snapshots)**:
     - Identify endpoints using `tree_snapshots` for listing or searching.
-    - Rewrite these to use raw SQL `SELECT` queries with `WHERE` clauses on the `objects` table.
+    - Rewrite these to use raw SQL `SELECT` queries using the new columns.
     - *Note: This replaces the complex snapshot logic with simple SQL queries.*
 - [ ] **Migrate Expiration Logic**:
     - If `expire_db` is used for TTL, implement a cleanup task using a simple SQL query (e.g., `DELETE FROM objects WHERE ...`).
