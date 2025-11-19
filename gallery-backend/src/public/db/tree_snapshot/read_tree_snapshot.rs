@@ -1,10 +1,9 @@
 use super::TreeSnapshot;
 use crate::public::structure::reduced_data::ReducedData;
-use anyhow::Context;
+use crate::public::db::sqlite::SQLITE;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use dashmap::mapref::one::Ref;
-use redb::{ReadOnlyTable, ReadableTableMetadata, TableDefinition};
 
 impl TreeSnapshot {
     pub fn read_tree_snapshot(&'static self, timestamp: &u128) -> Result<MyCow> {
@@ -12,27 +11,21 @@ impl TreeSnapshot {
             return Ok(MyCow::DashMap(data));
         }
 
-        let read_txn = self.in_disk.begin_read()?;
-
-        let binding = timestamp.to_string();
-        let table_definition: TableDefinition<u64, ReducedData> = TableDefinition::new(&binding);
-
-        let table = read_txn.open_table(table_definition)?;
-        Ok(MyCow::Redb(table))
+        Ok(MyCow::Sqlite(*timestamp))
     }
 }
 
 #[derive(Debug)]
 pub enum MyCow {
     DashMap(Ref<'static, u128, Vec<ReducedData>>),
-    Redb(ReadOnlyTable<u64, ReducedData>),
+    Sqlite(u128),
 }
 
 impl MyCow {
     pub fn len(&self) -> usize {
         match self {
             MyCow::DashMap(data) => data.value().len(),
-            MyCow::Redb(table) => table.len().unwrap() as usize,
+            MyCow::Sqlite(timestamp) => SQLITE.get_snapshot_len(*timestamp).unwrap_or(0),
         }
     }
 
@@ -42,16 +35,8 @@ impl MyCow {
                 let data = &data.value()[index];
                 Ok((data.width, data.height))
             }
-            MyCow::Redb(table) => {
-                let data = &table
-                    .get(index as u64)?
-                    .context(format!(
-                        "Fail to find with and height in tree snapshots for index {}",
-                        index
-                    ))?
-                    .value();
-
-                Ok((data.width, data.height))
+            MyCow::Sqlite(timestamp) => {
+                Ok(SQLITE.get_snapshot_width_height(*timestamp, index)?)
             }
         }
     }
@@ -62,15 +47,9 @@ impl MyCow {
                 let data = &data.value()[index];
                 Ok(data.hash)
             }
-            MyCow::Redb(table) => {
-                let data = table
-                    .get(index as u64)?
-                    .context(format!(
-                        "Fail to find hash in tree snapshots for index {}",
-                        index
-                    ))?
-                    .value();
-                Ok(data.hash)
+            MyCow::Sqlite(timestamp) => {
+                let hash_str = SQLITE.get_snapshot_hash(*timestamp, index)?;
+                Ok(ArrayString::from(&hash_str).unwrap_or_default())
             }
         }
     }

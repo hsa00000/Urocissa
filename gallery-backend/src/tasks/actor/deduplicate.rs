@@ -1,6 +1,6 @@
 use crate::{
-    operations::open_db::open_data_table,
     public::{
+        db::sqlite::SQLITE,
         error_data::handle_error,
         structure::{abstract_data::AbstractData, database_struct::database::definition::Database},
     },
@@ -49,19 +49,16 @@ impl Task for DeduplicateTask {
 fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
     let mut database = Database::new(&task.path, task.hash)?;
 
-    let data_table = open_data_table()?;
     // File already in persistent database
-
-    if let Some(guard) = data_table.get(&*database.hash).unwrap() {
-        let mut database_exist = guard.value();
+    if let Some(mut database_exist) = SQLITE.get_database(&*database.hash)? {
         let file_modify = mem::take(&mut database.alias[0]);
         database_exist.alias.push(file_modify);
         if let Some(album_id) = task.presigned_album_id_opt {
             database_exist.album.insert(album_id);
         }
-        let abstract_data = AbstractData::Database(database_exist);
+        let abstract_data = AbstractData::Database(database_exist.clone());
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
-        warn!("File already exists in the database:\n{:#?}", database);
+        warn!("File already exists in the database:\n{:#?}", database_exist);
         Ok(None)
     } else {
         if let Some(album_id) = task.presigned_album_id_opt {

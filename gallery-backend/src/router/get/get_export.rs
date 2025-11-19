@@ -1,10 +1,9 @@
-use crate::operations::open_db::open_data_table;
+use crate::public::db::sqlite::SQLITE;
 use crate::router::{AppResult, GuardResult};
 use crate::{
     public::structure::database_struct::database::definition::Database,
     router::fairing::guard_auth::GuardAuth,
 };
-use redb::ReadableTable;
 use rocket::get;
 use rocket::response::stream::ByteStream;
 use serde::Serialize;
@@ -17,30 +16,13 @@ pub struct ExportEntry {
 #[get("/get/get-export")]
 pub async fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;
-    let data_table = open_data_table()?;
+    let objects = SQLITE.get_all_objects().unwrap_or_default();
     let byte_stream = ByteStream! {
-        // Open DB and prepare to iterate
-        let iter = match data_table.iter() {
-            Ok(it) => it,
-            Err(_) => {
-                yield b"{\"error\":\"failed to iterate\"}".to_vec();
-                return;
-            }
-        };
-
         // Start the JSON array
         yield b"[".to_vec();
         let mut first = true;
 
-        for entry_res in iter {
-            let (key, value) = match entry_res {
-                Ok(kv) => kv,
-                Err(_) => {
-                    // Skip or handle the error
-                    continue;
-                }
-            };
-
+        for database in objects {
             // Insert a comma if not the first element
             if !first {
                 yield b",".to_vec();
@@ -49,8 +31,8 @@ pub async fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![V
 
             // Build the ExportEntry
             let export = ExportEntry {
-                key: key.value().to_string(),
-                value: value.value().clone(),
+                key: database.hash.to_string(),
+                value: database,
             };
 
             // Convert it to JSON

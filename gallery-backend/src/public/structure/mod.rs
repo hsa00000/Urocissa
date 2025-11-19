@@ -5,3 +5,4 @@ pub mod expression;
 pub mod guard;
 pub mod reduced_data;
 pub mod row;
+pub mod tag_info;

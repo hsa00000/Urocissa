@@ -1,14 +1,13 @@
-use crate::operations::open_db::open_data_and_album_tables;
 use crate::operations::utils::timestamp::get_current_timestamp_u64;
 use crate::public::db::tree::TREE;
+use crate::public::db::sqlite::SQLITE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use mini_executor::BatchTask;
-use rayon::iter::{ParallelBridge, ParallelIterator};
+use rayon::iter::{ParallelIterator, IntoParallelIterator};
 use rayon::prelude::ParallelSliceMut;
-use redb::ReadableTable;
 use std::collections::HashSet;
 use std::sync::LazyLock;
 use std::time::Instant;
@@ -42,17 +41,12 @@ impl BatchTask for UpdateTreeTask {
 
 fn update_tree_task() {
     let start_time = Instant::now();
-    let (data_table, album_table) = open_data_and_album_tables();
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
-    let mut database_timestamp_vec: Vec<DatabaseTimestamp> = data_table
-        .iter()
-        .unwrap()
-        .par_bridge()
-        .map(|guard| {
-            let (_, value) = guard.unwrap();
-            let mut database = value.value();
+    let mut database_timestamp_vec: Vec<DatabaseTimestamp> = SQLITE.get_all_objects().unwrap_or_default()
+        .into_par_iter()
+        .map(|mut database| {
             // retain only necessary exif data used for query search
             database
                 .exif_vec
@@ -61,13 +55,9 @@ fn update_tree_task() {
         })
         .collect();
 
-    let album_vec: Vec<DatabaseTimestamp> = album_table
-        .iter()
-        .unwrap()
-        .par_bridge()
-        .map(|guard| {
-            let (_, value) = guard.unwrap();
-            let album = value.value();
+    let album_vec: Vec<DatabaseTimestamp> = SQLITE.get_all_albums().unwrap_or_default()
+        .into_par_iter()
+        .map(|album| {
             DatabaseTimestamp::new(AbstractData::Album(album), &priority_list)
         })
         .collect();

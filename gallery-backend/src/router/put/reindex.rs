@@ -2,7 +2,7 @@ use arrayvec::ArrayString;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::http::Status;
 
-use crate::operations::open_db::open_data_and_album_tables;
+use crate::public::db::sqlite::SQLITE;
 use crate::process::info::regenerate_metadata_for_image;
 use crate::process::info::regenerate_metadata_for_video;
 use crate::public::constant::PROCESS_BATCH_NUMBER;
@@ -37,7 +37,6 @@ pub async fn reindex(
     let _ = read_only_mode?;
     let json_data = json_data.into_inner();
     tokio::task::spawn_blocking(move || {
-        let (data_table, album_table) = open_data_and_album_tables();
         let reduced_data_vec = TREE_SNAPSHOT
             .read_tree_snapshot(&json_data.timestamp)
             .unwrap();
@@ -54,40 +53,31 @@ pub async fn reindex(
             let database_list: Vec<_> = batch
                 .into_par_iter()
                 .filter_map(|&hash| {
-                    match data_table.get(&*hash).unwrap() {
-                        Some(guard) => {
-                            let mut database = guard.value();
-                            if database.ext_type == "image" {
-                                match regenerate_metadata_for_image(&mut database) {
-                                    Ok(_) => Some(AbstractData::Database(database)),
-                                    Err(_) => None,
-                                }
-                            } else if database.ext_type == "video" {
-                                match regenerate_metadata_for_video(&mut database) {
-                                    Ok(_) => Some(AbstractData::Database(database)),
-                                    Err(_) => None,
-                                }
-                            } else {
-                                None
+                    if let Ok(Some(mut database)) = SQLITE.get_database(&*hash) {
+                        if database.ext_type == "image" {
+                            match regenerate_metadata_for_image(&mut database) {
+                                Ok(_) => Some(AbstractData::Database(database)),
+                                Err(_) => None,
                             }
-                        }
-                        _ => {
-                            match album_table.get(&*hash).unwrap() {
-                                Some(_) => {
-                                    // album_self_update already will commit
-                                    INDEX_COORDINATOR
-                                        .execute_detached(AlbumSelfUpdateTask::new(hash));
-                                    None
-                                }
-                                _ => {
-                                    error!(
-                                        "Reindex failed: cannot find data with hash/id: {}",
-                                        hash
-                                    );
-                                    None
-                                }
+                        } else if database.ext_type == "video" {
+                            match regenerate_metadata_for_video(&mut database) {
+                                Ok(_) => Some(AbstractData::Database(database)),
+                                Err(_) => None,
                             }
+                        } else {
+                            None
                         }
+                    } else if let Ok(Some(_)) = SQLITE.get_album(&*hash) {
+                        // album_self_update already will commit
+                        INDEX_COORDINATOR
+                            .execute_detached(AlbumSelfUpdateTask::new(hash));
+                        None
+                    } else {
+                        error!(
+                            "Reindex failed: cannot find data with hash/id: {}",
+                            hash
+                        );
+                        None
                     }
                 })
                 .collect();

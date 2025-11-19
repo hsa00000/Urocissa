@@ -3,10 +3,10 @@ use std::time::Instant;
 use super::TreeSnapshot;
 use crate::{
     public::db::tree_snapshot::read_tree_snapshot::MyCow, public::structure::row::ScrollBarData,
+    public::db::sqlite::SQLITE,
 };
 
 use chrono::{Datelike, TimeZone, Utc};
-use redb::ReadableTable;
 
 impl TreeSnapshot {
     pub fn read_scrollbar(&'static self, timestamp: u128) -> Vec<ScrollBarData> {
@@ -34,14 +34,10 @@ impl TreeSnapshot {
                     }
                 });
             }
-            MyCow::Redb(redb) => {
-                redb.iter()
-                    .unwrap()
-                    .enumerate()
-                    .for_each(|(index, result)| {
-                        let (_key, value) = result.unwrap();
-                        let data = value.value();
-                        let datetime = Utc.timestamp_millis_opt(data.date as i64).unwrap();
+            MyCow::Sqlite(ts) => {
+                if let Ok(dates) = SQLITE.get_snapshot_dates(ts) {
+                    for (index, date_val) in dates {
+                        let datetime = Utc.timestamp_millis_opt(date_val).unwrap();
                         let year = datetime.year();
                         let month = datetime.month();
                         if last_year != Some(year) || last_month != Some(month) {
@@ -54,7 +50,8 @@ impl TreeSnapshot {
                             };
                             scroll_bar_data_vec.push(scrollbar_data)
                         }
-                    });
+                    }
+                }
             }
         }
         info!(duration = &*format!("{:?}", start_time.elapsed()); "Generate scrollbar");

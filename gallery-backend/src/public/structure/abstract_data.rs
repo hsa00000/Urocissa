@@ -36,12 +36,6 @@ impl AbstractData {
             AbstractData::Album(_) => 300,
         }
     }
-    pub fn tag(self: &Self) -> &HashSet<String> {
-        match self {
-            AbstractData::Database(database) => &database.tag,
-            AbstractData::Album(album) => &album.tag,
-        }
-    }
     pub fn tag_mut(self: &mut Self) -> &mut HashSet<String> {
         match self {
             AbstractData::Database(database) => &mut database.tag,

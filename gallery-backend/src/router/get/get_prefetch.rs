@@ -1,5 +1,5 @@
 use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
-use crate::public::db::tree::TREE;
+use crate::public::db::sqlite::SQLITE;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::album::ResolvedShare;
@@ -18,7 +18,7 @@ use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 use anyhow::{Result, anyhow};
 use bitcode::{Decode, Encode};
 use log::info;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::hash::Hasher;
@@ -111,37 +111,17 @@ fn filter_items(
 ) -> Result<Vec<ReducedData>> {
     let filter_items_start_time = Instant::now();
 
-    let tree_guard = TREE.in_memory.read().map_err(|err| anyhow!("{:?}", err))?;
-    let reduced_data_vector: Vec<ReducedData> = match (expression_option, &resolved_share_option) {
-        // If we have a resolved share then it must have a filter expression
-        (Some(expr), Some(resolved_share)) => {
-            let filter_fn = if resolved_share.share.show_metadata {
-                expr.generate_filter()
-            } else {
-                expr.generate_filter_hide_metadata(resolved_share.album_id)
-            };
-            tree_guard
-                .par_iter()
-                .filter(|db_ts| filter_fn(&db_ts.abstract_data))
-                .map(|db_ts| db_ts.into())
-                .collect()
-        }
-        (Some(expr), None) => {
-            let filter_fn = expr.generate_filter();
-            tree_guard
-                .par_iter()
-                .filter(|database_timestamp| filter_fn(&database_timestamp.abstract_data))
-                .map(|database_timestamp| database_timestamp.into())
-                .collect()
-        }
-        (None, _) => tree_guard
-            .par_iter()
-            .map(|database_timestamp| database_timestamp.into())
-            .collect(),
+    let (hide_metadata, shared_album_id) = if let Some(resolved_share) = resolved_share_option {
+        (!resolved_share.share.show_metadata, Some(resolved_share.album_id.as_str()))
+    } else {
+        (false, None)
     };
 
+    let reduced_data_vector = SQLITE.query_objects(&expression_option, hide_metadata, shared_album_id)
+        .map_err(|e| anyhow!("SQLite query failed: {}", e))?;
+
     let duration = format!("{:?}", filter_items_start_time.elapsed());
-    info!(duration = &*duration; "Filter items");
+    info!(duration = &*duration; "Filter items (SQLITE)");
 
     Ok(reduced_data_vector)
 }

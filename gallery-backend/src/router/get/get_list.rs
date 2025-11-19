@@ -1,6 +1,6 @@
 use crate::public::config::{PUBLIC_CONFIG, PublicConfig};
 use crate::public::db::tree::TREE;
-use crate::public::db::tree::read_tags::TagInfo;
+use crate::public::structure::tag_info::TagInfo;
 use crate::public::structure::album::Share;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_share::GuardShare;

@@ -1,6 +1,6 @@
 use crate::operations::indexation::generate_dynamic_image::generate_dynamic_image;
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
-use crate::operations::open_db::open_data_table;
+use crate::public::db::sqlite::SQLITE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
@@ -62,13 +62,8 @@ pub async fn regenerate_thumbnail_with_frame(
         .context("Failed to copy frame file")?;
 
     let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData> {
-        let data_table = open_data_table()?;
-        let access_guard = data_table
-            .get(&*hash)
-            .context("Failed to fetch DB record")?
+        let mut database = SQLITE.get_database(&*hash)?
             .ok_or_else(|| anyhow!("Hash not found"))?;
-
-        let mut database = access_guard.value();
 
         let dyn_img = generate_dynamic_image(&database).context("Failed to decode DynamicImage")?;
 

@@ -1,4 +1,4 @@
-use crate::operations::open_db::{open_data_and_album_tables, open_tree_snapshot_table};
+use crate::operations::open_db::open_tree_snapshot_table;
 use crate::process::transitor::index_to_abstract_data;
 use crate::public::constant::USER_DEFINED_DESCRIPTION;
 
@@ -33,13 +33,10 @@ pub async fn set_user_defined_description(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || -> Result<()> {
-        let (data_table, album_table) = open_data_and_album_tables();
         let tree_snapshot = open_tree_snapshot_table(set_user_defined_description.timestamp)?;
 
         let mut abstract_data = index_to_abstract_data(
             &tree_snapshot,
-            &data_table,
-            &album_table,
             set_user_defined_description.index,
         )?;
 

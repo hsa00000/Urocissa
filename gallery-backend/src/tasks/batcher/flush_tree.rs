@@ -3,7 +3,7 @@ use rusqlite::params;
 
 use crate::{
     public::{
-        constant::redb::{ALBUM_TABLE, DATA_TABLE},
+        constant::{redb::{ALBUM_TABLE, DATA_TABLE}, DEFAULT_PRIORITY_LIST},
         db::{sqlite::SQLITE, tree::TREE},
         structure::abstract_data::AbstractData,
     },
@@ -78,9 +78,9 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
         let txn = conn.transaction()?;
         {
             let mut stmt_insert_obj =
-                txn.prepare("INSERT OR REPLACE INTO objects (id, data) VALUES (?, ?)")?;
+                txn.prepare("INSERT OR REPLACE INTO objects (id, data, size, width, height, ext, ext_type, pending, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")?;
             let mut stmt_insert_alb =
-                txn.prepare("INSERT OR REPLACE INTO albums (id, data) VALUES (?, ?)")?;
+                txn.prepare("INSERT OR REPLACE INTO albums (id, data, title, created_time, pending, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)")?;
             let mut stmt_delete_obj = txn.prepare("DELETE FROM objects WHERE id = ?")?;
             let mut stmt_delete_alb = txn.prepare("DELETE FROM albums WHERE id = ?")?;
 
@@ -88,12 +88,31 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                 match abstract_data {
                     AbstractData::Database(database) => {
                         if let Ok(data) = serde_json::to_vec(database) {
-                            stmt_insert_obj.execute(params![database.hash.as_str(), data])?;
+                            let timestamp = database.compute_timestamp(&DEFAULT_PRIORITY_LIST);
+                            stmt_insert_obj.execute(params![
+                                database.hash.as_str(),
+                                data,
+                                database.size,
+                                database.width,
+                                database.height,
+                                database.ext,
+                                database.ext_type,
+                                database.pending,
+                                timestamp as i64
+                            ])?;
                         }
                     }
                     AbstractData::Album(album) => {
                         if let Ok(data) = serde_json::to_vec(album) {
-                            stmt_insert_alb.execute(params![album.id.as_str(), data])?;
+                            stmt_insert_alb.execute(params![
+                                album.id.as_str(),
+                                data,
+                                album.title,
+                                album.created_time as i64, // SQLite supports up to 64-bit signed integers
+                                album.pending,
+                                album.width,
+                                album.height
+                            ])?;
                         }
                     }
                 }

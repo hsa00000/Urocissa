@@ -1,16 +1,15 @@
 use crate::public::{
-    db::tree_snapshot::read_tree_snapshot::MyCow,
+    db::{sqlite::SQLITE, tree_snapshot::read_tree_snapshot::MyCow},
     structure::{
         abstract_data::AbstractData,
-        album::Album,
         database_struct::{
             database::definition::Database, database_timestamp::DataBaseTimestampReturn,
         },
     },
 };
+
 use anyhow::Result;
 use arrayvec::ArrayString;
-use redb::ReadOnlyTable;
 
 pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
     if index >= tree_snapshot.len() {
@@ -21,39 +20,21 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
 }
 
 pub fn hash_to_database(
-    data_table: &ReadOnlyTable<&'static str, Database>,
     hash: ArrayString<64>,
 ) -> Result<Database> {
-    if let Some(database) = data_table.get(&*hash)? {
-        let database = database.value();
+    if let Some(database) = SQLITE.get_database(&*hash)? {
         Ok(database)
     } else {
         Err(anyhow::anyhow!("No data found for hash: {}", hash))
     }
 }
 
-pub fn hash_to_album(
-    album_table: &ReadOnlyTable<&'static str, Album>,
-    hash: ArrayString<64>,
-) -> Result<Album> {
-    if let Some(album) = album_table.get(&*hash)? {
-        let album = album.value();
-        Ok(album)
-    } else {
-        Err(anyhow::anyhow!("No album found for hash: {}", hash))
-    }
-}
-
 pub fn hash_to_abstract_data(
-    data_table: &ReadOnlyTable<&'static str, Database>,
-    album_table: &ReadOnlyTable<&'static str, Album>,
     hash: ArrayString<64>,
 ) -> Result<AbstractData> {
-    if let Some(database) = data_table.get(&*hash)? {
-        let database = database.value();
+    if let Some(database) = SQLITE.get_database(&*hash)? {
         Ok(database.into())
-    } else if let Some(album) = album_table.get(&*hash)? {
-        let album = album.value();
+    } else if let Some(album) = SQLITE.get_album(&*hash)? {
         Ok(album.into())
     } else {
         Err(anyhow::anyhow!("No data found for hash: {}", hash))

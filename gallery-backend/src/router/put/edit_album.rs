@@ -1,7 +1,7 @@
-use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
+use crate::operations::open_db::open_tree_snapshot_table;
 use crate::process::transitor::index_to_database;
-use crate::public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
-use crate::public::db::tree::TREE;
+use crate::public::db::sqlite::SQLITE;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
@@ -13,7 +13,6 @@ use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use futures::{StreamExt, TryStreamExt, stream};
-use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
 #[derive(Debug, Deserialize)]
@@ -38,11 +37,10 @@ pub async fn edit_album(
     let (to_flush, effected_album_vec) =
         tokio::task::spawn_blocking(move || -> Result<(Vec<_>, Vec<ArrayString<64>>)> {
             let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)?;
-            let data_table = open_data_table()?;
 
             let mut to_flush = Vec::with_capacity(json_data.index_array.len());
             for &index in &json_data.index_array {
-                let mut database = index_to_database(&tree_snapshot, &data_table, index)?;
+                let mut database = index_to_database(&tree_snapshot, index)?;
                 for album_id in &json_data.add_albums_array {
                     database.album.insert(album_id.clone());
                 }
@@ -105,26 +103,27 @@ pub async fn set_album_cover(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || -> Result<()> {
         let set_album_cover_inner = set_album_cover.into_inner();
         let album_id = set_album_cover_inner.album_id;
         let cover_hash = set_album_cover_inner.cover_hash;
 
-        let txn = TREE.in_disk.begin_write().unwrap();
-        {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-            let data_table = txn.open_table(DATA_TABLE).unwrap();
+        let mut album = SQLITE
+            .get_album(&*album_id)?
+            .ok_or(anyhow::anyhow!("Album not found"))?;
+        let database = SQLITE
+            .get_database(&*cover_hash)?
+            .ok_or(anyhow::anyhow!("Database not found"))?;
 
-            let mut album = album_table.get(&*album_id).unwrap().unwrap().value();
-            let database = data_table.get(&*cover_hash).unwrap().unwrap().value();
+        album.set_cover(&database);
 
-            album.set_cover(&database);
-            album_table.insert(&*album_id, album).unwrap();
-        }
-        txn.commit().unwrap();
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![
+            AbstractData::Album(album),
+        ]));
+        Ok(())
     })
     .await
-    .unwrap();
+    .unwrap()?;
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
         .await
@@ -147,23 +146,23 @@ pub async fn set_album_title(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || -> Result<()> {
         let set_album_title_inner = set_album_title.into_inner();
         let album_id = set_album_title_inner.album_id;
 
-        let txn = TREE.in_disk.begin_write().unwrap();
-        {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
+        let mut album = SQLITE
+            .get_album(&*album_id)?
+            .ok_or(anyhow::anyhow!("Album not found"))?;
 
-            let mut album = album_table.get(&*album_id).unwrap().unwrap().value();
+        album.title = set_album_title_inner.title;
 
-            album.title = set_album_title_inner.title;
-            album_table.insert(&*album_id, album).unwrap();
-        }
-        txn.commit().unwrap();
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![
+            AbstractData::Album(album),
+        ]));
+        Ok(())
     })
     .await
-    .unwrap();
+    .unwrap()?;
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
         .await

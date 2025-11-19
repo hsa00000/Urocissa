@@ -1,8 +1,8 @@
-use crate::operations::open_db::{open_data_and_album_tables, open_tree_snapshot_table};
+use crate::operations::open_db::open_tree_snapshot_table;
 use crate::process::transitor::index_to_abstract_data;
-use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
+use crate::public::db::sqlite::SQLITE;
 
-use crate::public::db::tree::read_tags::TagInfo;
+use crate::public::structure::tag_info::TagInfo;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -28,12 +28,11 @@ pub async fn edit_tag(
     let _ = auth?;
     let _ = read_only_mode?;
     let vec_tags_info = tokio::task::spawn_blocking(move || -> Result<Vec<TagInfo>> {
-        let (data_table, album_table) = open_data_and_album_tables();
         let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)?;
 
         for &index in &json_data.index_array {
             let mut abstract_data =
-                index_to_abstract_data(&tree_snapshot, &data_table, &album_table, index)?;
+                index_to_abstract_data(&tree_snapshot, index)?;
 
             let tag_set = abstract_data.tag_mut();
 
@@ -48,7 +47,7 @@ pub async fn edit_tag(
             BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]))
         }
 
-        Ok(TREE_SNAPSHOT.read_tags()?)
+        Ok(SQLITE.get_all_tags()?)
     })
     .await
     .unwrap()?;

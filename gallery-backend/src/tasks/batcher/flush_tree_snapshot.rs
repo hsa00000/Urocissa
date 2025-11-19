@@ -80,6 +80,12 @@ fn flush_tree_snapshot_task() {
                 break;
             }
 
+            // SQLite Write
+            let hashes: Vec<String> = entry_ref.value().iter().map(|d| d.hash.to_string()).collect();
+            if let Err(e) = crate::public::db::sqlite::SQLITE.insert_snapshot(timestamp, hashes) {
+                 handle_error(anyhow::anyhow!("SQLite insert_snapshot failed: {}", e));
+            }
+
             info!(
                 duration = &*format!("{:?}", timer_start.elapsed());
                 "Write in-memory cache into disk"
