@@ -50,22 +50,24 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
     {
         // Objects
         let mut stmt_insert_obj =
-            txn.prepare("INSERT OR REPLACE INTO objects (id, size, width, height, ext, ext_type, pending, timestamp, thumbhash, phash, exif, alias) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").unwrap();
-        let mut stmt_del_obj_tags = txn.prepare("DELETE FROM object_tags WHERE object_id = ?").unwrap();
-        let mut stmt_ins_obj_tag = txn.prepare("INSERT INTO object_tags (object_id, tag) VALUES (?, ?)").unwrap();
-        let mut stmt_del_alb_objs_by_obj = txn.prepare("DELETE FROM album_objects WHERE object_id = ?").unwrap();
-        let mut stmt_ins_alb_obj = txn.prepare("INSERT INTO album_objects (album_id, object_id) VALUES (?, ?)").unwrap();
+            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, size, width, height, ext, ext_type, pending, timestamp, thumbhash, phash, exif, alias, title, created_time, last_modified_time, start_time, end_time) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL)").unwrap();
+        let mut stmt_del_obj_tags = txn.prepare("DELETE FROM node_tags WHERE node_id = ?").unwrap();
+        let mut stmt_ins_obj_tag = txn.prepare("INSERT INTO node_tags (node_id, tag) VALUES (?, ?)").unwrap();
+        let mut stmt_del_alb_objs_by_obj = txn.prepare("DELETE FROM album_items WHERE item_id = ?").unwrap();
+        let mut stmt_ins_alb_obj = txn.prepare("INSERT INTO album_items (album_id, item_id) VALUES (?, ?)").unwrap();
 
         // Albums
         let mut stmt_insert_alb =
-            txn.prepare("INSERT OR REPLACE INTO albums (id, title, created_time, pending, width, height, start_time, end_time, last_modified_time, cover, thumbhash, user_defined_metadata, share_list, item_count, item_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").unwrap();
-        let mut stmt_del_alb_tags = txn.prepare("DELETE FROM album_tags WHERE album_id = ?").unwrap();
-        let mut stmt_ins_alb_tag = txn.prepare("INSERT INTO album_tags (album_id, tag) VALUES (?, ?)").unwrap();
+            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, title, created_time, pending, width, height, start_time, end_time, last_modified_time, size, ext, ext_type, timestamp, thumbhash, phash, exif, alias) VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL, '{}', '[]')").unwrap();
+        let mut stmt_insert_album_meta =
+            txn.prepare("INSERT OR REPLACE INTO album_meta (album_id, cover_id, user_defined_metadata, share_list, item_count, item_size) VALUES (?, ?, ?, ?, ?, ?)").unwrap();
+        let mut stmt_del_alb_tags = txn.prepare("DELETE FROM node_tags WHERE node_id = ?").unwrap();
+        let mut stmt_ins_alb_tag = txn.prepare("INSERT INTO node_tags (node_id, tag) VALUES (?, ?)").unwrap();
 
         // Deletion
-        let mut stmt_delete_obj = txn.prepare("DELETE FROM objects WHERE id = ?").unwrap();
-        let mut stmt_delete_alb = txn.prepare("DELETE FROM albums WHERE id = ?").unwrap();
-        let mut stmt_delete_alb_objs_by_alb = txn.prepare("DELETE FROM album_objects WHERE album_id = ?").unwrap();
+        let mut stmt_delete_obj = txn.prepare("DELETE FROM nodes WHERE id = ? AND kind IN ('image', 'video')").unwrap();
+        let mut stmt_delete_alb = txn.prepare("DELETE FROM nodes WHERE id = ? AND kind = 'album'").unwrap();
+        let mut stmt_delete_alb_objs_by_alb = txn.prepare("DELETE FROM album_items WHERE album_id = ?").unwrap();
 
 
         for abstract_data in &insert_list {
@@ -115,8 +117,12 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                         album.start_time.map(|t| t as i64),
                         album.end_time.map(|t| t as i64),
                         album.last_modified_time as i64,
+                        album.thumbhash
+                    ]).unwrap();
+
+                    stmt_insert_album_meta.execute(params![
+                        album.id.as_str(),
                         cover,
-                        album.thumbhash,
                         user_meta_json,
                         share_list_json,
                         album.item_count,

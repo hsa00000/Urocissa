@@ -26,20 +26,27 @@ impl Sqlite {
         // Enable WAL mode for better concurrency
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
-             PRAGMA synchronous = NORMAL;",
+             PRAGMA synchronous = NORMAL;
+             PRAGMA recursive_triggers = ON;",
         )
         .expect("Failed to set PRAGMA");
 
         // Create tables
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS objects (
+            "CREATE TABLE IF NOT EXISTS nodes (
                 id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'album')),
+                title TEXT,
+                created_time INTEGER NOT NULL,
+                last_modified_time INTEGER,
+                pending BOOLEAN NOT NULL DEFAULT 0,
+                width INTEGER NOT NULL DEFAULT 0,
+                height INTEGER NOT NULL DEFAULT 0,
+                start_time INTEGER,
+                end_time INTEGER,
                 size INTEGER,
-                width INTEGER,
-                height INTEGER,
                 ext TEXT,
                 ext_type TEXT,
-                pending BOOLEAN,
                 timestamp INTEGER,
                 thumbhash BLOB,
                 phash BLOB,
@@ -48,36 +55,30 @@ impl Sqlite {
             )",
             [],
         )
-        .expect("Failed to create objects table");
+        .expect("Failed to create nodes table");
 
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS albums (
-                id TEXT PRIMARY KEY,
-                title TEXT,
-                created_time INTEGER,
-                pending BOOLEAN,
-                width INTEGER,
-                height INTEGER,
-                start_time INTEGER,
-                end_time INTEGER,
-                last_modified_time INTEGER,
-                cover TEXT,
-                thumbhash BLOB,
-                user_defined_metadata TEXT,
-                share_list TEXT,
-                item_count INTEGER,
-                item_size INTEGER
+            "CREATE TABLE IF NOT EXISTS album_meta (
+                album_id TEXT PRIMARY KEY,
+                cover_id TEXT,
+                user_defined_metadata TEXT NOT NULL DEFAULT '{}',
+                share_list TEXT NOT NULL DEFAULT '{}',
+                item_count INTEGER NOT NULL DEFAULT 0,
+                item_size INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (album_id) REFERENCES nodes(id) ON DELETE CASCADE,
+                FOREIGN KEY (cover_id) REFERENCES nodes(id)
             )",
             [],
         )
-        .expect("Failed to create albums table");
+        .expect("Failed to create album_meta table");
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS snapshots (
                 timestamp INTEGER,
                 idx INTEGER,
-                hash TEXT,
-                PRIMARY KEY (timestamp, idx)
+                node_id TEXT,
+                PRIMARY KEY (timestamp, idx),
+                FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
             )",
             [],
         )
@@ -85,34 +86,90 @@ impl Sqlite {
 
         // Phase 5: Normalization
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS object_tags (
-                object_id TEXT,
+            "CREATE TABLE IF NOT EXISTS node_tags (
+                node_id TEXT,
                 tag TEXT,
-                PRIMARY KEY (object_id, tag)
+                PRIMARY KEY (node_id, tag),
+                FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
             )",
             [],
         )
-        .expect("Failed to create object_tags table");
+        .expect("Failed to create node_tags table");
 
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS album_objects (
+            "CREATE TABLE IF NOT EXISTS album_items (
                 album_id TEXT,
-                object_id TEXT,
-                PRIMARY KEY (album_id, object_id)
+                item_id TEXT,
+                PRIMARY KEY (album_id, item_id),
+                FOREIGN KEY (album_id) REFERENCES nodes(id) ON DELETE CASCADE,
+                FOREIGN KEY (item_id) REFERENCES nodes(id) ON DELETE CASCADE
             )",
             [],
         )
-        .expect("Failed to create album_objects table");
+        .expect("Failed to create album_items table");
 
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS album_tags (
-                album_id TEXT,
-                tag TEXT,
-                PRIMARY KEY (album_id, tag)
-            )",
-            [],
+        // Create triggers for automatic maintenance
+        conn.execute_batch(
+            "
+            CREATE TRIGGER IF NOT EXISTS trg_album_items_ai
+            AFTER INSERT ON album_items
+            BEGIN
+                UPDATE album_meta
+                SET
+                    item_count = item_count + 1,
+                    item_size  = item_size + COALESCE(
+                        (SELECT size FROM nodes WHERE id = NEW.item_id),
+                        0
+                    )
+                WHERE album_id = NEW.album_id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_album_items_ad
+            AFTER DELETE ON album_items
+            BEGIN
+                UPDATE album_meta
+                SET
+                    item_count = item_count - 1,
+                    item_size  = item_size - COALESCE(
+                        (SELECT size FROM nodes WHERE id = OLD.item_id),
+                        0
+                    )
+                WHERE album_id = OLD.album_id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_album_items_au
+            AFTER UPDATE OF item_id ON album_items
+            BEGIN
+                UPDATE album_meta
+                SET item_size = item_size - COALESCE(
+                    (SELECT size FROM nodes WHERE id = OLD.item_id),
+                    0
+                )
+                WHERE album_id = NEW.album_id;
+
+                UPDATE album_meta
+                SET item_size = item_size + COALESCE(
+                    (SELECT size FROM nodes WHERE id = NEW.item_id),
+                    0
+                )
+                WHERE album_id = NEW.album_id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_nodes_size_au
+            AFTER UPDATE OF size ON nodes
+            WHEN NEW.size != OLD.size
+            BEGIN
+                UPDATE album_meta
+                SET item_size = item_size + (NEW.size - OLD.size)
+                WHERE album_id IN (
+                    SELECT album_id
+                    FROM album_items
+                    WHERE item_id = NEW.id
+                );
+            END;
+            "
         )
-        .expect("Failed to create album_tags table");
+        .expect("Failed to create triggers");
 
         // Clear snapshots on startup
         conn.execute("DELETE FROM snapshots", [])
@@ -123,7 +180,7 @@ impl Sqlite {
 
     pub fn get_database(&self, hash: &str) -> rusqlite::Result<Option<Database>> {
         let conn = self.pool.get().unwrap();
-        let mut stmt = conn.prepare("SELECT id, size, width, height, ext, ext_type, pending, thumbhash, phash, exif, alias FROM objects WHERE id = ?")?;
+        let mut stmt = conn.prepare("SELECT id, size, width, height, ext, ext_type, pending, thumbhash, phash, exif, alias FROM nodes WHERE id = ? AND kind IN ('image', 'video')")?;
 
         let result = stmt
             .query_row(params![hash], |row| {
@@ -163,7 +220,7 @@ impl Sqlite {
 
         if let Some(mut database) = result {
             // Fetch tags
-            let mut stmt_tags = conn.prepare("SELECT tag FROM object_tags WHERE object_id = ?")?;
+            let mut stmt_tags = conn.prepare("SELECT tag FROM node_tags WHERE node_id = ?")?;
             let tags_iter = stmt_tags.query_map(params![hash], |row| row.get(0))?;
             for tag in tags_iter {
                 database.tag.insert(tag?);
@@ -171,7 +228,7 @@ impl Sqlite {
 
             // Fetch albums
             let mut stmt_albums =
-                conn.prepare("SELECT album_id FROM album_objects WHERE object_id = ?")?;
+                conn.prepare("SELECT album_id FROM album_items WHERE item_id = ?")?;
             let albums_iter = stmt_albums.query_map(params![hash], |row| row.get(0))?;
             for album_id in albums_iter {
                 let aid: String = album_id?;
@@ -188,7 +245,7 @@ impl Sqlite {
 
     pub fn get_album(&self, id: &str) -> rusqlite::Result<Option<Album>> {
         let conn = self.pool.get().unwrap();
-        let mut stmt = conn.prepare("SELECT id, title, created_time, pending, width, height, start_time, end_time, last_modified_time, cover, thumbhash, user_defined_metadata, share_list, item_count, item_size FROM albums WHERE id = ?")?;
+        let mut stmt = conn.prepare("SELECT n.id, n.title, n.created_time, n.pending, n.width, n.height, n.start_time, n.end_time, n.last_modified_time, am.cover_id, n.thumbhash, am.user_defined_metadata, am.share_list, am.item_count, am.item_size FROM nodes n LEFT JOIN album_meta am ON n.id = am.album_id WHERE n.id = ? AND n.kind = 'album'")?;
 
         let result = stmt
             .query_row(params![id], |row| {
@@ -201,7 +258,7 @@ impl Sqlite {
                 let start_time: Option<i64> = row.get(6)?;
                 let end_time: Option<i64> = row.get(7)?;
                 let last_modified_time: i64 = row.get(8)?;
-                let cover: Option<String> = row.get(9)?;
+                let cover_id: Option<String> = row.get(9)?;
                 let thumbhash: Option<Vec<u8>> = row.get(10)?;
                 let user_meta_json: String = row.get(11)?;
                 let share_list_json: String = row.get(12)?;
@@ -220,7 +277,7 @@ impl Sqlite {
                     start_time: start_time.map(|t| t as u128),
                     end_time: end_time.map(|t| t as u128),
                     last_modified_time: last_modified_time as u128,
-                    cover: cover.map(|c| ArrayString::from(&c).unwrap_or_default()),
+                    cover: cover_id.map(|c| ArrayString::from(&c).unwrap_or_default()),
                     thumbhash,
                     user_defined_metadata,
                     share_list,
@@ -265,7 +322,7 @@ impl Sqlite {
             }
 
             // Fetch tags
-            let mut stmt_tags = conn.prepare("SELECT tag FROM album_tags WHERE album_id = ?")?;
+            let mut stmt_tags = conn.prepare("SELECT tag FROM node_tags WHERE node_id = ?")?;
             let tags_iter = stmt_tags.query_map(params![id], |row| row.get(0))?;
             for tag in tags_iter {
                 album.tag.insert(tag?);
@@ -293,7 +350,7 @@ impl Sqlite {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
             "SELECT tag, COUNT(*) 
-             FROM object_tags 
+             FROM node_tags 
              GROUP BY tag",
         )?;
 
@@ -313,7 +370,7 @@ impl Sqlite {
 
     pub fn get_all_albums(&self) -> rusqlite::Result<Vec<Album>> {
         let conn = self.pool.get().unwrap();
-        let mut stmt = conn.prepare("SELECT id FROM albums")?;
+        let mut stmt = conn.prepare("SELECT id FROM nodes WHERE kind = 'album'")?;
         let ids_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
 
         let mut albums = Vec::new();
@@ -333,10 +390,10 @@ impl Sqlite {
 
         // Aggregates
         let mut stmt = conn.prepare(
-            "SELECT COUNT(*), IFNULL(SUM(objects.size), 0), MIN(objects.timestamp), MAX(objects.timestamp) 
-             FROM album_objects 
-             JOIN objects ON album_objects.object_id = objects.id 
-             WHERE album_objects.album_id = ?"
+            "SELECT COUNT(*), IFNULL(SUM(nodes.size), 0), MIN(nodes.timestamp), MAX(nodes.timestamp) 
+             FROM album_items 
+             JOIN nodes ON album_items.item_id = nodes.id 
+             WHERE album_items.album_id = ?"
         )?;
 
         let (count, size, start, end) = stmt.query_row(params![album_id], |row| {
@@ -354,11 +411,11 @@ impl Sqlite {
 
         // Cover (First item by timestamp)
         let mut stmt = conn.prepare(
-            "SELECT objects.id 
-             FROM album_objects 
-             JOIN objects ON album_objects.object_id = objects.id 
-             WHERE album_objects.album_id = ? 
-             ORDER BY objects.timestamp ASC 
+            "SELECT nodes.id 
+             FROM album_items 
+             JOIN nodes ON album_items.item_id = nodes.id 
+             WHERE album_items.album_id = ? 
+             ORDER BY nodes.timestamp ASC 
              LIMIT 1",
         )?;
 
@@ -378,13 +435,13 @@ impl Sqlite {
     pub fn is_object_in_album(&self, object_id: &str, album_id: &str) -> rusqlite::Result<bool> {
         let conn = self.pool.get().unwrap();
         let mut stmt =
-            conn.prepare("SELECT 1 FROM album_objects WHERE album_id = ? AND object_id = ?")?;
+            conn.prepare("SELECT 1 FROM album_items WHERE album_id = ? AND item_id = ?")?;
         Ok(stmt.exists(params![album_id, object_id])?)
     }
 
     pub fn _get_objects_in_album(&self, album_id: &str) -> rusqlite::Result<Vec<String>> {
         let conn = self.pool.get().unwrap();
-        let mut stmt = conn.prepare("SELECT object_id FROM album_objects WHERE album_id = ?")?;
+        let mut stmt = conn.prepare("SELECT item_id FROM album_items WHERE album_id = ?")?;
         let iter = stmt.query_map(params![album_id], |row| row.get(0))?;
         let mut ids = Vec::new();
         for id in iter {
@@ -402,7 +459,7 @@ impl Sqlite {
     pub fn get_snapshot_hash(&self, timestamp: u128, idx: usize) -> rusqlite::Result<String> {
         let conn = self.pool.get().unwrap();
         let mut stmt =
-            conn.prepare("SELECT hash FROM snapshots WHERE timestamp = ? AND idx = ?")?;
+            conn.prepare("SELECT node_id FROM snapshots WHERE timestamp = ? AND idx = ?")?;
         stmt.query_row(params![timestamp as i64, idx], |row| row.get(0))
     }
 
@@ -413,9 +470,9 @@ impl Sqlite {
     ) -> rusqlite::Result<(u32, u32)> {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT objects.width, objects.height
+            "SELECT nodes.width, nodes.height
              FROM snapshots s
-             JOIN objects ON s.hash = objects.id
+             JOIN nodes ON s.node_id = nodes.id
              WHERE s.timestamp = ? AND s.idx = ?",
         )?;
         
@@ -424,7 +481,7 @@ impl Sqlite {
         })
     }    pub fn get_all_objects(&self) -> rusqlite::Result<Vec<Database>> {
         let conn = self.pool.get().unwrap();
-        let mut stmt = conn.prepare("SELECT id, size, width, height, ext, ext_type, pending, thumbhash, phash, exif, alias FROM objects")?;
+        let mut stmt = conn.prepare("SELECT id, size, width, height, ext, ext_type, pending, thumbhash, phash, exif, alias FROM nodes WHERE kind IN ('image', 'video')")?;
         let iter = stmt.query_map([], |row| {
             let id: String = row.get(0)?;
             let size: u64 = row.get(1)?;
@@ -459,7 +516,7 @@ impl Sqlite {
             };
 
             // Fetch tags
-            let mut stmt_tags = conn.prepare("SELECT tag FROM object_tags WHERE object_id = ?")?;
+            let mut stmt_tags = conn.prepare("SELECT tag FROM node_tags WHERE node_id = ?")?;
             let tags_iter = stmt_tags.query_map(params![&id], |row| row.get(0))?;
             for tag in tags_iter {
                 database.tag.insert(tag?);
@@ -467,7 +524,7 @@ impl Sqlite {
 
             // Fetch albums
             let mut stmt_albums =
-                conn.prepare("SELECT album_id FROM album_objects WHERE object_id = ?")?;
+                conn.prepare("SELECT album_id FROM album_items WHERE item_id = ?")?;
             let albums_iter = stmt_albums.query_map(params![&id], |row| row.get(0))?;
             for album_id in albums_iter {
                 let aid: String = album_id?;
@@ -489,9 +546,9 @@ impl Sqlite {
     pub fn get_snapshot_dates(&self, timestamp: u128) -> rusqlite::Result<Vec<(usize, i64)>> {
         let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT s.idx, objects.timestamp
+            "SELECT s.idx, nodes.timestamp
              FROM snapshots s
-             JOIN objects ON s.hash = objects.id
+             JOIN nodes ON s.node_id = nodes.id
              WHERE s.timestamp = ?
              ORDER BY s.idx ASC",
         )?;
@@ -521,10 +578,10 @@ impl Sqlite {
 
         // Note: timestamp is cast to i64 for SQLite INTEGER compatibility
         let sql = format!(
-            "INSERT INTO snapshots (timestamp, idx, hash)
+            "INSERT INTO snapshots (timestamp, idx, node_id)
              SELECT ?, ROW_NUMBER() OVER (ORDER BY timestamp DESC) - 1, id
-             FROM objects
-             WHERE {}",
+             FROM nodes
+             WHERE kind IN ('image', 'video') AND {}",
             where_clause
         );
 
@@ -547,7 +604,7 @@ impl Sqlite {
     ) -> rusqlite::Result<Option<usize>> {
         let conn = self.pool.get().unwrap();
         let mut stmt =
-            conn.prepare("SELECT idx FROM snapshots WHERE timestamp = ? AND hash = ?")?;
+            conn.prepare("SELECT idx FROM snapshots WHERE timestamp = ? AND node_id = ?")?;
         stmt.query_row(params![timestamp as i64, hash], |row| row.get(0))
             .optional()
     }
@@ -565,11 +622,11 @@ impl Sqlite {
         let conn = self.pool.get().unwrap();
 
         let mut stmt_obj =
-            conn.prepare("DELETE FROM objects WHERE pending = 1 AND timestamp < ?")?;
+            conn.prepare("DELETE FROM nodes WHERE pending = 1 AND timestamp < ? AND kind IN ('image', 'video')")?;
         let obj_count = stmt_obj.execute(params![timestamp_threshold as i64])?;
 
         let mut stmt_album =
-            conn.prepare("DELETE FROM albums WHERE pending = 1 AND created_time < ?")?;
+            conn.prepare("DELETE FROM nodes WHERE pending = 1 AND created_time < ? AND kind = 'album'")?;
         let album_count = stmt_album.execute(params![timestamp_threshold as i64])?;
 
         Ok((obj_count, album_count))
