@@ -26,5 +26,8 @@ fn expire_check_task() {
     if let Err(e) = SQLITE.delete_expired_snapshots(threshold) {
         error!("Failed to delete expired snapshots: {}", e);
     }
+    if let Err(e) = SQLITE.delete_expired_pending_data(threshold) {
+        error!("Failed to delete expired pending data: {}", e);
+    }
 }
 

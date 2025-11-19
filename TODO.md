@@ -63,7 +63,7 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
 - [x] **Optimize Snapshot Generation**:
     - Replace manual Rust-side filtering/sorting with SQL queries (`WHERE`, `ORDER BY`).
     - Implement `SELECT id FROM objects WHERE ...` to generate snapshot data directly.
-- [ ] **Simplify TreeSnapshot Structure**:
+- [x] **Simplify TreeSnapshot Structure**:
     - Ensure `TreeSnapshot` is purely a wrapper around `Vec<ID>` (or a mechanism to fetch it).
     - Remove any remaining legacy caching logic.
 - [x] **Optimize SQLite Concurrency (r2d2)**:
@@ -71,7 +71,7 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
     - [x] Replace `Mutex<Connection>` with `r2d2::Pool<SqliteConnectionManager>`.
     - [x] Ensure all writes go through `FlushTreeTask` (Single Writer Principle).
     - [x] Audit codebase for "raw writes" (direct `INSERT/UPDATE/DELETE` outside of tasks) and refactor them to use `FlushTreeTask` or specific Task structs.
-- [ ] **Implement SQLite Expiration Logic**:
+- [x] **Implement SQLite Expiration Logic**:
     - Implement the `DELETE FROM objects WHERE ...` logic in `ExpireCheckTask` (currently stubbed).
-- [ ] **Final Polish**:
+- [x] **Final Polish**:
     - Verify all tests/flows work with pure SQLite.

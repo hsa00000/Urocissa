@@ -351,6 +351,18 @@ impl Sqlite {
         let mut stmt = conn.prepare("DELETE FROM snapshots WHERE timestamp < ?")?;
         stmt.execute(params![timestamp_threshold as i64])
     }
+
+    pub fn delete_expired_pending_data(&self, timestamp_threshold: u128) -> rusqlite::Result<(usize, usize)> {
+        let conn = self.pool.get().unwrap();
+        
+        let mut stmt_obj = conn.prepare("DELETE FROM objects WHERE pending = 1 AND timestamp < ?")?;
+        let obj_count = stmt_obj.execute(params![timestamp_threshold as i64])?;
+
+        let mut stmt_album = conn.prepare("DELETE FROM albums WHERE pending = 1 AND created_time < ?")?;
+        let album_count = stmt_album.execute(params![timestamp_threshold as i64])?;
+
+        Ok((obj_count, album_count))
+    }
 }
 
 pub static SQLITE: LazyLock<Sqlite> = LazyLock::new(|| Sqlite::new());
