@@ -38,7 +38,7 @@ axios.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 axios.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    if (error.response && error.response.status === 401) {
+    if (error.response?.status === 401) {
       const redirectionStore = useRedirectionStore('mainId')
       await redirectionStore.redirectionToLogin()
     }

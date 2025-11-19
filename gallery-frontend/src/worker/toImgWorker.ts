@@ -7,7 +7,7 @@ import {
   ProcessSmallImagePayload
 } from '@/worker/workerApi'
 import axiosRetry from 'axios-retry'
-import axios, { AxiosError } from 'axios'
+import axios from 'axios'
 import { getSrc } from '@utils/getter'
 import { setupAxiosInterceptor } from './axiosInterceptor'
 
@@ -20,7 +20,7 @@ axiosRetry(workerAxios, {
   retryDelay: () => 200,
   retryCondition: (error) => {
     if (axios.isCancel(error)) return false
-    const response = (error as AxiosError).response
+    const response = error.response
     return response ? response.status !== 200 : true
   }
 })
