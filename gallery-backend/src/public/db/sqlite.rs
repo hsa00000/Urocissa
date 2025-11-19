@@ -394,16 +394,54 @@ impl Sqlite {
 
     pub fn get_all_objects(&self) -> rusqlite::Result<Vec<Database>> {
         let conn = self.pool.get().unwrap();
-        let mut stmt = conn.prepare("SELECT data FROM objects")?;
+        let mut stmt = conn.prepare("SELECT id, size, width, height, ext, ext_type, pending, thumbhash, phash, exif, alias FROM objects")?;
         let iter = stmt.query_map([], |row| {
-            let bytes: Vec<u8> = row.get(0)?;
-            let database: Database = serde_json::from_slice(&bytes).map_err(|e| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    0,
-                    rusqlite::types::Type::Blob,
-                    Box::new(e),
-                )
-            })?;
+            let id: String = row.get(0)?;
+            let size: u64 = row.get(1)?;
+            let width: u32 = row.get(2)?;
+            let height: u32 = row.get(3)?;
+            let ext: String = row.get(4)?;
+            let ext_type: String = row.get(5)?;
+            let pending: bool = row.get(6)?;
+            let thumbhash: Vec<u8> = row.get(7)?;
+            let phash: Vec<u8> = row.get(8)?;
+            let exif_json: String = row.get(9)?;
+            let alias_json: String = row.get(10)?;
+            
+            let exif_vec: BTreeMap<String, String> = serde_json::from_str(&exif_json).unwrap_or_default();
+            let alias: Vec<FileModify> = serde_json::from_str(&alias_json).unwrap_or_default();
+            
+            let mut database = Database {
+                hash: ArrayString::from(&id).unwrap_or_default(),
+                size,
+                width,
+                height,
+                thumbhash,
+                phash,
+                ext,
+                exif_vec,
+                tag: HashSet::new(), // Will fill later
+                album: HashSet::new(), // Will fill later
+                alias,
+                ext_type,
+                pending,
+            };
+
+            // Fetch tags
+            let mut stmt_tags = conn.prepare("SELECT tag FROM object_tags WHERE object_id = ?")?;
+            let tags_iter = stmt_tags.query_map(params![&id], |row| row.get(0))?;
+            for tag in tags_iter {
+                database.tag.insert(tag?);
+            }
+            
+            // Fetch albums
+            let mut stmt_albums = conn.prepare("SELECT album_id FROM album_objects WHERE object_id = ?")?;
+            let albums_iter = stmt_albums.query_map(params![&id], |row| row.get(0))?;
+            for album_id in albums_iter {
+                let aid: String = album_id?;
+                database.album.insert(ArrayString::from(&aid).unwrap_or_default());
+            }
+            
             Ok(database)
         })?;
 

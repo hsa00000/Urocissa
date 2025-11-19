@@ -51,12 +51,10 @@ fn main() -> Result<()> {
             let start_time = Instant::now();
             
             // Log counts from SQLite instead of Redb
-            if let Ok(objects) = SQLITE.get_all_objects() {
-                 info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", objects.len());
-            }
-            if let Ok(albums) = SQLITE.get_all_albums() {
-                 info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", albums.len());
-            }
+            let objects = SQLITE.get_all_objects().unwrap();
+            info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", objects.len());
+            let albums = SQLITE.get_all_albums().unwrap();
+            info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", albums.len());
 
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
             BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
