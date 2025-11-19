@@ -1,9 +1,11 @@
 use crate::public::db::sqlite::SQLITE;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Share;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
+use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::router::AppResult;
 use anyhow::Result;
@@ -29,7 +31,9 @@ pub async fn edit_share(
             album
                 .share_list
                 .insert(json_data.share.url, json_data.share.clone());
-            SQLITE.update_album(&album)?;
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![
+                AbstractData::Album(album),
+            ]));
         }
         Ok(())
     })
@@ -60,7 +64,9 @@ pub async fn delete_share(
     tokio::task::spawn_blocking(move || -> Result<()> {
         if let Some(mut album) = SQLITE.get_album(json_data.album_id.as_str())? {
             album.share_list.remove(&json_data.share_id);
-            SQLITE.update_album(&album)?;
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![
+                AbstractData::Album(album),
+            ]));
         }
         Ok(())
     })

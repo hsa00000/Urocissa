@@ -1,9 +1,12 @@
 use crate::public::db::sqlite::SQLITE;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Share;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::GuardResult;
+use crate::tasks::BATCH_COORDINATOR;
+use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rand::Rng;
@@ -57,7 +60,9 @@ pub async fn create_share(
                     .as_secs(),
             };
             album.share_list.insert(share_id, share);
-            SQLITE.update_album(&album)?;
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![
+                AbstractData::Album(album),
+            ]));
             Ok(link)
         } else {
             Err(anyhow::anyhow!("Album not found").into())

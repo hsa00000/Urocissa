@@ -1,21 +1,25 @@
-use std::sync::{LazyLock, Mutex};
-use rusqlite::{Connection, OptionalExtension, params, ToSql};
+use std::sync::LazyLock;
+use rusqlite::{OptionalExtension, params, ToSql};
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use crate::public::structure::{
     album::Album,
     database_struct::database::definition::Database,
-    reduced_data::ReducedData,
     expression::Expression,
     tag_info::TagInfo,
 };
 
 pub struct Sqlite {
-    pub conn: Mutex<Connection>,
+    pub pool: Pool<SqliteConnectionManager>,
 }
 
 impl Sqlite {
     pub fn new() -> Self {
         let path = "./db/sqlite.db";
-        let conn = Connection::open(path).expect("Failed to open sqlite db");
+        let manager = SqliteConnectionManager::file(path);
+        let pool = Pool::new(manager).expect("Failed to create pool");
+        
+        let conn = pool.get().expect("Failed to get connection");
 
         // Enable WAL mode for better concurrency
         conn.execute_batch(
@@ -67,12 +71,12 @@ impl Sqlite {
         .expect("Failed to create snapshots table");
 
         Self {
-            conn: Mutex::new(conn),
+            pool,
         }
     }
 
     pub fn get_database(&self, hash: &str) -> rusqlite::Result<Option<Database>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare("SELECT data FROM objects WHERE id = ?")?;
         let data: Option<Vec<u8>> = stmt
             .query_row(params![hash], |row| row.get(0))
@@ -94,7 +98,7 @@ impl Sqlite {
     }
 
     pub fn get_album(&self, id: &str) -> rusqlite::Result<Option<Album>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare("SELECT data FROM albums WHERE id = ?")?;
         let data: Option<Vec<u8>> = stmt
             .query_row(params![id], |row| row.get(0))
@@ -116,7 +120,7 @@ impl Sqlite {
     }
 
     pub fn get_all_albums(&self) -> rusqlite::Result<Vec<Album>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare("SELECT data FROM albums")?;
         let album_iter = stmt.query_map([], |row| {
             let bytes: Vec<u8> = row.get(0)?;
@@ -138,7 +142,7 @@ impl Sqlite {
     }
 
     pub fn get_all_tags(&self) -> rusqlite::Result<Vec<TagInfo>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
             "SELECT value, COUNT(*) 
              FROM objects, json_each(objects.data, '$.tag') 
@@ -160,7 +164,7 @@ impl Sqlite {
     }
 
     pub fn get_album_stats(&self, album_id: &str) -> rusqlite::Result<(usize, u64, Option<u128>, Option<u128>, Option<Database>)> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         
         // Aggregates
         let mut stmt = conn.prepare(
@@ -209,7 +213,7 @@ impl Sqlite {
     }
 
     pub fn is_object_in_album(&self, object_id: &str, album_id: &str) -> rusqlite::Result<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
             "SELECT 1 FROM objects 
              WHERE id = ? AND EXISTS (SELECT 1 FROM json_each(objects.data, '$.album') WHERE value = ?)"
@@ -217,24 +221,8 @@ impl Sqlite {
         Ok(stmt.exists(params![object_id, album_id])?)
     }
 
-    pub fn update_album(&self, album: &Album) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
-        let bytes = serde_json::to_vec(album).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                0,
-                rusqlite::types::Type::Blob,
-                Box::new(e),
-            )
-        })?;
-        conn.execute(
-            "UPDATE albums SET data = ?, width = ?, height = ? WHERE id = ?", 
-            params![bytes, album.width, album.height, album.id.as_str()]
-        )?;
-        Ok(())
-    }
-
     pub fn get_objects_in_album(&self, album_id: &str) -> rusqlite::Result<Vec<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id FROM objects 
              WHERE EXISTS (SELECT 1 FROM json_each(objects.data, '$.album') WHERE value = ?)
@@ -247,47 +235,20 @@ impl Sqlite {
         Ok(ids)
     }
 
-    pub fn remove_album_from_object(&self, object_id: &str, album_id: &str) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT data FROM objects WHERE id = ?")?;
-        let data: Option<Vec<u8>> = stmt.query_row(params![object_id], |row| row.get(0)).optional()?;
-        
-        if let Some(bytes) = data {
-             let mut db: Database = serde_json::from_slice(&bytes).map_err(|e| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    0,
-                    rusqlite::types::Type::Blob,
-                    Box::new(e),
-                )
-            })?;
-             if db.album.remove(album_id) {
-                 let new_bytes = serde_json::to_vec(&db).map_err(|e| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        0,
-                        rusqlite::types::Type::Blob,
-                        Box::new(e),
-                    )
-                })?;
-                 conn.execute("UPDATE objects SET data = ? WHERE id = ?", params![new_bytes, object_id])?;
-             }
-        }
-        Ok(())
-    }
-
     pub fn get_snapshot_len(&self, timestamp: u128) -> rusqlite::Result<usize> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM snapshots WHERE timestamp = ?")?;
         stmt.query_row(params![timestamp as i64], |row| row.get(0))
     }
 
     pub fn get_snapshot_hash(&self, timestamp: u128, idx: usize) -> rusqlite::Result<String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare("SELECT hash FROM snapshots WHERE timestamp = ? AND idx = ?")?;
         stmt.query_row(params![timestamp as i64, idx], |row| row.get(0))
     }
 
     pub fn get_snapshot_width_height(&self, timestamp: u128, idx: usize) -> rusqlite::Result<(u32, u32)> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
             "SELECT COALESCE(o.width, a.width), COALESCE(o.height, a.height)
              FROM snapshots s
@@ -300,7 +261,7 @@ impl Sqlite {
     }
 
     pub fn get_all_objects(&self) -> rusqlite::Result<Vec<Database>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare("SELECT data FROM objects")?;
         let iter = stmt.query_map([], |row| {
             let bytes: Vec<u8> = row.get(0)?;
@@ -322,7 +283,7 @@ impl Sqlite {
     }
 
     pub fn get_snapshot_dates(&self, timestamp: u128) -> rusqlite::Result<Vec<(usize, i64)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare(
             "SELECT s.idx, COALESCE(o.timestamp, a.created_time)
              FROM snapshots s
@@ -344,7 +305,7 @@ impl Sqlite {
     }
 
     pub fn generate_snapshot(&self, timestamp: u128, expression: &Option<Expression>, hide_metadata: bool, shared_album_id: Option<&str>) -> rusqlite::Result<usize> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let (where_clause, params) = if let Some(expr) = expression {
             expr.to_sql(hide_metadata, shared_album_id)
         } else {
@@ -373,13 +334,13 @@ impl Sqlite {
     }
 
     pub fn get_snapshot_index(&self, timestamp: u128, hash: &str) -> rusqlite::Result<Option<usize>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare("SELECT idx FROM snapshots WHERE timestamp = ? AND hash = ?")?;
         stmt.query_row(params![timestamp as i64, hash], |row| row.get(0)).optional()
     }
 
     pub fn get_latest_snapshot_timestamp(&self) -> rusqlite::Result<Option<u128>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.pool.get().unwrap();
         let mut stmt = conn.prepare("SELECT MAX(timestamp) FROM snapshots")?;
         let timestamp: Option<i64> = stmt.query_row([], |row| row.get(0)).optional()?;
         Ok(timestamp.map(|t| t as u128))

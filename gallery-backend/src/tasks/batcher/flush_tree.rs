@@ -45,7 +45,7 @@ impl BatchTask for FlushTreeTask {
 }
 
 fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData>) {
-    let mut conn = SQLITE.conn.lock().unwrap();
+    let mut conn = SQLITE.pool.get().unwrap();
     let txn = conn.transaction().unwrap();
     {
         let mut stmt_insert_obj =

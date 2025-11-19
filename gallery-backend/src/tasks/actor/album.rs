@@ -1,5 +1,8 @@
 use crate::public::db::sqlite::SQLITE;
 use crate::public::error_data::handle_error;
+use crate::public::structure::abstract_data::AbstractData;
+use crate::tasks::BATCH_COORDINATOR;
+use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use log::info;
@@ -39,13 +42,23 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
             album.pending = true;
             album.self_update();
             album.pending = false;
-            SQLITE.update_album(&album)?;
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![
+                AbstractData::Album(album),
+            ]));
         }
         None => {
             // Album has been deleted
             let object_ids = SQLITE.get_objects_in_album(&album_id)?;
+            let mut modified_objects = Vec::new();
             for object_id in object_ids {
-                SQLITE.remove_album_from_object(&object_id, &album_id)?;
+                if let Some(mut db) = SQLITE.get_database(&object_id)? {
+                    if db.album.remove(&album_id) {
+                        modified_objects.push(AbstractData::Database(db));
+                    }
+                }
+            }
+            if !modified_objects.is_empty() {
+                BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(modified_objects));
             }
         }
     }
