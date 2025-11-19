@@ -75,3 +75,24 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
     - Implement the `DELETE FROM objects WHERE ...` logic in `ExpireCheckTask` (currently stubbed).
 - [x] **Final Polish**:
     - Verify all tests/flows work with pure SQLite.
+
+## Phase 5: Normalization & Legacy Removal
+*Goal: Fully normalize the database schema, remove the JSON BLOBs, and eliminate legacy "self-update" logic by leveraging SQL relations and aggregations.*
+
+- [ ] **Schema Normalization (Breaking Change)**:
+    - Create `object_tags` table (One-to-Many relation).
+    - Create `album_objects` table (Many-to-Many relation).
+    - Refactor `objects` and `albums` tables to store all attributes in columns instead of a JSON BLOB.
+    - Migrate existing data from JSON BLOBs to the new normalized tables.
+- [ ] **Refactor Write Logic (`FlushTreeTask`)**:
+    - Update `FlushTreeTask` to write to `objects`, `albums`, `object_tags`, and `album_objects` transactionally.
+    - Remove JSON serialization logic.
+- [ ] **Refactor Read Logic**:
+    - Update `get_database` and `get_album` to reconstruct structs by joining tables (or using `json_group_array`).
+    - Update `get_album_stats` to use SQL `COUNT` and `SUM` on `album_objects` instead of reading a cached value.
+- [ ] **Remove Legacy Album Logic**:
+    - Remove `AlbumSelfUpdateTask` entirely (stats are now calculated on-read via SQL).
+    - Remove `album.self_update()` method.
+    - Remove `pending` field from `Album` struct if it was only used for this update process.
+- [ ] **Cleanup**:
+    - Drop the `data` BLOB columns from `objects` and `albums`.
