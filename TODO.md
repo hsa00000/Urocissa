@@ -52,5 +52,26 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
 - [x] **Remove Legacy Caches**:
     - Delete `cache_db` related code.
     - Delete `expire_db` related code.
+
+## Phase 4: Snapshot Optimization & Simplification
+*Goal: Simplify snapshot architecture by merging QuerySnapshot into TreeSnapshot and leveraging SQLite for filtering/sorting.*
+
+- [x] **Merge QuerySnapshot into TreeSnapshot**:
+    - Treat search results as just another "snapshot" version.
+    - Remove `QuerySnapshot` struct and related code.
+    - Update search endpoints to generate a `TreeSnapshot` (via SQLite) and return a version ID.
+- [x] **Optimize Snapshot Generation**:
+    - Replace manual Rust-side filtering/sorting with SQL queries (`WHERE`, `ORDER BY`).
+    - Implement `SELECT id FROM objects WHERE ...` to generate snapshot data directly.
+- [ ] **Simplify TreeSnapshot Structure**:
+    - Ensure `TreeSnapshot` is purely a wrapper around `Vec<ID>` (or a mechanism to fetch it).
+    - Remove any remaining legacy caching logic.
+- [ ] **Optimize SQLite Concurrency (r2d2)**:
+    - Add `r2d2` and `r2d2_sqlite` dependencies.
+    - Replace `Mutex<Connection>` with `r2d2::Pool<SqliteConnectionManager>`.
+    - Ensure all writes go through `FlushTreeTask` (Single Writer Principle).
+    - Audit codebase for "raw writes" (direct `INSERT/UPDATE/DELETE` outside of tasks) and refactor them to use `FlushTreeTask` or specific Task structs.
+- [ ] **Implement SQLite Expiration Logic**:
+    - Implement the `DELETE FROM objects WHERE ...` logic in `ExpireCheckTask` (currently stubbed).
 - [ ] **Final Polish**:
     - Verify all tests/flows work with pure SQLite.
