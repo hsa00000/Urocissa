@@ -11,9 +11,10 @@ export const useConfigStore = (isolationId: IsolationId) =>
     state: (): {
       disableImg: boolean
       isMobile: boolean
+      showFilenameChip: boolean
     } => ({
       disableImg: false,
-      isMobile: false
-    }),
-    actions: {}
+      isMobile: false,
+      showFilenameChip: false
+    })
   })()

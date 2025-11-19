@@ -2,8 +2,11 @@ import { FunctionalComponent, h, Fragment, PropType } from 'vue'
 import ProcessingChip from './ProcessingChip'
 import DurationChip from './DurationChip'
 import AlbumChip from './AlbumChip'
+import FilenameChip from './FilenameChip'
 import { AbstractData, DisplayElement } from '@type/types'
 import { formatDuration } from '@utils/dater'
+import { basename, extname } from 'upath'
+import { useConstStore } from '@/store/constStore'
 
 interface ChipsContainerProps {
   abstractData: AbstractData
@@ -13,6 +16,8 @@ interface ChipsContainerProps {
 const ChipsContainer: FunctionalComponent<ChipsContainerProps> = (props) => {
   const chips = []
   const database = props.abstractData.database
+  const maxWidth = `${(props.displayElement.displayWidth - 16) * 0.75}px`
+  const constStore = useConstStore('mainId')
   if (database) {
     const pending = database.pending
 
@@ -25,11 +30,19 @@ const ChipsContainer: FunctionalComponent<ChipsContainerProps> = (props) => {
       const formattedDuration = formatDuration(duration)
       chips.push(h(DurationChip, { label: formattedDuration }))
     }
+
+    const file = database.alias[0]?.file
+
+    if (constStore.showFilenameChip && file !== undefined) {
+      const base = basename(file)
+      const filename = basename(base, extname(base))
+      chips.push(h(FilenameChip, { label: filename, maxWidth: maxWidth }))
+    }
+
     return h(Fragment, null, chips)
   }
 
   const albumTitle = props.abstractData.album?.title
-  const maxWidth = `${(props.displayElement.displayWidth - 8) * 0.75}px`
 
   chips.push(
     h(AlbumChip, {

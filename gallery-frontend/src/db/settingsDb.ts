@@ -393,3 +393,77 @@ export async function deleteTheme(): Promise<void> {
     }
   })
 }
+
+export async function storeShowFilenameChip(value: boolean): Promise<void> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for storing showFilenameChip')
+    return
+  }
+
+  return new Promise<void>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.put(value, 'showFilenameChip')
+
+    request.onsuccess = () => {
+      resolve()
+    }
+
+    request.onerror = () => {
+      console.error('Error storing showFilenameChip')
+      resolve()
+    }
+  })
+}
+
+export async function getShowFilenameChip(): Promise<boolean | null> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for retrieving showFilenameChip')
+    return null
+  }
+
+  return new Promise<boolean | null>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readonly')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.get('showFilenameChip')
+
+    request.onsuccess = () => {
+      const rawResult: unknown = request.result
+      if (typeof rawResult === 'boolean') {
+        resolve(rawResult)
+      } else {
+        resolve(null)
+      }
+    }
+
+    request.onerror = () => {
+      console.error('Error retrieving showFilenameChip')
+      resolve(null)
+    }
+  })
+}
+
+export async function deleteShowFilenameChip(): Promise<void> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for deleting showFilenameChip')
+    return
+  }
+
+  return new Promise<void>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.delete('showFilenameChip')
+
+    request.onsuccess = () => {
+      resolve()
+    }
+
+    request.onerror = () => {
+      console.error('Error deleting showFilenameChip')
+      resolve()
+    }
+  })
+}

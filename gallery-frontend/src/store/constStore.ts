@@ -10,7 +10,9 @@ import {
   storeLimitRation,
   getLimitRation,
   storeTheme,
-  getTheme
+  getTheme,
+  storeShowFilenameChip,
+  getShowFilenameChip
 } from '@/db/settingsDb'
 
 export const useConstStore = (isolationId: IsolationId) =>
@@ -21,6 +23,7 @@ export const useConstStore = (isolationId: IsolationId) =>
       concurrencyNumber: number
       limitRatio: boolean
       theme: 'dark' | 'light'
+      showFilenameChip: boolean
     } => ({
       subRowHeightScale: 250,
       showInfo: false,
@@ -28,14 +31,15 @@ export const useConstStore = (isolationId: IsolationId) =>
       // default: false
       limitRatio: false,
       // default theme: dark
-      theme: 'dark'
+      theme: 'dark',
+      showFilenameChip: true
     }),
     actions: {
       async toggleTheme(vuetifyTheme?: { global: { name: { value: string } } }): Promise<void> {
         const newTheme = this.theme === 'light' ? 'dark' : 'light'
         this.theme = newTheme
         await storeTheme(newTheme)
-        
+
         // Update Vuetify theme if provided
         if (vuetifyTheme) {
           vuetifyTheme.global.name.value = newTheme
@@ -100,6 +104,18 @@ export const useConstStore = (isolationId: IsolationId) =>
         const stored = await getTheme()
         if (stored === 'dark' || stored === 'light') {
           this.theme = stored
+        }
+      },
+
+      async updateShowFilenameChip(value: boolean): Promise<void> {
+        this.showFilenameChip = value
+        await storeShowFilenameChip(value)
+      },
+
+      async loadShowFilenameChip(): Promise<void> {
+        const stored = await getShowFilenameChip()
+        if (typeof stored === 'boolean') {
+          this.showFilenameChip = stored
         }
       }
     }

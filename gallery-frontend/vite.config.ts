@@ -27,7 +27,8 @@ export default defineConfig({
       '@Menu': resolve(__dirname, 'src/components/Menu'),
       '@worker': resolve(__dirname, 'src/worker'),
       '@utils': resolve(__dirname, 'src/script/utils'),
-      '@type': resolve(__dirname, 'src/type')
+      '@type': resolve(__dirname, 'src/type'),
+      path: 'path-browserify' // upath 需要使用 path-browserify 作為 path 模組
     }
   },
   build: {

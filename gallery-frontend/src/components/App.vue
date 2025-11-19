@@ -64,6 +64,7 @@ onBeforeMount(async () => {
   await constStore.loadSubRowHeightScale()
   await constStore.loadShowInfo()
   await constStore.loadConcurrencyNumber()
+  await constStore.loadShowFilenameChip()
   configStore.isMobile = isMobile()
 })
 </script>

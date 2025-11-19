@@ -2,42 +2,45 @@
   <v-dialog v-model="modalStore.showSettingModal" id="setting-modal" variant="flat" rounded>
     <v-card class="mx-auto w-100" max-width="400" variant="elevated" retain-focus>
       <v-card-title>Settings</v-card-title>
-      <v-card-text>
-        <v-row align="center" no-gutters>
-          <v-col cols="auto">
-            <v-chip variant="text"> Thumbnail size </v-chip>
-          </v-col>
-          <v-col>
-            <v-slider
-              show-ticks="always"
-              v-model="subRowHeightScaleValue"
-              :min="250"
-              :max="450"
-              :step="10"
-              :thumb-label="true"
-              :disabled="!initializedStore.initialized"
-              hide-details
-              thumb-size="16"
-              prepend-icon="mdi-minus"
-              append-icon="mdi-plus"
-              @click:prepend="onSubRowHeightScaleUpdate(-10)"
-              @click:append="onSubRowHeightScaleUpdate(10)"
-            ></v-slider>
-          </v-col>
-        </v-row>
-        <v-row align="center" no-gutters class="mt-4" v-if="false">
-          <v-col cols="auto">
-            <v-chip variant="text"> Limit Ratio </v-chip>
-          </v-col>
-          <v-col>
-            <v-switch
-              :model-value="limitRatioValue"
-              @update:model-value="onLimitRatioUpdate"
-              :disabled="!initializedStore.initialized"
-              hide-details
-            ></v-switch>
-          </v-col>
-        </v-row>
+      <v-card-text class="pa-0">
+        <v-table >
+          <tbody>
+            <tr>
+              <td>
+                <v-chip variant="text"> Thumbnail size </v-chip>
+              </td>
+              <td style="width: 250px;">
+                <v-slider
+                  show-ticks="always"
+                  v-model="subRowHeightScaleValue"
+                  :min="250"
+                  :max="450"
+                  :step="10"
+                  :disabled="!initializedStore.initialized"
+                  hide-details
+                  thumb-size="16"
+                  prepend-icon="mdi-minus"
+                  append-icon="mdi-plus"
+                  @click:prepend="onSubRowHeightScaleUpdate(-10)"
+                  @click:append="onSubRowHeightScaleUpdate(10)"
+                ></v-slider>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <v-chip variant="text"> Show Filename Chip </v-chip>
+              </td>
+              <td style="width: 250px;">
+                <v-switch
+                  :model-value="showFilenameChipValue"
+                  @update:model-value="onShowFilenameChipUpdate"
+                  :disabled="!initializedStore.initialized"
+                  hide-details
+                ></v-switch>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
@@ -69,13 +72,12 @@ const subRowHeightScaleValue = computed<number>({
   }
 })
 
-// Read/write computed for limitRatio (source of truth is constStore)
-const limitRatioValue = computed<boolean>({
-  get: () => constStore.limitRatio,
+// Read/write computed for showFilenameChip (source of truth is constStore)
+const showFilenameChipValue = computed<boolean>({
+  get: () => constStore.showFilenameChip,
   set: (newVal: boolean | null) => {
-    const value = newVal ?? false
-    constStore.updateLimitRation(value).catch((error: unknown) => {
-      console.error('Failed to update limitRatio (via setter):', error)
+    constStore.updateShowFilenameChip(newVal ?? true).catch((error: unknown) => {
+      console.error('Failed to update showFilenameChip (via setter):', error)
     })
   }
 })
@@ -89,10 +91,9 @@ const onSubRowHeightScaleUpdate = (newValue: number | null) => {
   })
 }
 
-const onLimitRatioUpdate = (newValue: boolean | null) => {
-  const value = newValue ?? false
-  constStore.updateLimitRation(value).catch((error: unknown) => {
-    console.error('Failed to update limitRatio:', error)
+const onShowFilenameChipUpdate = (newValue: boolean | null) => {
+  constStore.updateShowFilenameChip(newValue ?? true).catch((error: unknown) => {
+    console.error('Failed to update showFilenameChip:', error)
   })
 }
 
