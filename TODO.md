@@ -21,17 +21,16 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
 ## Phase 2: Migrate Reads & Expand Schema (Incremental)
 *Goal: Switch read operations to SQLite and expose data fields for SQL querying.*
 
-- [ ] **Migrate Basic Object/Album Lookup**:
+- [x] **Migrate Basic Object/Album Lookup**:
     - Identify functions reading single objects/albums from `redb`.
     - Replace implementation to query SQLite `objects` / `albums` tables (using ID).
-- [ ] **Expand Schema for Querying**:
+- [x] **Expand Schema for Querying**:
     - Identify fields needed for sorting/filtering (e.g., `timestamp`, `file_type`, `is_deleted`).
     - Add these columns to `objects` and `albums` tables via `ALTER TABLE` or migration script.
     - Update `flush_tree.rs` (Dual Write) to populate these new columns.
-- [ ] **Migrate List/Search Operations (Remove Tree Snapshots)**:
+- [x] **Migrate List/Search Operations**:
     - Identify endpoints using `tree_snapshots` for listing or searching.
-    - Rewrite these to use raw SQL `SELECT` queries using the new columns.
-    - *Note: This replaces the complex snapshot logic with simple SQL queries.*
+    - Rewrite these to use raw SQL `SELECT` queries or adapt `TreeSnapshot` to query SQLite.
 - [ ] **Migrate Expiration Logic**:
     - If `expire_db` is used for TTL, implement a cleanup task using a simple SQL query (e.g., `DELETE FROM objects WHERE ...`).
 
@@ -39,15 +38,19 @@ The goal is to remove `redb` and its associated caching mechanisms (`tree_snapsh
 *Goal: Remove `redb` and legacy caching code.*
 
 - [ ] **Stop Dual Write**:
-    - Remove `redb` write logic from `flush_tree.rs`.
+    - Remove `redb` write logic from `flush_tree.rs` and `flush_tree_snapshot.rs`.
+- [ ] **Ensure Version Persistence**:
+    - Ensure `VERSION_COUNT_TIMESTAMP` initializes from SQLite `snapshots` table on startup.
 - [ ] **Remove Redb Dependencies**:
     - Remove `redb` from `Cargo.toml`.
     - Delete `src/public/db/tree.rs` (or the redb parts of it).
     - Delete `src/public/constant/redb.rs`.
+- [ ] **Retire Redb Backend for Snapshots**:
+    - Keep `TreeSnapshot` struct as the API interface.
+    - Remove `in_disk` (Redb) field from `TreeSnapshot`.
+    - Ensure all snapshot logic is pure SQLite.
 - [ ] **Remove Legacy Caches**:
-    - Delete `tree_snapshots` related code.
     - Delete `cache_db` related code.
     - Delete `expire_db` related code.
-    - Remove `VERSION_COUNT_TIMESTAMP` and `TREE_SNAPSHOT` global variables.
 - [ ] **Final Polish**:
     - Verify all tests/flows work with pure SQLite.
