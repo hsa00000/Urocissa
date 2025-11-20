@@ -1,22 +1,16 @@
 use crate::public::structure::tag_info::TagInfo;
 use rusqlite::Connection;
 
+const CREATE_NODE_TAGS_SQL: &str = include_str!("sql/create_nodes_tags.sql");
+
 pub fn create_node_tags_table(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS node_tags (
-            node_id TEXT,
-            tag TEXT,
-            PRIMARY KEY (node_id, tag),
-            FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
-        )",
-        [],
-    ).map(|_| ())
+    conn.execute(CREATE_NODE_TAGS_SQL, []).map(|_| ())
 }
 
 pub fn get_all_tags(conn: &Connection) -> rusqlite::Result<Vec<TagInfo>> {
     let mut stmt = conn.prepare(
         "SELECT tag, COUNT(*)
-         FROM node_tags
+         FROM nodes_tags
          GROUP BY tag",
     )?;
 

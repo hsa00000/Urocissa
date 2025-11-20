@@ -4,18 +4,10 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 
 const GET_ALBUM_SHARES_SQL: &str = include_str!("sql/get_album_shares.sql");
+const CREATE_ALBUM_SHARES_SQL: &str = include_str!("sql/create_album_shares.sql");
 
 pub fn create_album_shares_table(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS album_shares (
-            album_id TEXT,
-            share_key TEXT,
-            share_value TEXT,
-            PRIMARY KEY (album_id, share_key),
-            FOREIGN KEY (album_id) REFERENCES album_meta(album_id) ON DELETE CASCADE
-        )",
-        [],
-    ).map(|_| ())
+    conn.execute(CREATE_ALBUM_SHARES_SQL, []).map(|_| ())
 }
 
 pub fn get_album_shares(conn: &Connection, album_id: &str) -> rusqlite::Result<HashMap<ArrayString<64>, Share>> {

@@ -1,6 +1,6 @@
 SELECT
     tag
 FROM
-    node_tags
+    nodes_tags
 WHERE
     node_id = ?

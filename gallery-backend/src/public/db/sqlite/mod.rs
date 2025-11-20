@@ -10,9 +10,10 @@ use std::sync::LazyLock;
 pub mod album_items;
 pub mod album_meta;
 pub mod album_shares;
+pub mod exif;
 pub mod extensions;
-pub mod node_tags;
 pub mod nodes;
+pub mod nodes_tags;
 pub mod snapshots;
 
 pub struct Sqlite {
@@ -38,14 +39,13 @@ impl Sqlite {
         // Create tables
         nodes::create_nodes_table(&conn).expect("Failed to create nodes table");
         album_meta::create_album_meta_table(&conn).expect("Failed to create album_meta table");
-        album_shares::create_album_shares_table(&conn).expect("Failed to create album_shares table");
+        album_shares::create_album_shares_table(&conn)
+            .expect("Failed to create album_shares table");
         snapshots::create_snapshots_table(&conn).expect("Failed to create snapshots table");
-        node_tags::create_node_tags_table(&conn).expect("Failed to create node_tags table");
+        nodes_tags::create_node_tags_table(&conn).expect("Failed to create nodes_tags table");
         album_items::create_album_items_table(&conn).expect("Failed to create album_items table");
         extensions::create_extensions_table(&conn).expect("Failed to create extensions table");
-
-        // Create triggers for automatic maintenance
-        album_items::create_triggers(&conn).expect("Failed to create triggers");
+        exif::create_exif_table(&conn).expect("Failed to create exif table");
 
         // Clear snapshots on startup
         conn.execute("DELETE FROM snapshots", [])
@@ -79,7 +79,7 @@ impl Sqlite {
 
     pub fn get_all_tags(&self) -> rusqlite::Result<Vec<TagInfo>> {
         let conn = self.pool.get().unwrap();
-        node_tags::get_all_tags(&conn)
+        nodes_tags::get_all_tags(&conn)
     }
 
     pub fn get_all_albums(&self) -> rusqlite::Result<Vec<Album>> {

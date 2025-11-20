@@ -1,17 +1,10 @@
 use crate::public::structure::expression::Expression;
 use rusqlite::{Connection, params, OptionalExtension, ToSql};
 
+const CREATE_SNAPSHOTS_SQL: &str = include_str!("sql/create_snapshots.sql");
+
 pub fn create_snapshots_table(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS snapshots (
-            timestamp INTEGER,
-            idx INTEGER,
-            node_id TEXT,
-            PRIMARY KEY (timestamp, idx),
-            FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
-        )",
-        [],
-    ).map(|_| ())
+    conn.execute(CREATE_SNAPSHOTS_SQL, []).map(|_| ())
 }
 
 pub fn get_snapshot_len(conn: &Connection, timestamp: u128) -> rusqlite::Result<usize> {

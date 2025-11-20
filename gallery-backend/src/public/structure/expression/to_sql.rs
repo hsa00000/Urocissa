@@ -2,7 +2,11 @@ use super::Expression;
 use rusqlite::ToSql;
 
 impl Expression {
-    pub fn to_sql(&self, hide_metadata: bool, shared_album_id: Option<&str>) -> (String, Vec<Box<dyn ToSql + Send + Sync>>) {
+    pub fn to_sql(
+        &self,
+        hide_metadata: bool,
+        shared_album_id: Option<&str>,
+    ) -> (String, Vec<Box<dyn ToSql + Send + Sync>>) {
         match self {
             Expression::And(exprs) => {
                 if exprs.is_empty() {
@@ -38,7 +42,7 @@ impl Expression {
                 if hide_metadata {
                     ("1=0".to_string(), vec![])
                 } else {
-                    ("EXISTS (SELECT 1 FROM node_tags WHERE node_tags.node_id = nodes.id AND node_tags.tag = ?)".to_string(), vec![Box::new(tag.clone())])
+                    ("EXISTS (SELECT 1 FROM nodes_tags WHERE nodes_tags.node_id = nodes.id AND nodes_tags.tag = ?)".to_string(), vec![Box::new(tag.clone())])
                 }
             },
             Expression::ExtType(ext_type) => (
@@ -65,11 +69,11 @@ impl Expression {
                 }
             },
             Expression::Model(model) => (
-                "json_extract(exif, '$.Model') = ?".to_string(),
+                "EXISTS (SELECT 1 FROM exif WHERE exif.node_id = nodes.id AND exif.tag = 'Model' AND exif.value = ?)".to_string(),
                 vec![Box::new(model.clone())],
             ),
             Expression::Make(make) => (
-                "json_extract(exif, '$.Make') = ?".to_string(),
+                "EXISTS (SELECT 1 FROM exif WHERE exif.node_id = nodes.id AND exif.tag = 'Make' AND exif.value = ?)".to_string(),
                 vec![Box::new(make.clone())],
             ),
             Expression::Path(path) => {
@@ -87,7 +91,7 @@ impl Expression {
                         Box::new(format!("%{}%", query)),
                     ])
                 } else {
-                    ("(ext LIKE ? OR ext_type LIKE ? OR EXISTS (SELECT 1 FROM node_tags WHERE node_tags.node_id = nodes.id AND node_tags.tag LIKE ?))".to_string(),
+                    ("(ext LIKE ? OR ext_type LIKE ? OR EXISTS (SELECT 1 FROM nodes_tags WHERE nodes_tags.node_id = nodes.id AND nodes_tags.tag LIKE ?))".to_string(),
                     vec![
                         Box::new(format!("%{}%", query)),
                         Box::new(format!("%{}%", query)),

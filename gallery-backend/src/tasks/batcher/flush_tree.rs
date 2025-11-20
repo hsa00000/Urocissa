@@ -3,9 +3,7 @@ use rusqlite::params;
 
 use crate::{
     public::{
-        constant::DEFAULT_PRIORITY_LIST,
-        db::sqlite::SQLITE,
-        structure::abstract_data::AbstractData,
+        constant::DEFAULT_PRIORITY_LIST, db::sqlite::SQLITE, structure::abstract_data::AbstractData,
     },
     tasks::{BATCH_COORDINATOR, batcher::update_expire::UpdateExpireTask},
 };
@@ -14,7 +12,6 @@ pub struct FlushTreeTask {
     pub insert_list: Vec<AbstractData>,
     pub remove_list: Vec<AbstractData>,
 }
-
 
 impl FlushTreeTask {
     pub fn insert(databases: Vec<AbstractData>) -> Self {
@@ -50,88 +47,136 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
     {
         // Objects
         let mut stmt_insert_obj =
-            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, size, width, height, ext, ext_type, pending, timestamp, thumbhash, phash, exif, alias, title, created_time, last_modified_time, start_time, end_time) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL)").unwrap();
-        let mut stmt_del_obj_tags = txn.prepare("DELETE FROM node_tags WHERE node_id = ?").unwrap();
-        let mut stmt_ins_obj_tag = txn.prepare("INSERT INTO node_tags (node_id, tag) VALUES (?, ?)").unwrap();
-        let mut stmt_del_alb_objs_by_obj = txn.prepare("DELETE FROM album_items WHERE item_id = ?").unwrap();
-        let mut stmt_ins_alb_obj = txn.prepare("INSERT INTO album_items (album_id, item_id) VALUES (?, ?)").unwrap();
+            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, size, width, height, ext, ext_type, pending, timestamp, thumbhash, phash, alias, title, created_time, last_modified_time, start_time, end_time) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL)").unwrap();
+        let mut stmt_del_obj_tags = txn
+            .prepare("DELETE FROM nodes_tags WHERE node_id = ?")
+            .unwrap();
+        let mut stmt_ins_obj_tag = txn
+            .prepare("INSERT INTO nodes_tags (node_id, tag) VALUES (?, ?)")
+            .unwrap();
+        let mut stmt_del_obj_exif = txn.prepare("DELETE FROM exif WHERE node_id = ?").unwrap();
+        let mut stmt_ins_obj_exif = txn
+            .prepare("INSERT INTO exif (node_id, tag, value) VALUES (?, ?, ?)")
+            .unwrap();
+        let mut stmt_del_alb_objs_by_obj = txn
+            .prepare("DELETE FROM album_items WHERE item_id = ?")
+            .unwrap();
+        let mut stmt_ins_alb_obj = txn
+            .prepare("INSERT INTO album_items (album_id, item_id) VALUES (?, ?)")
+            .unwrap();
 
         // Albums
         let mut stmt_insert_alb =
-            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, title, created_time, pending, width, height, start_time, end_time, last_modified_time, size, ext, ext_type, timestamp, thumbhash, phash, exif, alias) VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL, '{}', '[]')").unwrap();
+            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, title, created_time, pending, width, height, start_time, end_time, last_modified_time, size, ext, ext_type, timestamp, thumbhash, phash, alias) VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL, '[]')").unwrap();
         let mut stmt_insert_album_meta =
             txn.prepare("INSERT OR REPLACE INTO album_meta (album_id, cover_id, user_defined_metadata, share_list, item_count, item_size) VALUES (?, ?, ?, ?, ?, ?)").unwrap();
-        let mut stmt_del_alb_tags = txn.prepare("DELETE FROM node_tags WHERE node_id = ?").unwrap();
-        let mut stmt_ins_alb_tag = txn.prepare("INSERT INTO node_tags (node_id, tag) VALUES (?, ?)").unwrap();
+        let mut stmt_del_alb_tags = txn
+            .prepare("DELETE FROM nodes_tags WHERE node_id = ?")
+            .unwrap();
+        let mut stmt_ins_alb_tag = txn
+            .prepare("INSERT INTO nodes_tags (node_id, tag) VALUES (?, ?)")
+            .unwrap();
 
         // Deletion
-        let mut stmt_delete_obj = txn.prepare("DELETE FROM nodes WHERE id = ? AND kind IN ('image', 'video')").unwrap();
-        let mut stmt_delete_alb = txn.prepare("DELETE FROM nodes WHERE id = ? AND kind = 'album'").unwrap();
-        let mut stmt_delete_alb_objs_by_alb = txn.prepare("DELETE FROM album_items WHERE album_id = ?").unwrap();
-
+        let mut stmt_delete_obj = txn
+            .prepare("DELETE FROM nodes WHERE id = ? AND kind IN ('image', 'video')")
+            .unwrap();
+        let mut stmt_delete_alb = txn
+            .prepare("DELETE FROM nodes WHERE id = ? AND kind = 'album'")
+            .unwrap();
+        let mut stmt_delete_alb_objs_by_alb = txn
+            .prepare("DELETE FROM album_items WHERE album_id = ?")
+            .unwrap();
 
         for abstract_data in &insert_list {
             match abstract_data {
                 AbstractData::Database(database) => {
                     let timestamp = database.compute_timestamp(&DEFAULT_PRIORITY_LIST);
-                    let exif_json = serde_json::to_string(&database.exif_vec).unwrap_or_default();
                     let alias_json = serde_json::to_string(&database.alias).unwrap_or_default();
 
-                    stmt_insert_obj.execute(params![
-                        database.hash.as_str(),
-                        database.size,
-                        database.width,
-                        database.height,
-                        database.ext,
-                        database.ext_type,
-                        database.pending,
-                        timestamp as i64,
-                        database.thumbhash,
-                        database.phash,
-                        exif_json,
-                        alias_json
-                    ]).unwrap();
+                    stmt_insert_obj
+                        .execute(params![
+                            database.hash.as_str(),
+                            database.size,
+                            database.width,
+                            database.height,
+                            database.ext,
+                            database.ext_type,
+                            database.pending,
+                            timestamp as i64,
+                            database.thumbhash,
+                            database.phash,
+                            alias_json
+                        ])
+                        .unwrap();
 
-                    stmt_del_obj_tags.execute(params![database.hash.as_str()]).unwrap();
+                    stmt_del_obj_tags
+                        .execute(params![database.hash.as_str()])
+                        .unwrap();
                     for tag in &database.tag {
-                        stmt_ins_obj_tag.execute(params![database.hash.as_str(), tag]).unwrap();
+                        stmt_ins_obj_tag
+                            .execute(params![database.hash.as_str(), tag])
+                            .unwrap();
                     }
 
-                    stmt_del_alb_objs_by_obj.execute(params![database.hash.as_str()]).unwrap();
+                    stmt_del_obj_exif
+                        .execute(params![database.hash.as_str()])
+                        .unwrap();
+                    for (tag, value) in &database.exif_vec {
+                        stmt_ins_obj_exif
+                            .execute(params![database.hash.as_str(), tag, value])
+                            .unwrap();
+                    }
+
+                    stmt_del_alb_objs_by_obj
+                        .execute(params![database.hash.as_str()])
+                        .unwrap();
                     for album_id in &database.album {
-                        stmt_ins_alb_obj.execute(params![album_id.as_str(), database.hash.as_str()]).unwrap();
+                        stmt_ins_alb_obj
+                            .execute(params![album_id.as_str(), database.hash.as_str()])
+                            .unwrap();
                     }
                 }
                 AbstractData::Album(album) => {
-                    let user_meta_json = serde_json::to_string(&album.user_defined_metadata).unwrap_or_default();
-                    let share_list_json = serde_json::to_string(&album.share_list).unwrap_or_default();
+                    let user_meta_json =
+                        serde_json::to_string(&album.user_defined_metadata).unwrap_or_default();
+                    let share_list_json =
+                        serde_json::to_string(&album.share_list).unwrap_or_default();
                     let cover = album.cover.map(|c| c.to_string());
 
-                    stmt_insert_alb.execute(params![
-                        album.id.as_str(),
-                        album.title,
-                        album.created_time as i64,
-                        album.pending,
-                        album.width,
-                        album.height,
-                        album.start_time.map(|t| t as i64),
-                        album.end_time.map(|t| t as i64),
-                        album.last_modified_time as i64,
-                        album.thumbhash
-                    ]).unwrap();
+                    stmt_insert_alb
+                        .execute(params![
+                            album.id.as_str(),
+                            album.title,
+                            album.created_time as i64,
+                            album.pending,
+                            album.width,
+                            album.height,
+                            album.start_time.map(|t| t as i64),
+                            album.end_time.map(|t| t as i64),
+                            album.last_modified_time as i64,
+                            album.thumbhash
+                        ])
+                        .unwrap();
 
-                    stmt_insert_album_meta.execute(params![
-                        album.id.as_str(),
-                        cover,
-                        user_meta_json,
-                        share_list_json,
-                        album.item_count,
-                        album.item_size as i64
-                    ]).unwrap();
+                    stmt_insert_album_meta
+                        .execute(params![
+                            album.id.as_str(),
+                            cover,
+                            user_meta_json,
+                            share_list_json,
+                            album.item_count,
+                            album.item_size as i64
+                        ])
+                        .unwrap();
 
-                    stmt_del_alb_tags.execute(params![album.id.as_str()]).unwrap();
+                    stmt_del_alb_tags
+                        .execute(params![album.id.as_str()])
+                        .unwrap();
                     for tag in &album.tag {
-                        stmt_ins_alb_tag.execute(params![album.id.as_str(), tag]).unwrap();
+                        stmt_ins_alb_tag
+                            .execute(params![album.id.as_str(), tag])
+                            .unwrap();
                     }
                 }
             }
@@ -140,14 +185,24 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
         for abstract_data in &remove_list {
             match abstract_data {
                 AbstractData::Database(database) => {
-                    stmt_delete_obj.execute(params![database.hash.as_str()]).unwrap();
-                    stmt_del_obj_tags.execute(params![database.hash.as_str()]).unwrap();
-                    stmt_del_alb_objs_by_obj.execute(params![database.hash.as_str()]).unwrap();
+                    stmt_delete_obj
+                        .execute(params![database.hash.as_str()])
+                        .unwrap();
+                    stmt_del_obj_tags
+                        .execute(params![database.hash.as_str()])
+                        .unwrap();
+                    stmt_del_alb_objs_by_obj
+                        .execute(params![database.hash.as_str()])
+                        .unwrap();
                 }
                 AbstractData::Album(album) => {
                     stmt_delete_alb.execute(params![album.id.as_str()]).unwrap();
-                    stmt_del_alb_tags.execute(params![album.id.as_str()]).unwrap();
-                    stmt_delete_alb_objs_by_alb.execute(params![album.id.as_str()]).unwrap();
+                    stmt_del_alb_tags
+                        .execute(params![album.id.as_str()])
+                        .unwrap();
+                    stmt_delete_alb_objs_by_alb
+                        .execute(params![album.id.as_str()])
+                        .unwrap();
                 }
             }
         }
@@ -156,4 +211,3 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
 
     BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
 }
-

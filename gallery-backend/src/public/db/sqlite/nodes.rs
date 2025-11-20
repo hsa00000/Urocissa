@@ -1,35 +1,18 @@
-use crate::public::structure::{
-    database_struct::{database::definition::Database, file_modify::FileModify},
+use crate::public::structure::database_struct::{
+    database::definition::Database, file_modify::FileModify,
 };
 use arrayvec::ArrayString;
-use rusqlite::{Connection, params, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::{BTreeMap, HashSet};
 
 const GET_DATABASE_SQL: &str = include_str!("sql/get_database.sql");
 const GET_ALL_OBJECTS_SQL: &str = include_str!("sql/get_all_objects.sql");
-const GET_NODE_TAGS_SQL: &str = include_str!("sql/get_node_tags.sql");
+const GET_NODE_TAGS_SQL: &str = include_str!("sql/get_nodes_tags.sql");
 const GET_NODE_ALBUMS_SQL: &str = include_str!("sql/get_node_albums.sql");
+const CREATE_NODES_SQL: &str = include_str!("sql/create_nodes.sql");
 
 pub fn create_nodes_table(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS nodes (
-            id TEXT PRIMARY KEY,
-            kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'album')),
-            title TEXT,
-            created_time INTEGER NOT NULL,
-            last_modified_time INTEGER,
-            pending BOOLEAN NOT NULL DEFAULT 0,
-            width INTEGER NOT NULL DEFAULT 0,
-            height INTEGER NOT NULL DEFAULT 0,
-            size INTEGER,
-            timestamp INTEGER,
-            thumbhash BLOB,
-            phash BLOB,
-            exif TEXT,
-            alias TEXT
-        )",
-        [],
-    ).map(|_| ())
+    conn.execute(CREATE_NODES_SQL, []).map(|_| ())
 }
 
 pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Database>> {

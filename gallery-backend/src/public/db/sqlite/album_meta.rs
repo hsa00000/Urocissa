@@ -11,49 +11,10 @@ const GET_ALBUM_STATS_AGGREGATES_SQL: &str = include_str!("sql/get_album_stats_a
 const GET_ALBUM_COVER_SQL: &str = include_str!("sql/get_album_cover.sql");
 const IS_OBJECT_IN_ALBUM_SQL: &str = include_str!("sql/is_object_in_album.sql");
 const GET_ALBUM_TAGS_SQL: &str = include_str!("sql/get_album_tags.sql");
+const CREATE_ALBUM_META_SQL: &str = include_str!("sql/create_album_meta.sql");
 
 pub fn create_album_meta_table(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS album_meta (
-            album_id TEXT PRIMARY KEY,
-            cover_id TEXT,
-            user_defined_metadata TEXT NOT NULL DEFAULT '{}',
-            item_count INTEGER NOT NULL DEFAULT 0,
-            item_size INTEGER NOT NULL DEFAULT 0,
-            start_time INTEGER,
-            end_time INTEGER,
-            FOREIGN KEY (album_id) REFERENCES nodes(id) ON DELETE CASCADE,
-            FOREIGN KEY (cover_id) REFERENCES nodes(id)
-        )",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TRIGGER IF NOT EXISTS check_album_kind_insert
-         BEFORE INSERT ON album_meta
-         FOR EACH ROW
-         BEGIN
-             SELECT CASE
-                 WHEN (SELECT kind FROM nodes WHERE id = NEW.album_id) != 'album'
-                 THEN RAISE(ABORT, 'album_id must reference a node with kind = album')
-             END;
-         END;",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TRIGGER IF NOT EXISTS check_album_kind_update
-         BEFORE UPDATE ON album_meta
-         FOR EACH ROW
-         BEGIN
-             SELECT CASE
-                 WHEN (SELECT kind FROM nodes WHERE id = NEW.album_id) != 'album'
-                 THEN RAISE(ABORT, 'album_id must reference a node with kind = album')
-             END;
-         END;",
-        [],
-    )?;
-
+    conn.execute_batch(CREATE_ALBUM_META_SQL)?;
     Ok(())
 }
 
