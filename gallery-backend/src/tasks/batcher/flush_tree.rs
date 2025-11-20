@@ -74,8 +74,8 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
         // Albums
         let mut stmt_insert_alb =
             txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, title, created_time, pending, width, height, start_time, end_time, last_modified_time, size, ext, ext_type, timestamp, thumbhash, phash) VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL)").unwrap();
-        let mut stmt_insert_album_meta =
-            txn.prepare("INSERT OR REPLACE INTO album_meta (album_id, cover_id, user_defined_metadata, item_count, item_size) VALUES (?, ?, ?, ?, ?)").unwrap();
+        let mut stmt_insert_album_metadata =
+            txn.prepare("INSERT OR REPLACE INTO album_metadata (album_id, cover_id, user_defined_metadata) VALUES (?, ?, ?)").unwrap();
         let mut stmt_del_alb_tags = txn
             .prepare("DELETE FROM nodes_tags WHERE node_id = ?")
             .unwrap();
@@ -181,14 +181,8 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                         ])
                         .unwrap();
 
-                    stmt_insert_album_meta
-                        .execute(params![
-                            album.id.as_str(),
-                            cover,
-                            user_meta_json,
-                            album.item_count,
-                            album.item_size as i64
-                        ])
+                    stmt_insert_album_metadata
+                        .execute(params![album.id.as_str(), cover, user_meta_json])
                         .unwrap();
 
                     stmt_del_alb_tags

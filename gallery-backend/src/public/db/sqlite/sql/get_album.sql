@@ -1,21 +1,22 @@
 SELECT
-    n.id,
-    n.title,
-    n.created_time,
-    n.pending,
-    n.width,
-    n.height,
-    am.start_time,
-    am.end_time,
-    n.last_modified_time,
-    am.cover_id,
-    n.thumbhash,
-    am.user_defined_metadata,
-    am.item_count,
-    am.item_size
+    nodes.id,
+    nodes.title,
+    nodes.created_time,
+    nodes.pending,
+    nodes.width,
+    nodes.height,
+    nodes.start_time,
+    nodes.end_time,
+    nodes.last_modified_time,
+    album_metadata.cover_id,
+    nodes.thumbhash,
+    album_metadata.user_defined_metadata,
+    album_meta.item_count,
+    album_meta.item_size
 FROM
-    nodes n
-    LEFT JOIN album_meta am ON n.id = am.album_id
+    nodes
+    LEFT JOIN album_metadata ON nodes.id = album_metadata.album_id
+    LEFT JOIN album_meta ON nodes.id = album_meta.album_id
 WHERE
-    n.id = ?
-    AND n.kind = 'album'
+    nodes.id = ?
+    AND nodes.kind = 'album'

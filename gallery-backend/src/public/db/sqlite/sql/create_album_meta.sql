@@ -1,48 +1,21 @@
-CREATE TABLE IF NOT EXISTS album_meta (
+CREATE TABLE IF NOT EXISTS album_metadata (
     album_id TEXT PRIMARY KEY,
     cover_id TEXT,
     user_defined_metadata TEXT NOT NULL DEFAULT '{}',
-    item_count INTEGER NOT NULL DEFAULT 0,
-    item_size INTEGER NOT NULL DEFAULT 0,
-    start_time INTEGER,
-    end_time INTEGER,
     FOREIGN KEY (album_id) REFERENCES nodes (id) ON DELETE CASCADE,
     FOREIGN KEY (cover_id) REFERENCES nodes (id)
 );
 
-CREATE TRIGGER IF NOT EXISTS check_album_kind_insert BEFORE INSERT ON album_meta FOR EACH ROW BEGIN
+CREATE VIEW album_meta AS
 SELECT
-    CASE
-        WHEN (
-            SELECT
-                kind
-            FROM
-                nodes
-            WHERE
-                id = NEW.album_id
-        ) != 'album' THEN RAISE (
-            ABORT,
-            'album_id must reference a node with kind = album'
-        )
-    END;
-
-END;
-
-CREATE TRIGGER IF NOT EXISTS check_album_kind_update BEFORE
-UPDATE ON album_meta FOR EACH ROW BEGIN
-SELECT
-    CASE
-        WHEN (
-            SELECT
-                kind
-            FROM
-                nodes
-            WHERE
-                id = NEW.album_id
-        ) != 'album' THEN RAISE (
-            ABORT,
-            'album_id must reference a node with kind = album'
-        )
-    END;
-
-END
+    album_nodes.id AS album_id,
+    COUNT(album_items.item_id) AS item_count,
+    COALESCE(SUM(item_nodes.size), 0) AS item_size
+FROM
+    nodes AS album_nodes
+    LEFT JOIN album_items ON album_items.album_id = album_nodes.id
+    LEFT JOIN nodes AS item_nodes ON item_nodes.id = album_items.item_id
+WHERE
+    album_nodes.kind = 'album'
+GROUP BY
+    album_nodes.id;
