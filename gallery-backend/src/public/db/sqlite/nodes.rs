@@ -16,11 +16,7 @@ pub fn create_nodes_table(conn: &Connection) -> rusqlite::Result<()> {
             pending BOOLEAN NOT NULL DEFAULT 0,
             width INTEGER NOT NULL DEFAULT 0,
             height INTEGER NOT NULL DEFAULT 0,
-            start_time INTEGER,
-            end_time INTEGER,
             size INTEGER,
-            ext TEXT,
-            ext_type TEXT,
             timestamp INTEGER,
             thumbhash BLOB,
             phash BLOB,
@@ -32,7 +28,7 @@ pub fn create_nodes_table(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Database>> {
-    let mut stmt = conn.prepare("SELECT id, size, width, height, ext, ext_type, pending, thumbhash, phash, exif, alias FROM nodes WHERE id = ? AND kind IN ('image', 'video')")?;
+    let mut stmt = conn.prepare("SELECT n.id, n.size, n.width, n.height, e.ext, n.pending, n.thumbhash, n.phash, n.exif, n.alias FROM nodes n LEFT JOIN extensions e ON n.id = e.node_id WHERE n.id = ? AND n.kind IN ('image', 'video')")?;
 
     let result = stmt
         .query_row(params![hash], |row| {
@@ -41,12 +37,11 @@ pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Da
             let width: u32 = row.get(2)?;
             let height: u32 = row.get(3)?;
             let ext: String = row.get(4)?;
-            let ext_type: String = row.get(5)?;
-            let pending: bool = row.get(6)?;
-            let thumbhash: Vec<u8> = row.get(7)?;
-            let phash: Vec<u8> = row.get(8)?;
-            let exif_json: String = row.get(9)?;
-            let alias_json: String = row.get(10)?;
+            let pending: bool = row.get(5)?;
+            let thumbhash: Vec<u8> = row.get(6)?;
+            let phash: Vec<u8> = row.get(7)?;
+            let exif_json: String = row.get(8)?;
+            let alias_json: String = row.get(9)?;
 
             let exif_vec: BTreeMap<String, String> =
                 serde_json::from_str(&exif_json).unwrap_or_default();
@@ -64,7 +59,7 @@ pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Da
                 tag: HashSet::new(),   // Will fill later
                 album: HashSet::new(), // Will fill later
                 alias,
-                ext_type,
+                ext_type: String::new(), // Default since column removed
                 pending,
             })
         })
@@ -96,19 +91,18 @@ pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Da
 }
 
 pub fn get_all_objects(conn: &Connection) -> rusqlite::Result<Vec<Database>> {
-    let mut stmt = conn.prepare("SELECT id, size, width, height, ext, ext_type, pending, thumbhash, phash, exif, alias FROM nodes WHERE kind IN ('image', 'video')")?;
+    let mut stmt = conn.prepare("SELECT n.id, n.size, n.width, n.height, e.ext, n.pending, n.thumbhash, n.phash, n.exif, n.alias FROM nodes n LEFT JOIN extensions e ON n.id = e.node_id WHERE n.kind IN ('image', 'video')")?;
     let iter = stmt.query_map([], |row| {
         let id: String = row.get(0)?;
         let size: u64 = row.get(1)?;
         let width: u32 = row.get(2)?;
         let height: u32 = row.get(3)?;
         let ext: String = row.get(4)?;
-        let ext_type: String = row.get(5)?;
-        let pending: bool = row.get(6)?;
-        let thumbhash: Vec<u8> = row.get(7)?;
-        let phash: Vec<u8> = row.get(8)?;
-        let exif_json: String = row.get(9)?;
-        let alias_json: String = row.get(10)?;
+        let pending: bool = row.get(5)?;
+        let thumbhash: Vec<u8> = row.get(6)?;
+        let phash: Vec<u8> = row.get(7)?;
+        let exif_json: String = row.get(8)?;
+        let alias_json: String = row.get(9)?;
 
         let exif_vec: BTreeMap<String, String> =
             serde_json::from_str(&exif_json).unwrap_or_default();
@@ -126,7 +120,7 @@ pub fn get_all_objects(conn: &Connection) -> rusqlite::Result<Vec<Database>> {
             tag: HashSet::new(),   // Will fill later
             album: HashSet::new(), // Will fill later
             alias,
-            ext_type,
+            ext_type: String::new(), // Default since column removed
             pending,
         };
 

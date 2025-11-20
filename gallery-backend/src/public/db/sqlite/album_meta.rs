@@ -1,10 +1,9 @@
-use crate::public::structure::{
-    album::{Album, Share},
-    database_struct::database::definition::Database,
-};
+use crate::public::structure::{album::Album, database_struct::database::definition::Database};
 use arrayvec::ArrayString;
-use rusqlite::{Connection, params, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::{HashMap, HashSet};
+
+use super::album_shares;
 
 pub fn create_album_meta_table(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute(
@@ -12,18 +11,66 @@ pub fn create_album_meta_table(conn: &Connection) -> rusqlite::Result<()> {
             album_id TEXT PRIMARY KEY,
             cover_id TEXT,
             user_defined_metadata TEXT NOT NULL DEFAULT '{}',
-            share_list TEXT NOT NULL DEFAULT '{}',
             item_count INTEGER NOT NULL DEFAULT 0,
             item_size INTEGER NOT NULL DEFAULT 0,
+            start_time INTEGER,
+            end_time INTEGER,
             FOREIGN KEY (album_id) REFERENCES nodes(id) ON DELETE CASCADE,
             FOREIGN KEY (cover_id) REFERENCES nodes(id)
         )",
         [],
-    ).map(|_| ())
+    )?;
+
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS check_album_kind_insert
+         BEFORE INSERT ON album_meta
+         FOR EACH ROW
+         BEGIN
+             SELECT CASE
+                 WHEN (SELECT kind FROM nodes WHERE id = NEW.album_id) != 'album'
+                 THEN RAISE(ABORT, 'album_id must reference a node with kind = album')
+             END;
+         END;",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS check_album_kind_update
+         BEFORE UPDATE ON album_meta
+         FOR EACH ROW
+         BEGIN
+             SELECT CASE
+                 WHEN (SELECT kind FROM nodes WHERE id = NEW.album_id) != 'album'
+                 THEN RAISE(ABORT, 'album_id must reference a node with kind = album')
+             END;
+         END;",
+        [],
+    )?;
+
+    Ok(())
 }
 
 pub fn get_album(conn: &Connection, id: &str) -> rusqlite::Result<Option<Album>> {
-    let mut stmt = conn.prepare("SELECT n.id, n.title, n.created_time, n.pending, n.width, n.height, n.start_time, n.end_time, n.last_modified_time, am.cover_id, n.thumbhash, am.user_defined_metadata, am.share_list, am.item_count, am.item_size FROM nodes n LEFT JOIN album_meta am ON n.id = am.album_id WHERE n.id = ? AND n.kind = 'album'")?;
+    let mut stmt = conn.prepare(
+        "SELECT
+        n.id,
+        n.title,
+        n.created_time,
+        n.pending,
+        n.width,
+        n.height,
+        am.start_time,
+        am.end_time,
+        n.last_modified_time,
+        am.cover_id,
+        n.thumbhash,
+        am.user_defined_metadata,
+        am.item_count,
+        am.item_size
+    FROM nodes n
+    LEFT JOIN album_meta am ON n.id = am.album_id
+    WHERE n.id = ? AND n.kind = 'album'",
+    )?;
 
     let result = stmt
         .query_row(params![id], |row| {
@@ -39,14 +86,11 @@ pub fn get_album(conn: &Connection, id: &str) -> rusqlite::Result<Option<Album>>
             let cover_id: Option<String> = row.get(9)?;
             let thumbhash: Option<Vec<u8>> = row.get(10)?;
             let user_meta_json: String = row.get(11)?;
-            let share_list_json: String = row.get(12)?;
-            let item_count: usize = row.get(13)?;
-            let item_size: i64 = row.get(14)?;
+            let item_count: usize = row.get(12)?;
+            let item_size: i64 = row.get(13)?;
 
             let user_defined_metadata: HashMap<String, Vec<String>> =
                 serde_json::from_str(&user_meta_json).unwrap_or_default();
-            let share_list: HashMap<ArrayString<64>, Share> =
-                serde_json::from_str(&share_list_json).unwrap_or_default();
 
             Ok(Album {
                 id: ArrayString::from(&id).unwrap_or_default(),
@@ -58,7 +102,7 @@ pub fn get_album(conn: &Connection, id: &str) -> rusqlite::Result<Option<Album>>
                 cover: cover_id.map(|c| ArrayString::from(&c).unwrap_or_default()),
                 thumbhash,
                 user_defined_metadata,
-                share_list,
+                share_list: album_shares::get_album_shares(conn, &id)?,
                 tag: HashSet::new(), // Will fill later
                 width,
                 height,
@@ -71,12 +115,10 @@ pub fn get_album(conn: &Connection, id: &str) -> rusqlite::Result<Option<Album>>
 
     if let Some(mut album) = result {
         // Calculate stats on-read
-        let (count, size, start, end, cover_db) = get_album_stats(conn, id)?;
+        let (count, size, _, _, cover_db) = get_album_stats(conn, id)?;
 
         album.item_count = count;
         album.item_size = size;
-        album.start_time = start;
-        album.end_time = end;
 
         // Validate cover
         let current_cover_valid = if let Some(cover_id) = &album.cover {
@@ -134,7 +176,7 @@ pub fn get_album_stats(
         "SELECT COUNT(*), IFNULL(SUM(nodes.size), 0), MIN(nodes.timestamp), MAX(nodes.timestamp)
          FROM album_items
          JOIN nodes ON album_items.item_id = nodes.id
-         WHERE album_items.album_id = ?"
+         WHERE album_items.album_id = ?",
     )?;
 
     let (count, size, start, end) = stmt.query_row(params![album_id], |row| {
@@ -173,8 +215,11 @@ pub fn get_album_stats(
     Ok((count, size, start, end, cover_db))
 }
 
-pub fn is_object_in_album(conn: &Connection, object_id: &str, album_id: &str) -> rusqlite::Result<bool> {
-    let mut stmt =
-        conn.prepare("SELECT 1 FROM album_items WHERE album_id = ? AND item_id = ?")?;
+pub fn is_object_in_album(
+    conn: &Connection,
+    object_id: &str,
+    album_id: &str,
+) -> rusqlite::Result<bool> {
+    let mut stmt = conn.prepare("SELECT 1 FROM album_items WHERE album_id = ? AND item_id = ?")?;
     Ok(stmt.exists(params![album_id, object_id])?)
 }
