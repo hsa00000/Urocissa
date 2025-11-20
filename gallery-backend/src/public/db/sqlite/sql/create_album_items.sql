@@ -10,16 +10,13 @@ CREATE TRIGGER IF NOT EXISTS trg_album_items_ai AFTER INSERT ON album_items BEGI
 UPDATE album_meta
 SET
     item_count = item_count + 1,
-    item_size = item_size + COALESCE(
-        (
-            SELECT
-                size
-            FROM
-                nodes
-            WHERE
-                id = NEW.item_id
-        ),
-        0
+    item_size = item_size + (
+        SELECT
+            size
+        FROM
+            nodes
+        WHERE
+            id = NEW.item_id
     )
 WHERE
     album_id = NEW.album_id;
@@ -30,16 +27,13 @@ CREATE TRIGGER IF NOT EXISTS trg_album_items_ad AFTER DELETE ON album_items BEGI
 UPDATE album_meta
 SET
     item_count = item_count - 1,
-    item_size = item_size - COALESCE(
-        (
-            SELECT
-                size
-            FROM
-                nodes
-            WHERE
-                id = OLD.item_id
-        ),
-        0
+    item_size = item_size - (
+        SELECT
+            size
+        FROM
+            nodes
+        WHERE
+            id = OLD.item_id
     )
 WHERE
     album_id = OLD.album_id;
@@ -50,32 +44,26 @@ CREATE TRIGGER IF NOT EXISTS trg_album_items_au AFTER
 UPDATE OF item_id ON album_items BEGIN
 UPDATE album_meta
 SET
-    item_size = item_size - COALESCE(
-        (
-            SELECT
-                size
-            FROM
-                nodes
-            WHERE
-                id = OLD.item_id
-        ),
-        0
+    item_size = item_size - (
+        SELECT
+            size
+        FROM
+            nodes
+        WHERE
+            id = OLD.item_id
     )
 WHERE
     album_id = NEW.album_id;
 
 UPDATE album_meta
 SET
-    item_size = item_size + COALESCE(
-        (
-            SELECT
-                size
-            FROM
-                nodes
-            WHERE
-                id = NEW.item_id
-        ),
-        0
+    item_size = item_size + (
+        SELECT
+            size
+        FROM
+            nodes
+        WHERE
+            id = NEW.item_id
     )
 WHERE
     album_id = NEW.album_id;

@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     pending BOOLEAN NOT NULL DEFAULT 0,
     width INTEGER NOT NULL CHECK (width > 0),
     height INTEGER NOT NULL CHECK (height > 0),
-    size INTEGER,
+    size INTEGER NOT NULL,
     timestamp INTEGER,
     thumbhash BLOB,
     phash BLOB
