@@ -17,6 +17,7 @@ pub mod nodes;
 pub mod nodes_tags;
 pub mod shares;
 pub mod snapshots;
+pub mod sql;
 
 pub struct Sqlite {
     pub pool: Pool<SqliteConnectionManager>,

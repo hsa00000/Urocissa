@@ -1,0 +1,10 @@
+pub mod schema_album_items;
+pub mod schema_album_metadata;
+pub mod schema_aliases;
+pub mod schema_exif;
+pub mod schema_extensions;
+pub mod schema_image_meta;
+pub mod schema_node;
+pub mod schema_nodes_tags;
+pub mod schema_shares;
+pub mod schema_snapshots;
