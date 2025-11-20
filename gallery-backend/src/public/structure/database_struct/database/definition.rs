@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use rusqlite::Connection;
 use std::collections::{BTreeMap, HashSet};
 
-#[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 pub struct Database {
     pub hash: ArrayString<64>,
     pub size: u64,

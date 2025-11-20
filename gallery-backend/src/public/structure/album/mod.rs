@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub mod edit;
 pub mod new;
 
-#[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Share {
     pub url: ArrayString<64>,
@@ -20,7 +20,7 @@ pub struct Share {
     pub exp: u64,
 }
 
-#[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedShare {
     pub share: Share,
@@ -28,7 +28,7 @@ pub struct ResolvedShare {
     pub album_title: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Album {
     pub id: ArrayString<64>,
