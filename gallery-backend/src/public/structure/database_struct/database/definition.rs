@@ -3,6 +3,7 @@ use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
+use rusqlite::Connection;
 use std::collections::{BTreeMap, HashSet};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq)]
@@ -20,4 +21,28 @@ pub struct Database {
     pub alias: Vec<FileModify>,
     pub ext_type: String,
     pub pending: bool,
+}
+
+impl Database {
+    pub fn create_database_table(conn: &Connection) -> rusqlite::Result<()> {
+        let sql = r#"
+            CREATE TABLE IF NOT EXISTS database (
+                hash TEXT PRIMARY KEY,
+                size INTEGER,
+                width INTEGER,
+                height INTEGER,
+                thumbhash BLOB,
+                phash BLOB,
+                ext TEXT,
+                exif_vec TEXT,
+                tag TEXT,
+                album TEXT,
+                alias TEXT,
+                ext_type TEXT,
+                pending INTEGER
+            );
+        "#;
+        conn.execute(sql, [])?;
+        Ok(())
+    }
 }

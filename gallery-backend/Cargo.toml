@@ -54,3 +54,4 @@ tokio-rayon = "2.1.0"
 unicode-width = "0.2.2"
 uuid = { version = "1.18.1", features = ["v4"] }
 walkdir = "2.5.0"
+rusqlite = { version = "0.37.0", features = ["bundled"] }
