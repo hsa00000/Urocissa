@@ -19,9 +19,6 @@ use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::looper::start_expire_check_loop;
 
-use public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
-use public::db::tree::TREE;
-use redb::ReadableTableMetadata;
 use rocket::fs::FileServer;
 use router::fairing::cache_control_fairing::cache_control_fairing;
 use router::fairing::generate_fairing_routes;
@@ -29,6 +26,7 @@ use router::{
     delete::generate_delete_routes, get::generate_get_routes, post::generate_post_routes,
     put::generate_put_routes,
 };
+use rusqlite::Connection;
 use std::thread;
 use std::time::Instant;
 
@@ -51,14 +49,11 @@ fn main() -> Result<()> {
         INDEX_RUNTIME.block_on(async {
             let rx = initialize();
             let start_time = Instant::now();
-            let txn = TREE.in_disk.begin_write().unwrap();
-            {
-                let table = txn.open_table(DATA_TABLE).unwrap();
-                info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", table.len().unwrap());
-                let album_table = txn.open_table(ALBUM_TABLE).unwrap();
-                info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", album_table.len().unwrap());
-            }
-            txn.commit().unwrap();
+            let conn = Connection::open("gallery.db").unwrap();
+            let data_count: i64 = conn.query_row("SELECT COUNT(*) FROM database", [], |row| row.get(0)).unwrap();
+            info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", data_count);
+            let album_count: i64 = conn.query_row("SELECT COUNT(*) FROM album", [], |row| row.get(0)).unwrap();
+            info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", album_count);
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
             BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
             start_expire_check_loop();
