@@ -3,7 +3,7 @@ use arrayvec::ArrayString;
 use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::{HashMap, HashSet};
 
-use super::album_shares;
+use super::shares;
 
 const GET_ALBUM_SQL: &str = include_str!("sql/get_album.sql");
 const GET_ALL_ALBUMS_SQL: &str = include_str!("sql/get_all_albums.sql");
@@ -51,7 +51,7 @@ pub fn get_album(conn: &Connection, id: &str) -> rusqlite::Result<Option<Album>>
                 cover: cover_id.map(|c| ArrayString::from(&c).unwrap_or_default()),
                 thumbhash,
                 user_defined_metadata,
-                share_list: album_shares::get_album_shares(conn, &id)?,
+                share_list: shares::get_album_shares(conn, &id)?,
                 tag: HashSet::new(), // Will fill later
                 width,
                 height,

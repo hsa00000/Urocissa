@@ -75,12 +75,18 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
         let mut stmt_insert_alb =
             txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, title, created_time, pending, width, height, start_time, end_time, last_modified_time, size, ext, ext_type, timestamp, thumbhash, phash) VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL)").unwrap();
         let mut stmt_insert_album_meta =
-            txn.prepare("INSERT OR REPLACE INTO album_meta (album_id, cover_id, user_defined_metadata, share_list, item_count, item_size) VALUES (?, ?, ?, ?, ?, ?)").unwrap();
+            txn.prepare("INSERT OR REPLACE INTO album_meta (album_id, cover_id, user_defined_metadata, item_count, item_size) VALUES (?, ?, ?, ?, ?)").unwrap();
         let mut stmt_del_alb_tags = txn
             .prepare("DELETE FROM nodes_tags WHERE node_id = ?")
             .unwrap();
         let mut stmt_ins_alb_tag = txn
             .prepare("INSERT INTO nodes_tags (node_id, tag) VALUES (?, ?)")
+            .unwrap();
+        let mut stmt_del_alb_shares = txn
+            .prepare("DELETE FROM shares WHERE album_id = ?")
+            .unwrap();
+        let mut stmt_ins_alb_share = txn
+            .prepare("INSERT INTO shares (url, album_id, description, password, show_metadata, show_download, show_upload, exp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .unwrap();
 
         // Deletion
@@ -158,8 +164,6 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                 AbstractData::Album(album) => {
                     let user_meta_json =
                         serde_json::to_string(&album.user_defined_metadata).unwrap_or_default();
-                    let share_list_json =
-                        serde_json::to_string(&album.share_list).unwrap_or_default();
                     let cover = album.cover.map(|c| c.to_string());
 
                     stmt_insert_alb
@@ -182,7 +186,6 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                             album.id.as_str(),
                             cover,
                             user_meta_json,
-                            share_list_json,
                             album.item_count,
                             album.item_size as i64
                         ])
@@ -194,6 +197,24 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                     for tag in &album.tag {
                         stmt_ins_alb_tag
                             .execute(params![album.id.as_str(), tag])
+                            .unwrap();
+                    }
+
+                    stmt_del_alb_shares
+                        .execute(params![album.id.as_str()])
+                        .unwrap();
+                    for (url, share) in &album.share_list {
+                        stmt_ins_alb_share
+                            .execute(params![
+                                url.as_str(),
+                                album.id.as_str(),
+                                share.description,
+                                share.password,
+                                share.show_metadata,
+                                share.show_download,
+                                share.show_upload,
+                                share.exp as i64
+                            ])
                             .unwrap();
                     }
                 }
