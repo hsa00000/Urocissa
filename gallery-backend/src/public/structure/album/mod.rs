@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 pub mod edit;
@@ -46,4 +47,31 @@ pub struct Album {
     pub item_count: usize,
     pub item_size: u64,
     pub pending: bool,
+}
+
+impl Album {
+    pub fn create_album_table(conn: &Connection) -> rusqlite::Result<()> {
+        let sql = r#"
+            CREATE TABLE IF NOT EXISTS album (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                created_time INTEGER,
+                start_time INTEGER,
+                end_time INTEGER,
+                last_modified_time INTEGER,
+                cover TEXT,
+                thumbhash BLOB,
+                user_defined_metadata TEXT,
+                share_list TEXT,
+                tag TEXT,
+                width INTEGER,
+                height INTEGER,
+                item_count INTEGER,
+                item_size INTEGER,
+                pending INTEGER
+            );
+        "#;
+        conn.execute(sql, [])?;
+        Ok(())
+    }
 }
