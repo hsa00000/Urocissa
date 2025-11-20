@@ -5,6 +5,13 @@ use std::collections::{HashMap, HashSet};
 
 use super::album_shares;
 
+const GET_ALBUM_SQL: &str = include_str!("sql/get_album.sql");
+const GET_ALL_ALBUMS_SQL: &str = include_str!("sql/get_all_albums.sql");
+const GET_ALBUM_STATS_AGGREGATES_SQL: &str = include_str!("sql/get_album_stats_aggregates.sql");
+const GET_ALBUM_COVER_SQL: &str = include_str!("sql/get_album_cover.sql");
+const IS_OBJECT_IN_ALBUM_SQL: &str = include_str!("sql/is_object_in_album.sql");
+const GET_ALBUM_TAGS_SQL: &str = include_str!("sql/get_album_tags.sql");
+
 pub fn create_album_meta_table(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS album_meta (
@@ -51,26 +58,7 @@ pub fn create_album_meta_table(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 pub fn get_album(conn: &Connection, id: &str) -> rusqlite::Result<Option<Album>> {
-    let mut stmt = conn.prepare(
-        "SELECT
-        n.id,
-        n.title,
-        n.created_time,
-        n.pending,
-        n.width,
-        n.height,
-        am.start_time,
-        am.end_time,
-        n.last_modified_time,
-        am.cover_id,
-        n.thumbhash,
-        am.user_defined_metadata,
-        am.item_count,
-        am.item_size
-    FROM nodes n
-    LEFT JOIN album_meta am ON n.id = am.album_id
-    WHERE n.id = ? AND n.kind = 'album'",
-    )?;
+    let mut stmt = conn.prepare(GET_ALBUM_SQL)?;
 
     let result = stmt
         .query_row(params![id], |row| {
@@ -142,7 +130,7 @@ pub fn get_album(conn: &Connection, id: &str) -> rusqlite::Result<Option<Album>>
         }
 
         // Fetch tags
-        let mut stmt_tags = conn.prepare("SELECT tag FROM node_tags WHERE node_id = ?")?;
+        let mut stmt_tags = conn.prepare(GET_ALBUM_TAGS_SQL)?;
         let tags_iter = stmt_tags.query_map(params![id], |row| row.get(0))?;
         for tag in tags_iter {
             album.tag.insert(tag?);
@@ -155,7 +143,7 @@ pub fn get_album(conn: &Connection, id: &str) -> rusqlite::Result<Option<Album>>
 }
 
 pub fn get_all_albums(conn: &Connection) -> rusqlite::Result<Vec<Album>> {
-    let mut stmt = conn.prepare("SELECT id FROM nodes WHERE kind = 'album'")?;
+    let mut stmt = conn.prepare(GET_ALL_ALBUMS_SQL)?;
     let ids_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
 
     let mut albums = Vec::new();
@@ -172,12 +160,7 @@ pub fn get_album_stats(
     album_id: &str,
 ) -> rusqlite::Result<(usize, u64, Option<u128>, Option<u128>, Option<Database>)> {
     // Aggregates
-    let mut stmt = conn.prepare(
-        "SELECT COUNT(*), IFNULL(SUM(nodes.size), 0), MIN(nodes.timestamp), MAX(nodes.timestamp)
-         FROM album_items
-         JOIN nodes ON album_items.item_id = nodes.id
-         WHERE album_items.album_id = ?",
-    )?;
+    let mut stmt = conn.prepare(GET_ALBUM_STATS_AGGREGATES_SQL)?;
 
     let (count, size, start, end) = stmt.query_row(params![album_id], |row| {
         Ok((
@@ -193,14 +176,7 @@ pub fn get_album_stats(
     }
 
     // Cover (First item by timestamp)
-    let mut stmt = conn.prepare(
-        "SELECT nodes.id
-         FROM album_items
-         JOIN nodes ON album_items.item_id = nodes.id
-         WHERE album_items.album_id = ?
-         ORDER BY nodes.timestamp ASC
-         LIMIT 1",
-    )?;
+    let mut stmt = conn.prepare(GET_ALBUM_COVER_SQL)?;
 
     let cover_id: Option<String> = stmt
         .query_row(params![album_id], |row| row.get(0))
@@ -220,6 +196,6 @@ pub fn is_object_in_album(
     object_id: &str,
     album_id: &str,
 ) -> rusqlite::Result<bool> {
-    let mut stmt = conn.prepare("SELECT 1 FROM album_items WHERE album_id = ? AND item_id = ?")?;
+    let mut stmt = conn.prepare(IS_OBJECT_IN_ALBUM_SQL)?;
     Ok(stmt.exists(params![album_id, object_id])?)
 }

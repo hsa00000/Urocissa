@@ -5,6 +5,11 @@ use arrayvec::ArrayString;
 use rusqlite::{Connection, params, OptionalExtension};
 use std::collections::{BTreeMap, HashSet};
 
+const GET_DATABASE_SQL: &str = include_str!("sql/get_database.sql");
+const GET_ALL_OBJECTS_SQL: &str = include_str!("sql/get_all_objects.sql");
+const GET_NODE_TAGS_SQL: &str = include_str!("sql/get_node_tags.sql");
+const GET_NODE_ALBUMS_SQL: &str = include_str!("sql/get_node_albums.sql");
+
 pub fn create_nodes_table(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS nodes (
@@ -28,7 +33,7 @@ pub fn create_nodes_table(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Database>> {
-    let mut stmt = conn.prepare("SELECT n.id, n.size, n.width, n.height, e.ext, n.pending, n.thumbhash, n.phash, n.exif, n.alias FROM nodes n LEFT JOIN extensions e ON n.id = e.node_id WHERE n.id = ? AND n.kind IN ('image', 'video')")?;
+    let mut stmt = conn.prepare(GET_DATABASE_SQL)?;
 
     let result = stmt
         .query_row(params![hash], |row| {
@@ -67,15 +72,14 @@ pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Da
 
     if let Some(mut database) = result {
         // Fetch tags
-        let mut stmt_tags = conn.prepare("SELECT tag FROM node_tags WHERE node_id = ?")?;
+        let mut stmt_tags = conn.prepare(GET_NODE_TAGS_SQL)?;
         let tags_iter = stmt_tags.query_map(params![hash], |row| row.get(0))?;
         for tag in tags_iter {
             database.tag.insert(tag?);
         }
 
         // Fetch albums
-        let mut stmt_albums =
-            conn.prepare("SELECT album_id FROM album_items WHERE item_id = ?")?;
+        let mut stmt_albums = conn.prepare(GET_NODE_ALBUMS_SQL)?;
         let albums_iter = stmt_albums.query_map(params![hash], |row| row.get(0))?;
         for album_id in albums_iter {
             let aid: String = album_id?;
@@ -91,7 +95,7 @@ pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Da
 }
 
 pub fn get_all_objects(conn: &Connection) -> rusqlite::Result<Vec<Database>> {
-    let mut stmt = conn.prepare("SELECT n.id, n.size, n.width, n.height, e.ext, n.pending, n.thumbhash, n.phash, n.exif, n.alias FROM nodes n LEFT JOIN extensions e ON n.id = e.node_id WHERE n.kind IN ('image', 'video')")?;
+    let mut stmt = conn.prepare(GET_ALL_OBJECTS_SQL)?;
     let iter = stmt.query_map([], |row| {
         let id: String = row.get(0)?;
         let size: u64 = row.get(1)?;
@@ -125,15 +129,14 @@ pub fn get_all_objects(conn: &Connection) -> rusqlite::Result<Vec<Database>> {
         };
 
         // Fetch tags
-        let mut stmt_tags = conn.prepare("SELECT tag FROM node_tags WHERE node_id = ?")?;
+        let mut stmt_tags = conn.prepare(GET_NODE_TAGS_SQL)?;
         let tags_iter = stmt_tags.query_map(params![&id], |row| row.get(0))?;
         for tag in tags_iter {
             database.tag.insert(tag?);
         }
 
         // Fetch albums
-        let mut stmt_albums =
-            conn.prepare("SELECT album_id FROM album_items WHERE item_id = ?")?;
+        let mut stmt_albums = conn.prepare(GET_NODE_ALBUMS_SQL)?;
         let albums_iter = stmt_albums.query_map(params![&id], |row| row.get(0))?;
         for album_id in albums_iter {
             let aid: String = album_id?;
