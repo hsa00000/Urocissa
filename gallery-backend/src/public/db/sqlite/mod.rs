@@ -10,6 +10,7 @@ use std::sync::LazyLock;
 pub mod album_items;
 pub mod album_meta;
 pub mod album_shares;
+pub mod aliases;
 pub mod exif;
 pub mod extensions;
 pub mod nodes;
@@ -46,6 +47,7 @@ impl Sqlite {
         album_items::create_album_items_table(&conn).expect("Failed to create album_items table");
         extensions::create_extensions_table(&conn).expect("Failed to create extensions table");
         exif::create_exif_table(&conn).expect("Failed to create exif table");
+        aliases::create_aliases_table(&conn).expect("Failed to create aliases table");
 
         // Clear snapshots on startup
         conn.execute("DELETE FROM snapshots", [])

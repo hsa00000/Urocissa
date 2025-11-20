@@ -28,12 +28,9 @@ pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Da
             let pending: bool = row.get(5)?;
             let thumbhash: Vec<u8> = row.get(6)?;
             let phash: Vec<u8> = row.get(7)?;
-            let exif_json: String = row.get(8)?;
-            let alias_json: String = row.get(9)?;
 
-            let exif_vec: BTreeMap<String, String> =
-                serde_json::from_str(&exif_json).unwrap_or_default();
-            let alias: Vec<FileModify> = serde_json::from_str(&alias_json).unwrap_or_default();
+            let exif_vec: BTreeMap<String, String> = BTreeMap::new(); // Will fill later
+            let alias: Vec<FileModify> = Vec::new(); // Will fill later
 
             Ok(Database {
                 hash: ArrayString::from(&id).unwrap_or_default(),
@@ -71,6 +68,35 @@ pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Da
                 .insert(ArrayString::from(&aid).unwrap_or_default());
         }
 
+        // Fetch exif
+        let mut stmt_exif = conn.prepare("SELECT tag, value FROM exif WHERE node_id = ?")?;
+        let exif_iter = stmt_exif.query_map(params![hash], |row| {
+            let tag: String = row.get(0)?;
+            let value: String = row.get(1)?;
+            Ok((tag, value))
+        })?;
+        for exif_pair in exif_iter {
+            let (tag, value) = exif_pair?;
+            database.exif_vec.insert(tag, value);
+        }
+
+        // Fetch aliases
+        let mut stmt_aliases =
+            conn.prepare("SELECT file, modified, scan_time FROM aliases WHERE node_id = ?")?;
+        let aliases_iter = stmt_aliases.query_map(params![hash], |row| {
+            let file: String = row.get(0)?;
+            let modified: u128 = row.get::<_, i64>(1)? as u128;
+            let scan_time: u128 = row.get::<_, i64>(2)? as u128;
+            Ok(FileModify {
+                file,
+                modified,
+                scan_time,
+            })
+        })?;
+        for alias in aliases_iter {
+            database.alias.push(alias?);
+        }
+
         Ok(Some(database))
     } else {
         Ok(None)
@@ -88,12 +114,6 @@ pub fn get_all_objects(conn: &Connection) -> rusqlite::Result<Vec<Database>> {
         let pending: bool = row.get(5)?;
         let thumbhash: Vec<u8> = row.get(6)?;
         let phash: Vec<u8> = row.get(7)?;
-        let exif_json: String = row.get(8)?;
-        let alias_json: String = row.get(9)?;
-
-        let exif_vec: BTreeMap<String, String> =
-            serde_json::from_str(&exif_json).unwrap_or_default();
-        let alias: Vec<FileModify> = serde_json::from_str(&alias_json).unwrap_or_default();
 
         let mut database = Database {
             hash: ArrayString::from(&id).unwrap_or_default(),
@@ -103,11 +123,11 @@ pub fn get_all_objects(conn: &Connection) -> rusqlite::Result<Vec<Database>> {
             thumbhash,
             phash,
             ext,
-            exif_vec,
-            tag: HashSet::new(),   // Will fill later
-            album: HashSet::new(), // Will fill later
-            alias,
-            ext_type: String::new(), // Default since column removed
+            exif_vec: BTreeMap::new(), // Will fill later
+            tag: HashSet::new(),       // Will fill later
+            album: HashSet::new(),     // Will fill later
+            alias: Vec::new(),         // Will fill later
+            ext_type: String::new(),   // Default since column removed
             pending,
         };
 
@@ -126,6 +146,35 @@ pub fn get_all_objects(conn: &Connection) -> rusqlite::Result<Vec<Database>> {
             database
                 .album
                 .insert(ArrayString::from(&aid).unwrap_or_default());
+        }
+
+        // Fetch exif
+        let mut stmt_exif = conn.prepare("SELECT tag, value FROM exif WHERE node_id = ?")?;
+        let exif_iter = stmt_exif.query_map(params![&id], |row| {
+            let tag: String = row.get(0)?;
+            let value: String = row.get(1)?;
+            Ok((tag, value))
+        })?;
+        for exif_pair in exif_iter {
+            let (tag, value) = exif_pair?;
+            database.exif_vec.insert(tag, value);
+        }
+
+        // Fetch aliases
+        let mut stmt_aliases =
+            conn.prepare("SELECT file, modified, scan_time FROM aliases WHERE node_id = ?")?;
+        let aliases_iter = stmt_aliases.query_map(params![&id], |row| {
+            let file: String = row.get(0)?;
+            let modified: u128 = row.get::<_, i64>(1)? as u128;
+            let scan_time: u128 = row.get::<_, i64>(2)? as u128;
+            Ok(FileModify {
+                file,
+                modified,
+                scan_time,
+            })
+        })?;
+        for alias in aliases_iter {
+            database.alias.push(alias?);
         }
 
         Ok(database)

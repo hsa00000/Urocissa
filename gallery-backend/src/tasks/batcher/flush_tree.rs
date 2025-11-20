@@ -47,7 +47,7 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
     {
         // Objects
         let mut stmt_insert_obj =
-            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, size, width, height, ext, ext_type, pending, timestamp, thumbhash, phash, alias, title, created_time, last_modified_time, start_time, end_time) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL)").unwrap();
+            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, size, width, height, ext, ext_type, pending, timestamp, thumbhash, phash, title, created_time, last_modified_time, start_time, end_time) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL)").unwrap();
         let mut stmt_del_obj_tags = txn
             .prepare("DELETE FROM nodes_tags WHERE node_id = ?")
             .unwrap();
@@ -58,6 +58,12 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
         let mut stmt_ins_obj_exif = txn
             .prepare("INSERT INTO exif (node_id, tag, value) VALUES (?, ?, ?)")
             .unwrap();
+        let mut stmt_del_obj_aliases = txn
+            .prepare("DELETE FROM aliases WHERE node_id = ?")
+            .unwrap();
+        let mut stmt_ins_obj_alias = txn
+            .prepare("INSERT INTO aliases (node_id, file, modified, scan_time) VALUES (?, ?, ?, ?)")
+            .unwrap();
         let mut stmt_del_alb_objs_by_obj = txn
             .prepare("DELETE FROM album_items WHERE item_id = ?")
             .unwrap();
@@ -67,7 +73,7 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
 
         // Albums
         let mut stmt_insert_alb =
-            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, title, created_time, pending, width, height, start_time, end_time, last_modified_time, size, ext, ext_type, timestamp, thumbhash, phash, alias) VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL, '[]')").unwrap();
+            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, title, created_time, pending, width, height, start_time, end_time, last_modified_time, size, ext, ext_type, timestamp, thumbhash, phash) VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL)").unwrap();
         let mut stmt_insert_album_meta =
             txn.prepare("INSERT OR REPLACE INTO album_meta (album_id, cover_id, user_defined_metadata, share_list, item_count, item_size) VALUES (?, ?, ?, ?, ?, ?)").unwrap();
         let mut stmt_del_alb_tags = txn
@@ -92,7 +98,6 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
             match abstract_data {
                 AbstractData::Database(database) => {
                     let timestamp = database.compute_timestamp(&DEFAULT_PRIORITY_LIST);
-                    let alias_json = serde_json::to_string(&database.alias).unwrap_or_default();
 
                     stmt_insert_obj
                         .execute(params![
@@ -105,8 +110,7 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                             database.pending,
                             timestamp as i64,
                             database.thumbhash,
-                            database.phash,
-                            alias_json
+                            database.phash
                         ])
                         .unwrap();
 
@@ -125,6 +129,20 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                     for (tag, value) in &database.exif_vec {
                         stmt_ins_obj_exif
                             .execute(params![database.hash.as_str(), tag, value])
+                            .unwrap();
+                    }
+
+                    stmt_del_obj_aliases
+                        .execute(params![database.hash.as_str()])
+                        .unwrap();
+                    for alias in &database.alias {
+                        stmt_ins_obj_alias
+                            .execute(params![
+                                database.hash.as_str(),
+                                alias.file,
+                                alias.modified as i64,
+                                alias.scan_time as i64
+                            ])
                             .unwrap();
                     }
 
