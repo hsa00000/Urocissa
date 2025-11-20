@@ -62,7 +62,7 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
             .prepare("DELETE FROM aliases WHERE node_id = ?")
             .unwrap();
         let mut stmt_ins_obj_alias = txn
-            .prepare("INSERT INTO aliases (node_id, file, modified, scan_time) VALUES (?, ?, ?, ?)")
+            .prepare("INSERT INTO aliases (node_id, file_path, modified_time, scan_time) VALUES (?, ?, ?, ?)")
             .unwrap();
         let mut stmt_del_alb_objs_by_obj = txn
             .prepare("DELETE FROM album_items WHERE item_id = ?")

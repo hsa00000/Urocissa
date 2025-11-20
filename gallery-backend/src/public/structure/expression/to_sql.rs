@@ -80,7 +80,7 @@ impl Expression {
                 if hide_metadata {
                     ("1=0".to_string(), vec![])
                 } else {
-                    ("EXISTS (SELECT 1 FROM aliases WHERE aliases.node_id = nodes.id AND aliases.file LIKE ?)".to_string(), vec![Box::new(format!("%{}%", path))])
+                    ("EXISTS (SELECT 1 FROM aliases WHERE aliases.node_id = nodes.id AND aliases.file_path LIKE ?)".to_string(), vec![Box::new(format!("%{}%", path))])
                 }
             },
             Expression::Any(query) => {

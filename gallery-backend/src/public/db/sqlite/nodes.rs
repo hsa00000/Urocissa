@@ -84,12 +84,12 @@ pub fn get_database(conn: &Connection, hash: &str) -> rusqlite::Result<Option<Da
         let mut stmt_aliases =
             conn.prepare("SELECT file, modified, scan_time FROM aliases WHERE node_id = ?")?;
         let aliases_iter = stmt_aliases.query_map(params![hash], |row| {
-            let file: String = row.get(0)?;
-            let modified: u128 = row.get::<_, i64>(1)? as u128;
+            let file_path: String = row.get(0)?;
+            let modified_time: u128 = row.get::<_, i64>(1)? as u128;
             let scan_time: u128 = row.get::<_, i64>(2)? as u128;
             Ok(FileModify {
-                file,
-                modified,
+                file: file_path,
+                modified: modified_time,
                 scan_time,
             })
         })?;
@@ -161,15 +161,15 @@ pub fn get_all_objects(conn: &Connection) -> rusqlite::Result<Vec<Database>> {
         }
 
         // Fetch aliases
-        let mut stmt_aliases =
-            conn.prepare("SELECT file, modified, scan_time FROM aliases WHERE node_id = ?")?;
+        let mut stmt_aliases = conn
+            .prepare("SELECT file_path, modified_time, scan_time FROM aliases WHERE node_id = ?")?;
         let aliases_iter = stmt_aliases.query_map(params![&id], |row| {
-            let file: String = row.get(0)?;
-            let modified: u128 = row.get::<_, i64>(1)? as u128;
+            let file_path: String = row.get(0)?;
+            let modified_time: u128 = row.get::<_, i64>(1)? as u128;
             let scan_time: u128 = row.get::<_, i64>(2)? as u128;
             Ok(FileModify {
-                file,
-                modified,
+                file: file_path,
+                modified: modified_time,
                 scan_time,
             })
         })?;
