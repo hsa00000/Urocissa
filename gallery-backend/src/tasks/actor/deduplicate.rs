@@ -9,9 +9,7 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use mini_executor::Task;
 use rusqlite::Connection;
-use serde_json;
 use std::{
-    collections::{BTreeMap, HashSet},
     mem,
     path::PathBuf,
 };
@@ -60,46 +58,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
     let existing_db = conn.query_row(
         "SELECT * FROM database WHERE hash = ?",
         [database.hash.as_str()],
-        |row| {
-            let hash: String = row.get("hash")?;
-            let size: u64 = row.get("size")?;
-            let width: u32 = row.get("width")?;
-            let height: u32 = row.get("height")?;
-            let thumbhash: Vec<u8> = row.get("thumbhash")?;
-            let phash: Vec<u8> = row.get("phash")?;
-            let ext: String = row.get("ext")?;
-            let exif_vec_str: String = row.get("exif_vec")?;
-            let exif_vec: BTreeMap<String, String> =
-                serde_json::from_str(&exif_vec_str).unwrap_or_default();
-            let tag_str: String = row.get("tag")?;
-            let tag: HashSet<String> = serde_json::from_str(&tag_str).unwrap_or_default();
-            let album_str: String = row.get("album")?;
-            let album_vec: Vec<String> = serde_json::from_str(&album_str).unwrap_or_default();
-            let album: HashSet<ArrayString<64>> = album_vec
-                .into_iter()
-                .filter_map(|s| ArrayString::from(&s).ok())
-                .collect();
-            let alias_str: String = row.get("alias")?;
-            let alias: Vec<crate::public::structure::database_struct::file_modify::FileModify> =
-                serde_json::from_str(&alias_str).unwrap_or_default();
-            let ext_type: String = row.get("ext_type")?;
-            let pending: bool = row.get::<_, i32>("pending")? != 0;
-            Ok(Database {
-                hash: ArrayString::from(&hash).unwrap(),
-                size,
-                width,
-                height,
-                thumbhash,
-                phash,
-                ext,
-                exif_vec,
-                tag,
-                album,
-                alias,
-                ext_type,
-                pending,
-            })
-        },
+        Database::from_row,
     );
 
     if let Ok(mut database_exist) = existing_db {

@@ -2,8 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
-use rusqlite::Connection;
+use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
+use serde_json;
 
 pub mod edit;
 pub mod new;
@@ -73,5 +74,48 @@ impl Album {
         "#;
         conn.execute(sql, [])?;
         Ok(())
+    }
+
+    pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
+        let id: String = row.get("id")?;
+        let title: Option<String> = row.get("title")?;
+        let created_time: u128 = row.get::<_, i64>("created_time")? as u128;
+        let start_time: Option<u128> = row.get::<_, Option<i64>>("start_time")?.map(|t| t as u128);
+        let end_time: Option<u128> = row.get::<_, Option<i64>>("end_time")?.map(|t| t as u128);
+        let last_modified_time: u128 = row.get::<_, i64>("last_modified_time")? as u128;
+        let cover_str: Option<String> = row.get("cover")?;
+        let cover: Option<ArrayString<64>> = cover_str.and_then(|s| ArrayString::from(&s).ok());
+        let thumbhash: Option<Vec<u8>> = row.get("thumbhash")?;
+        let user_defined_metadata_str: String = row.get("user_defined_metadata")?;
+        let user_defined_metadata: HashMap<String, Vec<String>> =
+            serde_json::from_str(&user_defined_metadata_str).unwrap_or_default();
+        let share_list_str: String = row.get("share_list")?;
+        let share_list: HashMap<ArrayString<64>, Share> =
+            serde_json::from_str(&share_list_str).unwrap_or_default();
+        let tag_str: String = row.get("tag")?;
+        let tag: HashSet<String> = serde_json::from_str(&tag_str).unwrap_or_default();
+        let width: u32 = row.get("width")?;
+        let height: u32 = row.get("height")?;
+        let item_count: usize = row.get::<_, i64>("item_count")? as usize;
+        let item_size: u64 = row.get("item_size")?;
+        let pending: bool = row.get::<_, i32>("pending")? != 0;
+        Ok(Album {
+            id: ArrayString::from(&id).unwrap(),
+            title,
+            created_time,
+            start_time,
+            end_time,
+            last_modified_time,
+            cover,
+            thumbhash,
+            user_defined_metadata,
+            share_list,
+            tag,
+            width,
+            height,
+            item_count,
+            item_size,
+            pending,
+        })
     }
 }
