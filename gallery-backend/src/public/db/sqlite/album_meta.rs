@@ -31,15 +31,11 @@ pub fn get_album(conn: &Connection, id: &str) -> rusqlite::Result<Option<Album>>
             let height: u32 = row.get(5)?;
             let start_time: Option<i64> = row.get(6)?;
             let end_time: Option<i64> = row.get(7)?;
-            let last_modified_time: i64 = row.get(8)?;
-            let cover_id: Option<String> = row.get(9)?;
-            let thumbhash: Option<Vec<u8>> = row.get(10)?;
-            let user_meta_json: String = row.get(11)?;
-            let item_count: usize = row.get(12)?;
-            let item_size: i64 = row.get(13)?;
+            let cover_id: Option<String> = row.get(8)?;
+            let item_count: usize = row.get(9)?;
+            let item_size: i64 = row.get(10)?;
 
-            let user_defined_metadata: HashMap<String, Vec<String>> =
-                serde_json::from_str(&user_meta_json).unwrap_or_default();
+            let user_defined_metadata: HashMap<String, Vec<String>> = HashMap::new();
 
             Ok(Album {
                 id: ArrayString::from(&id).unwrap_or_default(),
@@ -47,9 +43,9 @@ pub fn get_album(conn: &Connection, id: &str) -> rusqlite::Result<Option<Album>>
                 created_time: created_time as u128,
                 start_time: start_time.map(|t| t as u128),
                 end_time: end_time.map(|t| t as u128),
-                last_modified_time: last_modified_time as u128,
+                last_modified_time: created_time as u128,
                 cover: cover_id.map(|c| ArrayString::from(&c).unwrap_or_default()),
-                thumbhash,
+                thumbhash: None,
                 user_defined_metadata,
                 share_list: shares::get_album_shares(conn, &id)?,
                 tag: HashSet::new(), // Will fill later

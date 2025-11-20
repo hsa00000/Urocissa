@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS album_metadata (
     album_id TEXT PRIMARY KEY,
     cover_id TEXT,
-    user_defined_metadata TEXT NOT NULL DEFAULT '{}',
+    title TEXT,
     FOREIGN KEY (album_id) REFERENCES nodes (id) ON DELETE CASCADE,
     FOREIGN KEY (cover_id) REFERENCES nodes (id)
 );

@@ -1,16 +1,13 @@
 SELECT
     nodes.id,
-    nodes.title,
+    album_metadata.title,
     nodes.created_time,
     nodes.pending,
     nodes.width,
     nodes.height,
     nodes.start_time,
     nodes.end_time,
-    nodes.last_modified_time,
     album_metadata.cover_id,
-    nodes.thumbhash,
-    album_metadata.user_defined_metadata,
     album_meta.item_count,
     album_meta.item_size
 FROM

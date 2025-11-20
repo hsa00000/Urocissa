@@ -47,7 +47,7 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
     {
         // Objects
         let mut stmt_insert_obj =
-            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, size, width, height, ext, ext_type, pending, timestamp, thumbhash, phash, title, created_time, last_modified_time, start_time, end_time) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL)").unwrap();
+            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, size, width, height, ext, ext_type, pending, timestamp, created_time) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, ?)").unwrap();
         let mut stmt_del_obj_tags = txn
             .prepare("DELETE FROM nodes_tags WHERE node_id = ?")
             .unwrap();
@@ -64,6 +64,11 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
         let mut stmt_ins_obj_alias = txn
             .prepare("INSERT INTO aliases (node_id, file_path, modified_time, scan_time) VALUES (?, ?, ?, ?)")
             .unwrap();
+        let mut stmt_ins_image_meta = txn
+            .prepare(
+                "INSERT OR REPLACE INTO image_meta (node_id, thumbhash, phash) VALUES (?, ?, ?)",
+            )
+            .unwrap();
         let mut stmt_del_alb_objs_by_obj = txn
             .prepare("DELETE FROM album_items WHERE item_id = ?")
             .unwrap();
@@ -73,9 +78,9 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
 
         // Albums
         let mut stmt_insert_alb =
-            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, title, created_time, pending, width, height, start_time, end_time, last_modified_time, size, ext, ext_type, timestamp, thumbhash, phash) VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL)").unwrap();
+            txn.prepare("INSERT OR REPLACE INTO nodes (id, kind, created_time, pending, width, height, start_time, end_time, size, ext, ext_type, timestamp, thumbhash, phash) VALUES (?, 'album', ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL)").unwrap();
         let mut stmt_insert_album_metadata =
-            txn.prepare("INSERT OR REPLACE INTO album_metadata (album_id, cover_id, user_defined_metadata) VALUES (?, ?, ?)").unwrap();
+            txn.prepare("INSERT OR REPLACE INTO album_metadata (album_id, cover_id, title) VALUES (?, ?, ?)").unwrap();
         let mut stmt_del_alb_tags = txn
             .prepare("DELETE FROM nodes_tags WHERE node_id = ?")
             .unwrap();
@@ -114,7 +119,13 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                             database.ext,
                             database.ext_type,
                             database.pending,
-                            timestamp as i64,
+                            timestamp as i64
+                        ])
+                        .unwrap();
+
+                    stmt_ins_image_meta
+                        .execute(params![
+                            database.hash.as_str(),
                             database.thumbhash,
                             database.phash
                         ])
@@ -162,27 +173,23 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                     }
                 }
                 AbstractData::Album(album) => {
-                    let user_meta_json =
-                        serde_json::to_string(&album.user_defined_metadata).unwrap_or_default();
                     let cover = album.cover.map(|c| c.to_string());
 
                     stmt_insert_alb
                         .execute(params![
                             album.id.as_str(),
-                            album.title,
                             album.created_time as i64,
                             album.pending,
                             album.width,
                             album.height,
                             album.start_time.map(|t| t as i64),
                             album.end_time.map(|t| t as i64),
-                            album.last_modified_time as i64,
                             album.thumbhash
                         ])
                         .unwrap();
 
                     stmt_insert_album_metadata
-                        .execute(params![album.id.as_str(), cover, user_meta_json])
+                        .execute(params![album.id.as_str(), cover, album.title])
                         .unwrap();
 
                     stmt_del_alb_tags

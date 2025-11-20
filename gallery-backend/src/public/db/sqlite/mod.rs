@@ -12,6 +12,7 @@ pub mod album_meta;
 pub mod aliases;
 pub mod exif;
 pub mod extensions;
+pub mod image_meta;
 pub mod nodes;
 pub mod nodes_tags;
 pub mod shares;
@@ -47,6 +48,7 @@ impl Sqlite {
         extensions::create_extensions_table(&conn).expect("Failed to create extensions table");
         exif::create_exif_table(&conn).expect("Failed to create exif table");
         aliases::create_aliases_table(&conn).expect("Failed to create aliases table");
+        image_meta::create_image_meta_table(&conn).expect("Failed to create image_meta table");
 
         // Clear snapshots on startup
         conn.execute("DELETE FROM snapshots", [])
