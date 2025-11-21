@@ -1,15 +1,15 @@
-use crate::public::db::tree::TREE;
-use crate::public::structure::album::Share;
+use crate::public::structure::album::{Album, Share};
+use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::{public::constant::redb::ALBUM_TABLE, router::AppResult};
 use anyhow::Result;
 use arrayvec::ArrayString;
-use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
+use rusqlite::Connection;
+use serde_json;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditShare {
@@ -26,25 +26,19 @@ pub async fn edit_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
-        let txn = TREE.in_disk.begin_write().unwrap();
-        {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-
-            let album_opt = album_table
-                .get(json_data.album_id.as_str())
-                .unwrap() // error-check result if needed
-                .map(|guard| guard.value());
-
-            if let Some(mut album) = album_opt {
-                album
-                    .share_list
-                    .insert(json_data.share.url, json_data.share.clone());
-                album_table
-                    .insert(json_data.album_id.as_str(), &album)
-                    .unwrap();
-            }
+        let conn = Connection::open("gallery.db").unwrap();
+        if let Ok(mut album) = conn.query_row(
+            "SELECT * FROM album WHERE id = ?",
+            [&*json_data.album_id],
+            |row| Album::from_row(row)
+        ) {
+            album.share_list.insert(json_data.share.url, json_data.share.clone());
+            let share_list_json = serde_json::to_string(&album.share_list).unwrap();
+            conn.execute(
+                "UPDATE album SET share_list = ? WHERE id = ?",
+                [&share_list_json, &*json_data.album_id]
+            ).unwrap();
         }
-        txn.commit().unwrap();
     })
     .await
     .unwrap();
@@ -71,23 +65,19 @@ pub async fn delete_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
-        let txn = TREE.in_disk.begin_write().unwrap();
-        {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-
-            let album_opt = album_table
-                .get(json_data.album_id.as_str())
-                .unwrap() // error-check result if needed
-                .map(|guard| guard.value());
-
-            if let Some(mut album) = album_opt {
-                album.share_list.remove(&json_data.share_id);
-                album_table
-                    .insert(json_data.album_id.as_str(), &album)
-                    .unwrap();
-            }
+        let conn = Connection::open("gallery.db").unwrap();
+        if let Ok(mut album) = conn.query_row(
+            "SELECT * FROM album WHERE id = ?",
+            [&*json_data.album_id],
+            |row| Album::from_row(row)
+        ) {
+            album.share_list.remove(&json_data.share_id);
+            let share_list_json = serde_json::to_string(&album.share_list).unwrap();
+            conn.execute(
+                "UPDATE album SET share_list = ? WHERE id = ?",
+                [&share_list_json, &*json_data.album_id]
+            ).unwrap();
         }
-        txn.commit().unwrap();
     })
     .await
     .unwrap();
