@@ -1,3 +1,4 @@
+use log::error;
 use mini_executor::BatchTask;
 use serde_json;
 
@@ -34,20 +35,24 @@ impl BatchTask for FlushTreeTask {
                 all_insert_databases.extend(task.insert_list);
                 all_remove_databases.extend(task.remove_list);
             }
-            flush_tree_task(all_insert_databases, all_remove_databases);
+            if let Err(e) = flush_tree_task(all_insert_databases, all_remove_databases) {
+                error!("Error in flush_tree_task: {}", e);
+            }
         }
     }
 }
 
-fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData>) {
+fn flush_tree_task(
+    insert_list: Vec<AbstractData>,
+    remove_list: Vec<AbstractData>,
+) -> rusqlite::Result<()> {
     let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
 
-    insert_list
-        .iter()
-        .for_each(|abstract_data| match abstract_data {
+    for abstract_data in insert_list {
+        match abstract_data {
             AbstractData::Database(database) => {
                 conn.execute(
-                    "INSERT OR REPLACE INTO database (hash, size, width, height, thumbhash, phash, ext, exif_vec, tag, album, alias, ext_type, pending) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                    "INSERT OR REPLACE INTO database (hash, size, width, height, thumbhash, phash, ext, exif_vec, album, alias, ext_type, pending) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                     rusqlite::params![
                         database.hash.as_str(),
                         database.size,
@@ -57,13 +62,19 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                         &database.phash,
                         &database.ext,
                         serde_json::to_string(&database.exif_vec).unwrap(),
-                        serde_json::to_string(&database.tag.iter().collect::<Vec<_>>()).unwrap(),
                         serde_json::to_string(&database.album.iter().map(|a| a.as_str()).collect::<Vec<_>>()).unwrap(),
                         serde_json::to_string(&database.alias).unwrap(),
                         &database.ext_type,
                         database.pending as i32
                     ],
-                ).unwrap();
+                )?;
+                // 插入或替换 tag
+                for tag in &database.tag {
+                    conn.execute(
+                        "INSERT OR REPLACE INTO tag_databases (hash, tag) VALUES (?1, ?2)",
+                        rusqlite::params![database.hash.as_str(), tag],
+                    )?;
+                }
             }
             AbstractData::Album(album) => {
                 conn.execute(
@@ -86,28 +97,28 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
                         album.item_size,
                         album.pending as i32
                     ],
-                ).unwrap();
+                )?;
             }
-        });
+        }
+    }
 
-    remove_list
-        .iter()
-        .for_each(|abstract_data| match abstract_data {
+    for abstract_data in remove_list {
+        match abstract_data {
             AbstractData::Database(database) => {
                 conn.execute(
                     "DELETE FROM database WHERE hash = ?1",
                     rusqlite::params![database.hash.as_str()],
-                )
-                .unwrap();
+                )?;
             }
             AbstractData::Album(album) => {
                 conn.execute(
                     "DELETE FROM album WHERE id = ?1",
                     rusqlite::params![album.id.as_str()],
-                )
-                .unwrap();
+                )?;
             }
-        });
+        }
+    }
 
     BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
+    Ok(())
 }

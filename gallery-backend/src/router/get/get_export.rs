@@ -17,17 +17,15 @@ pub async fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![V
     let _ = auth?;
     // Collect all data synchronously
     let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
-    let mut stmt = conn.prepare("SELECT * FROM database").unwrap();
-    let rows = stmt.query_map([], |row| Database::from_row(row)).unwrap();
-    let mut entries = Vec::new();
-    for db_res in rows {
-        if let Ok(db) = db_res {
-            entries.push(ExportEntry {
-                key: db.hash.to_string(),
-                value: db,
-            });
-        }
-    }
+    let entries =
+        crate::public::structure::abstract_data::AbstractData::load_all_databases_from_db(&conn)?;
+    let entries = entries
+        .into_iter()
+        .map(|db| ExportEntry {
+            key: db.hash.to_string(),
+            value: db,
+        })
+        .collect::<Vec<_>>();
 
     let byte_stream = ByteStream! {
         // Start the JSON array

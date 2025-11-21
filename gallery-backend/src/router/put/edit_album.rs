@@ -38,17 +38,15 @@ pub async fn edit_album(
     // 在 blocking 執行緒產生所有要寫入的 payload 與受影響相簿
     let (to_flush, effected_album_vec) =
         tokio::task::spawn_blocking(move || -> Result<(Vec<_>, Vec<ArrayString<64>>)> {
-            let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&json_data.timestamp).unwrap();
+            let tree_snapshot = TREE_SNAPSHOT
+                .read_tree_snapshot(&json_data.timestamp)
+                .unwrap();
             let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
 
             let mut to_flush = Vec::with_capacity(json_data.index_array.len());
             for &index in &json_data.index_array {
                 let hash = index_to_hash(&tree_snapshot, index)?;
-                let mut database: Database = conn.query_row(
-                    "SELECT * FROM database WHERE hash = ?",
-                    [&*hash],
-                    |row| Database::from_row(row)
-                ).map_err(|_| anyhow::anyhow!("Database not found for hash: {}", hash))?;
+                let mut database: Database = AbstractData::load_database_from_hash(&conn, &hash)?;
                 for album_id in &json_data.add_albums_array {
                     database.album.insert(album_id.clone());
                 }
@@ -117,16 +115,12 @@ pub async fn set_album_cover(
         let cover_hash = set_album_cover_inner.cover_hash;
 
         let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
-        let mut album: Album = conn.query_row(
-            "SELECT * FROM album WHERE id = ?",
-            [&*album_id],
-            |row| Album::from_row(row)
-        ).unwrap();
-        let database: Database = conn.query_row(
-            "SELECT * FROM database WHERE hash = ?",
-            [&*cover_hash],
-            |row| Database::from_row(row)
-        ).unwrap();
+        let mut album: Album = conn
+            .query_row("SELECT * FROM album WHERE id = ?", [&*album_id], |row| {
+                Album::from_row(row)
+            })
+            .unwrap();
+        let database: Database = AbstractData::load_database_from_hash(&conn, &cover_hash).unwrap();
 
         album.set_cover(&database);
 
@@ -135,8 +129,15 @@ pub async fn set_album_cover(
         let thumbhash_json = serde_json::to_string(&album.thumbhash).unwrap();
         conn.execute(
             "UPDATE album SET cover = ?, thumbhash = ?, width = ?, height = ? WHERE id = ?",
-            [&cover_str, &thumbhash_json.as_str(), &album.width.to_string().as_str(), &album.height.to_string().as_str(), &*album_id]
-        ).unwrap();
+            [
+                &cover_str,
+                &thumbhash_json.as_str(),
+                &album.width.to_string().as_str(),
+                &album.height.to_string().as_str(),
+                &*album_id,
+            ],
+        )
+        .unwrap();
     })
     .await
     .unwrap();
@@ -170,8 +171,12 @@ pub async fn set_album_title(
         // Update the title
         conn.execute(
             "UPDATE album SET title = ? WHERE id = ?",
-            [set_album_title_inner.title.as_deref().unwrap_or(""), &*album_id]
-        ).unwrap();
+            [
+                set_album_title_inner.title.as_deref().unwrap_or(""),
+                &*album_id,
+            ],
+        )
+        .unwrap();
     })
     .await
     .unwrap();

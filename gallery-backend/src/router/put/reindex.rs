@@ -7,7 +7,6 @@ use crate::process::info::regenerate_metadata_for_video;
 use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database_struct::database::definition::Database;
 use crate::public::structure::album::Album;
 use crate::router::AppResult;
 use crate::router::GuardResult;
@@ -56,11 +55,7 @@ pub async fn reindex(
                 .filter_map(|&hash| {
                     let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
                     // First, try to get from database table
-                    let database_opt = conn.query_row(
-                        "SELECT * FROM database WHERE hash = ?",
-                        [&*hash],
-                        |row| Database::from_row(row)
-                    ).ok();
+                    let database_opt = AbstractData::load_database_from_hash(&conn, &hash).ok();
                     if let Some(mut database) = database_opt {
                         if database.ext_type == "image" {
                             match regenerate_metadata_for_image(&mut database) {

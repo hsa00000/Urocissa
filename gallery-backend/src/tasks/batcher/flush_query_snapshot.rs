@@ -1,26 +1,26 @@
 use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
 use crate::router::get::get_prefetch::Prefetch;
-
+use anyhow::Result;
+use log::error;
 use mini_executor::BatchTask;
 use redb::TableDefinition;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
-
-use crate::public::error_data::handle_error;
-use anyhow;
 
 pub struct FlushQuerySnapshotTask;
 
 impl BatchTask for FlushQuerySnapshotTask {
     fn batch_run(_: Vec<Self>) -> impl Future<Output = ()> + Send {
         async move {
-            flush_query_snapshot_task();
+            if let Err(e) = flush_query_snapshot_task() {
+                error!("Error in flush_query_snapshot_task: {}", e);
+            }
         }
     }
 }
 
-fn flush_query_snapshot_task() {
+fn flush_query_snapshot_task() -> Result<()> {
     loop {
         if QUERY_SNAPSHOT.in_memory.is_empty() {
             break;
@@ -38,49 +38,17 @@ fn flush_query_snapshot_task() {
 
             // Save to disk
             let timer_start = Instant::now();
-            let txn = match QUERY_SNAPSHOT.in_disk.begin_write() {
-                Ok(t) => t,
-                Err(e) => {
-                    handle_error(anyhow::anyhow!(
-                        "FlushQuerySnapshotTask: Failed to begin write transaction: {}",
-                        e
-                    ));
-                    break;
-                }
-            };
+            let txn = QUERY_SNAPSHOT.in_disk.begin_write()?;
             let count_version = &VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed).to_string();
             let table_definition: TableDefinition<u64, Prefetch> =
                 TableDefinition::new(count_version);
 
             {
-                let mut table = match txn.open_table(table_definition) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        handle_error(anyhow::anyhow!(
-                            "FlushQuerySnapshotTask: Failed to open table {}: {}",
-                            count_version,
-                            e
-                        ));
-                        break;
-                    }
-                };
-                if let Err(e) = table.insert(expression_hashed, ref_data) {
-                    handle_error(anyhow::anyhow!(
-                        "FlushQuerySnapshotTask: Failed to insert data for expression_hashed {}: {}",
-                        expression_hashed,
-                        e
-                    ));
-                }
+                let mut table = txn.open_table(table_definition)?;
+                table.insert(expression_hashed, ref_data)?;
             }
 
-            if let Err(e) = txn.commit() {
-                handle_error(anyhow::anyhow!(
-                    "FlushQuerySnapshotTask: Failed to commit transaction for expression_hashed {}: {}",
-                    expression_hashed,
-                    e
-                ));
-                break;
-            }
+            txn.commit()?;
             info!(
                 duration = &*format!("{:?}", timer_start.elapsed());
                 "Write query cache into disk"
@@ -98,4 +66,5 @@ fn flush_query_snapshot_task() {
             QUERY_SNAPSHOT.in_memory.len()
         );
     }
+    Ok(())
 }

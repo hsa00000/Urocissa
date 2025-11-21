@@ -2,10 +2,11 @@ use crate::operations::utils::timestamp::get_current_timestamp_u64;
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Album;
-use crate::public::structure::database_struct::database::definition::Database;
 use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
+use anyhow::Result;
+use log::error;
 use mini_executor::BatchTask;
 use rayon::prelude::*;
 use std::collections::HashSet;
@@ -34,25 +35,25 @@ pub struct UpdateTreeTask;
 impl BatchTask for UpdateTreeTask {
     fn batch_run(_: Vec<Self>) -> impl Future<Output = ()> + Send {
         async move {
-            update_tree_task();
+            if let Err(e) = update_tree_task() {
+                error!("Error in update_tree_task: {}", e);
+            }
         }
     }
 }
 
-fn update_tree_task() {
+fn update_tree_task() -> Result<()> {
     let start_time = Instant::now();
-    let conn = crate::public::db::sqlite::DB_POOL.get().expect("Failed to open database");
+    let conn = crate::public::db::sqlite::DB_POOL
+        .get()
+        .expect("Failed to open database");
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
     let mut database_timestamp_vec: Vec<DatabaseTimestamp> = {
-        let mut stmt = conn.prepare("SELECT * FROM database").unwrap();
-        let rows: Vec<Database> = stmt
-            .query_map([], Database::from_row)
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect();
-        rows.into_par_iter()
+        let databases = AbstractData::load_all_databases_from_db(&conn)?;
+        databases
+            .into_par_iter()
             .map(|mut db| {
                 db.exif_vec
                     .retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
@@ -62,12 +63,10 @@ fn update_tree_task() {
     };
 
     let album_vec: Vec<DatabaseTimestamp> = {
-        let mut stmt = conn.prepare("SELECT * FROM album").unwrap();
+        let mut stmt = conn.prepare("SELECT * FROM album")?;
         let rows: Vec<Album> = stmt
-            .query_map([], Album::from_row)
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect();
+            .query_map([], Album::from_row)?
+            .collect::<Result<Vec<Album>, rusqlite::Error>>()?;
         rows.into_par_iter()
             .map(|album| DatabaseTimestamp::new(AbstractData::Album(album), &priority_list))
             .collect()
@@ -83,4 +82,5 @@ fn update_tree_task() {
     let current_timestamp = get_current_timestamp_u64();
     let duration = format!("{:?}", start_time.elapsed());
     info!(duration = &*duration; "In-memory cache updated ({}).", current_timestamp);
+    Ok(())
 }

@@ -1,8 +1,6 @@
 use crate::operations::transitor::index_to_hash;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::Album;
-use crate::public::structure::database_struct::database::definition::Database;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -67,21 +65,7 @@ fn process_deletes(
 
     for index in delete_list {
         let hash = index_to_hash(&tree_snapshot, index)?;
-        let abstract_data = if let Ok(database) = conn.query_row(
-            "SELECT * FROM database WHERE hash = ?",
-            [&*hash],
-            |row| Database::from_row(row)
-        ) {
-            AbstractData::Database(database)
-        } else if let Ok(album) = conn.query_row(
-            "SELECT * FROM album WHERE id = ?",
-            [&*hash],
-            |row| Album::from_row(row)
-        ) {
-            AbstractData::Album(album)
-        } else {
-            return Err(anyhow::anyhow!("No data found for hash: {}", hash));
-        };
+        let abstract_data = AbstractData::load_from_db(&conn, &hash)?;
 
         let affected_albums = match &abstract_data {
             AbstractData::Database(db) => db.album.iter().cloned().collect(),

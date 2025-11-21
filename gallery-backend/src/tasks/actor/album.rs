@@ -2,7 +2,6 @@ use crate::public::db::tree::TREE;
 use crate::public::error_data::handle_error;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Album;
-use crate::public::structure::database_struct::database::definition::Database;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use log::info;
@@ -91,13 +90,7 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
 
             // For each hash, load from DB, remove album_id, save back
             for hash in hash_list {
-                let db_opt = conn
-                    .query_row(
-                        "SELECT * FROM database WHERE hash = ?",
-                        [hash.as_str()],
-                        Database::from_row,
-                    )
-                    .ok();
+                let db_opt = AbstractData::load_database_from_hash(&conn, &hash).ok();
                 if let Some(mut database) = db_opt {
                     database.album.remove(&album_id);
                     // Insert back

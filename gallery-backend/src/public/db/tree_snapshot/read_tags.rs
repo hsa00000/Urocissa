@@ -1,5 +1,5 @@
 use super::TreeSnapshot;
-use crate::{public::db::tree::read_tags::TagInfo, public::structure::database_struct::database::definition::Database};
+use crate::{public::db::tree::read_tags::TagInfo, public::structure::abstract_data::AbstractData};
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -10,10 +10,7 @@ impl TreeSnapshot {
         let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
         let conn = crate::public::db::sqlite::DB_POOL.get().context("Failed to get DB connection")?;
-        let mut stmt = conn.prepare("SELECT * FROM database").context("Failed to prepare statement")?;
-        let rows = stmt.query_map([], |row| Database::from_row(row)).context("Failed to query database")?;
-
-        let databases: Vec<Database> = rows.collect::<Result<Vec<_>, _>>().context("Failed to collect databases")?;
+        let databases = AbstractData::load_all_databases_from_db(&conn)?;
 
         databases.par_iter().try_for_each(|db| -> Result<()> {
             for tag in &db.tag {

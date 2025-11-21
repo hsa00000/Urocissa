@@ -1,5 +1,4 @@
 use anyhow::Result;
-use anyhow::anyhow;
 use arrayvec::ArrayString;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::post;
@@ -118,11 +117,7 @@ pub fn index_edit_album_insert(
     album_id: ArrayString<64>,
 ) -> Result<AbstractData> {
     let hash = index_to_hash(tree_snapshot, database_index)?;
-    let mut db: Database = conn
-        .query_row("SELECT * FROM database WHERE hash = ?", [&*hash], |row| {
-            Database::from_row(row)
-        })
-        .map_err(|_| anyhow!("Database not found for hash: {}", hash))?;
+    let mut db: Database = AbstractData::load_database_from_hash(&conn, &hash)?;
     db.album.insert(album_id);
     Ok(AbstractData::Database(db))
 }

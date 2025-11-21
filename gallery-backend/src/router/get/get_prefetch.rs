@@ -110,7 +110,6 @@ fn filter_items(
     resolved_share_option: &Option<ResolvedShare>,
 ) -> Result<Vec<ReducedData>> {
     let filter_items_start_time = Instant::now();
-
     let tree_guard = TREE.in_memory.read().map_err(|err| anyhow!("{:?}", err))?;
     let reduced_data_vector: Vec<ReducedData> = match (expression_option, &resolved_share_option) {
         // If we have a resolved share then it must have a filter expression

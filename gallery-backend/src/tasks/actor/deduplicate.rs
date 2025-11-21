@@ -54,11 +54,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
     let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
     // File already in persistent database
 
-    let existing_db = conn.query_row(
-        "SELECT * FROM database WHERE hash = ?",
-        [database.hash.as_str()],
-        Database::from_row,
-    );
+    let existing_db = AbstractData::load_database_from_hash(&conn, database.hash.as_str());
 
     if let Ok(mut database_exist) = existing_db {
         let file_modify = mem::take(&mut database.alias[0]);

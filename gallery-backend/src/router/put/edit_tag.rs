@@ -3,8 +3,6 @@ use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
 use crate::public::db::tree::read_tags::TagInfo;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::Album;
-use crate::public::structure::database_struct::database::definition::Database;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -30,26 +28,14 @@ pub async fn edit_tag(
     let _ = auth?;
     let _ = read_only_mode?;
     let vec_tags_info = tokio::task::spawn_blocking(move || -> Result<Vec<TagInfo>> {
-        let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&json_data.timestamp).unwrap();
+        let tree_snapshot = TREE_SNAPSHOT
+            .read_tree_snapshot(&json_data.timestamp)
+            .unwrap();
 
         for &index in &json_data.index_array {
             let hash = index_to_hash(&tree_snapshot, index)?;
             let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
-            let mut abstract_data = if let Ok(database) = conn.query_row(
-                "SELECT * FROM database WHERE hash = ?",
-                [&*hash],
-                |row| Database::from_row(row)
-            ) {
-                AbstractData::Database(database)
-            } else if let Ok(album) = conn.query_row(
-                "SELECT * FROM album WHERE id = ?",
-                [&*hash],
-                |row| Album::from_row(row)
-            ) {
-                AbstractData::Album(album)
-            } else {
-                return Err(anyhow::anyhow!("No data found for hash: {}", hash));
-            };
+            let mut abstract_data = AbstractData::load_from_db(&conn, &hash)?;
 
             let tag_set = abstract_data.tag_mut();
 
