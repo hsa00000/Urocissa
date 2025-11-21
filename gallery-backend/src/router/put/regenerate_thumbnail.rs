@@ -1,7 +1,7 @@
 use crate::operations::indexation::generate_dynamic_image::generate_dynamic_image;
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
-use crate::operations::open_db::open_data_table;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::database_struct::database::definition::Database;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
@@ -14,6 +14,7 @@ use anyhow::anyhow;
 use arrayvec::ArrayString;
 use rocket::form::{Errors, Form};
 use rocket::fs::TempFile;
+use rusqlite::Connection;
 
 #[derive(FromForm, Debug)]
 pub struct RegenerateThumbnailForm<'r> {
@@ -62,20 +63,18 @@ pub async fn regenerate_thumbnail_with_frame(
         .context("Failed to copy frame file")?;
 
     let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData> {
-        let data_table = open_data_table()?;
-        let access_guard = data_table
-            .get(&*hash)
-            .context("Failed to fetch DB record")?
-            .ok_or_else(|| anyhow!("Hash not found"))?;
-
-        let mut database = access_guard.value();
-
+        let conn = Connection::open("gallery.db").context("Failed to open database")?;
+        let mut database = conn.query_row(
+            "SELECT * FROM database WHERE hash = ?",
+            [&*hash],
+            |row| Database::from_row(row)
+        ).context("Failed to fetch DB record")?;
         let dyn_img = generate_dynamic_image(&database).context("Failed to decode DynamicImage")?;
 
         database.thumbhash = generate_thumbhash(&dyn_img);
         database.phash = generate_phash(&dyn_img);
 
-        Ok(database.into())
+        Ok(AbstractData::Database(database))
     })
     .await
     .context("Failed to spawn blocking task")??;
