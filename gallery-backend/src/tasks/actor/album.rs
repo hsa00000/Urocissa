@@ -1,7 +1,6 @@
 use crate::public::db::tree::TREE;
 use crate::public::error_data::handle_error;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::Album;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use log::info;

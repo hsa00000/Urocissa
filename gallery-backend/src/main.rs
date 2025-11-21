@@ -12,7 +12,6 @@ mod workflow;
 
 use crate::process::initialization::initialize;
 use crate::public::constant::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
-use crate::public::db::tree::TREE;
 use crate::public::error_data::handle_error;
 use crate::public::tui::{DASHBOARD, tui_task};
 use crate::tasks::BATCH_COORDINATOR;

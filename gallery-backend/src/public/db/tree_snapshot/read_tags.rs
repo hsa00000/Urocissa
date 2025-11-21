@@ -1,9 +1,8 @@
 use super::TreeSnapshot;
 use crate::{
     public::db::tree::TREE, public::db::tree::read_tags::TagInfo,
-    public::structure::abstract_data::AbstractData,
 };
-use anyhow::{Context, Result};
+use anyhow::Result;
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::sync::atomic::{AtomicUsize, Ordering};

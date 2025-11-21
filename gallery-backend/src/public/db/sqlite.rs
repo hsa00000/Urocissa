@@ -1,7 +1,4 @@
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 pub fn init_db_file_once() -> anyhow::Result<()> {

@@ -1,15 +1,11 @@
 use std::collections::HashSet;
 
-use anyhow::Result;
 use arrayvec::ArrayString;
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use serde_json;
-use std::collections::BTreeMap;
 
 use super::{
     album::Album,
-    database_struct::{database::definition::Database, file_modify::FileModify},
+    database_struct::database::definition::Database,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

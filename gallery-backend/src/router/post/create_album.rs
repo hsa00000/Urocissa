@@ -22,7 +22,6 @@ use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use rusqlite::Connection;
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
