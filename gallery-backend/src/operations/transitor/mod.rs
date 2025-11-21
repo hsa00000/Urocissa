@@ -10,7 +10,7 @@ use crate::public::{
 };
 use anyhow::Result;
 use arrayvec::ArrayString;
-use redb::ReadOnlyTable;
+use rusqlite::Connection;
 
 pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
     if index >= tree_snapshot.len() {
@@ -21,39 +21,28 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
 }
 
 pub fn hash_to_database(
-    data_table: &ReadOnlyTable<&'static str, Database>,
+    conn: &Connection,
     hash: ArrayString<64>,
 ) -> Result<Database> {
-    if let Some(database) = data_table.get(&*hash)? {
-        let database = database.value();
-        Ok(database)
-    } else {
-        Err(anyhow::anyhow!("No data found for hash: {}", hash))
-    }
+    let db = conn.query_row("SELECT * FROM database WHERE hash = ?", [&hash.as_str()], |row| Database::from_row(row))?;
+    Ok(db)
 }
 
 pub fn hash_to_album(
-    album_table: &ReadOnlyTable<&'static str, Album>,
+    conn: &Connection,
     hash: ArrayString<64>,
 ) -> Result<Album> {
-    if let Some(album) = album_table.get(&*hash)? {
-        let album = album.value();
-        Ok(album)
-    } else {
-        Err(anyhow::anyhow!("No album found for hash: {}", hash))
-    }
+    let album = conn.query_row("SELECT * FROM album WHERE id = ?", [&hash.as_str()], |row| Album::from_row(row))?;
+    Ok(album)
 }
 
 pub fn hash_to_abstract_data(
-    data_table: &ReadOnlyTable<&'static str, Database>,
-    album_table: &ReadOnlyTable<&'static str, Album>,
+    conn: &Connection,
     hash: ArrayString<64>,
 ) -> Result<AbstractData> {
-    if let Some(database) = data_table.get(&*hash)? {
-        let database = database.value();
+    if let Ok(database) = conn.query_row("SELECT * FROM database WHERE hash = ?", [&hash.as_str()], |row| Database::from_row(row)) {
         Ok(database.into())
-    } else if let Some(album) = album_table.get(&*hash)? {
-        let album = album.value();
+    } else if let Ok(album) = conn.query_row("SELECT * FROM album WHERE id = ?", [&hash.as_str()], |row| Album::from_row(row)) {
         Ok(album.into())
     } else {
         Err(anyhow::anyhow!("No data found for hash: {}", hash))

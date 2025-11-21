@@ -1,12 +1,11 @@
-use crate::operations::open_db::open_data_table;
 use crate::router::{AppResult, GuardResult};
 use crate::{
     public::structure::database_struct::database::definition::Database,
     router::fairing::guard_auth::GuardAuth,
 };
-use redb::ReadableTable;
 use rocket::get;
 use rocket::response::stream::ByteStream;
+use rusqlite::Connection;
 use serde::Serialize;
 #[derive(Debug, Serialize)]
 pub struct ExportEntry {
@@ -17,49 +16,36 @@ pub struct ExportEntry {
 #[get("/get/get-export")]
 pub async fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;
-    let data_table = open_data_table()?;
-    let byte_stream = ByteStream! {
-        // Open DB and prepare to iterate
-        let iter = match data_table.iter() {
-            Ok(it) => it,
-            Err(_) => {
-                yield b"{\"error\":\"failed to iterate\"}".to_vec();
-                return;
-            }
-        };
+    // Collect all data synchronously
+    let conn = Connection::open("gallery.db").unwrap();
+    let mut stmt = conn.prepare("SELECT * FROM database").unwrap();
+    let rows = stmt.query_map([], |row| Database::from_row(row)).unwrap();
+    let mut entries = Vec::new();
+    for db_res in rows {
+        if let Ok(db) = db_res {
+            entries.push(ExportEntry {
+                key: db.hash.to_string(),
+                value: db,
+            });
+        }
+    }
 
+    let byte_stream = ByteStream! {
         // Start the JSON array
         yield b"[".to_vec();
         let mut first = true;
 
-        for entry_res in iter {
-            let (key, value) = match entry_res {
-                Ok(kv) => kv,
-                Err(_) => {
-                    // Skip or handle the error
-                    continue;
-                }
-            };
-
+        for export in entries {
             // Insert a comma if not the first element
             if !first {
                 yield b",".to_vec();
             }
             first = false;
 
-            // Build the ExportEntry
-            let export = ExportEntry {
-                key: key.value().to_string(),
-                value: value.value().clone(),
-            };
-
             // Convert it to JSON
             let json_obj = match serde_json::to_string(&export) {
                 Ok(s) => s,
-                Err(_) => {
-                    // Skip or handle the error
-                    continue;
-                }
+                Err(_) => continue,
             };
 
             // Stream it out
