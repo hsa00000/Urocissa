@@ -1,10 +1,10 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::{public::constant::redb::ALBUM_TABLE, public::structure::album::Album};
+use crate::public::structure::album::Album;
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
-use redb::ReadableTable;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use super::Tree;
@@ -43,18 +43,12 @@ impl Tree {
         tag_infos
     }
     pub fn read_albums(&self) -> Result<Vec<Album>> {
-        Ok(
-            self.in_disk
-                .begin_read()
-                .context("Failed to begin read transaction")? // ①
-                .open_table(ALBUM_TABLE)
-                .context("Failed to open ALBUM_TABLE")? // ②
-                .iter()
-                .context("Failed to create iterator over ALBUM_TABLE")? // ③
-                .par_bridge()
-                .map(|entry| entry.map(|(_, guard)| guard.value()))
-                .collect::<Result<Vec<_>, _>>()
-                .context("Failed to collect album records in parallel")?, // ④
-        )
+        let conn = Connection::open("gallery.db").context("Failed to open database")?;
+        let mut stmt = conn.prepare("SELECT * FROM album").context("Failed to prepare statement")?;
+        let albums = stmt.query_map([], |row| Album::from_row(row))
+            .context("Failed to query albums")?
+            .collect::<Result<Vec<_>, _>>()
+            .context("Failed to collect albums")?;
+        Ok(albums)
     }
 }
