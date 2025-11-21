@@ -1,7 +1,8 @@
-use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
-use crate::process::transitor::index_to_database;
-use crate::public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
-use crate::public::db::tree::TREE;
+use crate::operations::transitor::index_to_hash;
+use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
+use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::album::Album;
+use crate::public::structure::database_struct::database::definition::Database;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
@@ -13,9 +14,10 @@ use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use futures::{StreamExt, TryStreamExt, stream};
-use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
+use rusqlite::Connection;
 use serde::Serialize;
+use serde_json;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditAlbumsData {
@@ -37,19 +39,24 @@ pub async fn edit_album(
     // 在 blocking 執行緒產生所有要寫入的 payload 與受影響相簿
     let (to_flush, effected_album_vec) =
         tokio::task::spawn_blocking(move || -> Result<(Vec<_>, Vec<ArrayString<64>>)> {
-            let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)?;
-            let data_table = open_data_table()?;
+            let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&json_data.timestamp).unwrap();
+            let conn = Connection::open("gallery.db").unwrap();
 
             let mut to_flush = Vec::with_capacity(json_data.index_array.len());
             for &index in &json_data.index_array {
-                let mut database = index_to_database(&tree_snapshot, &data_table, index)?;
+                let hash = index_to_hash(&tree_snapshot, index)?;
+                let mut database: Database = conn.query_row(
+                    "SELECT * FROM database WHERE hash = ?",
+                    [&*hash],
+                    |row| Database::from_row(row)
+                ).map_err(|_| anyhow::anyhow!("Database not found for hash: {}", hash))?;
                 for album_id in &json_data.add_albums_array {
                     database.album.insert(album_id.clone());
                 }
                 for album_id in &json_data.remove_albums_array {
                     database.album.remove(album_id);
                 }
-                to_flush.push(database.into());
+                to_flush.push(AbstractData::Database(database));
             }
 
             let effected_album_vec = json_data
@@ -110,18 +117,27 @@ pub async fn set_album_cover(
         let album_id = set_album_cover_inner.album_id;
         let cover_hash = set_album_cover_inner.cover_hash;
 
-        let txn = TREE.in_disk.begin_write().unwrap();
-        {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-            let data_table = txn.open_table(DATA_TABLE).unwrap();
+        let conn = Connection::open("gallery.db").unwrap();
+        let mut album: Album = conn.query_row(
+            "SELECT * FROM album WHERE id = ?",
+            [&*album_id],
+            |row| Album::from_row(row)
+        ).unwrap();
+        let database: Database = conn.query_row(
+            "SELECT * FROM database WHERE hash = ?",
+            [&*cover_hash],
+            |row| Database::from_row(row)
+        ).unwrap();
 
-            let mut album = album_table.get(&*album_id).unwrap().unwrap().value();
-            let database = data_table.get(&*cover_hash).unwrap().unwrap().value();
+        album.set_cover(&database);
 
-            album.set_cover(&database);
-            album_table.insert(&*album_id, album).unwrap();
-        }
-        txn.commit().unwrap();
+        // Update the album in database
+        let cover_str = album.cover.as_ref().map(|h| h.as_str()).unwrap_or("");
+        let thumbhash_json = serde_json::to_string(&album.thumbhash).unwrap();
+        conn.execute(
+            "UPDATE album SET cover = ?, thumbhash = ?, width = ?, height = ? WHERE id = ?",
+            [&cover_str, &thumbhash_json.as_str(), &album.width.to_string().as_str(), &album.height.to_string().as_str(), &*album_id]
+        ).unwrap();
     })
     .await
     .unwrap();
@@ -151,16 +167,12 @@ pub async fn set_album_title(
         let set_album_title_inner = set_album_title.into_inner();
         let album_id = set_album_title_inner.album_id;
 
-        let txn = TREE.in_disk.begin_write().unwrap();
-        {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-
-            let mut album = album_table.get(&*album_id).unwrap().unwrap().value();
-
-            album.title = set_album_title_inner.title;
-            album_table.insert(&*album_id, album).unwrap();
-        }
-        txn.commit().unwrap();
+        let conn = Connection::open("gallery.db").unwrap();
+        // Update the title
+        conn.execute(
+            "UPDATE album SET title = ? WHERE id = ?",
+            [set_album_title_inner.title.as_deref().unwrap_or(""), &*album_id]
+        ).unwrap();
     })
     .await
     .unwrap();
