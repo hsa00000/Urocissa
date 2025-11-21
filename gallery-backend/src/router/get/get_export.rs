@@ -1,3 +1,4 @@
+use crate::public::db::tree::TREE;
 use crate::router::{AppResult, GuardResult};
 use crate::{
     public::structure::database_struct::database::definition::Database,
@@ -16,9 +17,7 @@ pub struct ExportEntry {
 pub async fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;
     // Collect all data synchronously
-    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
-    let entries =
-        crate::public::structure::abstract_data::AbstractData::load_all_databases_from_db(&conn)?;
+    let entries = TREE.load_all_databases_from_db()?;
     let entries = entries
         .into_iter()
         .map(|db| ExportEntry {

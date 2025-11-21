@@ -1,5 +1,6 @@
 use crate::{
     public::{
+        db::tree::TREE,
         error_data::handle_error,
         structure::{abstract_data::AbstractData, database_struct::database::definition::Database},
     },
@@ -8,10 +9,7 @@ use crate::{
 use anyhow::Result;
 use arrayvec::ArrayString;
 use mini_executor::Task;
-use std::{
-    mem,
-    path::PathBuf,
-};
+use std::{mem, path::PathBuf};
 use tokio::task::spawn_blocking;
 
 pub struct DeduplicateTask {
@@ -51,10 +49,9 @@ impl Task for DeduplicateTask {
 fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
     let mut database = Database::new(&task.path, task.hash)?;
 
-    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
     // File already in persistent database
 
-    let existing_db = AbstractData::load_database_from_hash(&conn, database.hash.as_str());
+    let existing_db = TREE.load_database_from_hash(database.hash.as_str());
 
     if let Ok(mut database_exist) = existing_db {
         let file_modify = mem::take(&mut database.alias[0]);

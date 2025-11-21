@@ -2,6 +2,7 @@ use crate::operations::resolve_show_download_and_metadata;
 use crate::operations::transitor::{
     abstract_data_to_database_timestamp_return, clear_abstract_data_metadata, index_to_hash,
 };
+use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::database_struct::database_timestamp::DataBaseTimestampReturn;
@@ -39,10 +40,9 @@ pub async fn get_data(
         let database_timestamp_return_list: Result<_> = (start..end)
             .into_par_iter()
             .map(|index| {
-                let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
                 let hash = index_to_hash(&tree_snapshot, index)?;
 
-                let mut abstract_data = AbstractData::load_from_db(&conn, &hash)?;
+                let mut abstract_data = TREE.load_from_db(&hash)?;
 
                 clear_abstract_data_metadata(&mut abstract_data, show_metadata);
 

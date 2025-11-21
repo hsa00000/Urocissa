@@ -1,3 +1,5 @@
+use crate::public::db::tree::TREE;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::{Album, Share};
 use crate::router::AppResult;
 use crate::router::GuardResult;
@@ -5,7 +7,7 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use arrayvec::ArrayString;
 use rocket::serde::{Deserialize, json::Json};
 use rusqlite::Connection;
@@ -68,18 +70,11 @@ pub async fn delete_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
-        let conn = crate::public::db::sqlite::DB_POOL
-            .get()
-            .context("Failed to get DB connection")
-            .unwrap();
-
-        if let Ok(mut album) = conn.query_row(
-            "SELECT * FROM album WHERE id = ?",
-            [&*json_data.album_id],
-            |row| Album::from_row(row),
-        ) {
+        let abstract_data = TREE.load_from_db(&json_data.album_id).unwrap();
+        if let AbstractData::Album(mut album) = abstract_data {
             album.share_list.remove(&json_data.share_id);
             let share_list_json = serde_json::to_string(&album.share_list).unwrap();
+            let conn = TREE.get_connection().unwrap();
             conn.execute(
                 "UPDATE album SET share_list = ? WHERE id = ?",
                 [&share_list_json, &*json_data.album_id],

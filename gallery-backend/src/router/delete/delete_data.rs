@@ -1,4 +1,5 @@
 use crate::operations::transitor::index_to_hash;
+use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -58,14 +59,13 @@ fn process_deletes(
     timestamp: u128,
 ) -> Result<(Vec<AbstractData>, Vec<ArrayString<64>>)> {
     let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
-    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
 
     let mut all_affected_album_ids = Vec::new();
     let mut abstract_data_to_remove = Vec::new();
 
     for index in delete_list {
         let hash = index_to_hash(&tree_snapshot, index)?;
-        let abstract_data = AbstractData::load_from_db(&conn, &hash)?;
+        let abstract_data = TREE.load_from_db(&hash)?;
 
         let affected_albums = match &abstract_data {
             AbstractData::Database(db) => db.album.iter().cloned().collect(),

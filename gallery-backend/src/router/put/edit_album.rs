@@ -1,4 +1,5 @@
 use crate::operations::transitor::index_to_hash;
+use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Album;
@@ -41,12 +42,11 @@ pub async fn edit_album(
             let tree_snapshot = TREE_SNAPSHOT
                 .read_tree_snapshot(&json_data.timestamp)
                 .unwrap();
-            let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
 
             let mut to_flush = Vec::with_capacity(json_data.index_array.len());
             for &index in &json_data.index_array {
                 let hash = index_to_hash(&tree_snapshot, index)?;
-                let mut database: Database = AbstractData::load_database_from_hash(&conn, &hash)?;
+                let mut database: Database = TREE.load_database_from_hash(&hash)?;
                 for album_id in &json_data.add_albums_array {
                     database.album.insert(album_id.clone());
                 }
@@ -114,19 +114,19 @@ pub async fn set_album_cover(
         let album_id = set_album_cover_inner.album_id;
         let cover_hash = set_album_cover_inner.cover_hash;
 
-        let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
-        let mut album: Album = conn
-            .query_row("SELECT * FROM album WHERE id = ?", [&*album_id], |row| {
-                Album::from_row(row)
-            })
-            .unwrap();
-        let database: Database = AbstractData::load_database_from_hash(&conn, &cover_hash).unwrap();
+        let album_abstract = TREE.load_from_db(&album_id).unwrap();
+        let mut album = match album_abstract {
+            AbstractData::Album(a) => a,
+            _ => panic!("Expected album"),
+        };
+        let database = TREE.load_database_from_hash(&cover_hash).unwrap();
 
         album.set_cover(&database);
 
         // Update the album in database
         let cover_str = album.cover.as_ref().map(|h| h.as_str()).unwrap_or("");
         let thumbhash_json = serde_json::to_string(&album.thumbhash).unwrap();
+        let conn = TREE.get_connection().unwrap();
         conn.execute(
             "UPDATE album SET cover = ?, thumbhash = ?, width = ?, height = ? WHERE id = ?",
             [
@@ -167,7 +167,7 @@ pub async fn set_album_title(
         let set_album_title_inner = set_album_title.into_inner();
         let album_id = set_album_title_inner.album_id;
 
-        let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
+        let conn = TREE.get_connection().unwrap();
         // Update the title
         conn.execute(
             "UPDATE album SET title = ? WHERE id = ?",

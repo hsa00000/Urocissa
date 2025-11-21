@@ -1,7 +1,6 @@
 use crate::operations::utils::timestamp::get_current_timestamp_u64;
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::Album;
 use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
@@ -44,14 +43,10 @@ impl BatchTask for UpdateTreeTask {
 
 fn update_tree_task() -> Result<()> {
     let start_time = Instant::now();
-    let conn = crate::public::db::sqlite::DB_POOL
-        .get()
-        .expect("Failed to open database");
-
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
     let mut database_timestamp_vec: Vec<DatabaseTimestamp> = {
-        let databases = AbstractData::load_all_databases_from_db(&conn)?;
+        let databases = TREE.load_all_databases_from_db()?;
         databases
             .into_par_iter()
             .map(|mut db| {
@@ -63,10 +58,7 @@ fn update_tree_task() -> Result<()> {
     };
 
     let album_vec: Vec<DatabaseTimestamp> = {
-        let mut stmt = conn.prepare("SELECT * FROM album")?;
-        let rows: Vec<Album> = stmt
-            .query_map([], Album::from_row)?
-            .collect::<Result<Vec<Album>, rusqlite::Error>>()?;
+        let rows = TREE.read_albums()?;
         rows.into_par_iter()
             .map(|album| DatabaseTimestamp::new(AbstractData::Album(album), &priority_list))
             .collect()

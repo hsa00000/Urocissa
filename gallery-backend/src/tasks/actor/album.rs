@@ -36,23 +36,15 @@ impl Task for AlbumSelfUpdateTask {
 pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
     info!("Perform album self-update");
 
-    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
+    let abstract_data = TREE.load_from_db(&album_id)?;
 
-    let album_opt = conn
-        .query_row(
-            "SELECT * FROM album WHERE id = ?",
-            [album_id.as_str()],
-            Album::from_row,
-        )
-        .ok();
-
-    match album_opt {
-        Some(mut album) => {
+    match abstract_data {
+        AbstractData::Album(mut album) => {
             album.pending = true;
             album.self_update();
             album.pending = false;
             // Insert back
-            Album::create_album_table(&conn).unwrap(); // Ensure table exists, but probably already does
+            let conn = TREE.get_connection().unwrap();
             conn.execute(
                 "INSERT OR REPLACE INTO album (id, title, created_time, start_time, end_time, last_modified_time, cover, thumbhash, user_defined_metadata, share_list, tag, width, height, item_count, item_size, pending) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                 rusqlite::params![
@@ -89,8 +81,9 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
                 .collect();
 
             // For each hash, load from DB, remove album_id, save back
+            let conn = TREE.get_connection().unwrap();
             for hash in hash_list {
-                let db_opt = AbstractData::load_database_from_hash(&conn, &hash).ok();
+                let db_opt = TREE.load_database_from_hash(&hash).ok();
                 if let Some(mut database) = db_opt {
                     database.album.remove(&album_id);
                     // Insert back

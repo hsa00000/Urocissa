@@ -8,6 +8,7 @@ use std::time::Instant;
 
 use crate::operations::hash::generate_random_hash;
 use crate::operations::transitor::index_to_hash;
+use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::database_struct::database::definition::Database;
@@ -89,10 +90,7 @@ async fn create_album_elements(
         let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
         elements_index
             .into_par_iter()
-            .map(|idx| {
-                let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
-                index_edit_album_insert(&tree_snapshot, &conn, idx, album_id)
-            })
+            .map(|idx| index_edit_album_insert(&tree_snapshot, idx, album_id))
             .collect()
     })
     .await??;
@@ -112,12 +110,11 @@ async fn create_album_elements(
 
 pub fn index_edit_album_insert(
     tree_snapshot: &crate::public::db::tree_snapshot::read_tree_snapshot::MyCow,
-    conn: &Connection,
     database_index: usize,
     album_id: ArrayString<64>,
 ) -> Result<AbstractData> {
     let hash = index_to_hash(tree_snapshot, database_index)?;
-    let mut db: Database = AbstractData::load_database_from_hash(&conn, &hash)?;
+    let mut db: Database = TREE.load_database_from_hash(&hash)?;
     db.album.insert(album_id);
     Ok(AbstractData::Database(db))
 }

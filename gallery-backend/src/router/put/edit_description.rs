@@ -1,5 +1,6 @@
 use crate::operations::transitor::index_to_hash;
 use crate::public::constant::USER_DEFINED_DESCRIPTION;
+use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
 use crate::public::structure::abstract_data::AbstractData;
@@ -37,8 +38,7 @@ pub async fn set_user_defined_description(
             .read_tree_snapshot(&set_user_defined_description.timestamp)
             .unwrap();
         let hash = index_to_hash(&tree_snapshot, set_user_defined_description.index)?;
-        let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
-        let mut abstract_data = AbstractData::load_from_db(&conn, &hash)?;
+        let mut abstract_data = TREE.load_from_db(&hash)?;
 
         match &mut abstract_data {
             AbstractData::Database(db) => {

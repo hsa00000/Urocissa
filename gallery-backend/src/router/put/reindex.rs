@@ -5,9 +5,9 @@ use rocket::http::Status;
 use crate::process::info::regenerate_metadata_for_image;
 use crate::process::info::regenerate_metadata_for_video;
 use crate::public::constant::PROCESS_BATCH_NUMBER;
+use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::Album;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -53,40 +53,30 @@ pub async fn reindex(
             let database_list: Vec<_> = batch
                 .into_par_iter()
                 .filter_map(|&hash| {
-                    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
-                    // First, try to get from database table
-                    let database_opt = AbstractData::load_database_from_hash(&conn, &hash).ok();
-                    if let Some(mut database) = database_opt {
-                        if database.ext_type == "image" {
-                            match regenerate_metadata_for_image(&mut database) {
-                                Ok(_) => Some(AbstractData::Database(database)),
-                                Err(_) => None,
+                    let abstract_data_opt = TREE.load_from_db(&hash).ok();
+                    match abstract_data_opt {
+                        Some(AbstractData::Database(mut database)) => {
+                            if database.ext_type == "image" {
+                                match regenerate_metadata_for_image(&mut database) {
+                                    Ok(_) => Some(AbstractData::Database(database)),
+                                    Err(_) => None,
+                                }
+                            } else if database.ext_type == "video" {
+                                match regenerate_metadata_for_video(&mut database) {
+                                    Ok(_) => Some(AbstractData::Database(database)),
+                                    Err(_) => None,
+                                }
+                            } else {
+                                None
                             }
-                        } else if database.ext_type == "video" {
-                            match regenerate_metadata_for_video(&mut database) {
-                                Ok(_) => Some(AbstractData::Database(database)),
-                                Err(_) => None,
-                            }
-                        } else {
+                        }
+                        Some(AbstractData::Album(_)) => {
+                            // album_self_update already will commit
+                            INDEX_COORDINATOR.execute_detached(AlbumSelfUpdateTask::new(hash));
                             None
                         }
-                    } else {
-                        // Check album table
-                        let album_opt = conn.query_row(
-                            "SELECT * FROM album WHERE id = ?",
-                            [&*hash],
-                            |row| Album::from_row(row)
-                        ).ok();
-                        if album_opt.is_some() {
-                            // album_self_update already will commit
-                            INDEX_COORDINATOR
-                                .execute_detached(AlbumSelfUpdateTask::new(hash));
-                            None
-                        } else {
-                            error!(
-                                "Reindex failed: cannot find data with hash/id: {}",
-                                hash
-                            );
+                        None => {
+                            error!("Reindex failed: cannot find data with hash/id: {}", hash);
                             None
                         }
                     }

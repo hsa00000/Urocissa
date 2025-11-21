@@ -1,4 +1,5 @@
 use crate::operations::transitor::index_to_hash;
+use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
 use crate::public::db::tree::read_tags::TagInfo;
@@ -34,8 +35,7 @@ pub async fn edit_tag(
 
         for &index in &json_data.index_array {
             let hash = index_to_hash(&tree_snapshot, index)?;
-            let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
-            let mut abstract_data = AbstractData::load_from_db(&conn, &hash)?;
+            let mut abstract_data = TREE.load_from_db(&hash)?;
 
             let tag_set = abstract_data.tag_mut();
 

@@ -1,4 +1,6 @@
-use crate::public::structure::album::{Album, ResolvedShare};
+use crate::public::db::tree::TREE;
+use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::album::ResolvedShare;
 use crate::router::claims::claims::Claims;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 use anyhow::Error;
@@ -84,12 +86,11 @@ pub fn try_resolve_share_from_headers(req: &Request<'_>) -> Result<Option<Claims
         )),
 
         (Some(album_id), Some(share_id)) => {
-            let conn = crate::public::db::sqlite::DB_POOL.get().map_err(|_| anyhow!("Failed to open database"))?;
-            let album: Album = conn.query_row(
-                "SELECT * FROM album WHERE id = ?",
-                [album_id],
-                |row| Album::from_row(row)
-            ).map_err(|_| anyhow!("Album not found for id '{}'", album_id))?;
+            let album_abstract = TREE.load_from_db(album_id)?;
+            let album = match album_abstract {
+                AbstractData::Album(a) => a,
+                _ => return Err(anyhow!("Album not found for id '{}'", album_id)),
+            };
 
             let share = album.share_list.get(share_id)
                 .ok_or_else(|| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?
@@ -120,12 +121,11 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>>
         )),
 
         (Some(album_id), Some(share_id)) => {
-            let conn = crate::public::db::sqlite::DB_POOL.get().map_err(|_| anyhow!("Failed to open database"))?;
-            let album: Album = conn.query_row(
-                "SELECT * FROM album WHERE id = ?",
-                [album_id],
-                |row| Album::from_row(row)
-            ).map_err(|_| anyhow!("Album not found for id '{}'", album_id))?;
+            let album_abstract = TREE.load_from_db(album_id)?;
+            let album = match album_abstract {
+                AbstractData::Album(a) => a,
+                _ => return Err(anyhow!("Album not found for id '{}'", album_id)),
+            };
 
             let share = album.share_list.get(share_id)
                 .ok_or_else(|| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?
@@ -149,12 +149,8 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
     let share_id = req.headers().get_one("x-share-id");
 
     if let (Some(album_id), Some(share_id)) = (album_id, share_id) {
-        if let Ok(conn) = crate::public::db::sqlite::DB_POOL.get() {
-            if let Ok(album) = conn.query_row(
-                "SELECT * FROM album WHERE id = ?",
-                [album_id],
-                |row| Album::from_row(row)
-            ) {
+        if let Ok(album_abstract) = TREE.load_from_db(album_id) {
+            if let AbstractData::Album(album) = album_abstract {
                 if let Some(share) = album.share_list.get(share_id) {
                     if share.show_upload {
                         if let Some(Ok(album_id_parsed)) =

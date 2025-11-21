@@ -3,6 +3,7 @@ use mini_executor::BatchTask;
 use serde_json;
 
 use crate::{
+    public::db::tree::TREE,
     public::structure::abstract_data::AbstractData,
     tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
@@ -46,7 +47,7 @@ fn flush_tree_task(
     insert_list: Vec<AbstractData>,
     remove_list: Vec<AbstractData>,
 ) -> rusqlite::Result<()> {
-    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
+    let conn = TREE.get_connection().unwrap();
 
     for abstract_data in insert_list {
         match abstract_data {

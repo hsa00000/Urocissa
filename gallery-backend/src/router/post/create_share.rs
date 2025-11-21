@@ -1,3 +1,4 @@
+use crate::public::db::tree::TREE;
 use crate::public::structure::album::{Album, Share};
 use crate::router::AppResult;
 use crate::router::GuardResult;
@@ -36,7 +37,7 @@ pub async fn create_share(
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let create_share = create_share.into_inner();
-        let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
+        let conn = TREE.get_connection().unwrap();
         match create_and_insert_share(&conn, create_share) {
             Ok(link) => Ok(link),
             Err(err) => Err(err),
@@ -47,11 +48,13 @@ pub async fn create_share(
 }
 
 fn create_and_insert_share(conn: &Connection, create_share: CreateShare) -> AppResult<String> {
-    let album_opt: Option<Album> = conn.query_row(
-        "SELECT * FROM album WHERE id = ?",
-        [&*create_share.album_id],
-        |row| Album::from_row(row)
-    ).ok();
+    let album_opt: Option<Album> = conn
+        .query_row(
+            "SELECT * FROM album WHERE id = ?",
+            [&*create_share.album_id],
+            |row| Album::from_row(row),
+        )
+        .ok();
 
     match album_opt {
         Some(mut album) => {
@@ -78,8 +81,9 @@ fn create_and_insert_share(conn: &Connection, create_share: CreateShare) -> AppR
             let share_list_json = serde_json::to_string(&album.share_list).unwrap();
             conn.execute(
                 "UPDATE album SET share_list = ? WHERE id = ?",
-                [&share_list_json, &*create_share.album_id]
-            ).unwrap();
+                [&share_list_json, &*create_share.album_id],
+            )
+            .unwrap();
             Ok(link)
         }
         None => Err(anyhow::anyhow!("Album not found").into()),

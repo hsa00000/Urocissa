@@ -12,6 +12,7 @@ mod workflow;
 
 use crate::process::initialization::initialize;
 use crate::public::constant::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
+use crate::public::db::tree::TREE;
 use crate::public::error_data::handle_error;
 use crate::public::tui::{DASHBOARD, tui_task};
 use crate::tasks::BATCH_COORDINATOR;
@@ -19,6 +20,7 @@ use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::looper::start_expire_check_loop;
 
+use crate::public::structure::{album::Album, database_struct::database::definition::Database};
 use rocket::fs::FileServer;
 use router::fairing::cache_control_fairing::cache_control_fairing;
 use router::fairing::generate_fairing_routes;
@@ -26,7 +28,6 @@ use router::{
     delete::generate_delete_routes, get::generate_get_routes, post::generate_post_routes,
     put::generate_put_routes,
 };
-use crate::public::structure::{album::Album, database_struct::database::definition::Database};
 use std::thread;
 use std::time::Instant;
 
@@ -51,7 +52,7 @@ fn main() -> Result<()> {
         INDEX_RUNTIME.block_on(async {
             let rx = initialize();
             let start_time = Instant::now();
-            let conn = crate::public::db::sqlite::DB_POOL.get().expect("Failed to get DB connection");
+            let conn = crate::public::db::tree::TREE.get_connection().expect("Failed to get DB connection");
             if let Err(e) = Database::create_database_table(&conn) {
                 panic!("Failed to create database table: {:?}", e);
             }
