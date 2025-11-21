@@ -55,3 +55,5 @@ unicode-width = "0.2.2"
 uuid = { version = "1.18.1", features = ["v4"] }
 walkdir = "2.5.0"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
+r2d2 = "0.8.10"
+r2d2_sqlite = "0.31.0"

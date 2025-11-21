@@ -10,7 +10,7 @@ impl TreeSnapshot {
         // Concurrent counter for each tag
         let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
-        let conn = Connection::open("gallery.db").context("Failed to open database")?;
+        let conn = crate::public::db::sqlite::DB_POOL.get().context("Failed to get DB connection")?;
         let mut stmt = conn.prepare("SELECT * FROM database").context("Failed to prepare statement")?;
         let rows = stmt.query_map([], |row| Database::from_row(row)).context("Failed to query database")?;
 

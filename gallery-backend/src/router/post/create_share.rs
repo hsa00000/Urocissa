@@ -36,7 +36,7 @@ pub async fn create_share(
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let create_share = create_share.into_inner();
-        let conn = Connection::open("gallery.db").unwrap();
+        let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
         match create_and_insert_share(&conn, create_share) {
             Ok(link) => Ok(link),
             Err(err) => Err(err),

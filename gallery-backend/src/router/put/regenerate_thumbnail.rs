@@ -63,7 +63,7 @@ pub async fn regenerate_thumbnail_with_frame(
         .context("Failed to copy frame file")?;
 
     let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData> {
-        let conn = Connection::open("gallery.db").context("Failed to open database")?;
+        let conn = crate::public::db::sqlite::DB_POOL.get().context("Failed to open database")?;
         let mut database = conn.query_row(
             "SELECT * FROM database WHERE hash = ?",
             [&*hash],

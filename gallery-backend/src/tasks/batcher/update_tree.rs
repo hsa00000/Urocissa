@@ -42,7 +42,7 @@ impl BatchTask for UpdateTreeTask {
 
 fn update_tree_task() {
     let start_time = Instant::now();
-    let conn = Connection::open("gallery.db").expect("Failed to open database");
+    let conn = crate::public::db::sqlite::DB_POOL.get().expect("Failed to open database");
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 

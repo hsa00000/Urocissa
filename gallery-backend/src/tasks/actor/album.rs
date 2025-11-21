@@ -38,7 +38,7 @@ impl Task for AlbumSelfUpdateTask {
 pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
     info!("Perform album self-update");
 
-    let conn = Connection::open("gallery.db").unwrap();
+    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
 
     let album_opt = conn
         .query_row(

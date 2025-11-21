@@ -17,7 +17,7 @@ pub struct ExportEntry {
 pub async fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;
     // Collect all data synchronously
-    let conn = Connection::open("gallery.db").unwrap();
+    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
     let mut stmt = conn.prepare("SELECT * FROM database").unwrap();
     let rows = stmt.query_map([], |row| Database::from_row(row)).unwrap();
     let mut entries = Vec::new();

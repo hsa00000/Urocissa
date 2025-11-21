@@ -38,7 +38,7 @@ pub async fn set_user_defined_description(
     tokio::task::spawn_blocking(move || -> Result<()> {
         let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&set_user_defined_description.timestamp).unwrap();
         let hash = index_to_hash(&tree_snapshot, set_user_defined_description.index)?;
-        let conn = Connection::open("gallery.db").unwrap();
+        let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
         let mut abstract_data = if let Ok(database) = conn.query_row(
             "SELECT * FROM database WHERE hash = ?",
             [&*hash],

@@ -41,7 +41,7 @@ impl BatchTask for FlushTreeTask {
 }
 
 fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData>) {
-    let conn = Connection::open("gallery.db").unwrap();
+    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
 
     insert_list
         .iter()

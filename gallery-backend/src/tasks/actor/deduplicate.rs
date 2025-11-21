@@ -52,7 +52,7 @@ impl Task for DeduplicateTask {
 fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
     let mut database = Database::new(&task.path, task.hash)?;
 
-    let conn = Connection::open("gallery.db").unwrap();
+    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
     // File already in persistent database
 
     let existing_db = conn.query_row(

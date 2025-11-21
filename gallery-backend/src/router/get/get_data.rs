@@ -43,7 +43,7 @@ pub async fn get_data(
         let database_timestamp_return_list: Result<_> = (start..end)
             .into_par_iter()
             .map(|index| {
-                let conn = Connection::open("gallery.db").unwrap();
+                let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
                 let hash = index_to_hash(&tree_snapshot, index)?;
 
                 let mut abstract_data = if let Ok(database) = conn.query_row(

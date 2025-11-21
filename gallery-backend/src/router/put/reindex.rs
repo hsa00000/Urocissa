@@ -55,7 +55,7 @@ pub async fn reindex(
             let database_list: Vec<_> = batch
                 .into_par_iter()
                 .filter_map(|&hash| {
-                    let conn = Connection::open("gallery.db").unwrap();
+                    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
                     // First, try to get from database table
                     let database_opt = conn.query_row(
                         "SELECT * FROM database WHERE hash = ?",

@@ -36,7 +36,7 @@ pub async fn edit_tag(
 
         for &index in &json_data.index_array {
             let hash = index_to_hash(&tree_snapshot, index)?;
-            let conn = Connection::open("gallery.db").unwrap();
+            let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
             let mut abstract_data = if let Ok(database) = conn.query_row(
                 "SELECT * FROM database WHERE hash = ?",
                 [&*hash],

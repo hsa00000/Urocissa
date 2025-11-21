@@ -61,7 +61,7 @@ fn process_deletes(
     timestamp: u128,
 ) -> Result<(Vec<AbstractData>, Vec<ArrayString<64>>)> {
     let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
-    let conn = Connection::open("gallery.db").unwrap();
+    let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
 
     let mut all_affected_album_ids = Vec::new();
     let mut abstract_data_to_remove = Vec::new();

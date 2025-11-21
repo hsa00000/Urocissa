@@ -5,7 +5,7 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use rocket::serde::{Deserialize, json::Json};
 use rusqlite::Connection;
@@ -26,18 +26,21 @@ pub async fn edit_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
-        let conn = Connection::open("gallery.db").unwrap();
+        let conn = Connection::open("./gallery.db").unwrap();
         if let Ok(mut album) = conn.query_row(
             "SELECT * FROM album WHERE id = ?",
             [&*json_data.album_id],
-            |row| Album::from_row(row)
+            |row| Album::from_row(row),
         ) {
-            album.share_list.insert(json_data.share.url, json_data.share.clone());
+            album
+                .share_list
+                .insert(json_data.share.url, json_data.share.clone());
             let share_list_json = serde_json::to_string(&album.share_list).unwrap();
             conn.execute(
                 "UPDATE album SET share_list = ? WHERE id = ?",
-                [&share_list_json, &*json_data.album_id]
-            ).unwrap();
+                [&share_list_json, &*json_data.album_id],
+            )
+            .unwrap();
         }
     })
     .await
@@ -65,18 +68,23 @@ pub async fn delete_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
-        let conn = Connection::open("gallery.db").unwrap();
+        let conn = crate::public::db::sqlite::DB_POOL
+            .get()
+            .context("Failed to get DB connection")
+            .unwrap();
+
         if let Ok(mut album) = conn.query_row(
             "SELECT * FROM album WHERE id = ?",
             [&*json_data.album_id],
-            |row| Album::from_row(row)
+            |row| Album::from_row(row),
         ) {
             album.share_list.remove(&json_data.share_id);
             let share_list_json = serde_json::to_string(&album.share_list).unwrap();
             conn.execute(
                 "UPDATE album SET share_list = ? WHERE id = ?",
-                [&share_list_json, &*json_data.album_id]
-            ).unwrap();
+                [&share_list_json, &*json_data.album_id],
+            )
+            .unwrap();
         }
     })
     .await

@@ -43,7 +43,7 @@ impl Tree {
         tag_infos
     }
     pub fn read_albums(&self) -> Result<Vec<Album>> {
-        let conn = Connection::open("gallery.db").context("Failed to open database")?;
+        let conn = crate::public::db::sqlite::DB_POOL.get().context("Failed to open database")?;
         let mut stmt = conn.prepare("SELECT * FROM album").context("Failed to prepare statement")?;
         let albums = stmt.query_map([], |row| Album::from_row(row))
             .context("Failed to query albums")?

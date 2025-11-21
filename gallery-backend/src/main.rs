@@ -26,6 +26,7 @@ use router::{
     delete::generate_delete_routes, get::generate_get_routes, post::generate_post_routes,
     put::generate_put_routes,
 };
+use crate::public::structure::{album::Album, database_struct::database::definition::Database};
 use rusqlite::Connection;
 use std::thread;
 use std::time::Instant;
@@ -49,7 +50,13 @@ fn main() -> Result<()> {
         INDEX_RUNTIME.block_on(async {
             let rx = initialize();
             let start_time = Instant::now();
-            let conn = Connection::open("gallery.db").unwrap();
+            let conn = crate::public::db::sqlite::DB_POOL.get().expect("Failed to get DB connection");
+            if let Err(e) = Database::create_database_table(&conn) {
+                panic!("Failed to create database table: {:?}", e);
+            }
+            if let Err(e) = Album::create_album_table(&conn) {
+                panic!("Failed to create album table: {:?}", e);
+            }
             let data_count: i64 = conn.query_row("SELECT COUNT(*) FROM database", [], |row| row.get(0)).unwrap();
             info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", data_count);
             let album_count: i64 = conn.query_row("SELECT COUNT(*) FROM album", [], |row| row.get(0)).unwrap();

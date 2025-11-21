@@ -40,7 +40,7 @@ pub async fn edit_album(
     let (to_flush, effected_album_vec) =
         tokio::task::spawn_blocking(move || -> Result<(Vec<_>, Vec<ArrayString<64>>)> {
             let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&json_data.timestamp).unwrap();
-            let conn = Connection::open("gallery.db").unwrap();
+            let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
 
             let mut to_flush = Vec::with_capacity(json_data.index_array.len());
             for &index in &json_data.index_array {
@@ -117,7 +117,7 @@ pub async fn set_album_cover(
         let album_id = set_album_cover_inner.album_id;
         let cover_hash = set_album_cover_inner.cover_hash;
 
-        let conn = Connection::open("gallery.db").unwrap();
+        let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
         let mut album: Album = conn.query_row(
             "SELECT * FROM album WHERE id = ?",
             [&*album_id],
@@ -167,7 +167,7 @@ pub async fn set_album_title(
         let set_album_title_inner = set_album_title.into_inner();
         let album_id = set_album_title_inner.album_id;
 
-        let conn = Connection::open("gallery.db").unwrap();
+        let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
         // Update the title
         conn.execute(
             "UPDATE album SET title = ? WHERE id = ?",

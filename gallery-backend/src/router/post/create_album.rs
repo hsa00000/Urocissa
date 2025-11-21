@@ -91,7 +91,7 @@ async fn create_album_elements(
         elements_index
             .into_par_iter()
             .map(|idx| {
-                let conn = Connection::open("gallery.db").unwrap();
+                let conn = crate::public::db::sqlite::DB_POOL.get().unwrap();
                 index_edit_album_insert(&tree_snapshot, &conn, idx, album_id)
             })
             .collect()

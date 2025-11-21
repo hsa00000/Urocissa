@@ -85,7 +85,7 @@ pub fn try_resolve_share_from_headers(req: &Request<'_>) -> Result<Option<Claims
         )),
 
         (Some(album_id), Some(share_id)) => {
-            let conn = Connection::open("gallery.db").map_err(|_| anyhow!("Failed to open database"))?;
+            let conn = crate::public::db::sqlite::DB_POOL.get().map_err(|_| anyhow!("Failed to open database"))?;
             let album: Album = conn.query_row(
                 "SELECT * FROM album WHERE id = ?",
                 [album_id],
@@ -121,7 +121,7 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>>
         )),
 
         (Some(album_id), Some(share_id)) => {
-            let conn = Connection::open("gallery.db").map_err(|_| anyhow!("Failed to open database"))?;
+            let conn = crate::public::db::sqlite::DB_POOL.get().map_err(|_| anyhow!("Failed to open database"))?;
             let album: Album = conn.query_row(
                 "SELECT * FROM album WHERE id = ?",
                 [album_id],
@@ -150,7 +150,7 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
     let share_id = req.headers().get_one("x-share-id");
 
     if let (Some(album_id), Some(share_id)) = (album_id, share_id) {
-        if let Ok(conn) = Connection::open("gallery.db") {
+        if let Ok(conn) = crate::public::db::sqlite::DB_POOL.get() {
             if let Ok(album) = conn.query_row(
                 "SELECT * FROM album WHERE id = ?",
                 [album_id],
