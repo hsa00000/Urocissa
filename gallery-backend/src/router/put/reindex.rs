@@ -2,12 +2,13 @@ use arrayvec::ArrayString;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::http::Status;
 
-use crate::operations::open_db::open_data_and_album_tables;
 use crate::process::info::regenerate_metadata_for_image;
 use crate::process::info::regenerate_metadata_for_video;
 use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::database_struct::database::definition::Database;
+use crate::public::structure::album::Album;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -19,6 +20,7 @@ use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use rocket::serde::json::Json;
+use rusqlite::Connection;
 use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,7 +39,6 @@ pub async fn reindex(
     let _ = read_only_mode?;
     let json_data = json_data.into_inner();
     tokio::task::spawn_blocking(move || {
-        let (data_table, album_table) = open_data_and_album_tables();
         let reduced_data_vec = TREE_SNAPSHOT
             .read_tree_snapshot(&json_data.timestamp)
             .unwrap();
@@ -54,39 +55,45 @@ pub async fn reindex(
             let database_list: Vec<_> = batch
                 .into_par_iter()
                 .filter_map(|&hash| {
-                    match data_table.get(&*hash).unwrap() {
-                        Some(guard) => {
-                            let mut database = guard.value();
-                            if database.ext_type == "image" {
-                                match regenerate_metadata_for_image(&mut database) {
-                                    Ok(_) => Some(AbstractData::Database(database)),
-                                    Err(_) => None,
-                                }
-                            } else if database.ext_type == "video" {
-                                match regenerate_metadata_for_video(&mut database) {
-                                    Ok(_) => Some(AbstractData::Database(database)),
-                                    Err(_) => None,
-                                }
-                            } else {
-                                None
+                    let conn = Connection::open("gallery.db").unwrap();
+                    // First, try to get from database table
+                    let database_opt = conn.query_row(
+                        "SELECT * FROM database WHERE hash = ?",
+                        [&*hash],
+                        |row| Database::from_row(row)
+                    ).ok();
+                    if let Some(mut database) = database_opt {
+                        if database.ext_type == "image" {
+                            match regenerate_metadata_for_image(&mut database) {
+                                Ok(_) => Some(AbstractData::Database(database)),
+                                Err(_) => None,
                             }
+                        } else if database.ext_type == "video" {
+                            match regenerate_metadata_for_video(&mut database) {
+                                Ok(_) => Some(AbstractData::Database(database)),
+                                Err(_) => None,
+                            }
+                        } else {
+                            None
                         }
-                        _ => {
-                            match album_table.get(&*hash).unwrap() {
-                                Some(_) => {
-                                    // album_self_update already will commit
-                                    INDEX_COORDINATOR
-                                        .execute_detached(AlbumSelfUpdateTask::new(hash));
-                                    None
-                                }
-                                _ => {
-                                    error!(
-                                        "Reindex failed: cannot find data with hash/id: {}",
-                                        hash
-                                    );
-                                    None
-                                }
-                            }
+                    } else {
+                        // Check album table
+                        let album_opt = conn.query_row(
+                            "SELECT * FROM album WHERE id = ?",
+                            [&*hash],
+                            |row| Album::from_row(row)
+                        ).ok();
+                        if album_opt.is_some() {
+                            // album_self_update already will commit
+                            INDEX_COORDINATOR
+                                .execute_detached(AlbumSelfUpdateTask::new(hash));
+                            None
+                        } else {
+                            error!(
+                                "Reindex failed: cannot find data with hash/id: {}",
+                                hash
+                            );
+                            None
                         }
                     }
                 })
