@@ -1,6 +1,4 @@
-use crate::public::constant::redb::ALBUM_TABLE;
-use crate::public::db::tree::TREE;
-use crate::public::structure::album::ResolvedShare;
+use crate::public::structure::album::{Album, ResolvedShare};
 use crate::router::claims::claims::Claims;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 use anyhow::Error;
@@ -9,6 +7,7 @@ use anyhow::anyhow;
 use arrayvec::ArrayString;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use rocket::Request;
+use rusqlite::Connection;
 use serde::de::DeserializeOwned;
 /// Extract and validate Authorization header Bearer token
 pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {
@@ -86,27 +85,16 @@ pub fn try_resolve_share_from_headers(req: &Request<'_>) -> Result<Option<Claims
         )),
 
         (Some(album_id), Some(share_id)) => {
-            // 只要帶了，就在這裡定生死：找不到或出錯都回 Err
-            let read_txn = TREE
-                .in_disk
-                .begin_read()
-                .map_err(|_| anyhow!("Failed to begin read transaction"))?;
+            let conn = Connection::open("gallery.db").map_err(|_| anyhow!("Failed to open database"))?;
+            let album: Album = conn.query_row(
+                "SELECT * FROM album WHERE id = ?",
+                [album_id],
+                |row| Album::from_row(row)
+            ).map_err(|_| anyhow!("Album not found for id '{}'", album_id))?;
 
-            let table = read_txn
-                .open_table(ALBUM_TABLE)
-                .map_err(|_| anyhow!("Failed to open album table"))?;
-
-            let album_guard = table
-                .get(album_id)
-                .map_err(|_| anyhow!("Failed to get album from table"))?
-                .ok_or_else(|| anyhow!("Album not found for id '{}'", album_id))?;
-
-            let mut album = album_guard.value();
-
-            let share = album
-                .share_list
-                .remove(share_id)
-                .ok_or_else(|| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?;
+            let share = album.share_list.get(share_id)
+                .ok_or_else(|| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?
+                .clone();
 
             let resolved_share = ResolvedShare::new(
                 ArrayString::<64>::from(album_id)
@@ -133,27 +121,16 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>>
         )),
 
         (Some(album_id), Some(share_id)) => {
-            // 只要帶了，就在這裡定生死：找不到或出錯都回 Err
-            let read_txn = TREE
-                .in_disk
-                .begin_read()
-                .map_err(|_| anyhow!("Failed to begin read transaction"))?;
+            let conn = Connection::open("gallery.db").map_err(|_| anyhow!("Failed to open database"))?;
+            let album: Album = conn.query_row(
+                "SELECT * FROM album WHERE id = ?",
+                [album_id],
+                |row| Album::from_row(row)
+            ).map_err(|_| anyhow!("Album not found for id '{}'", album_id))?;
 
-            let table = read_txn
-                .open_table(ALBUM_TABLE)
-                .map_err(|_| anyhow!("Failed to open album table"))?;
-
-            let album_guard = table
-                .get(album_id)
-                .map_err(|_| anyhow!("Failed to get album from table"))?
-                .ok_or_else(|| anyhow!("Album not found for id '{}'", album_id))?;
-
-            let mut album = album_guard.value();
-
-            let share = album
-                .share_list
-                .remove(share_id)
-                .ok_or_else(|| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?;
+            let share = album.share_list.get(share_id)
+                .ok_or_else(|| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?
+                .clone();
 
             let resolved_share = ResolvedShare::new(
                 ArrayString::<64>::from(album_id)
@@ -173,17 +150,18 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
     let share_id = req.headers().get_one("x-share-id");
 
     if let (Some(album_id), Some(share_id)) = (album_id, share_id) {
-        if let Ok(read_txn) = TREE.in_disk.begin_read() {
-            if let Ok(table) = read_txn.open_table(ALBUM_TABLE) {
-                if let Ok(Some(album_guard)) = table.get(album_id) {
-                    let mut album = album_guard.value();
-                    if let Some(share) = album.share_list.remove(share_id) {
-                        if share.show_upload {
-                            if let Some(Ok(album_id_parsed)) =
-                                req.query_value::<&str>("presigned_album_id_opt")
-                            {
-                                return album.id.as_str() == album_id_parsed;
-                            }
+        if let Ok(conn) = Connection::open("gallery.db") {
+            if let Ok(album) = conn.query_row(
+                "SELECT * FROM album WHERE id = ?",
+                [album_id],
+                |row| Album::from_row(row)
+            ) {
+                if let Some(share) = album.share_list.get(share_id) {
+                    if share.show_upload {
+                        if let Some(Ok(album_id_parsed)) =
+                            req.query_value::<&str>("presigned_album_id_opt")
+                        {
+                            return album.id.as_str() == album_id_parsed;
                         }
                     }
                 }
