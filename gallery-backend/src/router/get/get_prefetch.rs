@@ -46,7 +46,7 @@ impl Prefetch {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Decode, Encode)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrefetchReturn {
     pub prefetch: Prefetch,
