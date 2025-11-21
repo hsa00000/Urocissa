@@ -1,8 +1,10 @@
-use crate::operations::open_db::{open_data_and_album_tables, open_tree_snapshot_table};
-use crate::process::transitor::index_to_abstract_data;
+use crate::operations::transitor::index_to_hash;
 use crate::public::constant::USER_DEFINED_DESCRIPTION;
+use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
 use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::album::Album;
+use crate::public::structure::database_struct::database::definition::Database;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
@@ -11,6 +13,7 @@ use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use rocket::serde::{Deserialize, json::Json};
+use rusqlite::Connection;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
@@ -33,15 +36,24 @@ pub async fn set_user_defined_description(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || -> Result<()> {
-        let (data_table, album_table) = open_data_and_album_tables();
-        let tree_snapshot = open_tree_snapshot_table(set_user_defined_description.timestamp)?;
-
-        let mut abstract_data = index_to_abstract_data(
-            &tree_snapshot,
-            &data_table,
-            &album_table,
-            set_user_defined_description.index,
-        )?;
+        let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&set_user_defined_description.timestamp).unwrap();
+        let hash = index_to_hash(&tree_snapshot, set_user_defined_description.index)?;
+        let conn = Connection::open("gallery.db").unwrap();
+        let mut abstract_data = if let Ok(database) = conn.query_row(
+            "SELECT * FROM database WHERE hash = ?",
+            [&*hash],
+            |row| Database::from_row(row)
+        ) {
+            AbstractData::Database(database)
+        } else if let Ok(album) = conn.query_row(
+            "SELECT * FROM album WHERE id = ?",
+            [&*hash],
+            |row| Album::from_row(row)
+        ) {
+            AbstractData::Album(album)
+        } else {
+            return Err(anyhow::anyhow!("No data found for hash: {}", hash));
+        };
 
         match &mut abstract_data {
             AbstractData::Database(db) => {
