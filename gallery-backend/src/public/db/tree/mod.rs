@@ -5,7 +5,6 @@ use crate::public::structure::database_struct::database_timestamp::DatabaseTimes
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
 
 pub struct Tree {
-    pub in_disk: &'static redb::Database,
     pub in_memory: &'static Arc<RwLock<Vec<DatabaseTimestamp>>>,
 }
 

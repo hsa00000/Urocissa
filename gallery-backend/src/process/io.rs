@@ -27,23 +27,3 @@ pub fn copy_with_retry(src: &Path, dst: &Path) -> Result<u64> {
     }
     unreachable!("loop guarantees return")
 }
-
-pub fn remove_with_retry(path: &Path) -> Result<()> {
-    for attempt in 1..=MAX_COPY_RETRIES + 1 {
-        match fs::remove_file(path) {
-            Ok(()) => return Ok(()),
-            Err(error) if attempt <= MAX_COPY_RETRIES => {
-                warn!(
-                    "File removal failed (attempt {}/{}): {:?}\nError: {}\nRetrying in 1 second...",
-                    attempt,
-                    MAX_COPY_RETRIES + 1,
-                    path,
-                    error
-                );
-                thread::sleep(Duration::from_secs(1));
-            }
-            Err(error) => return Err(error.into()),
-        }
-    }
-    unreachable!("loop guarantees return")
-}
