@@ -1,10 +1,12 @@
-use crate::operations::open_db::{open_data_and_album_tables, open_tree_snapshot_table};
 use crate::operations::resolve_show_download_and_metadata;
 use crate::operations::transitor::{
     abstract_data_to_database_timestamp_return, clear_abstract_data_metadata,
-    hash_to_abstract_data, index_to_hash,
+    index_to_hash,
 };
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
+use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::album::Album;
+use crate::public::structure::database_struct::database::definition::Database;
 use crate::public::structure::database_struct::database_timestamp::DataBaseTimestampReturn;
 use crate::public::structure::row::{Row, ScrollBarData};
 
@@ -14,6 +16,7 @@ use anyhow::Result;
 use log::info;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::serde::json::Json;
+use rusqlite::Connection;
 use std::time::Instant;
 
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
@@ -30,8 +33,7 @@ pub async fn get_data(
         let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
         let (show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
 
-        let (data_table, album_table) = open_data_and_album_tables();
-        let tree_snapshot = open_tree_snapshot_table(timestamp)?;
+        let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
         end = end.min(tree_snapshot.len());
 
         if start >= end {
@@ -41,9 +43,24 @@ pub async fn get_data(
         let database_timestamp_return_list: Result<_> = (start..end)
             .into_par_iter()
             .map(|index| {
+                let conn = Connection::open("gallery.db").unwrap();
                 let hash = index_to_hash(&tree_snapshot, index)?;
 
-                let mut abstract_data = hash_to_abstract_data(&data_table, &album_table, hash)?;
+                let mut abstract_data = if let Ok(database) = conn.query_row(
+                    "SELECT * FROM database WHERE hash = ?",
+                    [&*hash],
+                    |row| Database::from_row(row)
+                ) {
+                    AbstractData::Database(database)
+                } else if let Ok(album) = conn.query_row(
+                    "SELECT * FROM album WHERE id = ?",
+                    [&*hash],
+                    |row| Album::from_row(row)
+                ) {
+                    AbstractData::Album(album)
+                } else {
+                    return Err(anyhow::anyhow!("No data found for hash: {}", hash));
+                };
 
                 clear_abstract_data_metadata(&mut abstract_data, show_metadata);
 
