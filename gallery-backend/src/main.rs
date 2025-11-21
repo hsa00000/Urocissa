@@ -46,6 +46,8 @@ async fn build_rocket() -> rocket::Rocket<rocket::Build> {
 }
 
 fn main() -> Result<()> {
+    crate::public::db::sqlite::init_db_file_once()?;
+
     let worker_handle = thread::spawn(|| {
         INDEX_RUNTIME.block_on(async {
             let rx = initialize();
