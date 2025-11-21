@@ -1,17 +1,17 @@
-use crate::public::db::tree::TREE;
-use crate::public::structure::album::Share;
+use crate::public::structure::album::{Album, Share};
 use crate::router::AppResult;
+use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::{public::constant::redb::ALBUM_TABLE, router::GuardResult};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rand::Rng;
 use rand::distr::Alphanumeric;
-use redb::{ReadableTable, WriteTransaction};
 use rocket::post;
 use rocket::serde::json::Json;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
@@ -36,26 +36,22 @@ pub async fn create_share(
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let create_share = create_share.into_inner();
-        let txn = TREE.in_disk.begin_write().unwrap();
-        match create_and_insert_share(&txn, create_share) {
-            Ok(link) => {
-                txn.commit().unwrap();
-                return Ok(link);
-            }
-            Err(err) => return Err(err),
+        let conn = Connection::open("gallery.db").unwrap();
+        match create_and_insert_share(&conn, create_share) {
+            Ok(link) => Ok(link),
+            Err(err) => Err(err),
         }
     })
     .await
     .unwrap()
 }
 
-fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) -> AppResult<String> {
-    let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-
-    let album_opt = album_table
-        .get(&*create_share.album_id)
-        .unwrap()
-        .map(|guard| guard.value());
+fn create_and_insert_share(conn: &Connection, create_share: CreateShare) -> AppResult<String> {
+    let album_opt: Option<Album> = conn.query_row(
+        "SELECT * FROM album WHERE id = ?",
+        [&*create_share.album_id],
+        |row| Album::from_row(row)
+    ).ok();
 
     match album_opt {
         Some(mut album) => {
@@ -79,7 +75,11 @@ fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) ->
                     .as_secs(),
             };
             album.share_list.insert(share_id, share);
-            album_table.insert(&*create_share.album_id, album).unwrap();
+            let share_list_json = serde_json::to_string(&album.share_list).unwrap();
+            conn.execute(
+                "UPDATE album SET share_list = ? WHERE id = ?",
+                [&share_list_json, &*create_share.album_id]
+            ).unwrap();
             Ok(link)
         }
         None => Err(anyhow::anyhow!("Album not found").into()),
