@@ -8,7 +8,6 @@ use crate::{
 use anyhow::Result;
 use arrayvec::ArrayString;
 use mini_executor::Task;
-use rusqlite::Connection;
 use std::{
     mem,
     path::PathBuf,

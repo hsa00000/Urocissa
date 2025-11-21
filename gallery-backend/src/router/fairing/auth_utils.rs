@@ -7,7 +7,6 @@ use anyhow::anyhow;
 use arrayvec::ArrayString;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use rocket::Request;
-use rusqlite::Connection;
 use serde::de::DeserializeOwned;
 /// Extract and validate Authorization header Bearer token
 pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {

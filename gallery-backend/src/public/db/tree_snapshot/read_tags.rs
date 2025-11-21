@@ -2,8 +2,7 @@ use super::TreeSnapshot;
 use crate::{public::db::tree::read_tags::TagInfo, public::structure::database_struct::database::definition::Database};
 use anyhow::{Context, Result};
 use dashmap::DashMap;
-use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
-use rusqlite::Connection;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::sync::atomic::{AtomicUsize, Ordering};
 impl TreeSnapshot {
     pub fn read_tags(&self) -> Result<Vec<TagInfo>> {

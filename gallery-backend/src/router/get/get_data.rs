@@ -16,7 +16,6 @@ use anyhow::Result;
 use log::info;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::serde::json::Json;
-use rusqlite::Connection;
 use std::time::Instant;
 
 #[get("/get/get-data?<timestamp>&<start>&<end>")]

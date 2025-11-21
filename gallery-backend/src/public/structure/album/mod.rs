@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
 use arrayvec::ArrayString;
-use bitcode::{Decode, Encode};
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 use serde_json;

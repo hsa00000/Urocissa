@@ -14,7 +14,6 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use futures::future::try_join_all;
 use rocket::serde::{Deserialize, json::Json};
-use rusqlite::Connection;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteList {

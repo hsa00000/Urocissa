@@ -15,7 +15,6 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use futures::{StreamExt, TryStreamExt, stream};
 use rocket::serde::{Deserialize, json::Json};
-use rusqlite::Connection;
 use serde::Serialize;
 use serde_json;
 #[derive(Debug, Deserialize)]

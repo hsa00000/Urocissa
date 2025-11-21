@@ -5,7 +5,6 @@ use crate::{
 };
 use rocket::get;
 use rocket::response::stream::ByteStream;
-use rusqlite::Connection;
 use serde::Serialize;
 #[derive(Debug, Serialize)]
 pub struct ExportEntry {

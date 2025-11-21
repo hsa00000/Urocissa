@@ -13,7 +13,6 @@ use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use rocket::serde::{Deserialize, json::Json};
-use rusqlite::Connection;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]

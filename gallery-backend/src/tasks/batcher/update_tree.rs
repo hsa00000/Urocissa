@@ -8,7 +8,6 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use mini_executor::BatchTask;
 use rayon::prelude::*;
-use rusqlite::Connection;
 use std::collections::HashSet;
 use std::sync::LazyLock;
 use std::time::Instant;

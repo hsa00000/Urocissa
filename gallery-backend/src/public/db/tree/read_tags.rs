@@ -4,7 +4,6 @@ use crate::public::structure::album::Album;
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use super::Tree;

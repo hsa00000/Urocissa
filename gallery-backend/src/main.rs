@@ -27,7 +27,6 @@ use router::{
     put::generate_put_routes,
 };
 use crate::public::structure::{album::Album, database_struct::database::definition::Database};
-use rusqlite::Connection;
 use std::thread;
 use std::time::Instant;
 

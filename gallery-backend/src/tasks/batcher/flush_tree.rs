@@ -1,5 +1,4 @@
 use mini_executor::BatchTask;
-use rusqlite::Connection;
 use serde_json;
 
 use crate::{

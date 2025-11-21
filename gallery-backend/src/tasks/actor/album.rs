@@ -8,7 +8,6 @@ use arrayvec::ArrayString;
 use log::info;
 use mini_executor::Task;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use rusqlite::Connection;
 use serde_json;
 use tokio::task::spawn_blocking;
 

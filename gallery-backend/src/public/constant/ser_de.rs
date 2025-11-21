@@ -1,7 +1,7 @@
 use crate::router::get::get_prefetch::Prefetch;
 
 use crate::public::structure::{
-    album::Album, database_struct::database::definition::Database, reduced_data::ReducedData,
+    reduced_data::ReducedData,
     row::Row,
 };
 use redb::{TypeName, Value};

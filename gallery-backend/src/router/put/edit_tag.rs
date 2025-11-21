@@ -1,5 +1,4 @@
 use crate::operations::transitor::index_to_hash;
-use crate::process::transitor::index_to_abstract_data;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
 use crate::public::db::tree::read_tags::TagInfo;
@@ -14,7 +13,6 @@ use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use rocket::serde::{Deserialize, json::Json};
-use rusqlite::Connection;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditTagsData {

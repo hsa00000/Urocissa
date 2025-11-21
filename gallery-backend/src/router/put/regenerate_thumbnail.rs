@@ -14,7 +14,6 @@ use anyhow::anyhow;
 use arrayvec::ArrayString;
 use rocket::form::{Errors, Form};
 use rocket::fs::TempFile;
-use rusqlite::Connection;
 
 #[derive(FromForm, Debug)]
 pub struct RegenerateThumbnailForm<'r> {
