@@ -1,6 +1,8 @@
-use crate::operations::open_db::{open_data_and_album_tables, open_tree_snapshot_table};
-use crate::process::transitor::index_to_abstract_data;
+use crate::operations::transitor::index_to_hash;
+use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::album::Album;
+use crate::public::structure::database_struct::database::definition::Database;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -12,6 +14,7 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use futures::future::try_join_all;
 use rocket::serde::{Deserialize, json::Json};
+use rusqlite::Connection;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteList {
@@ -57,15 +60,29 @@ fn process_deletes(
     delete_list: Vec<usize>,
     timestamp: u128,
 ) -> Result<(Vec<AbstractData>, Vec<ArrayString<64>>)> {
-    let (data_table, album_table) = open_data_and_album_tables();
-    let tree_snapshot = open_tree_snapshot_table(timestamp)?;
+    let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
+    let conn = Connection::open("gallery.db").unwrap();
 
     let mut all_affected_album_ids = Vec::new();
     let mut abstract_data_to_remove = Vec::new();
 
     for index in delete_list {
-        let abstract_data =
-            index_to_abstract_data(&tree_snapshot, &data_table, &album_table, index)?;
+        let hash = index_to_hash(&tree_snapshot, index)?;
+        let abstract_data = if let Ok(database) = conn.query_row(
+            "SELECT * FROM database WHERE hash = ?",
+            [&*hash],
+            |row| Database::from_row(row)
+        ) {
+            AbstractData::Database(database)
+        } else if let Ok(album) = conn.query_row(
+            "SELECT * FROM album WHERE id = ?",
+            [&*hash],
+            |row| Album::from_row(row)
+        ) {
+            AbstractData::Album(album)
+        } else {
+            return Err(anyhow::anyhow!("No data found for hash: {}", hash));
+        };
 
         let affected_albums = match &abstract_data {
             AbstractData::Database(db) => db.album.iter().cloned().collect(),
