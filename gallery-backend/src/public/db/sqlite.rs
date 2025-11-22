@@ -9,5 +9,6 @@ pub fn init_db_file_once() -> anyhow::Result<()> {
          PRAGMA synchronous = NORMAL;
          PRAGMA foreign_keys = ON;",
     )?;
+    crate::public::db::schema::create_all_tables(&conn)?;
     Ok(())
 }
