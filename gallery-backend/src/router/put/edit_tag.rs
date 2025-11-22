@@ -3,11 +3,12 @@ use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
 use crate::public::db::tree::read_tags::TagInfo;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
+use crate::tasks::batcher::update_tags::UpdateTagsTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use rocket::serde::{Deserialize, json::Json};
@@ -27,11 +28,12 @@ pub async fn edit_tag(
 ) -> AppResult<Json<Vec<TagInfo>>> {
     let _ = auth?;
     let _ = read_only_mode?;
-    let vec_tags_info = tokio::task::spawn_blocking(move || -> Result<Vec<TagInfo>> {
+    let updated_data = tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>> {
         let tree_snapshot = TREE_SNAPSHOT
             .read_tree_snapshot(&json_data.timestamp)
             .unwrap();
 
+        let mut updated_data = Vec::new();
         for &index in &json_data.index_array {
             let hash = index_to_hash(&tree_snapshot, index)?;
             let mut abstract_data = TREE.load_from_db(&hash)?;
@@ -46,9 +48,20 @@ pub async fn edit_tag(
                 tag_set.remove(tag);
             }
 
-            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]))
+            updated_data.push(abstract_data);
         }
 
+        Ok(updated_data)
+    })
+    .await
+    .unwrap()?;
+
+    BATCH_COORDINATOR
+        .execute_batch_waiting(UpdateTagsTask::new(updated_data))
+        .await
+        .unwrap();
+
+    let vec_tags_info = tokio::task::spawn_blocking(move || -> Result<Vec<TagInfo>> {
         Ok(TREE_SNAPSHOT.read_tags()?)
     })
     .await
