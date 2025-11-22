@@ -39,8 +39,8 @@ const setAsCover = async () => {
     return
   }
 
-  await axios.post(
-    '/post/set_album_cover',
+  await axios.put(
+    '/put/set_album_cover',
     {
       albumId: albumId,
       coverHash: coverHash
