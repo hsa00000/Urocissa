@@ -1,3 +1,4 @@
+use crate::public::structure::album::Album;
 use crate::public::structure::database_struct::file_modify::FileModify;
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
@@ -71,6 +72,10 @@ impl Database {
             FROM database d;
         "#;
         conn.execute(sql_create_view, [])?;
+
+        // Create album table and album_databases table
+        Album::create_album_table(conn)?;
+        Album::create_album_databases_table(conn)?;
 
         Ok(())
     }

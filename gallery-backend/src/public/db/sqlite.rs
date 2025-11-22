@@ -6,7 +6,8 @@ pub fn init_db_file_once() -> anyhow::Result<()> {
     conn.busy_timeout(Duration::from_millis(5000))?;
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
-         PRAGMA synchronous = NORMAL;",
+         PRAGMA synchronous = NORMAL;
+         PRAGMA foreign_keys = ON;",
     )?;
     Ok(())
 }
