@@ -5,12 +5,14 @@ import { escapeAndWrap } from '@utils/escape'
 import { useShareStore } from '@/store/shareStore'
 
 export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded) {
-  const isolationId = route.meta.level === 4 ? 'subId' : 'mainId'
+  console.log("route.meta.level is", route.meta.level);
+
+  const isolationId = (route.meta.level === 3 || route.meta.level === 4) ? 'subId' : 'mainId'
   return isolationId
 }
 
 export function getHashIndexDataFromRoute(route: RouteLocationNormalizedLoaded) {
-  const isolationId = route.meta.level === 4 ? 'subId' : 'mainId'
+  const isolationId = getIsolationIdByRoute(route)
   const storeData = useDataStore(isolationId)
 
   let hash: string
