@@ -4,13 +4,13 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::public::db::tree::TREE;
 use crate::public::structure::{
-    abstract_data::AbstractData, database_struct::database::definition::Database,
+    abstract_data::AbstractData, database_struct::database::definition::DatabaseWithTag,
 };
 
 use super::Album;
 
 impl Album {
-    pub fn set_cover(&mut self, cover_data: &Database) {
+    pub fn set_cover(&mut self, cover_data: &DatabaseWithTag) {
         self.cover = Some(cover_data.hash);
         self.thumbhash = Some(cover_data.thumbhash.clone());
         self.width = cover_data.width;
@@ -22,7 +22,7 @@ impl Album {
         let ref_data = TREE.in_memory.read().unwrap();
 
         // Collect relevant Database entries along with their timestamps
-        let mut data_in_album: Vec<(&Database, u128)> = ref_data
+        let mut data_in_album: Vec<(&DatabaseWithTag, u128)> = ref_data
             .par_iter()
             .filter_map(
                 |database_timestamp| match &database_timestamp.abstract_data {

@@ -7,7 +7,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Album;
-use crate::public::structure::database_struct::database::definition::Database;
+use crate::public::structure::database_struct::database::definition::DatabaseWithTag;
 use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
 
@@ -30,7 +30,7 @@ impl Tree {
         if let Ok(database) = conn.query_row(
             "SELECT * FROM database_with_tags WHERE hash = ?",
             [id],
-            Database::from_row,
+            DatabaseWithTag::from_row,
         ) {
             Ok(AbstractData::Database(database))
         } else if let Ok(album) =
@@ -42,15 +42,15 @@ impl Tree {
         }
     }
 
-    pub fn load_all_databases_from_db(&self) -> Result<Vec<Database>> {
+    pub fn load_all_databases_from_db(&self) -> Result<Vec<DatabaseWithTag>> {
         let conn = self.get_connection()?;
-        Database::load_databases_with_tags(&conn).map_err(anyhow::Error::from)
+        DatabaseWithTag::load_databases_with_tags(&conn).map_err(anyhow::Error::from)
     }
 
-    pub fn load_database_from_hash(&self, hash: &str) -> Result<Database> {
+    pub fn load_database_from_hash(&self, hash: &str) -> Result<DatabaseWithTag> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM database_with_tags WHERE hash = ?")?;
-        stmt.query_row([hash], Database::from_row)
+        stmt.query_row([hash], DatabaseWithTag::from_row)
             .map_err(anyhow::Error::from)
     }
 }

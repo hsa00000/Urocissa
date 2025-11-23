@@ -1,11 +1,11 @@
-use crate::public::structure::database_struct::database::definition::Database;
+use crate::public::structure::database_struct::database::definition::DatabaseWithTag;
 use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 use std::{collections::BTreeMap, io, path::Path, process::Command, sync::LazyLock};
 
 /// Extract EXIF metadata for images. On any failure, returns the original
 /// map (possibly empty). Errors inside `read_exif` carry detailed context.
-pub fn generate_exif_for_image(database: &Database) -> BTreeMap<String, String> {
+pub fn generate_exif_for_image(database: &DatabaseWithTag) -> BTreeMap<String, String> {
     let mut exif_tuple = BTreeMap::new();
 
     if let Ok(exif) = read_exif(&database.source_path()) {
@@ -43,7 +43,7 @@ static RE_VIDEO_INFO: LazyLock<Regex> =
 
 /// Use `ffprobe` to retrieve metadata for videos, propagating every error
 /// with rich context strings.
-pub fn generate_exif_for_video(database: &Database) -> Result<BTreeMap<String, String>> {
+pub fn generate_exif_for_video(database: &DatabaseWithTag) -> Result<BTreeMap<String, String>> {
     let source_path = database.source_path_string();
     let mut exif_tuple = BTreeMap::new();
 

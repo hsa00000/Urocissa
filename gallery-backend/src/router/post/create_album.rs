@@ -11,7 +11,7 @@ use crate::operations::transitor::index_to_hash;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database_struct::database::definition::Database;
+use crate::public::structure::database_struct::database::definition::DatabaseWithTag;
 use crate::router::GuardResult;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 
@@ -113,7 +113,7 @@ pub fn index_edit_album_insert(
     album_id: ArrayString<64>,
 ) -> Result<AbstractData> {
     let hash = index_to_hash(tree_snapshot, database_index)?;
-    let mut db: Database = TREE.load_database_from_hash(&hash)?;
+    let mut db: DatabaseWithTag = TREE.load_database_from_hash(&hash)?;
     db.album.insert(album_id);
     Ok(AbstractData::Database(db))
 }

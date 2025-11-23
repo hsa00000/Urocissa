@@ -7,9 +7,9 @@ use rand::Rng;
 
 use std::collections::{BTreeMap, HashSet};
 
-use super::definition::Database;
+use super::definition::DatabaseWithTag;
 
-impl Database {
+impl DatabaseWithTag {
     pub fn generate_random_data() -> Self {
         let hash = generate_random_hash();
 

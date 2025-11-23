@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     album::Album,
-    database_struct::database::definition::Database,
+    database_struct::database::definition::DatabaseWithTag,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AbstractData {
-    Database(Database),
+    Database(DatabaseWithTag),
     Album(Album),
 }
 
@@ -53,8 +53,8 @@ impl AbstractData {
     }
 }
 
-impl From<Database> for AbstractData {
-    fn from(database: Database) -> Self {
+impl From<DatabaseWithTag> for AbstractData {
+    fn from(database: DatabaseWithTag) -> Self {
         AbstractData::Database(database)
     }
 }

@@ -12,7 +12,7 @@ use crate::{
     public::{
         constant::VALID_IMAGE_EXTENSIONS,
         error_data::handle_error,
-        structure::{database_struct::database::definition::Database, guard::PendingGuard},
+        structure::{database_struct::database::definition::DatabaseWithTag, guard::PendingGuard},
         tui::{DASHBOARD, FileType},
     },
     tasks::batcher::flush_tree::FlushTreeTask,
@@ -20,17 +20,17 @@ use crate::{
 use mini_executor::Task;
 
 pub struct IndexTask {
-    pub database: Database,
+    pub database: DatabaseWithTag,
 }
 
 impl IndexTask {
-    pub fn new(database: Database) -> Self {
+    pub fn new(database: DatabaseWithTag) -> Self {
         Self { database }
     }
 }
 
 impl Task for IndexTask {
-    type Output = Result<Database>;
+    type Output = Result<DatabaseWithTag>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
@@ -45,7 +45,7 @@ impl Task for IndexTask {
 
 /// Outer layer: unify business result matching and update TUI  
 /// (success -> advance, failure -> mark_failed)
-fn index_task_match(database: Database) -> Result<Database> {
+fn index_task_match(database: DatabaseWithTag) -> Result<DatabaseWithTag> {
     let hash = database.hash; // hash is Copy, no need to clone
     match index_task(database) {
         Ok(db) => {
@@ -60,7 +60,7 @@ fn index_task_match(database: Database) -> Result<Database> {
 }
 
 /// Inner layer: only responsible for business logic, no TUI state updates
-fn index_task(mut database: Database) -> Result<Database> {
+fn index_task(mut database: DatabaseWithTag) -> Result<DatabaseWithTag> {
     let hash = database.hash;
     let newest_path = database
         .alias

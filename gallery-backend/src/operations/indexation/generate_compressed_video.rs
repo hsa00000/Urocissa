@@ -2,7 +2,7 @@ use super::video_ffprobe::video_duration;
 use crate::{
     operations::indexation::generate_ffmpeg::create_silent_ffmpeg_command,
     process::info::process_image_info,
-    public::{structure::database_struct::database::definition::Database, tui::DASHBOARD},
+    public::{structure::database_struct::database::definition::DatabaseWithTag, tui::DASHBOARD},
 };
 use anyhow::Context;
 use anyhow::Result;
@@ -19,7 +19,7 @@ static REGEX_OUT_TIME_US: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"out_time_us=(\d+)").unwrap());
 
 /// Compresses a video file, reporting progress by parsing ffmpeg's output.
-pub fn generate_compressed_video(database: &mut Database) -> Result<()> {
+pub fn generate_compressed_video(database: &mut DatabaseWithTag) -> Result<()> {
     let duration_result = video_duration(&database.imported_path_string());
     let duration = match duration_result {
         // Handle static GIFs by delegating to the image processor.

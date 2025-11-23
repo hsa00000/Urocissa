@@ -2,7 +2,7 @@ use crate::operations::transitor::index_to_hash;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database_struct::database::definition::Database;
+use crate::public::structure::database_struct::database::definition::DatabaseWithTag;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
@@ -45,7 +45,7 @@ pub async fn edit_album(
             let mut to_flush = Vec::with_capacity(json_data.index_array.len());
             for &index in &json_data.index_array {
                 let hash = index_to_hash(&tree_snapshot, index)?;
-                let mut database: Database = TREE.load_database_from_hash(&hash)?;
+                let mut database: DatabaseWithTag = TREE.load_database_from_hash(&hash)?;
                 for album_id in &json_data.add_albums_array {
                     database.album.insert(album_id.clone());
                 }

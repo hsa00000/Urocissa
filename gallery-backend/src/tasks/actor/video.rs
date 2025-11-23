@@ -4,7 +4,7 @@ use crate::{
         constant::runtime::WORKER_RAYON_POOL,
         error_data::handle_error,
         structure::{
-            abstract_data::AbstractData, database_struct::database::definition::Database,
+            abstract_data::AbstractData, database_struct::database::definition::DatabaseWithTag,
             guard::PendingGuard,
         },
         tui::DASHBOARD,
@@ -17,11 +17,11 @@ use mini_executor::Task;
 use tokio_rayon::AsyncThreadPool;
 
 pub struct VideoTask {
-    database: Database,
+    database: DatabaseWithTag,
 }
 
 impl VideoTask {
-    pub fn new(database: Database) -> Self {
+    pub fn new(database: DatabaseWithTag) -> Self {
         Self { database }
     }
 }
@@ -40,7 +40,7 @@ impl Task for VideoTask {
     }
 }
 
-pub fn video_task(mut database: Database) -> Result<()> {
+pub fn video_task(mut database: DatabaseWithTag) -> Result<()> {
     let hash = database.hash;
     match generate_compressed_video(&mut database) {
         Ok(_) => {

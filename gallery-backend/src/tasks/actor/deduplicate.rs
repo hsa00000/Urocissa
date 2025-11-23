@@ -2,7 +2,9 @@ use crate::{
     public::{
         db::tree::TREE,
         error_data::handle_error,
-        structure::{abstract_data::AbstractData, database_struct::database::definition::Database},
+        structure::{
+            abstract_data::AbstractData, database_struct::database::definition::DatabaseWithTag,
+        },
     },
     tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
@@ -33,7 +35,7 @@ impl DeduplicateTask {
 }
 
 impl Task for DeduplicateTask {
-    type Output = Result<Option<Database>>;
+    type Output = Result<Option<DatabaseWithTag>>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
@@ -46,8 +48,8 @@ impl Task for DeduplicateTask {
     }
 }
 
-fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
-    let mut database = Database::new(&task.path, task.hash)?;
+fn deduplicate_task(task: DeduplicateTask) -> Result<Option<DatabaseWithTag>> {
+    let mut database = DatabaseWithTag::new(&task.path, task.hash)?;
 
     // File already in persistent database
 
