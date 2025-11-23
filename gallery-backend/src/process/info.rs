@@ -2,15 +2,18 @@ use std::fs::metadata;
 
 use anyhow::{Context, Result};
 
-use crate::operations::indexation::{
-    fix_orientation::{fix_image_orientation, fix_image_width_height, fix_video_width_height},
-    generate_dynamic_image::generate_dynamic_image,
-    generate_exif::{generate_exif_for_image, generate_exif_for_video},
-    generate_image_hash::{generate_phash, generate_thumbhash},
-    generate_thumbnail::{generate_thumbnail_for_image, generate_thumbnail_for_video},
-    generate_width_height::{generate_image_width_height, generate_video_width_height},
-};
 use crate::public::structure::database_struct::database::definition::Database;
+use crate::{
+    operations::indexation::{
+        fix_orientation::{fix_image_orientation, fix_image_width_height, fix_video_width_height},
+        generate_dynamic_image::generate_dynamic_image,
+        generate_exif::{generate_exif_for_image, generate_exif_for_video},
+        generate_image_hash::{generate_phash, generate_thumbhash},
+        generate_thumbnail::{generate_thumbnail_for_image, generate_thumbnail_for_video},
+        generate_width_height::{generate_image_width_height, generate_video_width_height},
+    },
+    public::constant::DEFAULT_PRIORITY_LIST,
+};
 
 /// Analyse the newly‑imported **image** and populate the `Database` record.
 pub fn process_image_info(database: &mut Database) -> Result<()> {
@@ -84,13 +87,7 @@ pub fn process_video_info(database: &mut Database) -> Result<()> {
     database.phash = generate_phash(&dynamic_image);
 
     // Compute timestamp
-    database.timestamp_ms = database.compute_timestamp_ms(&[
-        "DateTimeOriginal",
-        "filename",
-        "scan_time",
-        "modified",
-        "random",
-    ]);
+    database.timestamp_ms = database.compute_timestamp_ms(&DEFAULT_PRIORITY_LIST);
 
     Ok(())
 }
