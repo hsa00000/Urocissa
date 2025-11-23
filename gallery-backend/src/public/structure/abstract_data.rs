@@ -3,14 +3,13 @@ use std::collections::HashSet;
 use arrayvec::ArrayString;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    album::Album,
-    database_struct::database::definition::DatabaseWithTag,
-};
+use crate::public::db::tree::TREE;
+
+use super::{album::Album, database_struct::database::definition::Database};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AbstractData {
-    Database(DatabaseWithTag),
+    Database(Database),
     Album(Album),
 }
 
@@ -39,22 +38,34 @@ impl AbstractData {
             AbstractData::Album(_) => 300,
         }
     }
-    pub fn tag(self: &Self) -> &HashSet<String> {
+    pub fn tag(self: &Self) -> Option<HashSet<String>> {
         match self {
-            AbstractData::Database(database) => &database.tag,
-            AbstractData::Album(album) => &album.tag,
-        }
-    }
-    pub fn tag_mut(self: &mut Self) -> &mut HashSet<String> {
-        match self {
-            AbstractData::Database(database) => &mut database.tag,
-            AbstractData::Album(album) => &mut album.tag,
+            AbstractData::Database(database) => {
+                let conn = TREE.get_connection().unwrap();
+                let mut stmt = conn
+                    .prepare("SELECT tag FROM tag_databases WHERE hash = ?")
+                    .unwrap();
+                let tag_iter = stmt
+                    .query_map([database.hash.as_str()], |row| {
+                        let tag: String = row.get(0)?;
+                        Ok(tag)
+                    })
+                    .unwrap();
+                let mut tags = HashSet::new();
+                for tag_result in tag_iter {
+                    if let Ok(tag) = tag_result {
+                        tags.insert(tag);
+                    }
+                }
+                Some(tags)
+            }
+            AbstractData::Album(album) => Some(album.tag.clone()),
         }
     }
 }
 
-impl From<DatabaseWithTag> for AbstractData {
-    fn from(database: DatabaseWithTag) -> Self {
+impl From<Database> for AbstractData {
+    fn from(database: Database) -> Self {
         AbstractData::Database(database)
     }
 }

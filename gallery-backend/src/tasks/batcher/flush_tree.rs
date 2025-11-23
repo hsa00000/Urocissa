@@ -69,13 +69,7 @@ fn flush_tree_task(
                         database.pending as i32
                     ],
                 )?;
-                // 插入或替换 tag
-                for tag in &database.tag {
-                    conn.execute(
-                        "INSERT OR REPLACE INTO tag_databases (hash, tag) VALUES (?1, ?2)",
-                        rusqlite::params![database.hash.as_str(), tag],
-                    )?;
-                }
+                // TODO: FlushTreeTask 現在已經無法更動 database tag 需要一個獨立的 flush_tag
             }
             AbstractData::Album(album) => {
                 conn.execute(

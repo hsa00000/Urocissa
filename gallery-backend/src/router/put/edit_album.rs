@@ -52,7 +52,7 @@ pub async fn edit_album(
                 for album_id in &json_data.remove_albums_array {
                     database.album.remove(album_id);
                 }
-                to_flush.push(AbstractData::Database(database));
+                to_flush.push(AbstractData::Database(database.into()));
             }
 
             let effected_album_vec = json_data
@@ -120,7 +120,7 @@ pub async fn set_album_cover(
         };
         let database = TREE.load_database_from_hash(&cover_hash).unwrap();
 
-        album.set_cover(&database);
+        album.set_cover(&database.into());
 
         // Update the album in database
         let cover_str = album.cover.as_ref().map(|h| h.as_str()).unwrap_or("");

@@ -69,7 +69,7 @@ pub async fn regenerate_thumbnail_with_frame(
         database.thumbhash = generate_thumbhash(&dyn_img);
         database.phash = generate_phash(&dyn_img);
 
-        Ok(AbstractData::Database(database))
+        Ok(AbstractData::Database(database.into()))
     })
     .await
     .context("Failed to spawn blocking task")??;

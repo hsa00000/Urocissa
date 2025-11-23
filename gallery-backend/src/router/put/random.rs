@@ -21,7 +21,7 @@ pub async fn generate_random_data(
     let database_list: Vec<AbstractData> = (0..number)
         .into_par_iter()
         .map(|_| DatabaseWithTag::generate_random_data())
-        .map(|database| AbstractData::Database(database))
+        .map(|database| AbstractData::Database(database.into()))
         .collect();
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(database_list));
     BATCH_COORDINATOR

@@ -60,13 +60,13 @@ pub async fn reindex(
                             if database.ext_type == "image" {
                                 let mut db = Database::from(database);
                                 match regenerate_metadata_for_image(&mut db) {
-                                    Ok(_) => Some(AbstractData::Database(DatabaseWithTag::from(db))),
+                                    Ok(_) => Some(AbstractData::Database(DatabaseWithTag::from(db).into())),
                                     Err(_) => None,
                                 }
                             } else if database.ext_type == "video" {
                                 let mut db = Database::from(database);
                                 match regenerate_metadata_for_video(&mut db) {
-                                    Ok(_) => Some(AbstractData::Database(DatabaseWithTag::from(db))),
+                                    Ok(_) => Some(AbstractData::Database(DatabaseWithTag::from(db).into())),
                                     Err(_) => None,
                                 }
                             } else {

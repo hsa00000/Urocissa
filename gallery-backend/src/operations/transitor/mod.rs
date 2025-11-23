@@ -20,7 +20,6 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
         AbstractData::Database(database) => {
             database.alias = vec![database.alias.pop().unwrap()];
             if !show_metadata {
-                database.tag.clear();
                 database.album.clear();
                 database.alias.clear();
             }

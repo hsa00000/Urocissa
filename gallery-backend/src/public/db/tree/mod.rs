@@ -32,7 +32,7 @@ impl Tree {
             [id],
             DatabaseWithTag::from_row,
         ) {
-            Ok(AbstractData::Database(database))
+            Ok(AbstractData::Database(database.into()))
         } else if let Ok(album) =
             conn.query_row("SELECT * FROM album WHERE id = ?", [id], Album::from_row)
         {

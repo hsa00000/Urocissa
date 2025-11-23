@@ -33,20 +33,7 @@ fn update_tags_task(updates: Vec<AbstractData>) -> rusqlite::Result<()> {
 
     for abstract_data in updates {
         match abstract_data {
-            AbstractData::Database(database) => {
-                // Delete old tags
-                conn.execute(
-                    "DELETE FROM tag_databases WHERE hash = ?",
-                    rusqlite::params![database.hash.as_str()],
-                )?;
-                // Insert new tags
-                for tag in &database.tag {
-                    conn.execute(
-                        "INSERT INTO tag_databases (hash, tag) VALUES (?1, ?2)",
-                        rusqlite::params![database.hash.as_str(), tag],
-                    )?;
-                }
-            }
+            AbstractData::Database(_) => {}
             AbstractData::Album(album) => {
                 // Update the tag column with new JSON
                 conn.execute(

@@ -48,7 +48,7 @@ pub fn video_task(mut database: DatabaseWithTag) -> Result<()> {
         Ok(_) => {
             database = DatabaseWithTag::from(db);
             database.pending = false;
-            let abstract_data = AbstractData::Database(database.clone());
+            let abstract_data = AbstractData::Database(database.clone().into());
             BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
 
             DASHBOARD.advance_task_state(&hash);

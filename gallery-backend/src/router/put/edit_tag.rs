@@ -38,14 +38,33 @@ pub async fn edit_tag(
             let hash = index_to_hash(&tree_snapshot, index)?;
             let mut abstract_data = TREE.load_from_db(&hash)?;
 
-            let tag_set = abstract_data.tag_mut();
-
-            // Apply tag additions and removals in one pass
-            for tag in &json_data.add_tags_array {
-                tag_set.insert(tag.clone());
-            }
-            for tag in &json_data.remove_tags_array {
-                tag_set.remove(tag);
+            match &mut abstract_data {
+                AbstractData::Album(album) => {
+                    // Apply tag additions and removals in one pass
+                    for tag in &json_data.add_tags_array {
+                        album.tag.insert(tag.clone());
+                    }
+                    for tag in &json_data.remove_tags_array {
+                        album.tag.remove(tag);
+                    }
+                }
+                AbstractData::Database(database) => {
+                    let conn = TREE.get_connection().unwrap();
+                    // Apply tag additions
+                    for tag in &json_data.add_tags_array {
+                        conn.execute(
+                            "INSERT OR IGNORE INTO tag_databases (hash, tag) VALUES (?1, ?2)",
+                            rusqlite::params![database.hash.as_str(), tag],
+                        )?;
+                    }
+                    // Apply tag removals
+                    for tag in &json_data.remove_tags_array {
+                        conn.execute(
+                            "DELETE FROM tag_databases WHERE hash = ?1 AND tag = ?2",
+                            rusqlite::params![database.hash.as_str(), tag],
+                        )?;
+                    }
+                }
             }
 
             updated_data.push(abstract_data);

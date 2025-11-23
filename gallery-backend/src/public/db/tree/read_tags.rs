@@ -24,11 +24,13 @@ impl Tree {
             .iter()
             .par_bridge()
             .for_each(|database_timestamp| {
-                for tag in database_timestamp.abstract_data.tag() {
-                    let counter = tag_counts
-                        .entry(tag.clone())
-                        .or_insert_with(|| AtomicUsize::new(0));
-                    counter.fetch_add(1, Ordering::Relaxed);
+                if let Some(tags) = database_timestamp.abstract_data.tag() {
+                    for tag in tags {
+                        let counter = tag_counts
+                            .entry(tag.clone())
+                            .or_insert_with(|| AtomicUsize::new(0));
+                        counter.fetch_add(1, Ordering::Relaxed);
+                    }
                 }
             });
 

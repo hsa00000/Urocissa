@@ -61,7 +61,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<DatabaseWithTag>> {
         if let Some(album_id) = task.presigned_album_id_opt {
             database_exist.album.insert(album_id);
         }
-        let abstract_data = AbstractData::Database(database_exist);
+        let abstract_data = AbstractData::Database(database_exist.into());
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
         warn!("File already exists in the database:\n{:#?}", database);
         Ok(None)

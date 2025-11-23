@@ -4,13 +4,13 @@ use regex::Regex;
 
 use std::{path::PathBuf, sync::LazyLock};
 
-use super::definition::DatabaseWithTag;
+use super::definition::Database;
 
 static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(\d{4})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})\b").unwrap()
 });
 
-impl DatabaseWithTag {
+impl Database {
     pub fn compute_timestamp(&self, priority_list: &[&str]) -> u128 {
         let now_time = chrono::Local::now().naive_local();
         for &field in priority_list {

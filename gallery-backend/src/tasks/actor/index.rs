@@ -100,7 +100,7 @@ fn index_task(mut database: DatabaseWithTag) -> Result<DatabaseWithTag> {
         database.pending = true;
     }
 
-    let abstract_data = AbstractData::Database(database.clone());
+    let abstract_data = AbstractData::Database(database.clone().into());
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
 
     Ok(database)

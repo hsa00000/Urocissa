@@ -115,5 +115,5 @@ pub fn index_edit_album_insert(
     let hash = index_to_hash(tree_snapshot, database_index)?;
     let mut db: DatabaseWithTag = TREE.load_database_from_hash(&hash)?;
     db.album.insert(album_id);
-    Ok(AbstractData::Database(db))
+    Ok(AbstractData::Database(db.into()))
 }

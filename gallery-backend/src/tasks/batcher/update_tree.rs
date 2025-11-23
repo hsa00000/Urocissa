@@ -52,7 +52,7 @@ fn update_tree_task() -> Result<()> {
             .map(|mut db| {
                 db.exif_vec
                     .retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
-                DatabaseTimestamp::new(AbstractData::Database(db), &priority_list)
+                DatabaseTimestamp::new(AbstractData::Database(db.into()), &priority_list)
             })
             .collect()
     };

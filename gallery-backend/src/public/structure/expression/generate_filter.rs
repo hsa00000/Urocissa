@@ -26,12 +26,12 @@ impl Expression {
                 let inner_filter = expression.clone().generate_filter();
                 Box::new(move |abstract_data: &AbstractData| !inner_filter(abstract_data))
             }
-            Expression::Tag(tag) => {
-                Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => db.tag.contains(&tag),
-                    AbstractData::Album(album) => album.tag.contains(&tag),
-                })
-            }
+            Expression::Tag(tag) => Box::new(move |abstract_data: &AbstractData| {
+                abstract_data
+                    .tag()
+                    .as_ref()
+                    .map_or(false, |tags| tags.contains(&tag))
+            }),
             Expression::ExtType(ext_type) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::Database(db) => db.ext_type.contains(&ext_type),
@@ -86,7 +86,7 @@ impl Expression {
                 let any_lower = any_identifier.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::Database(db) => {
-                        db.tag.contains(&any_identifier)
+                        false
                             || db.ext_type.contains(&any_identifier)
                             || db.ext.to_ascii_lowercase().contains(&any_lower)
                             || db.exif_vec.get("Make").map_or(false, |make_of_exif| {
