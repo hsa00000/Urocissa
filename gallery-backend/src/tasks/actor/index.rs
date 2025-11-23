@@ -12,7 +12,10 @@ use crate::{
     public::{
         constant::VALID_IMAGE_EXTENSIONS,
         error_data::handle_error,
-        structure::{database_struct::database::definition::DatabaseWithTag, guard::PendingGuard},
+        structure::{
+            database_struct::database::definition::{Database, DatabaseWithTag},
+            guard::PendingGuard,
+        },
         tui::{DASHBOARD, FileType},
     },
     tasks::batcher::flush_tree::FlushTreeTask,
@@ -81,15 +84,19 @@ fn index_task(mut database: DatabaseWithTag) -> Result<DatabaseWithTag> {
     // Branch processing based on file extension
     let is_image = VALID_IMAGE_EXTENSIONS.contains(&database.ext.as_str());
     if is_image {
-        process_image_info(&mut database).context(format!(
+        let mut db = Database::from(database);
+        process_image_info(&mut db).context(format!(
             "failed to process image metadata pipeline:\n{:#?}",
-            database
+            db
         ))?;
+        database = DatabaseWithTag::from(db);
     } else {
-        process_video_info(&mut database).context(format!(
+        let mut db = Database::from(database);
+        process_video_info(&mut db).context(format!(
             "failed to process video metadata pipeline:\n{:#?}",
-            database
+            db
         ))?;
+        database = DatabaseWithTag::from(db);
         database.pending = true;
     }
 

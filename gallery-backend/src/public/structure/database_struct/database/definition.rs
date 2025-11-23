@@ -172,6 +172,25 @@ impl From<Database> for DatabaseWithTag {
     }
 }
 
+impl From<DatabaseWithTag> for Database {
+    fn from(db: DatabaseWithTag) -> Self {
+        Database {
+            hash: db.hash,
+            size: db.size,
+            width: db.width,
+            height: db.height,
+            thumbhash: db.thumbhash,
+            phash: db.phash,
+            ext: db.ext,
+            exif_vec: db.exif_vec,
+            album: db.album,
+            alias: db.alias,
+            ext_type: db.ext_type,
+            pending: db.pending,
+        }
+    }
+}
+
 impl DatabaseWithTag {
     /// 舊的 from_row（吃 tag_json）原封不動搬過來
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {

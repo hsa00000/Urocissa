@@ -4,7 +4,8 @@ use crate::{
         constant::runtime::WORKER_RAYON_POOL,
         error_data::handle_error,
         structure::{
-            abstract_data::AbstractData, database_struct::database::definition::DatabaseWithTag,
+            abstract_data::AbstractData,
+            database_struct::database::definition::{Database, DatabaseWithTag},
             guard::PendingGuard,
         },
         tui::DASHBOARD,
@@ -42,8 +43,10 @@ impl Task for VideoTask {
 
 pub fn video_task(mut database: DatabaseWithTag) -> Result<()> {
     let hash = database.hash;
-    match generate_compressed_video(&mut database) {
+    let mut db = Database::from(database);
+    match generate_compressed_video(&mut db) {
         Ok(_) => {
+            database = DatabaseWithTag::from(db);
             database.pending = false;
             let abstract_data = AbstractData::Database(database.clone());
             BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));

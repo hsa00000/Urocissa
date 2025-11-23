@@ -14,11 +14,11 @@ use crate::operations::indexation::generate_thumbnail::{
 use crate::operations::indexation::generate_width_height::{
     generate_image_width_height, generate_video_width_height,
 };
-use crate::public::structure::database_struct::database::definition::DatabaseWithTag;
+use crate::public::structure::database_struct::database::definition::Database;
 use anyhow::{Context, Result};
 
-/// Analyse the newly‑imported **image** and populate the `DatabaseWithTag` record.
-pub fn process_image_info(database: &mut DatabaseWithTag) -> Result<()> {
+/// Analyse the newly‑imported **image** and populate the `Database` record.
+pub fn process_image_info(database: &mut Database) -> Result<()> {
     // EXIF metadata extraction (non‑fallible)
     database.exif_vec = generate_exif_for_image(database);
 
@@ -45,7 +45,7 @@ pub fn process_image_info(database: &mut DatabaseWithTag) -> Result<()> {
 }
 
 /// Re‑build all metadata for an existing **image** (e.g. after replace / fix).
-pub fn regenerate_metadata_for_image(database: &mut DatabaseWithTag) -> Result<()> {
+pub fn regenerate_metadata_for_image(database: &mut Database) -> Result<()> {
     // Refresh size from filesystem
     database.size = metadata(database.imported_path())
         .context("failed to read metadata for imported image file")?
@@ -56,8 +56,8 @@ pub fn regenerate_metadata_for_image(database: &mut DatabaseWithTag) -> Result<(
     Ok(())
 }
 
-/// Analyse the newly‑imported **video** and populate the `DatabaseWithTag` record.
-pub fn process_video_info(database: &mut DatabaseWithTag) -> Result<()> {
+/// Analyse the newly‑imported **video** and populate the `Database` record.
+pub fn process_video_info(database: &mut Database) -> Result<()> {
     // Extract EXIF‑like metadata via ffprobe
     database.exif_vec = generate_exif_for_video(database)
         .context("failed to extract video metadata via ffprobe")?;
@@ -83,7 +83,7 @@ pub fn process_video_info(database: &mut DatabaseWithTag) -> Result<()> {
 }
 
 /// Re‑build all metadata for an existing **video** file.
-pub fn regenerate_metadata_for_video(database: &mut DatabaseWithTag) -> Result<()> {
+pub fn regenerate_metadata_for_video(database: &mut Database) -> Result<()> {
     // Refresh size from filesystem metadata
     database.size = metadata(database.imported_path())
         .context("failed to read metadata for imported video file")?

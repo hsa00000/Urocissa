@@ -3,7 +3,7 @@ use crate::{
         indexation::generate_ffmpeg::create_silent_ffmpeg_command,
         utils::resize::small_width_height,
     },
-    public::structure::database_struct::database::definition::DatabaseWithTag,
+    public::structure::database_struct::database::definition::Database,
 };
 use anyhow::{Context, Result, anyhow};
 use image::{DynamicImage, ImageFormat};
@@ -12,7 +12,7 @@ use std::process::Stdio;
 /// Generate a JPEG thumbnail for an **image** asset, propagating
 /// every error with clear human‑readable context strings.
 pub fn generate_thumbnail_for_image(
-    database: &mut DatabaseWithTag,
+    database: &mut Database,
     dynamic_image: DynamicImage,
 ) -> Result<()> {
     let (compressed_width, compressed_height) =
@@ -49,7 +49,7 @@ pub fn generate_thumbnail_for_image(
 /// Generate a single JPEG thumbnail taken from the **first frame** of a video asset.
 /// Uses `ffprobe` for metadata and `ffmpeg` for frame extraction.
 /// All fallible operations carry explicit *context* for easier debugging.
-pub fn generate_thumbnail_for_video(database: &DatabaseWithTag) -> Result<()> {
+pub fn generate_thumbnail_for_video(database: &Database) -> Result<()> {
     let (width, height) = (database.width, database.height);
     let (thumb_width, thumb_height) = small_width_height(width, height, 1280);
     let thumbnail_path = database.thumbnail_path();

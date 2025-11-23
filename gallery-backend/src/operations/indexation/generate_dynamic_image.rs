@@ -1,4 +1,4 @@
-use crate::public::structure::database_struct::database::definition::DatabaseWithTag;
+use crate::public::structure::database_struct::database::definition::Database;
 use anyhow::{Context, Result, bail};
 use image::DynamicImage;
 use std::fs::read;
@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 /// Generate a `DynamicImage` either from the original image or
 /// from its thumbnail, adding *context* at every fallible step.
-pub fn generate_dynamic_image(database: &DatabaseWithTag) -> Result<DynamicImage> {
+pub fn generate_dynamic_image(database: &Database) -> Result<DynamicImage> {
     let img_path = if database.ext_type == "image" {
         database.imported_path()
     } else {

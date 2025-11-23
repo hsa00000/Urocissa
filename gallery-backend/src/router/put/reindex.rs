@@ -8,6 +8,7 @@ use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::database_struct::database::definition::{Database, DatabaseWithTag};
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -55,15 +56,17 @@ pub async fn reindex(
                 .filter_map(|&hash| {
                     let abstract_data_opt = TREE.load_from_db(&hash).ok();
                     match abstract_data_opt {
-                        Some(AbstractData::Database(mut database)) => {
+                        Some(AbstractData::Database(database)) => {
                             if database.ext_type == "image" {
-                                match regenerate_metadata_for_image(&mut database) {
-                                    Ok(_) => Some(AbstractData::Database(database)),
+                                let mut db = Database::from(database);
+                                match regenerate_metadata_for_image(&mut db) {
+                                    Ok(_) => Some(AbstractData::Database(DatabaseWithTag::from(db))),
                                     Err(_) => None,
                                 }
                             } else if database.ext_type == "video" {
-                                match regenerate_metadata_for_video(&mut database) {
-                                    Ok(_) => Some(AbstractData::Database(database)),
+                                let mut db = Database::from(database);
+                                match regenerate_metadata_for_video(&mut db) {
+                                    Ok(_) => Some(AbstractData::Database(DatabaseWithTag::from(db))),
                                     Err(_) => None,
                                 }
                             } else {
