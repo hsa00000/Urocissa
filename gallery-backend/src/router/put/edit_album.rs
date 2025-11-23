@@ -2,7 +2,6 @@ use crate::operations::transitor::index_to_hash;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database_struct::database::definition::Database;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
@@ -45,7 +44,7 @@ pub async fn edit_album(
             let mut to_flush = Vec::with_capacity(json_data.index_array.len());
             for &index in &json_data.index_array {
                 let hash = index_to_hash(&tree_snapshot, index)?;
-                let mut database: Database = TREE.load_database_from_hash(&hash)?;
+                let mut database = TREE.load_database_from_hash(&hash)?;
                 for album_id in &json_data.add_albums_array {
                     database.album.insert(album_id.clone());
                 }
@@ -69,7 +68,7 @@ pub async fn edit_album(
         .await
         .map_err(|e| anyhow::anyhow!("join error: {e}"))??;
 
-    // 單次等待版本（取代 detached 逐筆呼叫）
+    // 單次等待版本
     BATCH_COORDINATOR
         .execute_batch_waiting(FlushTreeTask::insert(to_flush))
         .await?;
@@ -78,7 +77,7 @@ pub async fn edit_album(
         .execute_batch_waiting(UpdateTreeTask)
         .await?;
 
-    // 受影響相簿：全部等待（有界並行）
+    // 受影響相簿：全部等待
     const ALBUM_CONC: usize = 8;
     stream::iter(effected_album_vec)
         .map(|album_id| async move {
