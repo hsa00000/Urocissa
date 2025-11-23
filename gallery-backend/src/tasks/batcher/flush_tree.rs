@@ -70,7 +70,6 @@ fn flush_tree_task(
                         database.timestamp_ms
                     ],
                 )?;
-                // TODO: FlushTreeTask 現在已經無法更動 database tag 需要一個獨立的 flush_tag
             }
             AbstractData::Album(album) => {
                 conn.execute(
