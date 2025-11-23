@@ -49,22 +49,6 @@ impl Database {
             [],
         )?;
 
-        // 先保留舊 view，避免既有依賴炸裂
-        let sql_create_view = r#"
-            CREATE VIEW IF NOT EXISTS database_with_tags AS
-            SELECT
-                database.*,
-                COALESCE(
-                  (SELECT json_group_array(tag_databases.tag)
-                     FROM tag_databases
-                    WHERE tag_databases.hash = database.hash
-                  ),
-                  '[]'
-                ) AS tag_json
-            FROM database;
-        "#;
-        conn.execute(sql_create_view, [])?;
-
         Ok(())
     }
 
