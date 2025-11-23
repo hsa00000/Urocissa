@@ -4,7 +4,6 @@ use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
-/// 新的：單表版本（沒有 tag）
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 pub struct Database {
     pub hash: ArrayString<64>,
@@ -43,7 +42,6 @@ impl Database {
         "#;
         conn.execute(sql_create_main_table, [])?;
 
-        // 新增索引
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_database_timestamp ON database(timestamp_ms);",
             [],
@@ -52,7 +50,6 @@ impl Database {
         Ok(())
     }
 
-    /// 新的 from_row：只解析單表欄位（原 from_row_basic 改名移過來）
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         let hash: String = row.get("hash")?;
         let size: u64 = row.get("size")?;
