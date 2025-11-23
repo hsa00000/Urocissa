@@ -44,10 +44,7 @@ impl Tree {
 
     pub fn load_all_databases_from_db(&self) -> Result<Vec<Database>> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT * FROM database_with_tags")?;
-        let rows = stmt.query_map([], Database::from_row)?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(anyhow::Error::from)
+        Database::load_databases_with_tags(&conn).map_err(anyhow::Error::from)
     }
 
     pub fn load_database_from_hash(&self, hash: &str) -> Result<Database> {

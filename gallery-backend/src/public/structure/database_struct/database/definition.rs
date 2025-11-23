@@ -99,4 +99,99 @@ impl Database {
             pending,
         })
     }
+
+    pub fn from_row_basic(row: &Row) -> rusqlite::Result<Self> {
+        let hash: String = row.get("hash")?;
+        let size: u64 = row.get("size")?;
+        let width: u32 = row.get("width")?;
+        let height: u32 = row.get("height")?;
+        let thumbhash: Vec<u8> = row.get("thumbhash")?;
+        let phash: Vec<u8> = row.get("phash")?;
+        let ext: String = row.get("ext")?;
+
+        let exif_vec_str: String = row.get("exif_vec")?;
+        let exif_vec: BTreeMap<String, String> = serde_json::from_str(&exif_vec_str).unwrap();
+
+        let album_str: String = row.get("album")?;
+        let album_vec: Vec<String> = serde_json::from_str(&album_str).unwrap();
+        let album: HashSet<ArrayString<64>> = album_vec
+            .into_iter()
+            .filter_map(|s| ArrayString::from(&s).ok())
+            .collect();
+
+        let alias_str: String = row.get("alias")?;
+        let alias: Vec<FileModify> = serde_json::from_str(&alias_str).unwrap();
+
+        let ext_type: String = row.get("ext_type")?;
+        let pending: bool = row.get::<_, i32>("pending")? != 0;
+
+        Ok(Database {
+            hash: ArrayString::from(&hash).unwrap(),
+            size,
+            width,
+            height,
+            thumbhash,
+            phash,
+            ext,
+            exif_vec,
+            tag: HashSet::new(), // tags 後面累積
+            album,
+            alias,
+            ext_type,
+            pending,
+        })
+    }
+
+    pub fn load_databases_with_tags(conn: &Connection) -> rusqlite::Result<Vec<Database>> {
+        let sql = r#"
+            SELECT
+                database.hash,
+                database.size,
+                database.width,
+                database.height,
+                database.thumbhash,
+                database.phash,
+                database.ext,
+                database.exif_vec,
+                database.album,
+                database.alias,
+                database.ext_type,
+                database.pending,
+                tag_databases.tag AS tag
+            FROM database
+            LEFT JOIN tag_databases
+                ON tag_databases.hash = database.hash
+            ORDER BY database.hash;
+        "#;
+
+        let mut stmt = conn.prepare(sql)?;
+        let mut rows = stmt.query([])?;
+
+        let mut result: Vec<Database> = Vec::new();
+        let mut current_hash: Option<String> = None;
+
+        while let Some(row) = rows.next()? {
+            let hash: String = row.get("hash")?;
+            let tag_opt: Option<String> = row.get("tag")?;
+
+            if current_hash.as_deref() != Some(&hash) {
+                let mut db = Database::from_row_basic(row)?;
+
+                if let Some(tag) = tag_opt {
+                    db.tag.insert(tag);
+                }
+
+                result.push(db);
+                current_hash = Some(hash);
+            } else {
+                if let Some(tag) = tag_opt {
+                    if let Some(last) = result.last_mut() {
+                        last.tag.insert(tag);
+                    }
+                }
+            }
+        }
+
+        Ok(result)
+    }
 }
