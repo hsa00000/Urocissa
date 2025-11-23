@@ -1,10 +1,8 @@
 use crate::operations::resolve_show_download_and_metadata;
-use crate::operations::transitor::{
-    abstract_data_to_database_timestamp_return, clear_abstract_data_metadata, index_to_hash,
-};
+use crate::operations::transitor::{index_to_hash, process_abstract_data_for_response};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
-use crate::public::structure::database_struct::database_timestamp::DataBaseTimestampReturn;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::row::{Row, ScrollBarData};
 
 use crate::router::fairing::guard_timestamp::GuardTimestamp;
@@ -21,13 +19,13 @@ pub async fn get_data(
     timestamp: u128,
     start: usize,
     mut end: usize,
-) -> AppResult<Json<Vec<DataBaseTimestampReturn>>> {
+) -> AppResult<Json<Vec<AbstractData>>> {
     let guard_timestamp = guard_timestamp?;
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
 
         let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
-        let (show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
+        let (_show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
 
         let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
         end = end.min(tree_snapshot.len());
@@ -41,16 +39,13 @@ pub async fn get_data(
             .map(|index| {
                 let hash = index_to_hash(&tree_snapshot, index)?;
 
-                let mut abstract_data = TREE.load_from_db(&hash)?;
+                let abstract_data = TREE.load_from_db(&hash)?;
 
-                clear_abstract_data_metadata(&mut abstract_data, show_metadata);
-
-                let database_timestamp_return = abstract_data_to_database_timestamp_return(
+                let processed_data = process_abstract_data_for_response(
                     abstract_data,
-                    timestamp,
-                    show_download,
+                    show_metadata,
                 );
-                Ok(database_timestamp_return)
+                Ok(processed_data)
             })
             .collect();
 

@@ -1,8 +1,5 @@
 use crate::public::{
-    db::tree_snapshot::read_tree_snapshot::MyCow,
-    structure::{
-        abstract_data::AbstractData, database_struct::database_timestamp::DataBaseTimestampReturn,
-    },
+    db::tree_snapshot::read_tree_snapshot::MyCow, structure::abstract_data::AbstractData,
 };
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -32,14 +29,10 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
     }
 }
 
-pub fn abstract_data_to_database_timestamp_return(
-    abstract_data: AbstractData,
-    timestamp: u128,
-    show_download: bool,
-) -> DataBaseTimestampReturn {
-    DataBaseTimestampReturn::new(
-        abstract_data,
-        timestamp,
-        show_download,
-    )
+pub fn process_abstract_data_for_response(
+    mut abstract_data: AbstractData,
+    show_metadata: bool,
+) -> AbstractData {
+    clear_abstract_data_metadata(&mut abstract_data, show_metadata);
+    abstract_data
 }

@@ -25,10 +25,10 @@ impl Album {
         let mut data_in_album: Vec<(&Database, u128)> = ref_data
             .par_iter()
             .filter_map(
-                |database_timestamp| match &database_timestamp.abstract_data {
+                |database_timestamp| match database_timestamp {
                     AbstractData::Database(database) => {
                         if database.album.contains(&self.id) {
-                            Some((database, database_timestamp.timestamp))
+                            Some((database, database_timestamp.compute_timestamp() as u128))
                         } else {
                             None
                         }

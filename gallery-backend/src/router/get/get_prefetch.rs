@@ -2,8 +2,8 @@ use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::ResolvedShare;
-use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
 use crate::public::structure::expression::Expression;
 use crate::public::structure::reduced_data::ReducedData;
 use crate::router::AppResult;
@@ -65,15 +65,15 @@ impl PrefetchReturn {
 }
 
 // -----------------------------------------------------------------------------
-// Convenience: &DatabaseTimestamp → ReducedData
+// Convenience: &AbstractData → ReducedData
 // -----------------------------------------------------------------------------
-impl From<&DatabaseTimestamp> for ReducedData {
-    fn from(source: &DatabaseTimestamp) -> Self {
+impl From<&AbstractData> for ReducedData {
+    fn from(source: &AbstractData) -> Self {
         Self {
-            hash: source.abstract_data.hash(),
-            width: source.abstract_data.width(),
-            height: source.abstract_data.height(),
-            date: source.timestamp,
+            hash: source.hash(),
+            width: source.width(),
+            height: source.height(),
+            date: source.compute_timestamp() as u128,
         }
     }
 }
@@ -121,7 +121,7 @@ fn filter_items(
             };
             tree_guard
                 .par_iter()
-                .filter(|db_ts| filter_fn(&db_ts.abstract_data))
+                .filter(|db_ts| filter_fn(db_ts))
                 .map(|db_ts| db_ts.into())
                 .collect()
         }
@@ -129,7 +129,7 @@ fn filter_items(
             let filter_fn = expr.generate_filter();
             tree_guard
                 .par_iter()
-                .filter(|database_timestamp| filter_fn(&database_timestamp.abstract_data))
+                .filter(|database_timestamp| filter_fn(database_timestamp))
                 .map(|database_timestamp| database_timestamp.into())
                 .collect()
         }

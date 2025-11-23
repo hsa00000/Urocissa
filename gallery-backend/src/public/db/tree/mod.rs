@@ -8,12 +8,11 @@ use r2d2_sqlite::SqliteConnectionManager;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Album;
 use crate::public::structure::database_struct::database::definition::DatabaseWithTag;
-use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
 
 pub struct Tree {
     pub in_disk: Pool<SqliteConnectionManager>,
-    pub in_memory: &'static Arc<RwLock<Vec<DatabaseTimestamp>>>,
+    pub in_memory: &'static Arc<RwLock<Vec<AbstractData>>>,
 }
 
 pub static TREE: LazyLock<Tree> = LazyLock::new(|| Tree::new());

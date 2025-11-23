@@ -24,7 +24,7 @@ impl Tree {
             .iter()
             .par_bridge()
             .for_each(|database_timestamp| {
-                if let Some(tags) = database_timestamp.abstract_data.tag() {
+                if let Some(tags) = database_timestamp.tag() {
                     for tag in tags {
                         let counter = tag_counts
                             .entry(tag.clone())

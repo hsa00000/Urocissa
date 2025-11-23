@@ -1,7 +1,6 @@
 use crate::operations::utils::timestamp::get_current_timestamp_u64;
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use anyhow::Result;
@@ -44,29 +43,29 @@ impl BatchTask for UpdateTreeTask {
 fn update_tree_task() -> Result<()> {
     let start_time = Instant::now();
 
-    let mut database_timestamp_vec: Vec<DatabaseTimestamp> = {
+    let mut abstract_data_vec: Vec<AbstractData> = {
         let databases = TREE.load_all_databases_from_db()?;
         databases
             .into_par_iter()
             .map(|mut db| {
                 db.exif_vec
                     .retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
-                DatabaseTimestamp::new(AbstractData::Database(db.into()))
+                AbstractData::Database(db.into())
             })
             .collect()
     };
 
-    let album_vec: Vec<DatabaseTimestamp> = {
+    let album_vec: Vec<AbstractData> = {
         let rows = TREE.read_albums()?;
         rows.into_par_iter()
-            .map(|album| DatabaseTimestamp::new(AbstractData::Album(album)))
+            .map(|album| AbstractData::Album(album))
             .collect()
     };
 
-    database_timestamp_vec.extend(album_vec);
-    database_timestamp_vec.par_sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    abstract_data_vec.extend(album_vec);
+    abstract_data_vec.par_sort_by(|a, b| b.compute_timestamp().cmp(&a.compute_timestamp()));
 
-    *TREE.in_memory.write().unwrap() = database_timestamp_vec;
+    *TREE.in_memory.write().unwrap() = abstract_data_vec;
 
     BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
 
