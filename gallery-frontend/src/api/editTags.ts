@@ -1,10 +1,8 @@
 import { useMessageStore } from '@/store/messageStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
-import { tagInfoSchema } from '@/type/schemas'
-import { IsolationId, TagInfo } from '@/type/types'
+import { IsolationId } from '@/type/types'
 import axios from 'axios'
-import { z } from 'zod'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 export async function editTags(
@@ -32,15 +30,12 @@ export async function editTags(
   optimisticStore.optimisticUpdateTags(payload, true)
 
   await tryWithMessageStore('mainId', async () => {
-    const axiosResponse = await axios.put<TagInfo[]>('/put/edit_tag', {
+    await axios.put('/put/edit_tag', {
       indexArray,
       addTagsArray,
       removeTagsArray,
       timestamp
     })
-
-    const tagsArraySchema = z.array(tagInfoSchema)
-    tagsArraySchema.parse(axiosResponse.data)
 
     messageStore.success('Successfully edited tags.')
   })

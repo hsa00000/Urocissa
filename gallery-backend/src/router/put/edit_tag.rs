@@ -2,7 +2,6 @@ use crate::operations::transitor::index_to_hash;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
-use crate::public::db::tree::read_tags::TagInfo;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
@@ -25,7 +24,7 @@ pub async fn edit_tag(
     auth: GuardResult<GuardAuth>,
     read_only_mode: Result<GuardReadOnlyMode>,
     json_data: Json<EditTagsData>,
-) -> AppResult<Json<Vec<TagInfo>>> {
+) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
     let updated_data = tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>> {
@@ -80,16 +79,10 @@ pub async fn edit_tag(
         .await
         .unwrap();
 
-    let vec_tags_info = tokio::task::spawn_blocking(move || -> Result<Vec<TagInfo>> {
-        Ok(TREE_SNAPSHOT.read_tags()?)
-    })
-    .await
-    .unwrap()?;
-
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
         .await
         .unwrap();
 
-    Ok(Json(vec_tags_info))
+    Ok(())
 }
