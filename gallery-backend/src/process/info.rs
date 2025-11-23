@@ -1,21 +1,16 @@
 use std::fs::metadata;
 
-use crate::operations::indexation::fix_orientation::{
-    fix_image_orientation, fix_image_width_height, fix_video_width_height,
-};
-use crate::operations::indexation::generate_dynamic_image::generate_dynamic_image;
-use crate::operations::indexation::generate_exif::{
-    generate_exif_for_image, generate_exif_for_video,
-};
-use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
-use crate::operations::indexation::generate_thumbnail::{
-    generate_thumbnail_for_image, generate_thumbnail_for_video,
-};
-use crate::operations::indexation::generate_width_height::{
-    generate_image_width_height, generate_video_width_height,
+use anyhow::{Context, Result};
+
+use crate::operations::indexation::{
+    fix_orientation::{fix_image_orientation, fix_image_width_height, fix_video_width_height},
+    generate_dynamic_image::generate_dynamic_image,
+    generate_exif::{generate_exif_for_image, generate_exif_for_video},
+    generate_image_hash::{generate_phash, generate_thumbhash},
+    generate_thumbnail::{generate_thumbnail_for_image, generate_thumbnail_for_video},
+    generate_width_height::{generate_image_width_height, generate_video_width_height},
 };
 use crate::public::structure::database_struct::database::definition::Database;
-use anyhow::{Context, Result};
 
 /// Analyse the newly‑imported **image** and populate the `Database` record.
 pub fn process_image_info(database: &mut Database) -> Result<()> {
