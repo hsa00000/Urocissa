@@ -74,45 +74,53 @@ export const DataBaseParse = z.object({
   pending: z.boolean(),
   phash: z.array(z.number()),
   size: z.number(),
-  tag: z.array(z.string()),
   thumbhash: z.array(z.number()),
-  width: z.number()
+  width: z.number(),
+  timestamp_ms: z.number()
 })
 
 export const DataBaseSchema = DataBaseParse.extend({
   timestamp: z.number(),
   thumbhashUrl: z.string(), // need initialize
-  filename: z.string() // need initialize
+  filename: z.string(), // need initialize
+  tags: z.array(z.string())
 })
 
 export const AlbumParse = z.object({
   id: z.string(),
   title: z.string().nullable(),
-  createdTime: z.number(),
-  startTime: z.number().nullable(),
-  endTime: z.number().nullable(),
-  lastModifiedTime: z.number(),
+  created_time: z.number(),
+  start_time: z.number().nullable(),
+  end_time: z.number().nullable(),
+  last_modified_time: z.number(),
   cover: z.string().nullable(),
   thumbhash: z.array(z.number()).nullable(),
-  userDefinedMetadata: z.record(z.string(), z.array(z.string())),
-  shareList: z.record(z.string(), ShareSchema).transform((obj) => new Map(Object.entries(obj))),
+  user_defined_metadata: z.record(z.string(), z.array(z.string())),
+  share_list: z.record(z.string(), ShareSchema).transform((obj) => new Map(Object.entries(obj))),
   tag: z.array(z.string()),
   width: z.number(),
   height: z.number(),
-  itemCount: z.number(),
-  itemSize: z.number(),
+  item_count: z.number(),
+  item_size: z.number(),
   pending: z.boolean()
 })
 
 export const AlbumSchema = AlbumParse.extend({
   timestamp: z.number(),
-  thumbhashUrl: z.string().nullable() // need initialize
+  thumbhashUrl: z.string().nullable(), // need initialize
+  tags: z.array(z.string())
 })
 
 export const AbstractDataParseSchema = z.union([
   z.object({ Database: DataBaseParse }),
   z.object({ Album: AlbumParse })
 ])
+
+export const AbstractDataWithTagSchema = z.object({
+  data: AbstractDataParseSchema,
+  tag: z.array(z.string()).optional(),
+  token: z.string()
+})
 
 export const AbstractDataSchema = z.object({
   database: DataBaseSchema.optional(),

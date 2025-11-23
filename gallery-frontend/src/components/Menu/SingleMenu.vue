@@ -14,9 +14,9 @@
       <v-divider></v-divider>
       <ItemEditTags />
       <ItemEditAlbums />
-      <ItemDelete v-if="!database.tag.includes('_trashed')" :index-list="[props.index]" />
-      <ItemRestore v-if="database.tag.includes('_trashed')" :index-list="[props.index]" />
-      <ItemPermanentlyDelete v-if="database.tag.includes('_trashed')" :index-list="[props.index]" />
+      <ItemDelete v-if="!database.tags.includes('_trashed')" :index-list="[props.index]" />
+      <ItemRestore v-if="database.tags.includes('_trashed')" :index-list="[props.index]" />
+      <ItemPermanentlyDelete v-if="database.tags.includes('_trashed')" :index-list="[props.index]" />
       <v-divider></v-divider>
       <ItemRegenerateMetadata :index-list="[props.index]" />
       <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />

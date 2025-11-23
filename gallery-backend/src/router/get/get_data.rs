@@ -2,7 +2,7 @@ use crate::operations::resolve_show_download_and_metadata;
 use crate::operations::transitor::{index_to_hash, process_abstract_data_for_response};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
-use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::abstract_data::AbstractDataWithTag;
 use crate::public::structure::row::{Row, ScrollBarData};
 
 use crate::router::fairing::guard_timestamp::GuardTimestamp;
@@ -19,13 +19,14 @@ pub async fn get_data(
     timestamp: u128,
     start: usize,
     mut end: usize,
-) -> AppResult<Json<Vec<AbstractData>>> {
+) -> AppResult<Json<Vec<AbstractDataWithTag>>> {
     let guard_timestamp = guard_timestamp?;
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
 
         let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
-        let (_show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
+        let (_show_download, show_metadata) =
+            resolve_show_download_and_metadata(resolved_share_opt);
 
         let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
         end = end.min(tree_snapshot.len());
@@ -41,11 +42,9 @@ pub async fn get_data(
 
                 let abstract_data = TREE.load_from_db(&hash)?;
 
-                let processed_data = process_abstract_data_for_response(
-                    abstract_data,
-                    show_metadata,
-                );
-                Ok(processed_data)
+                let processed_data =
+                    process_abstract_data_for_response(abstract_data, show_metadata);
+                Ok(processed_data.with_tag(guard_timestamp.claims.timestamp))
             })
             .collect();
 

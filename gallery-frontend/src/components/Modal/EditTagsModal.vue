@@ -82,9 +82,9 @@ onMounted(() => {
     const { index, data } = initializeResult
     let defaultTags: string[]
     if (data.database) {
-      defaultTags = data.database.tag
+      defaultTags = data.database.tags
     } else if (data.album) {
-      defaultTags = data.album.tag
+      defaultTags = data.album.tags
     } else {
       console.error("useSubmit Error: 'data.database' is undefined.")
       return undefined

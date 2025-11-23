@@ -5,9 +5,9 @@
         <v-icon >mdi-image</v-icon>
       </v-avatar>
     </template>
-    <v-list-item-title class="text-wrap">{{ `${props.album.itemCount} items` }}</v-list-item-title>
+    <v-list-item-title class="text-wrap">{{ `${props.album.item_count} items` }}</v-list-item-title>
     <v-list-item-subtitle class="text-wrap">
-      {{ filesize(props.album.itemSize) }}
+      {{ filesize(props.album.item_size) }}
     </v-list-item-subtitle>
   </v-list-item>
 </template>

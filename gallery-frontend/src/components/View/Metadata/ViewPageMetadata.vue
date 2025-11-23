@@ -51,7 +51,7 @@
             v-if="showMetadata"
             :isolation-id="props.isolationId"
             :index="props.index"
-            :tags="abstractData.database.tag"
+            :tags="abstractData.database.tags"
           />
           <ItemAlbum
             v-if="route.meta.baseName !== 'share'"
@@ -120,7 +120,7 @@ function getUserDefinedDescription(abstractData: AbstractData): string {
   if (abstractData.database) {
     return abstractData.database.exif_vec._user_defined_description ?? ''
   } else if (abstractData.album) {
-    return abstractData.album.userDefinedMetadata._user_defined_description?.[0] ?? ''
+    return abstractData.album.user_defined_metadata._user_defined_description?.[0] ?? ''
   }
   return ''
 }

@@ -15,7 +15,7 @@ export async function editUserDefinedDescription(
     if (abstractData.database) {
       return abstractData.database.exif_vec._user_defined_description ?? ''
     } else if (abstractData.album) {
-      return abstractData.album.userDefinedMetadata._user_defined_description?.[0] ?? ''
+      return abstractData.album.user_defined_metadata._user_defined_description?.[0] ?? ''
     }
     return ''
   }
@@ -38,7 +38,7 @@ export async function editUserDefinedDescription(
       if (abstractData.database && item.database) {
         item.database.exif_vec._user_defined_description = descriptionModelValue
       } else if (abstractData.album && item.album) {
-        item.album.userDefinedMetadata._user_defined_description = descriptionModelValue === '' ? [] : [descriptionModelValue]
+        item.album.user_defined_metadata._user_defined_description = descriptionModelValue == '' ? [] : [descriptionModelValue]
       }
     }
   }

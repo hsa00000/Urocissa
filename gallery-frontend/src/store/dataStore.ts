@@ -31,8 +31,8 @@ export const useDataStore = (isolationId: IsolationId) =>
 
         if (target) {
           tags.forEach((tag) => {
-            if (!target.tag.includes(tag)) {
-              target.tag.push(tag)
+            if (!target.tags.includes(tag)) {
+              target.tags.push(tag)
             }
           })
           return true
@@ -52,7 +52,7 @@ export const useDataStore = (isolationId: IsolationId) =>
         const target = data.database ?? data.album
 
         if (target) {
-          target.tag = target.tag.filter((tag) => !tags.includes(tag))
+          target.tags = target.tags.filter((tag) => !tags.includes(tag))
           return true
         }
 

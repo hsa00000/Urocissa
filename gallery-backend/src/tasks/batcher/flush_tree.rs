@@ -53,7 +53,7 @@ fn flush_tree_task(
         match abstract_data {
             AbstractData::Database(database) => {
                 conn.execute(
-                    "INSERT OR REPLACE INTO database (hash, size, width, height, thumbhash, phash, ext, exif_vec, album, alias, ext_type, pending) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    "INSERT OR REPLACE INTO database (hash, size, width, height, thumbhash, phash, ext, exif_vec, album, alias, ext_type, pending, timestamp_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                     rusqlite::params![
                         database.hash.as_str(),
                         database.size,
@@ -66,7 +66,8 @@ fn flush_tree_task(
                         serde_json::to_string(&database.album.iter().map(|a| a.as_str()).collect::<Vec<_>>()).unwrap(),
                         serde_json::to_string(&database.alias).unwrap(),
                         &database.ext_type,
-                        database.pending as i32
+                        database.pending as i32,
+                        database.timestamp_ms
                     ],
                 )?;
                 // TODO: FlushTreeTask 現在已經無法更動 database tag 需要一個獨立的 flush_tag

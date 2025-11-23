@@ -8,6 +8,13 @@ use crate::public::db::tree::TREE;
 use super::{album::Album, database_struct::database::definition::Database};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AbstractDataWithTag {
+    pub data: AbstractData,
+    pub tag: Option<HashSet<String>>,
+    pub token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AbstractData {
     Database(Database),
     Album(Album),
@@ -60,6 +67,29 @@ impl AbstractData {
                 Some(tags)
             }
             AbstractData::Album(album) => Some(album.tag.clone()),
+        }
+    }
+
+    pub fn generate_token(&self, timestamp: u128) -> String {
+        match self {
+            AbstractData::Database(db) => {
+                use crate::router::claims::claims_hash::ClaimsHash;
+                ClaimsHash::new(db.hash, timestamp, false).encode()
+            }
+            AbstractData::Album(album) => {
+                use crate::router::claims::claims_hash::ClaimsHash;
+                ClaimsHash::new(album.id, timestamp, false).encode()
+            }
+        }
+    }
+
+    pub fn with_tag(self, timestamp: u128) -> AbstractDataWithTag {
+        let tag = self.tag();
+        let token = self.generate_token(timestamp);
+        AbstractDataWithTag {
+            data: self,
+            tag,
+            token,
         }
     }
 }

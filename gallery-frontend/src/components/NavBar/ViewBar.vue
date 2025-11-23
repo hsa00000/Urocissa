@@ -11,9 +11,9 @@
     <template v-if="route.meta.baseName !== 'share'">
       <v-btn
         v-if="abstractData && abstractData.database"
-        :icon="abstractData.database.tag.includes('_favorite') ? 'mdi-star' : 'mdi-star-outline'"
+        :icon="abstractData.database.tags.includes('_favorite') ? 'mdi-star' : 'mdi-star-outline'"
         @click="
-          abstractData.database.tag.includes('_favorite')
+          abstractData.database.tags.includes('_favorite')
             ? quickRemoveTags('_favorite', [index], isolationId)
             : quickAddTags('_favorite', [index], isolationId)
         "
@@ -21,12 +21,12 @@
       <v-btn
         v-if="abstractData && abstractData.database"
         :icon="
-          abstractData.database.tag.includes('_archived')
+          abstractData.database.tags.includes('_archived')
             ? 'mdi-archive-arrow-up-outline'
             : 'mdi-archive-arrow-down-outline'
         "
         @click="
-          abstractData.database.tag.includes('_archived')
+          abstractData.database.tags.includes('_archived')
             ? quickRemoveTags('_archived', [index], isolationId)
             : quickAddTags('_archived', [index], isolationId)
         "

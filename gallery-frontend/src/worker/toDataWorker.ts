@@ -1,11 +1,10 @@
 import {
   rowSchema,
   rowWithOffsetSchema,
-  databaseTimestampSchema
+  AbstractDataWithTagSchema
 } from '@type/schemas'
 import {
   AbstractData,
-  Database,
   DisplayElement,
   FetchDataMethod,
   Row,
@@ -130,16 +129,16 @@ async function fetchData(
 
   const fetchUrl = `/get/get-data?timestamp=${timestamp}&start=${start}&end=${end}`
 
-  const response = await workerAxios.get<Database[]>(fetchUrl, {
+  const response = await workerAxios.get(fetchUrl, {
     headers: {
       Authorization: `Bearer ${timestampToken}`
     }
   })
-  const databaseTimestampArray = z.array(databaseTimestampSchema).parse(response.data)
+  const abstractDataWithTagArray = z.array(AbstractDataWithTagSchema).parse(response.data)
 
   const data = new Map<number, { abstractData: AbstractData; hashToken: string }>()
 
-  for (let i = 0; i < databaseTimestampArray.length; i++) {
+  for (let i = 0; i < abstractDataWithTagArray.length; i++) {
     // Determine the current batch index based on the fetch method
     const currentBatchIndex = fetchMethod === 'batch' ? Math.floor(start / batchNumber) : index
 
@@ -147,24 +146,23 @@ async function fetchData(
       break // Stop processing further if the batch should no longer be processed
     }
 
-    const item = databaseTimestampArray[i]
+    const item = abstractDataWithTagArray[i]
     const key = start + i
 
     if (item === undefined) {
       console.error(
-        `Error processing item at ${fetchMethod === 'batch' ? 'batchIndex' : 'index'}: ${
-          fetchMethod === 'batch' ? index : index
+        `Error processing item at ${fetchMethod === 'batch' ? 'batchIndex' : 'index'}: ${fetchMethod === 'batch' ? index : index
         }, ` + `batchNumber: ${batchNumber}, index: ${i}. Item is undefined.`
       )
       continue
     }
 
-    if ('Database' in item.abstractData) {
-      const databaseInstance = createDataBase(item.abstractData.Database, item.timestamp)
+    if ('Database' in item.data) {
+      const databaseInstance = createDataBase(item.data.Database, item.data.Database.timestamp_ms, item.tag)
       const abstractData = createAbstractData(databaseInstance)
       data.set(key, { abstractData, hashToken: item.token })
-    } else if ('Album' in item.abstractData) {
-      const albumInstance = createAlbum(item.abstractData.Album, item.timestamp)
+    } else if ('Album' in item.data) {
+      const albumInstance = createAlbum(item.data.Album, item.data.Album.created_time, item.tag)
       const abstractData = createAbstractData(albumInstance)
       data.set(key, { abstractData, hashToken: item.token })
     }

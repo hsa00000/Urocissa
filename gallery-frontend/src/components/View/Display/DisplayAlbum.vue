@@ -28,12 +28,12 @@
 
         <v-list>
           <v-list-item>
-            <v-list-item-title v-if="album.startTime">
-              {{ `${dater(album.startTime)} ~ ${dater(album.endTime!)}` }}
+            <v-list-item-title v-if="album.start_time">
+              {{ `${dater(album.start_time)} ~ ${dater(album.end_time!)}` }}
             </v-list-item-title>
             <v-list-item-subtitle>
-              {{ `${album.itemCount} item${album.itemCount === 1 ? '' : 's'}` }} •
-              {{ filesize(album.itemSize) }}
+              {{ `${album.item_count} item${album.item_count === 1 ? '' : 's'}` }} •
+              {{ filesize(album.item_size) }}
             </v-list-item-subtitle>
           </v-list-item>
         </v-list>

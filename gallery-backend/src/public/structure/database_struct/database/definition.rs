@@ -243,6 +243,7 @@ impl DatabaseWithTag {
                 database.alias,
                 database.ext_type,
                 database.pending,
+                database.timestamp_ms,
                 tag_databases.tag AS tag
             FROM database
             LEFT JOIN tag_databases
