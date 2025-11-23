@@ -14,10 +14,10 @@ pub enum AbstractData {
 }
 
 impl AbstractData {
-    pub fn compute_timestamp(self: &Self, priority_list: &[&str]) -> u128 {
+    pub fn compute_timestamp(self: &Self) -> i64 {
         match self {
-            AbstractData::Database(database) => database.compute_timestamp(priority_list),
-            AbstractData::Album(album) => album.created_time,
+            AbstractData::Database(database) => database.timestamp_ms,
+            AbstractData::Album(album) => album.created_time as i64,
         }
     }
     pub fn hash(self: &Self) -> ArrayString<64> {

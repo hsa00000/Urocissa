@@ -19,6 +19,7 @@ pub struct Database {
     pub alias: Vec<FileModify>,
     pub ext_type: String,
     pub pending: bool,
+    pub timestamp_ms: i64,
 }
 
 impl Database {
@@ -36,10 +37,17 @@ impl Database {
                 album TEXT,
                 alias TEXT,
                 ext_type TEXT,
-                pending INTEGER
+                pending INTEGER,
+                timestamp_ms INTEGER
             );
         "#;
         conn.execute(sql_create_main_table, [])?;
+
+        // 新增索引
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_database_timestamp ON database(timestamp_ms);",
+            [],
+        )?;
 
         // 先保留舊 view，避免既有依賴炸裂
         let sql_create_view = r#"
@@ -87,6 +95,8 @@ impl Database {
         let ext_type: String = row.get("ext_type")?;
         let pending: bool = row.get::<_, i32>("pending")? != 0;
 
+        let timestamp_ms: i64 = row.get("timestamp_ms").unwrap_or(0);
+
         Ok(Database {
             hash: ArrayString::from(&hash).unwrap(),
             size,
@@ -100,37 +110,8 @@ impl Database {
             alias,
             ext_type,
             pending,
+            timestamp_ms,
         })
-    }
-
-    /// 單表載入（給未來慢慢迁移用）
-    pub fn load_databases(conn: &Connection) -> rusqlite::Result<Vec<Database>> {
-        let sql = r#"
-            SELECT
-                database.hash,
-                database.size,
-                database.width,
-                database.height,
-                database.thumbhash,
-                database.phash,
-                database.ext,
-                database.exif_vec,
-                database.album,
-                database.alias,
-                database.ext_type,
-                database.pending
-            FROM database
-            ORDER BY database.hash;
-        "#;
-
-        let mut stmt = conn.prepare(sql)?;
-        let iter = stmt.query_map([], |row| Database::from_row(row))?;
-
-        let mut result = Vec::new();
-        for db in iter {
-            result.push(db?);
-        }
-        Ok(result)
     }
 }
 
@@ -150,6 +131,7 @@ pub struct DatabaseWithTag {
     pub alias: Vec<FileModify>,
     pub ext_type: String,
     pub pending: bool,
+    pub timestamp_ms: i64,
 }
 
 impl From<Database> for DatabaseWithTag {
@@ -168,6 +150,7 @@ impl From<Database> for DatabaseWithTag {
             alias: db.alias,
             ext_type: db.ext_type,
             pending: db.pending,
+            timestamp_ms: db.timestamp_ms,
         }
     }
 }
@@ -187,6 +170,7 @@ impl From<DatabaseWithTag> for Database {
             alias: db.alias,
             ext_type: db.ext_type,
             pending: db.pending,
+            timestamp_ms: db.timestamp_ms,
         }
     }
 }
@@ -239,6 +223,7 @@ impl DatabaseWithTag {
             alias,
             ext_type,
             pending,
+            timestamp_ms: row.get("timestamp_ms").unwrap_or(0),
         })
     }
 

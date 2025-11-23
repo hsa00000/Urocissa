@@ -12,11 +12,11 @@ pub struct DatabaseTimestamp {
 }
 
 impl DatabaseTimestamp {
-    pub fn new(abstract_data: AbstractData, priority_list: &[&str]) -> Self {
-        let timestamp = abstract_data.compute_timestamp(priority_list);
+    pub fn new(abstract_data: AbstractData) -> Self {
+        let timestamp = abstract_data.compute_timestamp();
         Self {
             abstract_data,
-            timestamp,
+            timestamp: timestamp as u128,
         }
     }
 }
@@ -30,13 +30,8 @@ pub struct DataBaseTimestampReturn {
 }
 
 impl DataBaseTimestampReturn {
-    pub fn new(
-        abstract_data: AbstractData,
-        priority_list: &[&str],
-        token_timestamp: u128,
-        allow_original: bool,
-    ) -> Self {
-        let timestamp = abstract_data.compute_timestamp(priority_list);
+    pub fn new(abstract_data: AbstractData, token_timestamp: u128, allow_original: bool) -> Self {
+        let timestamp = abstract_data.compute_timestamp();
         let token = match &abstract_data {
             AbstractData::Database(database) => {
                 ClaimsHash::new(database.hash, token_timestamp, allow_original).encode()
@@ -51,7 +46,7 @@ impl DataBaseTimestampReturn {
         };
         Self {
             abstract_data,
-            timestamp,
+            timestamp: timestamp as u128,
             token,
         }
     }

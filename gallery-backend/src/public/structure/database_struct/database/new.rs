@@ -1,6 +1,8 @@
 use crate::{
     public::constant::VALID_IMAGE_EXTENSIONS,
-    public::structure::database_struct::{database::definition::DatabaseWithTag, file_modify::FileModify},
+    public::structure::database_struct::{
+        database::definition::DatabaseWithTag, file_modify::FileModify,
+    },
 };
 use anyhow::Context;
 use anyhow::Result;
@@ -46,6 +48,7 @@ impl DatabaseWithTag {
             album: HashSet::new(),
             alias: vec![file_modify],
             pending: false,
+            timestamp_ms: 0,
         })
     }
 

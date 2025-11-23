@@ -34,6 +34,7 @@ impl DatabaseWithTag {
                 scan_time: 0,
             }],
             pending: false,
+            timestamp_ms: 0,
         }
     }
 }

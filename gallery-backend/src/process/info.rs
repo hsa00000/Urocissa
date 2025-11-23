@@ -36,6 +36,15 @@ pub fn process_image_info(database: &mut Database) -> Result<()> {
     generate_thumbnail_for_image(database, dynamic_image)
         .context("failed to generate JPEG thumbnail for image")?;
 
+    // Compute timestamp
+    database.timestamp_ms = database.compute_timestamp_ms(&[
+        "DateTimeOriginal",
+        "filename",
+        "scan_time",
+        "modified",
+        "random",
+    ]);
+
     Ok(())
 }
 
@@ -73,6 +82,15 @@ pub fn process_video_info(database: &mut Database) -> Result<()> {
     // Compute perceptual hashes
     database.thumbhash = generate_thumbhash(&dynamic_image);
     database.phash = generate_phash(&dynamic_image);
+
+    // Compute timestamp
+    database.timestamp_ms = database.compute_timestamp_ms(&[
+        "DateTimeOriginal",
+        "filename",
+        "scan_time",
+        "modified",
+        "random",
+    ]);
 
     Ok(())
 }

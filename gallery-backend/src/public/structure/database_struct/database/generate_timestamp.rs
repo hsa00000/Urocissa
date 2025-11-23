@@ -11,7 +11,7 @@ static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 impl Database {
-    pub fn compute_timestamp(&self, priority_list: &[&str]) -> u128 {
+    pub fn compute_timestamp_ms(&self, priority_list: &[&str]) -> i64 {
         let now_time = chrono::Local::now().naive_local();
         for &field in priority_list {
             match field {
@@ -23,7 +23,7 @@ impl Database {
                             chrono::Local.from_local_datetime(&naive_dt).single()
                         && local_dt.naive_local() <= now_time
                     {
-                        return local_dt.timestamp_millis() as u128;
+                        return local_dt.timestamp_millis();
                     }
                 }
                 "filename" => {
@@ -58,25 +58,25 @@ impl Database {
                         return chrono::Local
                             .from_local_datetime(&datetime)
                             .unwrap()
-                            .timestamp_millis() as u128;
+                            .timestamp_millis();
                     }
                 }
                 "scan_time" => {
                     let latest_scan_time = self.alias.iter().map(|alias| alias.scan_time).max();
                     if let Some(latest_time) = latest_scan_time {
-                        return latest_time as u128;
+                        return latest_time as i64;
                     }
                 }
                 "modified" => {
                     if let Some(max_scan_alias) =
                         self.alias.iter().max_by_key(|alias| alias.scan_time)
                     {
-                        return max_scan_alias.modified;
+                        return max_scan_alias.modified as i64;
                     }
                 }
                 "random" => {
                     let mut rng = rand::rng();
-                    let random_number: u128 = rng.random();
+                    let random_number: i64 = rng.random();
                     return random_number;
                 }
                 _ => panic!("Unknown field type: {}", field),

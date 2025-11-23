@@ -43,7 +43,6 @@ impl BatchTask for UpdateTreeTask {
 
 fn update_tree_task() -> Result<()> {
     let start_time = Instant::now();
-    let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
     let mut database_timestamp_vec: Vec<DatabaseTimestamp> = {
         let databases = TREE.load_all_databases_from_db()?;
@@ -52,7 +51,7 @@ fn update_tree_task() -> Result<()> {
             .map(|mut db| {
                 db.exif_vec
                     .retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
-                DatabaseTimestamp::new(AbstractData::Database(db.into()), &priority_list)
+                DatabaseTimestamp::new(AbstractData::Database(db.into()))
             })
             .collect()
     };
@@ -60,7 +59,7 @@ fn update_tree_task() -> Result<()> {
     let album_vec: Vec<DatabaseTimestamp> = {
         let rows = TREE.read_albums()?;
         rows.into_par_iter()
-            .map(|album| DatabaseTimestamp::new(AbstractData::Album(album), &priority_list))
+            .map(|album| DatabaseTimestamp::new(AbstractData::Album(album)))
             .collect()
     };
 

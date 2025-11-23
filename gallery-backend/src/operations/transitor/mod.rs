@@ -39,7 +39,6 @@ pub fn abstract_data_to_database_timestamp_return(
 ) -> DataBaseTimestampReturn {
     DataBaseTimestampReturn::new(
         abstract_data,
-        &crate::public::constant::DEFAULT_PRIORITY_LIST,
         timestamp,
         show_download,
     )
