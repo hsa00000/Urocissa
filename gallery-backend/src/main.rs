@@ -19,7 +19,6 @@ use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::looper::start_expire_check_loop;
 
-use crate::public::structure::{album::Album, database_struct::database::definition::Database};
 use rocket::fs::FileServer;
 use router::fairing::cache_control_fairing::cache_control_fairing;
 use router::fairing::generate_fairing_routes;
@@ -52,11 +51,8 @@ fn main() -> Result<()> {
             let rx = initialize();
             let start_time = Instant::now();
             let conn = crate::public::db::tree::TREE.get_connection().expect("Failed to get DB connection");
-            if let Err(e) = Database::create_database_table(&conn) {
-                panic!("Failed to create database table: {:?}", e);
-            }
-            if let Err(e) = Album::create_album_table(&conn) {
-                panic!("Failed to create album table: {:?}", e);
+            if let Err(e) = crate::public::db::schema::create_all_tables(&conn) {
+                panic!("Failed to create tables: {:?}", e);
             }
             let data_count: i64 = conn.query_row("SELECT COUNT(*) FROM database", [], |row| row.get(0)).unwrap();
             info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", data_count);

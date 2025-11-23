@@ -42,21 +42,6 @@ impl Database {
         "#;
         conn.execute(sql_create_main_table, [])?;
 
-        let sql_create_tag_table = r#"
-            CREATE TABLE IF NOT EXISTS tag_databases (
-                hash TEXT NOT NULL,
-                tag  TEXT NOT NULL,
-                PRIMARY KEY (hash, tag),
-                FOREIGN KEY (hash) REFERENCES database(hash) ON DELETE CASCADE
-            );
-        "#;
-        conn.execute(sql_create_tag_table, [])?;
-
-        let sql_create_index = r#"
-            CREATE INDEX IF NOT EXISTS idx_tag_databases_tag ON tag_databases(tag);
-        "#;
-        conn.execute(sql_create_index, [])?;
-
         let sql_create_view = r#"
             CREATE VIEW IF NOT EXISTS database_with_tags AS
             SELECT
