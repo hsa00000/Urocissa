@@ -13,7 +13,7 @@ use crate::{
         constant::VALID_IMAGE_EXTENSIONS,
         error_data::handle_error,
         structure::{
-            database_struct::database::definition::{Database, DatabaseWithTag},
+            database_struct::database::definition::Database,
             guard::PendingGuard,
         },
         tui::{DASHBOARD, FileType},
@@ -23,17 +23,17 @@ use crate::{
 use mini_executor::Task;
 
 pub struct IndexTask {
-    pub database: DatabaseWithTag,
+    pub database: Database,
 }
 
 impl IndexTask {
-    pub fn new(database: DatabaseWithTag) -> Self {
+    pub fn new(database: Database) -> Self {
         Self { database }
     }
 }
 
 impl Task for IndexTask {
-    type Output = Result<DatabaseWithTag>;
+    type Output = Result<Database>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
@@ -48,7 +48,7 @@ impl Task for IndexTask {
 
 /// Outer layer: unify business result matching and update TUI  
 /// (success -> advance, failure -> mark_failed)
-fn index_task_match(database: DatabaseWithTag) -> Result<DatabaseWithTag> {
+fn index_task_match(database: Database) -> Result<Database> {
     let hash = database.hash; // hash is Copy, no need to clone
     match index_task(database) {
         Ok(db) => {
@@ -63,7 +63,7 @@ fn index_task_match(database: DatabaseWithTag) -> Result<DatabaseWithTag> {
 }
 
 /// Inner layer: only responsible for business logic, no TUI state updates
-fn index_task(mut database: DatabaseWithTag) -> Result<DatabaseWithTag> {
+fn index_task(mut database: Database) -> Result<Database> {
     let hash = database.hash;
     let newest_path = database
         .alias
@@ -84,19 +84,15 @@ fn index_task(mut database: DatabaseWithTag) -> Result<DatabaseWithTag> {
     // Branch processing based on file extension
     let is_image = VALID_IMAGE_EXTENSIONS.contains(&database.ext.as_str());
     if is_image {
-        let mut db = Database::from(database);
-        process_image_info(&mut db).context(format!(
+        process_image_info(&mut database).context(format!(
             "failed to process image metadata pipeline:\n{:#?}",
-            db
+            database
         ))?;
-        database = DatabaseWithTag::from(db);
     } else {
-        let mut db = Database::from(database);
-        process_video_info(&mut db).context(format!(
+        process_video_info(&mut database).context(format!(
             "failed to process video metadata pipeline:\n{:#?}",
-            db
+            database
         ))?;
-        database = DatabaseWithTag::from(db);
         database.pending = true;
     }
 

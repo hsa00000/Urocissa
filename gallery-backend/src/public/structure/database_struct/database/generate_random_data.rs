@@ -7,9 +7,9 @@ use rand::Rng;
 
 use std::collections::{BTreeMap, HashSet};
 
-use super::definition::DatabaseWithTag;
+use super::definition::Database;
 
-impl DatabaseWithTag {
+impl Database {
     pub fn generate_random_data() -> Self {
         let hash = generate_random_hash();
 
@@ -26,7 +26,6 @@ impl DatabaseWithTag {
             ext_type: "image".to_string(),
             ext: "jpg".to_string(),
             exif_vec: BTreeMap::<String, String>::new(),
-            tag: HashSet::<String>::new(),
             album: HashSet::new(),
             alias: vec![FileModify {
                 file: String::from("/"),

@@ -1,7 +1,7 @@
 use crate::public::db::tree::TREE;
 use crate::router::{AppResult, GuardResult};
 use crate::{
-    public::structure::database_struct::database::definition::DatabaseWithTag,
+    public::structure::database_struct::database::definition::Database,
     router::fairing::guard_auth::GuardAuth,
 };
 use rocket::get;
@@ -10,7 +10,7 @@ use serde::Serialize;
 #[derive(Debug, Serialize)]
 pub struct ExportEntry {
     key: String,
-    value: DatabaseWithTag,
+    value: Database,
 }
 
 #[get("/get/get-export")]

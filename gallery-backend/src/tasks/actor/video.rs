@@ -5,7 +5,7 @@ use crate::{
         error_data::handle_error,
         structure::{
             abstract_data::AbstractData,
-            database_struct::database::definition::{Database, DatabaseWithTag},
+            database_struct::database::definition::Database,
             guard::PendingGuard,
         },
         tui::DASHBOARD,
@@ -18,11 +18,11 @@ use mini_executor::Task;
 use tokio_rayon::AsyncThreadPool;
 
 pub struct VideoTask {
-    database: DatabaseWithTag,
+    database: Database,
 }
 
 impl VideoTask {
-    pub fn new(database: DatabaseWithTag) -> Self {
+    pub fn new(database: Database) -> Self {
         Self { database }
     }
 }
@@ -41,14 +41,12 @@ impl Task for VideoTask {
     }
 }
 
-pub fn video_task(mut database: DatabaseWithTag) -> Result<()> {
+pub fn video_task(mut database: Database) -> Result<()> {
     let hash = database.hash;
-    let mut db = Database::from(database);
-    match generate_compressed_video(&mut db) {
+    match generate_compressed_video(&mut database) {
         Ok(_) => {
-            database = DatabaseWithTag::from(db);
             database.pending = false;
-            let abstract_data = AbstractData::Database(database.clone().into());
+            let abstract_data = AbstractData::Database(database.clone());
             BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
 
             DASHBOARD.advance_task_state(&hash);

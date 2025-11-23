@@ -5,7 +5,7 @@ use crate::router::{AppResult, GuardResult};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::{
-    public::structure::database_struct::database::definition::DatabaseWithTag,
+    public::structure::database_struct::database::definition::Database,
     tasks::batcher::flush_tree::FlushTreeTask,
 };
 use anyhow::Result;
@@ -20,8 +20,8 @@ pub async fn generate_random_data(
     let _ = read_only_mode?;
     let database_list: Vec<AbstractData> = (0..number)
         .into_par_iter()
-        .map(|_| DatabaseWithTag::generate_random_data())
-        .map(|database| AbstractData::Database(database.into()))
+        .map(|_| Database::generate_random_data())
+        .map(|database| AbstractData::Database(database))
         .collect();
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(database_list));
     BATCH_COORDINATOR
