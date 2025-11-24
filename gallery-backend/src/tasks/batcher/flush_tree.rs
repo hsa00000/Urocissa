@@ -14,6 +14,7 @@ pub enum FlushOperation {
     RemoveAbstractData(AbstractData),
     InsertTag(String, String),
     RemoveTag(String, String),
+    InsertDatabaseAlias(String, String, i64, i64), // hash, file, modified, scan_time
 }
 
 pub struct FlushTreeTask {
@@ -125,6 +126,12 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 conn.execute(
                     "DELETE FROM tag_databases WHERE hash = ?1 AND tag = ?2",
                     rusqlite::params![hash, tag],
+                )?;
+            }
+            FlushOperation::InsertDatabaseAlias(hash, file, modified, scan_time) => {
+                conn.execute(
+                    "INSERT OR REPLACE INTO database_alias (hash, file, modified, scan_time) VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![hash, file, modified, scan_time],
                 )?;
             }
         }
