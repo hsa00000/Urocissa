@@ -1,5 +1,6 @@
 use log::error;
 use mini_executor::BatchTask;
+use rusqlite::params;
 use serde_json;
 
 use crate::{public::db::tree::TREE, public::structure::abstract_data::AbstractData};
@@ -29,23 +30,21 @@ impl BatchTask for UpdateTagsTask {
 }
 
 fn update_tags_task(updates: Vec<AbstractData>) -> rusqlite::Result<()> {
-    let conn = TREE.get_connection().unwrap();
+    let mut conn = TREE.get_connection().unwrap();
+    let tx = conn.transaction()?;
 
-    for abstract_data in updates {
-        match abstract_data {
-            AbstractData::Database(_) => {}
-            AbstractData::Album(album) => {
-                // Update the tag column with new JSON
-                conn.execute(
-                    "UPDATE album SET tag = ? WHERE id = ?",
-                    rusqlite::params![
-                        serde_json::to_string(&album.tag.iter().collect::<Vec<_>>()).unwrap(),
-                        album.id.as_str()
-                    ],
-                )?;
+    {
+        let mut stmt = tx.prepare("UPDATE album SET tag = ? WHERE id = ?")?;
+
+        for abstract_data in updates {
+            if let AbstractData::Album(album) = abstract_data {
+                let tag_json =
+                    serde_json::to_string(&album.tag.iter().collect::<Vec<_>>()).unwrap();
+                stmt.execute(params![tag_json, album.id.as_str()])?;
             }
         }
-    }
+    } // stmt drop
 
+    tx.commit()?;
     Ok(())
 }
