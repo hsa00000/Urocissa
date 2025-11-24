@@ -5,7 +5,7 @@ use arrayvec::ArrayString;
 use std::path::{Path, PathBuf};
 use tokio_rayon::AsyncThreadPool;
 
-use crate::public::constant::runtime::WORKER_RAYON_POOL;
+use crate::public::constant::runtime::{BATCH_RUNTIME, WORKER_RAYON_POOL};
 use crate::public::structure::abstract_data::AbstractData;
 use crate::tasks::BATCH_COORDINATOR;
 
@@ -14,10 +14,7 @@ use crate::{
     public::{
         constant::VALID_IMAGE_EXTENSIONS,
         error_data::handle_error,
-        structure::{
-            database_struct::database::definition::DatabaseSchema,
-            guard::PendingGuard,
-        },
+        structure::{database_struct::database::definition::DatabaseSchema, guard::PendingGuard},
         tui::{DASHBOARD, FileType},
     },
     tasks::batcher::flush_tree::FlushTreeTask,
@@ -95,7 +92,13 @@ fn index_task(mut database: DatabaseSchema, path: &Path) -> Result<DatabaseSchem
     }
 
     let abstract_data = AbstractData::DatabaseSchema(database.clone().into());
-    BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
+    BATCH_RUNTIME.block_on(async {
+        BATCH_COORDINATOR
+            .execute_batch_waiting(FlushTreeTask::insert(vec![abstract_data]))
+            .await
+    })?;
+
+    todo!("接下來要更新 database_alias 表格");
 
     Ok(database)
 }
