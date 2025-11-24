@@ -7,7 +7,7 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::update_tags::UpdateTagsTask;
+use crate::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask};
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use rocket::serde::{Deserialize, json::Json};
@@ -27,12 +27,12 @@ pub async fn edit_tag(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-    let updated_data = tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>> {
+    let flush_ops = tokio::task::spawn_blocking(move || -> Result<Vec<FlushOperation>> {
         let tree_snapshot = TREE_SNAPSHOT
             .read_tree_snapshot(&json_data.timestamp)
             .unwrap();
 
-        let mut updated_data = Vec::new();
+        let mut flush_ops = Vec::new();
         for &index in &json_data.index_array {
             let hash = index_to_hash(&tree_snapshot, index)?;
             let mut abstract_data = TREE.load_from_db(&hash)?;
@@ -46,36 +46,30 @@ pub async fn edit_tag(
                     for tag in &json_data.remove_tags_array {
                         album.tag.remove(tag);
                     }
+                    // Flush the updated album
+                    flush_ops.push(FlushOperation::InsertAbstractData(abstract_data));
                 }
-                AbstractData::DatabaseSchema(database) => {
-                    let conn = TREE.get_connection().unwrap();
-                    // Apply tag additions
+                AbstractData::DatabaseSchema(_) => {
+                    // Collect tag operations
                     for tag in &json_data.add_tags_array {
-                        conn.execute(
-                            "INSERT OR IGNORE INTO tag_databases (hash, tag) VALUES (?1, ?2)",
-                            rusqlite::params![database.hash.as_str(), tag],
-                        )?;
+                        flush_ops.push(FlushOperation::InsertTag(hash.to_string(), tag.clone()));
                     }
-                    // Apply tag removals
                     for tag in &json_data.remove_tags_array {
-                        conn.execute(
-                            "DELETE FROM tag_databases WHERE hash = ?1 AND tag = ?2",
-                            rusqlite::params![database.hash.as_str(), tag],
-                        )?;
+                        flush_ops.push(FlushOperation::RemoveTag(hash.to_string(), tag.clone()));
                     }
                 }
             }
-
-            updated_data.push(abstract_data);
         }
 
-        Ok(updated_data)
+        Ok(flush_ops)
     })
     .await
     .unwrap()?;
 
     BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTagsTask::new(updated_data))
+        .execute_batch_waiting(FlushTreeTask {
+            operations: flush_ops,
+        })
         .await
         .unwrap();
 
