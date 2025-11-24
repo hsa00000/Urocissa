@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
-pub struct Database {
+pub struct DatabaseSchema {
     pub hash: ArrayString<64>,
     pub size: u64,
     pub width: u32,
@@ -19,7 +19,7 @@ pub struct Database {
     pub timestamp_ms: i64,
 }
 
-impl Database {
+impl DatabaseSchema {
     pub fn create_database_table(conn: &Connection) -> rusqlite::Result<()> {
         let sql_create_main_table = r#"
             CREATE TABLE IF NOT EXISTS database (
@@ -72,7 +72,7 @@ impl Database {
 
         let timestamp_ms: i64 = row.get("timestamp_ms").unwrap_or(0);
 
-        Ok(Database {
+        Ok(DatabaseSchema {
             hash: ArrayString::from(&hash).unwrap(),
             size,
             width,

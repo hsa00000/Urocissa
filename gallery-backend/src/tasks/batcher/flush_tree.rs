@@ -51,7 +51,7 @@ fn flush_tree_task(
 
     for abstract_data in insert_list {
         match abstract_data {
-            AbstractData::Database(database) => {
+            AbstractData::DatabaseSchema(database) => {
                 conn.execute(
                     "INSERT OR REPLACE INTO database (hash, size, width, height, thumbhash, phash, ext, exif_vec, album, ext_type, pending, timestamp_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                     rusqlite::params![
@@ -98,7 +98,7 @@ fn flush_tree_task(
 
     for abstract_data in remove_list {
         match abstract_data {
-            AbstractData::Database(database) => {
+            AbstractData::DatabaseSchema(database) => {
                 conn.execute(
                     "DELETE FROM database WHERE hash = ?1",
                     rusqlite::params![database.hash.as_str()],

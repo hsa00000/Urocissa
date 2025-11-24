@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::public::db::tree::TREE;
 
-use super::{album::Album, database_struct::{database::definition::Database, file_modify::FileModify}};
+use super::{
+    album::Album,
+    database_struct::{database::definition::DatabaseSchema, file_modify::FileModify},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AbstractDataWithTag {
@@ -17,38 +20,38 @@ pub struct AbstractDataWithTag {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AbstractData {
-    Database(Database),
+    DatabaseSchema(DatabaseSchema),
     Album(Album),
 }
 
 impl AbstractData {
     pub fn compute_timestamp(self: &Self) -> i64 {
         match self {
-            AbstractData::Database(database) => database.timestamp_ms,
+            AbstractData::DatabaseSchema(database) => database.timestamp_ms,
             AbstractData::Album(album) => album.created_time as i64,
         }
     }
     pub fn hash(self: &Self) -> ArrayString<64> {
         match self {
-            AbstractData::Database(database) => database.hash,
+            AbstractData::DatabaseSchema(database) => database.hash,
             AbstractData::Album(album) => album.id,
         }
     }
     pub fn width(self: &Self) -> u32 {
         match self {
-            AbstractData::Database(database) => database.width,
+            AbstractData::DatabaseSchema(database) => database.width,
             AbstractData::Album(_) => 300,
         }
     }
     pub fn height(self: &Self) -> u32 {
         match self {
-            AbstractData::Database(database) => database.height,
+            AbstractData::DatabaseSchema(database) => database.height,
             AbstractData::Album(_) => 300,
         }
     }
     pub fn tag(self: &Self) -> Option<HashSet<String>> {
         match self {
-            AbstractData::Database(database) => {
+            AbstractData::DatabaseSchema(database) => {
                 let conn = TREE.get_connection().unwrap();
                 let mut stmt = conn
                     .prepare("SELECT tag FROM tag_databases WHERE hash = ?")
@@ -72,7 +75,7 @@ impl AbstractData {
     }
     pub fn alias(self: &Self) -> Vec<FileModify> {
         match self {
-            AbstractData::Database(database) => {
+            AbstractData::DatabaseSchema(database) => {
                 let conn = TREE.get_connection().unwrap();
                 let mut stmt = conn
                     .prepare("SELECT file, modified, scan_time FROM database_alias WHERE hash = ? ORDER BY scan_time DESC")
@@ -95,7 +98,7 @@ impl AbstractData {
 
     pub fn generate_token(&self, timestamp: u128) -> String {
         match self {
-            AbstractData::Database(db) => {
+            AbstractData::DatabaseSchema(db) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
                 ClaimsHash::new(db.hash, timestamp, false).encode()
             }
@@ -119,9 +122,9 @@ impl AbstractData {
     }
 }
 
-impl From<Database> for AbstractData {
-    fn from(database: Database) -> Self {
-        AbstractData::Database(database)
+impl From<DatabaseSchema> for AbstractData {
+    fn from(database: DatabaseSchema) -> Self {
+        AbstractData::DatabaseSchema(database)
     }
 }
 

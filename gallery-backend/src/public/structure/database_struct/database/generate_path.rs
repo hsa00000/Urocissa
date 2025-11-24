@@ -1,9 +1,9 @@
-use super::definition::Database;
+use super::definition::DatabaseSchema;
 use crate::public::db::tree::TREE;
 use std::path::PathBuf;
 use anyhow::Result;
 
-impl Database {
+impl DatabaseSchema {
     pub fn source_path_string(&self) -> Result<String> {
         let conn = TREE.get_connection()?;
         let mut stmt = conn.prepare("SELECT file FROM database_alias WHERE hash = ? ORDER BY scan_time DESC LIMIT 1")?;

@@ -68,7 +68,7 @@ fn process_deletes(
         let abstract_data = TREE.load_from_db(&hash)?;
 
         let affected_albums = match &abstract_data {
-            AbstractData::Database(db) => db.album.iter().cloned().collect(),
+            AbstractData::DatabaseSchema(db) => db.album.iter().cloned().collect(),
             AbstractData::Album(album) => vec![album.id],
         };
 

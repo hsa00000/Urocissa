@@ -14,7 +14,7 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
 
 pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metadata: bool) {
     match abstract_data {
-        AbstractData::Database(database) => {
+        AbstractData::DatabaseSchema(database) => {
             if !show_metadata {
                 database.album.clear();
             }

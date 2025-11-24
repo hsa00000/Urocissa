@@ -7,7 +7,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Album;
-use crate::public::structure::database_struct::database::definition::Database;
+use crate::public::structure::database_struct::database::definition::DatabaseSchema;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
 
 pub struct Tree {
@@ -29,9 +29,9 @@ impl Tree {
         if let Ok(database) = conn.query_row(
             "SELECT * FROM database WHERE hash = ?",
             [id],
-            Database::from_row,
+            DatabaseSchema::from_row,
         ) {
-            Ok(AbstractData::Database(database))
+            Ok(AbstractData::DatabaseSchema(database))
         } else if let Ok(album) =
             conn.query_row("SELECT * FROM album WHERE id = ?", [id], Album::from_row)
         {
@@ -41,10 +41,10 @@ impl Tree {
         }
     }
 
-    pub fn load_all_databases_from_db(&self) -> Result<Vec<Database>> {
+    pub fn load_all_databases_from_db(&self) -> Result<Vec<DatabaseSchema>> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM database")?;
-        let rows = stmt.query_map([], Database::from_row)?;
+        let rows = stmt.query_map([], DatabaseSchema::from_row)?;
         let mut databases = Vec::new();
         for row in rows {
             databases.push(row?);
@@ -52,10 +52,10 @@ impl Tree {
         Ok(databases)
     }
 
-    pub fn load_database_from_hash(&self, hash: &str) -> Result<Database> {
+    pub fn load_database_from_hash(&self, hash: &str) -> Result<DatabaseSchema> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM database WHERE hash = ?")?;
-        stmt.query_row([hash], Database::from_row)
+        stmt.query_row([hash], DatabaseSchema::from_row)
             .map_err(anyhow::Error::from)
     }
 }

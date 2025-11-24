@@ -3,7 +3,7 @@ use crate::{
         db::tree::TREE,
         error_data::handle_error,
         structure::{
-            abstract_data::AbstractData, database_struct::{database::definition::Database, file_modify::FileModify},
+            abstract_data::AbstractData, database_struct::{database::definition::DatabaseSchema, file_modify::FileModify},
         },
     },
     tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
@@ -35,7 +35,7 @@ impl DeduplicateTask {
 }
 
 impl Task for DeduplicateTask {
-    type Output = Result<Option<Database>>;
+    type Output = Result<Option<DatabaseSchema>>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
@@ -48,8 +48,8 @@ impl Task for DeduplicateTask {
     }
 }
 
-fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
-    let mut database = Database::new(&task.path, task.hash)?;
+fn deduplicate_task(task: DeduplicateTask) -> Result<Option<DatabaseSchema>> {
+    let mut database = DatabaseSchema::new(&task.path, task.hash)?;
 
     // File already in persistent database
 
@@ -69,7 +69,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
         if let Some(album_id) = task.presigned_album_id_opt {
             database_exist.album.insert(album_id);
         }
-        let abstract_data = AbstractData::Database(database_exist.into());
+        let abstract_data = AbstractData::DatabaseSchema(database_exist.into());
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
         warn!("File already exists in the database:\n{:#?}", database);
         Ok(None)

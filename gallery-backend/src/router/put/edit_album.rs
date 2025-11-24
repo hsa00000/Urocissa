@@ -51,7 +51,7 @@ pub async fn edit_album(
                 for album_id in &json_data.remove_albums_array {
                     database.album.remove(album_id);
                 }
-                to_flush.push(AbstractData::Database(database));
+                to_flush.push(AbstractData::DatabaseSchema(database));
             }
 
             let effected_album_vec = json_data

@@ -1,5 +1,5 @@
 use crate::public::constant::VALID_IMAGE_EXTENSIONS;
-use crate::public::structure::database_struct::database::definition::Database;
+use crate::public::structure::database_struct::database::definition::DatabaseSchema;
 use anyhow::Context;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -10,7 +10,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-impl Database {
+impl DatabaseSchema {
     pub fn new(path: &Path, hash: ArrayString<64>) -> Result<Self> {
         let ext = path
             .extension()

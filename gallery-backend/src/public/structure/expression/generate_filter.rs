@@ -34,21 +34,21 @@ impl Expression {
             }),
             Expression::ExtType(ext_type) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => db.ext_type.contains(&ext_type),
+                    AbstractData::DatabaseSchema(db) => db.ext_type.contains(&ext_type),
                     AbstractData::Album(_) => ext_type.contains("album"),
                 })
             }
             Expression::Ext(ext) => {
                 let ext_lower = ext.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => db.ext.to_ascii_lowercase().contains(&ext_lower),
+                    AbstractData::DatabaseSchema(db) => db.ext.to_ascii_lowercase().contains(&ext_lower),
                     AbstractData::Album(_) => false,
                 })
             }
             Expression::Model(model) => {
                 let model_lower = model.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => {
+                    AbstractData::DatabaseSchema(db) => {
                         db.exif_vec.get("Model").map_or(false, |model_of_exif| {
                             model_of_exif.to_ascii_lowercase().contains(&model_lower)
                         })
@@ -59,7 +59,7 @@ impl Expression {
             Expression::Make(make) => {
                 let make_lower = make.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => {
+                    AbstractData::DatabaseSchema(db) => {
                         db.exif_vec.get("Make").map_or(false, |make_of_exif| {
                             make_of_exif.to_ascii_lowercase().contains(&make_lower)
                         })
@@ -72,14 +72,14 @@ impl Expression {
             }
             Expression::Album(album_id) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => db.album.contains(&album_id),
+                    AbstractData::DatabaseSchema(db) => db.album.contains(&album_id),
                     AbstractData::Album(_) => false,
                 })
             }
             Expression::Any(any_identifier) => {
                 let any_lower = any_identifier.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => {
+                    AbstractData::DatabaseSchema(db) => {
                         false
                             || db.ext_type.contains(&any_identifier)
                             || db.ext.to_ascii_lowercase().contains(&any_lower)

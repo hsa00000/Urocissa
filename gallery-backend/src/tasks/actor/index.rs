@@ -15,7 +15,7 @@ use crate::{
         constant::VALID_IMAGE_EXTENSIONS,
         error_data::handle_error,
         structure::{
-            database_struct::database::definition::Database,
+            database_struct::database::definition::DatabaseSchema,
             guard::PendingGuard,
         },
         tui::{DASHBOARD, FileType},
@@ -36,12 +36,12 @@ impl IndexTask {
 }
 
 impl Task for IndexTask {
-    type Output = Result<Database>;
+    type Output = Result<DatabaseSchema>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
             let _pending_guard = PendingGuard::new();
-            let database = Database::new(&self.path, self.hash)?;
+            let database = DatabaseSchema::new(&self.path, self.hash)?;
             WORKER_RAYON_POOL
                 .spawn_async(move || index_task_match(database, &self.path))
                 .await
@@ -52,7 +52,7 @@ impl Task for IndexTask {
 
 /// Outer layer: unify business result matching and update TUI  
 /// (success -> advance, failure -> mark_failed)
-fn index_task_match(database: Database, path: &Path) -> Result<Database> {
+fn index_task_match(database: DatabaseSchema, path: &Path) -> Result<DatabaseSchema> {
     let hash = database.hash; // hash is Copy, no need to clone
     match index_task(database, path) {
         Ok(db) => {
@@ -67,7 +67,7 @@ fn index_task_match(database: Database, path: &Path) -> Result<Database> {
 }
 
 /// Inner layer: only responsible for business logic, no TUI state updates
-fn index_task(mut database: Database, path: &Path) -> Result<Database> {
+fn index_task(mut database: DatabaseSchema, path: &Path) -> Result<DatabaseSchema> {
     let hash = database.hash;
     let newest_path = path.to_string_lossy().to_string();
 
@@ -94,7 +94,7 @@ fn index_task(mut database: Database, path: &Path) -> Result<Database> {
         database.pending = true;
     }
 
-    let abstract_data = AbstractData::Database(database.clone().into());
+    let abstract_data = AbstractData::DatabaseSchema(database.clone().into());
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
 
     Ok(database)

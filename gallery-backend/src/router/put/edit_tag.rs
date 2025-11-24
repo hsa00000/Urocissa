@@ -47,7 +47,7 @@ pub async fn edit_tag(
                         album.tag.remove(tag);
                     }
                 }
-                AbstractData::Database(database) => {
+                AbstractData::DatabaseSchema(database) => {
                     let conn = TREE.get_connection().unwrap();
                     // Apply tag additions
                     for tag in &json_data.add_tags_array {

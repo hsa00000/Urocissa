@@ -2,7 +2,7 @@ use crate::operations::indexation::generate_dynamic_image::generate_dynamic_imag
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database_struct::database::definition::Database;
+use crate::public::structure::database_struct::database::definition::DatabaseSchema;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
@@ -64,12 +64,12 @@ pub async fn regenerate_thumbnail_with_frame(
 
     let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData> {
         let mut database = TREE.load_database_from_hash(&hash)?;
-        let dyn_img = generate_dynamic_image(&Database::from(database.clone())).context("Failed to decode DynamicImage")?;
+        let dyn_img = generate_dynamic_image(&DatabaseSchema::from(database.clone())).context("Failed to decode DynamicImage")?;
 
         database.thumbhash = generate_thumbhash(&dyn_img);
         database.phash = generate_phash(&dyn_img);
 
-        Ok(AbstractData::Database(database.into()))
+        Ok(AbstractData::DatabaseSchema(database.into()))
     })
     .await
     .context("Failed to spawn blocking task")??;

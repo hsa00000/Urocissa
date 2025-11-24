@@ -37,7 +37,7 @@ impl Expression {
             Expression::Album(album_id) => {
                 if album_id == shared_album_id {
                     Box::new(move |data| match data {
-                        AbstractData::Database(db) => db.album.contains(&album_id),
+                        AbstractData::DatabaseSchema(db) => db.album.contains(&album_id),
                         AbstractData::Album(_) => false,
                     })
                 } else {
@@ -51,20 +51,20 @@ impl Expression {
 
             /* ---------- Still allowed embedded / file-related conditions ---------- */
             Expression::ExtType(ext_type) => Box::new(move |data| match data {
-                AbstractData::Database(db) => db.ext_type.contains(&ext_type),
+                AbstractData::DatabaseSchema(db) => db.ext_type.contains(&ext_type),
                 AbstractData::Album(_) => false,
             }),
             Expression::Ext(ext) => {
                 let ext_lower = ext.to_ascii_lowercase();
                 Box::new(move |data| match data {
-                    AbstractData::Database(db) => db.ext.to_ascii_lowercase().contains(&ext_lower),
+                    AbstractData::DatabaseSchema(db) => db.ext.to_ascii_lowercase().contains(&ext_lower),
                     AbstractData::Album(_) => false,
                 })
             }
             Expression::Model(model) => {
                 let model_lower = model.to_ascii_lowercase();
                 Box::new(move |data| match data {
-                    AbstractData::Database(db) => db
+                    AbstractData::DatabaseSchema(db) => db
                         .exif_vec
                         .get("Model")
                         .map_or(false, |v| v.to_ascii_lowercase().contains(&model_lower)),
@@ -74,7 +74,7 @@ impl Expression {
             Expression::Make(make) => {
                 let make_lower = make.to_ascii_lowercase();
                 Box::new(move |data| match data {
-                    AbstractData::Database(db) => db
+                    AbstractData::DatabaseSchema(db) => db
                         .exif_vec
                         .get("Make")
                         .map_or(false, |v| v.to_ascii_lowercase().contains(&make_lower)),
@@ -86,7 +86,7 @@ impl Expression {
             Expression::Any(identifier) => {
                 let any_lower = identifier.to_ascii_lowercase();
                 Box::new(move |data| match data {
-                    AbstractData::Database(db) => {
+                    AbstractData::DatabaseSchema(db) => {
                         db.ext_type.contains(&identifier)
                             || db.ext.to_ascii_lowercase().contains(&any_lower)
                             || db

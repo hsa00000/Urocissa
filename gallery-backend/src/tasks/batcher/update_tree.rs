@@ -50,7 +50,7 @@ fn update_tree_task() -> Result<()> {
             .map(|mut db| {
                 db.exif_vec
                     .retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
-                AbstractData::Database(db.into())
+                AbstractData::DatabaseSchema(db.into())
             })
             .collect()
     };

@@ -1,4 +1,4 @@
-use crate::public::structure::database_struct::database::definition::Database;
+use crate::public::structure::database_struct::database::definition::DatabaseSchema;
 use anyhow::{Context, Result};
 use crate::{
     operations::indexation::{
@@ -12,8 +12,8 @@ use crate::{
     public::constant::DEFAULT_PRIORITY_LIST,
 };
 
-/// Analyse the newly‑imported **image** and populate the `Database` record.
-pub fn process_image_info(database: &mut Database) -> Result<()> {
+/// Analyse the newly‑imported **image** and populate the `DatabaseSchema` record.
+pub fn process_image_info(database: &mut DatabaseSchema) -> Result<()> {
     // EXIF metadata extraction (non‑fallible)
     database.exif_vec = generate_exif_for_image(database);
 
@@ -43,7 +43,7 @@ pub fn process_image_info(database: &mut Database) -> Result<()> {
 }
 
 /// Re‑build all metadata for an existing **image** (e.g. after replace / fix).
-pub fn regenerate_metadata_for_image(database: &mut Database) -> Result<()> {
+pub fn regenerate_metadata_for_image(database: &mut DatabaseSchema) -> Result<()> {
     // Refresh size from filesystem
     database.size = std::fs::metadata(database.imported_path())
         .context("failed to read metadata for imported image file")?
@@ -54,8 +54,8 @@ pub fn regenerate_metadata_for_image(database: &mut Database) -> Result<()> {
     Ok(())
 }
 
-/// Analyse the newly‑imported **video** and populate the `Database` record.
-pub fn process_video_info(database: &mut Database) -> Result<()> {
+/// Analyse the newly‑imported **video** and populate the `DatabaseSchema` record.
+pub fn process_video_info(database: &mut DatabaseSchema) -> Result<()> {
     // Extract EXIF‑like metadata via ffprobe
     database.exif_vec = generate_exif_for_video(database)
         .context("failed to extract video metadata via ffprobe")?;
@@ -84,7 +84,7 @@ pub fn process_video_info(database: &mut Database) -> Result<()> {
 }
 
 /// Re‑build all metadata for an existing **video** file.
-pub fn regenerate_metadata_for_video(database: &mut Database) -> Result<()> {
+pub fn regenerate_metadata_for_video(database: &mut DatabaseSchema) -> Result<()> {
     // Refresh size from filesystem metadata
     database.size = std::fs::metadata(database.imported_path())
         .context("failed to read metadata for imported video file")?
