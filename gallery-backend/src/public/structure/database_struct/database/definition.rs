@@ -1,4 +1,3 @@
-use crate::public::structure::database_struct::file_modify::FileModify;
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
@@ -15,7 +14,6 @@ pub struct Database {
     pub ext: String,
     pub exif_vec: BTreeMap<String, String>,
     pub album: HashSet<ArrayString<64>>,
-    pub alias: Vec<FileModify>,
     pub ext_type: String,
     pub pending: bool,
     pub timestamp_ms: i64,
@@ -34,7 +32,6 @@ impl Database {
                 ext TEXT,
                 exif_vec TEXT,
                 album TEXT,
-                alias TEXT,
                 ext_type TEXT,
                 pending INTEGER,
                 timestamp_ms INTEGER
@@ -70,9 +67,6 @@ impl Database {
             .filter_map(|s| ArrayString::from(&s).ok())
             .collect();
 
-        let alias_str: String = row.get("alias")?;
-        let alias: Vec<FileModify> = serde_json::from_str(&alias_str).unwrap_or_default();
-
         let ext_type: String = row.get("ext_type")?;
         let pending: bool = row.get::<_, i32>("pending")? != 0;
 
@@ -88,7 +82,6 @@ impl Database {
             ext,
             exif_vec,
             album,
-            alias,
             ext_type,
             pending,
             timestamp_ms,

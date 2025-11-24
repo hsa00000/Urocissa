@@ -3,7 +3,7 @@ use crate::{
         db::tree::TREE,
         error_data::handle_error,
         structure::{
-            abstract_data::AbstractData, database_struct::database::definition::Database,
+            abstract_data::AbstractData, database_struct::{database::definition::Database, file_modify::FileModify},
         },
     },
     tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
@@ -11,7 +11,7 @@ use crate::{
 use anyhow::Result;
 use arrayvec::ArrayString;
 use mini_executor::Task;
-use std::{mem, path::PathBuf};
+use std::{path::PathBuf, time::SystemTime};
 use tokio::task::spawn_blocking;
 
 pub struct DeduplicateTask {
@@ -56,8 +56,16 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
     let existing_db = TREE.load_database_from_hash(database.hash.as_str());
 
     if let Ok(mut database_exist) = existing_db {
-        let file_modify = mem::take(&mut database.alias[0]);
-        database_exist.alias.push(file_modify);
+        // Insert new alias into database_alias table
+        let metadata = task.path.metadata()?;
+        let modified = metadata.modified()?.duration_since(SystemTime::UNIX_EPOCH)?.as_millis();
+        let file_modify = FileModify::new(&task.path, modified);
+        let conn = TREE.get_connection()?;
+        conn.execute(
+            "INSERT INTO database_alias (hash, file, modified, scan_time) VALUES (?, ?, ?, ?)",
+            rusqlite::params![database_exist.hash.as_str(), file_modify.file, file_modify.modified as i64, file_modify.scan_time as i64],
+        )?;
+
         if let Some(album_id) = task.presigned_album_id_opt {
             database_exist.album.insert(album_id);
         }

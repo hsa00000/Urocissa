@@ -1,7 +1,5 @@
-use crate::{
-    public::constant::VALID_IMAGE_EXTENSIONS,
-    public::structure::database_struct::{database::definition::Database, file_modify::FileModify},
-};
+use crate::public::constant::VALID_IMAGE_EXTENSIONS;
+use crate::public::structure::database_struct::database::definition::Database;
 use anyhow::Context;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -30,8 +28,6 @@ impl Database {
             .with_context(|| format!("Modification time is before UNIX_EPOCH: {:?}", path))?
             .as_millis();
 
-        let file_modify = FileModify::new(path, modified_millis);
-
         Ok(Self {
             hash,
             size,
@@ -43,7 +39,6 @@ impl Database {
             ext,
             exif_vec: BTreeMap::new(),
             album: HashSet::new(),
-            alias: vec![file_modify],
             pending: false,
             timestamp_ms: 0,
         })

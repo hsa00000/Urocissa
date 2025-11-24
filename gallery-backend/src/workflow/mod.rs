@@ -71,10 +71,10 @@ pub async fn index_for_watch(
     };
 
     database = INDEX_COORDINATOR
-        .execute_waiting(CopyTask::new(database))
+        .execute_waiting(CopyTask::new(path.clone(), database))
         .await??;
     database = INDEX_COORDINATOR
-        .execute_waiting(IndexTask::new(database))
+        .execute_waiting(IndexTask::new(path.clone(), database.hash))
         .await??;
 
     INDEX_COORDINATOR.execute_detached(DeleteTask::new(PathBuf::from(&path)));

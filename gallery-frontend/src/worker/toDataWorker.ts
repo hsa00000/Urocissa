@@ -158,7 +158,7 @@ async function fetchData(
     }
 
     if ('Database' in item.data) {
-      const databaseInstance = createDataBase(item.data.Database, item.data.Database.timestamp_ms, item.tag)
+      const databaseInstance = createDataBase(item.data.Database, item.data.Database.timestamp_ms, item.tag, item.alias)
       const abstractData = createAbstractData(databaseInstance)
       data.set(key, { abstractData, hashToken: item.token })
     } else if ('Album' in item.data) {

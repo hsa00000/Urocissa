@@ -1,12 +1,17 @@
 use super::definition::Database;
+use crate::public::db::tree::TREE;
 use std::path::PathBuf;
+use anyhow::Result;
 
 impl Database {
-    pub fn source_path_string(&self) -> &str {
-        &self.alias[0].file
+    pub fn source_path_string(&self) -> Result<String> {
+        let conn = TREE.get_connection()?;
+        let mut stmt = conn.prepare("SELECT file FROM database_alias WHERE hash = ? ORDER BY scan_time DESC LIMIT 1")?;
+        let file: String = stmt.query_row([self.hash.as_str()], |row| row.get(0))?;
+        Ok(file)
     }
-    pub fn source_path(&self) -> PathBuf {
-        PathBuf::from(self.source_path_string())
+    pub fn source_path(&self) -> Result<PathBuf> {
+        Ok(PathBuf::from(self.source_path_string()?))
     }
     pub fn imported_path_string(&self) -> String {
         format!(

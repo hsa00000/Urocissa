@@ -65,7 +65,6 @@ export const prefetchReturnSchema = z
 
 export const DataBaseParse = z.object({
   album: z.array(z.string()),
-  alias: z.array(AliasSchema),
   exif_vec: z.record(z.string(), z.string()),
   ext: z.string(),
   ext_type: z.string(),
@@ -119,6 +118,7 @@ export const AbstractDataParseSchema = z.union([
 export const AbstractDataWithTagSchema = z.object({
   data: AbstractDataParseSchema,
   tag: z.array(z.string()).optional(),
+  alias: z.array(AliasSchema),
   token: z.string()
 })
 

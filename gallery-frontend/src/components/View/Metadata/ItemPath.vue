@@ -13,7 +13,6 @@
 <script setup lang="ts">
 import { Database } from '@type/types'
 import { computed } from 'vue'
-import * as upath from 'upath'
 
 
 const props = defineProps<{
@@ -21,13 +20,12 @@ const props = defineProps<{
 }>()
 
 const filePathComplete = computed(() => {
-  return props.database.alias[0]?.file
+  return props.database.filename
 })
 
 const filePath = computed(() => {
   if (filePathComplete.value != null) {
-    const basename = upath.basename(filePathComplete.value)
-    return upath.basename(basename, upath.extname(basename))
+    return filePathComplete.value.replace(/\.[^/.]+$/, '')
   }
   return ''
 })

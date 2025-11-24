@@ -68,13 +68,7 @@ impl Expression {
                 })
             }
             Expression::Path(path) => {
-                let path_lower = path.to_ascii_lowercase();
-                Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => db.alias.iter().any(|file_modify| {
-                        file_modify.file.to_ascii_lowercase().contains(&path_lower)
-                    }),
-                    AbstractData::Album(_) => false,
-                })
+                todo!()
             }
             Expression::Album(album_id) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
@@ -95,9 +89,7 @@ impl Expression {
                             || db.exif_vec.get("Model").map_or(false, |model_of_exif| {
                                 model_of_exif.to_ascii_lowercase().contains(&any_lower)
                             })
-                            || db.alias.iter().any(|file_modify| {
-                                file_modify.file.to_ascii_lowercase().contains(&any_lower)
-                            })
+                            || false
                     }
                     AbstractData::Album(album) => {
                         album.tag.contains(&any_identifier)

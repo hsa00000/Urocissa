@@ -2,6 +2,7 @@ use anyhow::Context;
 use anyhow::Result;
 use mini_executor::Task;
 use std::fs;
+use std::path::PathBuf;
 use std::sync::LazyLock;
 use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
@@ -13,12 +14,13 @@ use crate::public::structure::database_struct::database::definition::Database;
 static COPY_LIMIT: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::const_new(1));
 
 pub struct CopyTask {
+    pub path: PathBuf,
     pub database: Database,
 }
 
 impl CopyTask {
-    pub fn new(database: Database) -> Self {
-        Self { database }
+    pub fn new(path: PathBuf, database: Database) -> Self {
+        Self { path, database }
     }
 }
 
@@ -28,7 +30,7 @@ impl Task for CopyTask {
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
             let _permit = COPY_LIMIT.acquire().await?;
-            spawn_blocking(move || copy_task(self.database))
+            spawn_blocking(move || copy_task(self))
                 .await
                 .expect("blocking task panicked")
                 .map_err(|err| handle_error(err.context("Failed to run copy task")))
@@ -36,9 +38,9 @@ impl Task for CopyTask {
     }
 }
 
-fn copy_task(database: Database) -> Result<Database> {
-    let source_path = database.source_path();
-    let dest_path = database.imported_path();
+fn copy_task(task: CopyTask) -> Result<Database> {
+    let source_path = task.path;
+    let dest_path = task.database.imported_path();
 
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent)
@@ -52,5 +54,5 @@ fn copy_task(database: Database) -> Result<Database> {
         )
     })?; // If it fails three times, it goes into the Err branch
 
-    Ok(database)
+    Ok(task.database)
 }

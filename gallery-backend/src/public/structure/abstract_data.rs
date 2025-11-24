@@ -5,12 +5,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::public::db::tree::TREE;
 
-use super::{album::Album, database_struct::database::definition::Database};
+use super::{album::Album, database_struct::{database::definition::Database, file_modify::FileModify}};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AbstractDataWithTag {
     pub data: AbstractData,
     pub tag: Option<HashSet<String>>,
+    pub alias: Vec<FileModify>,
     pub token: String,
 }
 
@@ -69,6 +70,28 @@ impl AbstractData {
             AbstractData::Album(album) => Some(album.tag.clone()),
         }
     }
+    pub fn alias(self: &Self) -> Vec<FileModify> {
+        match self {
+            AbstractData::Database(database) => {
+                let conn = TREE.get_connection().unwrap();
+                let mut stmt = conn
+                    .prepare("SELECT file, modified, scan_time FROM database_alias WHERE hash = ? ORDER BY scan_time DESC")
+                    .unwrap();
+                let alias_iter = stmt
+                    .query_map([database.hash.as_str()], |row| {
+                        Ok(FileModify {
+                            file: row.get(0)?,
+                            modified: row.get::<_, i64>(1)? as u128,
+                            scan_time: row.get::<_, i64>(2)? as u128,
+                        })
+                    })
+                    .unwrap();
+                let aliases: Vec<FileModify> = alias_iter.filter_map(|r| r.ok()).collect();
+                aliases
+            }
+            AbstractData::Album(_) => vec![],
+        }
+    }
 
     pub fn generate_token(&self, timestamp: u128) -> String {
         match self {
@@ -85,10 +108,12 @@ impl AbstractData {
 
     pub fn with_tag(self, timestamp: u128) -> AbstractDataWithTag {
         let tag = self.tag();
+        let alias = self.alias();
         let token = self.generate_token(timestamp);
         AbstractDataWithTag {
             data: self,
             tag,
+            alias,
             token,
         }
     }

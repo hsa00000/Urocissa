@@ -8,12 +8,14 @@ use std::{collections::BTreeMap, io, path::Path, process::Command, sync::LazyLoc
 pub fn generate_exif_for_image(database: &Database) -> BTreeMap<String, String> {
     let mut exif_tuple = BTreeMap::new();
 
-    if let Ok(exif) = read_exif(&database.source_path()) {
-        for field in exif.fields() {
-            if field.ifd_num == exif::In::PRIMARY {
-                let tag = field.tag.to_string();
-                let value = field.display_value().with_unit(&exif).to_string();
-                exif_tuple.insert(tag, value);
+    if let Ok(source_path) = database.source_path() {
+        if let Ok(exif) = read_exif(&source_path) {
+            for field in exif.fields() {
+                if field.ifd_num == exif::In::PRIMARY {
+                    let tag = field.tag.to_string();
+                    let value = field.display_value().with_unit(&exif).to_string();
+                    exif_tuple.insert(tag, value);
+                }
             }
         }
     }
@@ -44,7 +46,7 @@ static RE_VIDEO_INFO: LazyLock<Regex> =
 /// Use `ffprobe` to retrieve metadata for videos, propagating every error
 /// with rich context strings.
 pub fn generate_exif_for_video(database: &Database) -> Result<BTreeMap<String, String>> {
-    let source_path = database.source_path_string();
+    let source_path = database.source_path_string()?;
     let mut exif_tuple = BTreeMap::new();
 
     // Spawn ffprobe and capture its output

@@ -1,7 +1,4 @@
-use crate::{
-    operations::hash::generate_random_hash,
-    public::structure::database_struct::file_modify::FileModify,
-};
+use crate::operations::hash::generate_random_hash;
 
 use rand::Rng;
 
@@ -27,11 +24,6 @@ impl Database {
             ext: "jpg".to_string(),
             exif_vec: BTreeMap::<String, String>::new(),
             album: HashSet::new(),
-            alias: vec![FileModify {
-                file: String::from("/"),
-                modified: 0,
-                scan_time: 0,
-            }],
             pending: false,
             timestamp_ms: 0,
         }

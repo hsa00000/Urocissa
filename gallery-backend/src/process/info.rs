@@ -1,8 +1,5 @@
-use std::fs::metadata;
-
-use anyhow::{Context, Result};
-
 use crate::public::structure::database_struct::database::definition::Database;
+use anyhow::{Context, Result};
 use crate::{
     operations::indexation::{
         fix_orientation::{fix_image_orientation, fix_image_width_height, fix_video_width_height},
@@ -40,13 +37,7 @@ pub fn process_image_info(database: &mut Database) -> Result<()> {
         .context("failed to generate JPEG thumbnail for image")?;
 
     // Compute timestamp
-    database.timestamp_ms = database.compute_timestamp_ms(&[
-        "DateTimeOriginal",
-        "filename",
-        "scan_time",
-        "modified",
-        "random",
-    ]);
+    database.timestamp_ms = 0;
 
     Ok(())
 }
@@ -54,7 +45,7 @@ pub fn process_image_info(database: &mut Database) -> Result<()> {
 /// Re‑build all metadata for an existing **image** (e.g. after replace / fix).
 pub fn regenerate_metadata_for_image(database: &mut Database) -> Result<()> {
     // Refresh size from filesystem
-    database.size = metadata(database.imported_path())
+    database.size = std::fs::metadata(database.imported_path())
         .context("failed to read metadata for imported image file")?
         .len();
 
@@ -95,7 +86,7 @@ pub fn process_video_info(database: &mut Database) -> Result<()> {
 /// Re‑build all metadata for an existing **video** file.
 pub fn regenerate_metadata_for_video(database: &mut Database) -> Result<()> {
     // Refresh size from filesystem metadata
-    database.size = metadata(database.imported_path())
+    database.size = std::fs::metadata(database.imported_path())
         .context("failed to read metadata for imported video file")?
         .len();
 
