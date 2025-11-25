@@ -6,7 +6,7 @@ use crate::{
             abstract_data::AbstractData, database_struct::{database::definition::DatabaseSchema, file_modify::FileModify},
         },
     },
-    tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
+    tasks::{BATCH_COORDINATOR, batcher::flush_tree::{FlushOperation, FlushTreeTask}},
 };
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -60,17 +60,21 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<DatabaseSchema>> {
         let metadata = task.path.metadata()?;
         let modified = metadata.modified()?.duration_since(SystemTime::UNIX_EPOCH)?.as_millis();
         let file_modify = FileModify::new(&task.path, modified);
-        let conn = TREE.get_connection()?;
-        conn.execute(
-            "INSERT INTO database_alias (hash, file, modified, scan_time) VALUES (?, ?, ?, ?)",
-            rusqlite::params![database_exist.hash.as_str(), file_modify.file, file_modify.modified as i64, file_modify.scan_time as i64],
-        )?;
+
+        let mut operations = Vec::new();
+        operations.push(FlushOperation::InsertDatabaseAlias(
+            database_exist.hash.as_str().to_string(),
+            file_modify.file,
+            file_modify.modified as i64,
+            file_modify.scan_time as i64,
+        ));
 
         if let Some(album_id) = task.presigned_album_id_opt {
             database_exist.album.insert(album_id);
         }
-        let abstract_data = AbstractData::DatabaseSchema(database_exist.into());
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
+        operations.push(FlushOperation::InsertAbstractData(AbstractData::DatabaseSchema(database_exist.into())));
+
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask { operations });
         warn!("File already exists in the database:\n{:#?}", database);
         Ok(None)
     } else {
