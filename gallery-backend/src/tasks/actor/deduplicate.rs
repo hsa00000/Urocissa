@@ -1,12 +1,23 @@
 use crate::{
     public::{
+        constant::DEFAULT_PRIORITY_LIST,
         db::tree::TREE,
         error_data::handle_error,
         structure::{
-            abstract_data::AbstractData, database_struct::{database::definition::DatabaseSchema, file_modify::FileModify},
+            abstract_data::AbstractData,
+            database_struct::{
+                database::{
+                    definition::DatabaseSchema,
+                    generate_timestamp::compute_timestamp_ms_by_file_modify,
+                },
+                file_modify::FileModify,
+            },
         },
     },
-    tasks::{BATCH_COORDINATOR, batcher::flush_tree::{FlushOperation, FlushTreeTask}},
+    tasks::{
+        BATCH_COORDINATOR,
+        batcher::flush_tree::{FlushOperation, FlushTreeTask},
+    },
 };
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -56,11 +67,16 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(DatabaseSchema, Flu
     let existing_db = TREE.load_database_from_hash(database.hash.as_str());
 
     let metadata = task.path.metadata()?;
-    let modified = metadata.modified()?.duration_since(SystemTime::UNIX_EPOCH)?.as_millis();
+    let modified = metadata
+        .modified()?
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_millis();
     let file_modify = FileModify::new(&task.path, modified);
 
-    if let Ok(mut database_exist) = existing_db {
+    database.timestamp_ms =
+        compute_timestamp_ms_by_file_modify(&file_modify, &DEFAULT_PRIORITY_LIST);
 
+    if let Ok(mut database_exist) = existing_db {
         let mut operations = Vec::new();
         operations.push(FlushOperation::InsertDatabaseAlias(
             database_exist.hash.as_str().to_string(),
@@ -72,7 +88,9 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(DatabaseSchema, Flu
         if let Some(album_id) = task.presigned_album_id_opt {
             database_exist.album.insert(album_id);
         }
-        operations.push(FlushOperation::InsertAbstractData(AbstractData::DatabaseSchema(database_exist.into())));
+        operations.push(FlushOperation::InsertAbstractData(
+            AbstractData::DatabaseSchema(database_exist.into()),
+        ));
 
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask { operations });
         warn!("File already exists in the database:\n{:#?}", database);

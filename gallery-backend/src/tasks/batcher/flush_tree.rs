@@ -1,4 +1,4 @@
-use log::error;
+use log::{error, info};
 use mini_executor::BatchTask;
 use serde_json;
 
@@ -63,6 +63,7 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
         match op {
             FlushOperation::InsertAbstractData(abstract_data) => match abstract_data {
                 AbstractData::DatabaseSchema(database) => {
+                    info!("inserting database {:?}", database);
                     tx.execute(
                         "INSERT OR REPLACE INTO database \
                          (hash, size, width, height, thumbhash, phash, ext, exif_vec, album, \

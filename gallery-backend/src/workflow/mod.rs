@@ -74,7 +74,7 @@ pub async fn index_for_watch(
         .execute_waiting(CopyTask::new(path.clone(), database))
         .await??;
     let (database, flush_task_from_index) = INDEX_COORDINATOR
-        .execute_waiting(IndexTask::new(path.clone(), database.hash))
+        .execute_waiting(IndexTask::new(path.clone(), database))
         .await??;
 
     // Combine all flush operations
@@ -82,12 +82,9 @@ pub async fn index_for_watch(
     all_operations.extend(flush_task_from_index.operations);
     all_operations.extend(dedup_flush.operations);
 
-    // Flush all operations at once
-    if !all_operations.is_empty() {
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask {
-            operations: all_operations,
-        });
-    }
+    BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask {
+        operations: all_operations,
+    });
 
     INDEX_COORDINATOR.execute_detached(DeleteTask::new(PathBuf::from(&path)));
     if database.ext_type == "video" {

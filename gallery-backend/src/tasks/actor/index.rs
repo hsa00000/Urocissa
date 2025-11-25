@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use arrayvec::ArrayString;
 use std::path::{Path, PathBuf};
 use tokio_rayon::AsyncThreadPool;
 
@@ -20,12 +19,12 @@ use mini_executor::Task;
 
 pub struct IndexTask {
     pub path: PathBuf,
-    pub hash: ArrayString<64>,
+    pub database: DatabaseSchema,
 }
 
 impl IndexTask {
-    pub fn new(path: PathBuf, hash: ArrayString<64>) -> Self {
-        Self { path, hash }
+    pub fn new(path: PathBuf, database: DatabaseSchema) -> Self {
+        Self { path, database }
     }
 }
 
@@ -35,9 +34,8 @@ impl Task for IndexTask {
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
             let _pending_guard = PendingGuard::new();
-            let database = DatabaseSchema::new(&self.path, self.hash)?;
             WORKER_RAYON_POOL
-                .spawn_async(move || index_task_match(database, &self.path))
+                .spawn_async(move || index_task_match(self.database, &self.path))
                 .await
                 .map_err(|err| handle_error(err.context("Failed to run index task")))
         }
@@ -46,7 +44,10 @@ impl Task for IndexTask {
 
 /// Outer layer: unify business result matching and update TUI  
 /// (success -> advance, failure -> mark_failed)
-fn index_task_match(database: DatabaseSchema, path: &Path) -> Result<(DatabaseSchema, FlushTreeTask)> {
+fn index_task_match(
+    database: DatabaseSchema,
+    path: &Path,
+) -> Result<(DatabaseSchema, FlushTreeTask)> {
     let hash = database.hash; // hash is Copy, no need to clone
     match index_task(database, path) {
         Ok((db, task)) => {
@@ -61,7 +62,10 @@ fn index_task_match(database: DatabaseSchema, path: &Path) -> Result<(DatabaseSc
 }
 
 /// Inner layer: only responsible for business logic, no TUI state updates
-fn index_task(mut database: DatabaseSchema, path: &Path) -> Result<(DatabaseSchema, FlushTreeTask)> {
+fn index_task(
+    mut database: DatabaseSchema,
+    path: &Path,
+) -> Result<(DatabaseSchema, FlushTreeTask)> {
     let hash = database.hash;
     let newest_path = path.to_string_lossy().to_string();
 

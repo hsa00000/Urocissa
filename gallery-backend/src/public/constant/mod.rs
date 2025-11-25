@@ -24,6 +24,6 @@ pub const VALID_VIDEO_EXTENSIONS: &'static [&'static str] = &[
 ];
 
 pub const DEFAULT_PRIORITY_LIST: &'static [&'static str] =
-    &["DateTimeOriginal", "filename", "modified", "scan_time"];
+    &["filename", "modified", "scan_time"];
 
 pub const USER_DEFINED_DESCRIPTION: &str = "_user_defined_description";
