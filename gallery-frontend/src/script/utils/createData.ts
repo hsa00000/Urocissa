@@ -7,14 +7,16 @@ export function createDataBase(
   databaseParse: z.infer<typeof DataBaseParse>,
   timestamp: number,
   tags: string[] = [],
-  alias: z.infer<typeof AliasSchema>[]
+  alias: z.infer<typeof AliasSchema>[],
+  exif_vec: Record<string, string>
 ): Database {
   const database: Database = {
     ...databaseParse,
     timestamp: timestamp,
     thumbhashUrl: thumbHashToDataURL(databaseParse.thumbhash),
     filename: alias[0]?.file.split('/').pop() ?? '',
-    tags: tags
+    tags: tags,
+    exif_vec: exif_vec
   }
   return database
 }

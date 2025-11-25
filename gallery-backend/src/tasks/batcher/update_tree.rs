@@ -47,11 +47,7 @@ fn update_tree_task() -> Result<()> {
         let databases = TREE.load_all_databases_from_db()?;
         databases
             .into_par_iter()
-            .map(|mut db| {
-                db.exif_vec
-                    .retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
-                AbstractData::DatabaseSchema(db.into())
-            })
+            .map(|db| AbstractData::DatabaseSchema(db.into()))
             .collect()
     };
 

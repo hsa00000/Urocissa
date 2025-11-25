@@ -29,7 +29,8 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
                 database.imported_path_string()
             );
             database.ext_type = "image".to_string();
-            return process_image_info(database);
+            todo!();
+            /* return process_image_info(database); */
         }
         // Handle non-GIFs that fail to parse duration.
         Err(err)
@@ -41,7 +42,8 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
                 database.imported_path_string()
             );
             database.ext_type = "image".to_string();
-            return process_image_info(database);
+            todo!();
+            /* return process_image_info(database); */
         }
         Ok(d) => d,
         Err(err) => {

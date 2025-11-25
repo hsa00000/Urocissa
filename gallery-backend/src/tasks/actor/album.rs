@@ -87,7 +87,7 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
                     database.album.remove(&album_id);
                     // Insert back
                     conn.execute(
-                        "INSERT OR REPLACE INTO database (hash, size, width, height, thumbhash, phash, ext, exif_vec, album, ext_type, pending, timestamp_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                        "INSERT OR REPLACE INTO database (hash, size, width, height, thumbhash, phash, ext,  album, ext_type, pending, timestamp_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                         rusqlite::params![
                             database.hash.as_str(),
                             database.size,
@@ -96,7 +96,7 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
                             &database.thumbhash,
                             &database.phash,
                             &database.ext,
-                            serde_json::to_string(&database.exif_vec).unwrap(),
+                           
                             serde_json::to_string(&database.album.iter().map(|a| a.as_str()).collect::<Vec<_>>()).unwrap(),
                             &database.ext_type,
                             database.pending as i32,

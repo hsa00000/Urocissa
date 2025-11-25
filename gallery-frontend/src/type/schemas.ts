@@ -65,7 +65,6 @@ export const prefetchReturnSchema = z
 
 export const DataBaseParse = z.object({
   album: z.array(z.string()),
-  exif_vec: z.record(z.string(), z.string()),
   ext: z.string(),
   ext_type: z.string(),
   hash: z.string(),
@@ -82,7 +81,8 @@ export const DataBaseSchema = DataBaseParse.extend({
   timestamp: z.number(),
   thumbhashUrl: z.string(), // need initialize
   filename: z.string(), // need initialize
-  tags: z.array(z.string())
+  tags: z.array(z.string()),
+  exif_vec: z.record(z.string(), z.string())
 })
 
 export const AlbumParse = z.object({
@@ -119,7 +119,8 @@ export const AbstractDataWithTagSchema = z.object({
   data: AbstractDataParseSchema,
   tag: z.array(z.string()).optional(),
   alias: z.array(AliasSchema),
-  token: z.string()
+  token: z.string(),
+  exif_vec: z.record(z.string(), z.string())
 })
 
 export const AbstractDataSchema = z.object({

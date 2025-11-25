@@ -22,7 +22,6 @@ impl DatabaseSchema {
             phash: Vec::<u8>::new(),
             ext_type: "image".to_string(),
             ext: "jpg".to_string(),
-            exif_vec: BTreeMap::<String, String>::new(),
             album: HashSet::new(),
             pending: false,
             timestamp_ms: 0,

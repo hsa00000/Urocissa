@@ -22,12 +22,6 @@ impl DatabaseSchema {
         let md = metadata(path).with_context(|| format!("Failed to read metadata: {:?}", path))?;
         let size = md.len();
 
-        let modified_millis = md
-            .modified()?
-            .duration_since(UNIX_EPOCH)
-            .with_context(|| format!("Modification time is before UNIX_EPOCH: {:?}", path))?
-            .as_millis();
-
         Ok(Self {
             hash,
             size,
@@ -37,7 +31,6 @@ impl DatabaseSchema {
             phash: Vec::new(),
             ext_type: Self::determine_type(&ext),
             ext,
-            exif_vec: BTreeMap::new(),
             album: HashSet::new(),
             pending: false,
             timestamp_ms: 0,

@@ -12,7 +12,6 @@ pub struct DatabaseSchema {
     pub thumbhash: Vec<u8>,
     pub phash: Vec<u8>,
     pub ext: String,
-    pub exif_vec: BTreeMap<String, String>,
     pub album: HashSet<ArrayString<64>>,
     pub ext_type: String,
     pub pending: bool,
@@ -56,10 +55,6 @@ impl DatabaseSchema {
         let phash: Vec<u8> = row.get("phash")?;
         let ext: String = row.get("ext")?;
 
-        let exif_vec_str: String = row.get("exif_vec")?;
-        let exif_vec: BTreeMap<String, String> =
-            serde_json::from_str(&exif_vec_str).unwrap_or_default();
-
         let album_str: String = row.get("album")?;
         let album_vec: Vec<String> = serde_json::from_str(&album_str).unwrap_or_default();
         let album: HashSet<ArrayString<64>> = album_vec
@@ -80,7 +75,6 @@ impl DatabaseSchema {
             thumbhash,
             phash,
             ext,
-            exif_vec,
             album,
             ext_type,
             pending,

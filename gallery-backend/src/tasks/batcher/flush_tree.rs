@@ -6,6 +6,7 @@ use crate::{
     public::db::tree::TREE,
     public::structure::abstract_data::AbstractData,
     public::structure::relations::database_alias::DatabaseAliasSchema,
+    public::structure::relations::exif_databases::ExifSchema,
     public::structure::relations::tag_databases::TagDatabaseSchema,
     tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
@@ -17,6 +18,8 @@ pub enum FlushOperation {
     InsertTag(TagDatabaseSchema),
     RemoveTag(TagDatabaseSchema),
     InsertDatabaseAlias(DatabaseAliasSchema),
+    InsertExif(ExifSchema),
+    RemoveExif(ExifSchema),
 }
 
 pub struct FlushTreeTask {
@@ -67,9 +70,9 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 AbstractData::DatabaseSchema(database) => {
                     tx.execute(
                         "INSERT OR REPLACE INTO database \
-                         (hash, size, width, height, thumbhash, phash, ext, exif_vec, album, \
+                         (hash, size, width, height, thumbhash, phash, ext, album, \
                           ext_type, pending, timestamp_ms) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                         rusqlite::params![
                             database.hash.as_str(),
                             database.size,
@@ -78,7 +81,6 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                             &database.thumbhash,
                             &database.phash,
                             &database.ext,
-                            serde_json::to_string(&database.exif_vec).unwrap(),
                             serde_json::to_string(
                                 &database
                                     .album
@@ -154,6 +156,18 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                      (hash, file, modified, scan_time) \
                      VALUES (?1, ?2, ?3, ?4)",
                     rusqlite::params![schema.hash, schema.file, schema.modified, schema.scan_time],
+                )?;
+            }
+            FlushOperation::InsertExif(schema) => {
+                tx.execute(
+                    "INSERT OR REPLACE INTO database_exif (hash, tag, value) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![schema.hash, schema.tag, schema.value],
+                )?;
+            }
+            FlushOperation::RemoveExif(schema) => {
+                tx.execute(
+                    "DELETE FROM database_exif WHERE hash = ?1 AND tag = ?2",
+                    rusqlite::params![schema.hash, schema.tag],
                 )?;
             }
         }

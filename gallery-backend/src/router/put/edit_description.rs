@@ -42,13 +42,14 @@ pub async fn set_user_defined_description(
 
         match &mut abstract_data {
             AbstractData::DatabaseSchema(db) => {
-                db.exif_vec.insert(
+                /* db.exif_vec.insert(
                     USER_DEFINED_DESCRIPTION.to_string(),
                     set_user_defined_description
                         .description
                         .clone()
                         .unwrap_or("".to_string()),
-                );
+                ); */
+                todo!()
             }
             AbstractData::Album(alb) => {
                 alb.user_defined_metadata.insert(

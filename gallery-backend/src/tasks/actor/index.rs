@@ -4,6 +4,7 @@ use tokio_rayon::AsyncThreadPool;
 
 use crate::public::constant::runtime::WORKER_RAYON_POOL;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::relations::exif_databases::ExifSchema;
 
 use crate::{
     process::info::{process_image_info, process_video_info},
@@ -13,7 +14,7 @@ use crate::{
         structure::{database::definition::DatabaseSchema, guard::PendingGuard},
         tui::{DASHBOARD, FileType},
     },
-    tasks::batcher::flush_tree::FlushTreeTask,
+    tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask},
 };
 use mini_executor::Task;
 
@@ -79,21 +80,37 @@ fn index_task(
 
     // Branch processing based on file extension
     let is_image = VALID_IMAGE_EXTENSIONS.contains(&database.ext.as_str());
-    if is_image {
-        process_image_info(&mut database).context(format!(
+    let exif_vec = if is_image {
+        let exif_vec = process_image_info(&mut database, path).context(format!(
             "failed to process image metadata pipeline:\n{:#?}",
             database
         ))?;
+        exif_vec
     } else {
-        process_video_info(&mut database).context(format!(
+        let exif_vec = process_video_info(&mut database).context(format!(
             "failed to process video metadata pipeline:\n{:#?}",
             database
         ))?;
         database.pending = true;
-    }
+        exif_vec
+    };
 
     let abstract_data = AbstractData::DatabaseSchema(database.clone().into());
-    let flush_task = FlushTreeTask::insert(vec![abstract_data]);
+    let mut operations = vec![FlushOperation::InsertAbstractData(abstract_data)];
+
+    // Insert EXIF data
+    let hash_str = database.hash.as_str();
+    for (tag, value) in &exif_vec {
+        operations.push(FlushOperation::InsertExif(
+            crate::public::structure::relations::exif_databases::ExifSchema {
+                hash: hash_str.to_string(),
+                tag: tag.clone(),
+                value: value.clone(),
+            },
+        ));
+    }
+
+    let flush_task = FlushTreeTask { operations };
 
     Ok((database, flush_task))
 }

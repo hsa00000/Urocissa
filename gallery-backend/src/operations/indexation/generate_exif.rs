@@ -1,25 +1,25 @@
 use crate::public::structure::database::definition::DatabaseSchema;
 use anyhow::{Context, Result, anyhow};
+use log::info;
 use regex::Regex;
 use std::{collections::BTreeMap, io, path::Path, process::Command, sync::LazyLock};
 
 /// Extract EXIF metadata for images. On any failure, returns the original
 /// map (possibly empty). Errors inside `read_exif` carry detailed context.
-pub fn generate_exif_for_image(database: &DatabaseSchema) -> BTreeMap<String, String> {
+pub fn generate_exif_for_image(path: &Path) -> BTreeMap<String, String> {
     let mut exif_tuple = BTreeMap::new();
 
-    if let Ok(source_path) = database.source_path() {
-        if let Ok(exif) = read_exif(&source_path) {
-            for field in exif.fields() {
-                if field.ifd_num == exif::In::PRIMARY {
-                    let tag = field.tag.to_string();
-                    let value = field.display_value().with_unit(&exif).to_string();
-                    exif_tuple.insert(tag, value);
-                }
+    if let Ok(exif) = read_exif(&path) {
+        for field in exif.fields() {
+            if field.ifd_num == exif::In::PRIMARY {
+                let tag = field.tag.to_string();
+                let value = field.display_value().with_unit(&exif).to_string();
+                exif_tuple.insert(tag, value);
             }
         }
     }
 
+    info!("Generated EXIF for image {:?}: {:#?}", path, exif_tuple);
     exif_tuple
 }
 

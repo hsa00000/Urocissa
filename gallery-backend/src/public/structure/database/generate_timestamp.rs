@@ -3,29 +3,29 @@ use log::info;
 use rand::Rng;
 use regex::Regex;
 
-use std::{path::PathBuf, sync::LazyLock};
+use std::{collections::BTreeMap, path::PathBuf, sync::LazyLock};
 
-use super::definition::DatabaseSchema;
 use crate::public::structure::database::file_modify::FileModify;
 
 static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(\d{4})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})\b").unwrap()
 });
 
-impl DatabaseSchema {
-    pub fn compute_timestamp_ms_by_exif(&self) -> Option<i64> {
-        let now_time = Local::now().naive_local();
+pub fn compute_timestamp_ms_by_exif(exif_vec: &BTreeMap<String, String>) -> Option<i64> {
+    let now_time = Local::now().naive_local();
 
-        if let Some(value) = self.exif_vec.get("DateTimeOriginal")
-            && let Ok(naive_dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
-            && let Some(local_dt) = Local.from_local_datetime(&naive_dt).single()
-            && local_dt.naive_local() <= now_time
-        {
-            info!("local_dt.timestamp_millis() is {:?}", local_dt.timestamp_millis());
-            Some(local_dt.timestamp_millis())
-        } else {
-            None
-        }
+    if let Some(value) = exif_vec.get("DateTimeOriginal")
+        && let Ok(naive_dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
+        && let Some(local_dt) = Local.from_local_datetime(&naive_dt).single()
+        && local_dt.naive_local() <= now_time
+    {
+        info!(
+            "local_dt.timestamp_millis() is {:?}",
+            local_dt.timestamp_millis()
+        );
+        Some(local_dt.timestamp_millis())
+    } else {
+        None
     }
 }
 
