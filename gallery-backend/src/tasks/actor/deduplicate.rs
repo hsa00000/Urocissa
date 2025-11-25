@@ -12,6 +12,7 @@ use crate::{
                 },
                 file_modify::FileModify,
             },
+            relations::database_alias::DatabaseAliasSchema,
         },
     },
     tasks::{
@@ -78,12 +79,12 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(DatabaseSchema, Flu
 
     if let Ok(mut database_exist) = existing_db {
         let mut operations = Vec::new();
-        operations.push(FlushOperation::InsertDatabaseAlias(
-            database_exist.hash.as_str().to_string(),
-            file_modify.file,
-            file_modify.modified as i64,
-            file_modify.scan_time as i64,
-        ));
+        operations.push(FlushOperation::InsertDatabaseAlias(DatabaseAliasSchema {
+            hash: database_exist.hash.as_str().to_string(),
+            file: file_modify.file,
+            modified: file_modify.modified as i64,
+            scan_time: file_modify.scan_time as i64,
+        }));
 
         if let Some(album_id) = task.presigned_album_id_opt {
             database_exist.album.insert(album_id);
@@ -97,12 +98,12 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(DatabaseSchema, Flu
         Ok(None)
     } else {
         // For new files, prepare the alias operation
-        let operations = vec![FlushOperation::InsertDatabaseAlias(
-            database.hash.as_str().to_string(),
-            file_modify.file,
-            file_modify.modified as i64,
-            file_modify.scan_time as i64,
-        )];
+        let operations = vec![FlushOperation::InsertDatabaseAlias(DatabaseAliasSchema {
+            hash: database.hash.as_str().to_string(),
+            file: file_modify.file,
+            modified: file_modify.modified as i64,
+            scan_time: file_modify.scan_time as i64,
+        })];
 
         if let Some(album_id) = task.presigned_album_id_opt {
             database.album.insert(album_id);

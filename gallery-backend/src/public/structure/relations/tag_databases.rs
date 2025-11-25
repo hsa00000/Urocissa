@@ -1,4 +1,11 @@
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct TagDatabaseSchema {
+    pub hash: String,
+    pub tag: String,
+}
 
 pub struct TagDatabases;
 

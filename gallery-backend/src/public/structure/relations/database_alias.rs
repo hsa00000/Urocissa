@@ -1,4 +1,13 @@
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct DatabaseAliasSchema {
+    pub hash: String,
+    pub file: String,
+    pub modified: i64,
+    pub scan_time: i64,
+}
 
 pub struct DatabaseAlias;
 

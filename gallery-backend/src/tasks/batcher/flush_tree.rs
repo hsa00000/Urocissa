@@ -1,10 +1,12 @@
-use log::{error, info};
+use log::error;
 use mini_executor::BatchTask;
 use serde_json;
 
 use crate::{
     public::db::tree::TREE,
     public::structure::abstract_data::AbstractData,
+    public::structure::relations::database_alias::DatabaseAliasSchema,
+    public::structure::relations::tag_databases::TagDatabaseSchema,
     tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
 
@@ -12,9 +14,9 @@ use crate::{
 pub enum FlushOperation {
     InsertAbstractData(AbstractData),
     RemoveAbstractData(AbstractData),
-    InsertTag(String, String),
-    RemoveTag(String, String),
-    InsertDatabaseAlias(String, String, i64, i64), // hash, file, modified, scan_time
+    InsertTag(TagDatabaseSchema),
+    RemoveTag(TagDatabaseSchema),
+    InsertDatabaseAlias(DatabaseAliasSchema),
 }
 
 pub struct FlushTreeTask {
@@ -63,7 +65,6 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
         match op {
             FlushOperation::InsertAbstractData(abstract_data) => match abstract_data {
                 AbstractData::DatabaseSchema(database) => {
-                    info!("inserting database {:?}", database);
                     tx.execute(
                         "INSERT OR REPLACE INTO database \
                          (hash, size, width, height, thumbhash, phash, ext, exif_vec, album, \
@@ -111,10 +112,7 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                             album.thumbhash.as_ref(),
                             serde_json::to_string(&album.user_defined_metadata).unwrap(),
                             serde_json::to_string(&album.share_list).unwrap(),
-                            serde_json::to_string(
-                                &album.tag.iter().collect::<Vec<_>>()
-                            )
-                            .unwrap(),
+                            serde_json::to_string(&album.tag.iter().collect::<Vec<_>>()).unwrap(),
                             album.width,
                             album.height,
                             album.item_count as i64,
@@ -138,24 +136,24 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                     )?;
                 }
             },
-            FlushOperation::InsertTag(hash, tag) => {
+            FlushOperation::InsertTag(schema) => {
                 tx.execute(
                     "INSERT OR IGNORE INTO tag_databases (hash, tag) VALUES (?1, ?2)",
-                    rusqlite::params![hash, tag],
+                    rusqlite::params![schema.hash, schema.tag],
                 )?;
             }
-            FlushOperation::RemoveTag(hash, tag) => {
+            FlushOperation::RemoveTag(schema) => {
                 tx.execute(
                     "DELETE FROM tag_databases WHERE hash = ?1 AND tag = ?2",
-                    rusqlite::params![hash, tag],
+                    rusqlite::params![schema.hash, schema.tag],
                 )?;
             }
-            FlushOperation::InsertDatabaseAlias(hash, file, modified, scan_time) => {
+            FlushOperation::InsertDatabaseAlias(schema) => {
                 tx.execute(
                     "INSERT OR REPLACE INTO database_alias \
                      (hash, file, modified, scan_time) \
                      VALUES (?1, ?2, ?3, ?4)",
-                    rusqlite::params![hash, file, modified, scan_time],
+                    rusqlite::params![schema.hash, schema.file, schema.modified, schema.scan_time],
                 )?;
             }
         }

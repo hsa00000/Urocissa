@@ -3,6 +3,7 @@ use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
 use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::relations::tag_databases::TagDatabaseSchema;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -52,10 +53,16 @@ pub async fn edit_tag(
                 AbstractData::DatabaseSchema(_) => {
                     // Collect tag operations
                     for tag in &json_data.add_tags_array {
-                        flush_ops.push(FlushOperation::InsertTag(hash.to_string(), tag.clone()));
+                        flush_ops.push(FlushOperation::InsertTag(TagDatabaseSchema {
+                            hash: hash.to_string(),
+                            tag: tag.clone(),
+                        }));
                     }
                     for tag in &json_data.remove_tags_array {
-                        flush_ops.push(FlushOperation::RemoveTag(hash.to_string(), tag.clone()));
+                        flush_ops.push(FlushOperation::RemoveTag(TagDatabaseSchema {
+                            hash: hash.to_string(),
+                            tag: tag.clone(),
+                        }));
                     }
                 }
             }
