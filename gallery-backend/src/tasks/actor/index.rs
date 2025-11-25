@@ -1,13 +1,10 @@
-use anyhow::Context;
-use anyhow::Result;
-use anyhow::anyhow;
+use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use std::path::{Path, PathBuf};
 use tokio_rayon::AsyncThreadPool;
 
-use crate::public::constant::runtime::{BATCH_RUNTIME, WORKER_RAYON_POOL};
+use crate::public::constant::runtime::WORKER_RAYON_POOL;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::tasks::BATCH_COORDINATOR;
 
 use crate::{
     process::info::{process_image_info, process_video_info},
@@ -33,7 +30,7 @@ impl IndexTask {
 }
 
 impl Task for IndexTask {
-    type Output = Result<DatabaseSchema>;
+    type Output = Result<(DatabaseSchema, FlushTreeTask)>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
@@ -49,12 +46,12 @@ impl Task for IndexTask {
 
 /// Outer layer: unify business result matching and update TUI  
 /// (success -> advance, failure -> mark_failed)
-fn index_task_match(database: DatabaseSchema, path: &Path) -> Result<DatabaseSchema> {
+fn index_task_match(database: DatabaseSchema, path: &Path) -> Result<(DatabaseSchema, FlushTreeTask)> {
     let hash = database.hash; // hash is Copy, no need to clone
     match index_task(database, path) {
-        Ok(db) => {
+        Ok((db, task)) => {
             DASHBOARD.advance_task_state(&hash);
-            Ok(db)
+            Ok((db, task))
         }
         Err(e) => {
             DASHBOARD.mark_failed(&hash);
@@ -64,7 +61,7 @@ fn index_task_match(database: DatabaseSchema, path: &Path) -> Result<DatabaseSch
 }
 
 /// Inner layer: only responsible for business logic, no TUI state updates
-fn index_task(mut database: DatabaseSchema, path: &Path) -> Result<DatabaseSchema> {
+fn index_task(mut database: DatabaseSchema, path: &Path) -> Result<(DatabaseSchema, FlushTreeTask)> {
     let hash = database.hash;
     let newest_path = path.to_string_lossy().to_string();
 
@@ -92,13 +89,7 @@ fn index_task(mut database: DatabaseSchema, path: &Path) -> Result<DatabaseSchem
     }
 
     let abstract_data = AbstractData::DatabaseSchema(database.clone().into());
-    BATCH_RUNTIME.block_on(async {
-        BATCH_COORDINATOR
-            .execute_batch_waiting(FlushTreeTask::insert(vec![abstract_data]))
-            .await
-    })?;
+    let flush_task = FlushTreeTask::insert(vec![abstract_data]);
 
-    todo!("接下來要更新 database_alias 表格");
-
-    Ok(database)
+    Ok((database, flush_task))
 }

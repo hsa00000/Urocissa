@@ -1,9 +1,10 @@
 use crate::tasks::{
-    INDEX_COORDINATOR,
+    BATCH_COORDINATOR, INDEX_COORDINATOR,
     actor::{
         copy::CopyTask, deduplicate::DeduplicateTask, delete_in_update::DeleteTask, hash::HashTask,
         index::IndexTask, open_file::OpenFileTask, video::VideoTask,
     },
+    batcher::flush_tree::FlushTreeTask,
 };
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -53,7 +54,7 @@ pub async fn index_for_watch(
         }
     };
 
-    let database_opt = INDEX_COORDINATOR
+    let result = INDEX_COORDINATOR
         .execute_waiting(DeduplicateTask::new(
             path.clone(),
             hash,
@@ -61,9 +62,8 @@ pub async fn index_for_watch(
         ))
         .await??;
 
-    // If the file is already in the database, we can skip further processing.
-    let mut database = match database_opt {
-        Some(db) => db,
+    let (mut database, dedup_flush) = match result {
+        Some((db, flush_task)) => (db, flush_task),
         None => {
             INDEX_COORDINATOR.execute_detached(DeleteTask::new(path));
             return Ok(());
@@ -73,9 +73,21 @@ pub async fn index_for_watch(
     database = INDEX_COORDINATOR
         .execute_waiting(CopyTask::new(path.clone(), database))
         .await??;
-    database = INDEX_COORDINATOR
+    let (database, flush_task_from_index) = INDEX_COORDINATOR
         .execute_waiting(IndexTask::new(path.clone(), database.hash))
         .await??;
+
+    // Combine all flush operations
+    let mut all_operations = vec![];
+    all_operations.extend(flush_task_from_index.operations);
+    all_operations.extend(dedup_flush.operations);
+
+    // Flush all operations at once
+    if !all_operations.is_empty() {
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask {
+            operations: all_operations,
+        });
+    }
 
     INDEX_COORDINATOR.execute_detached(DeleteTask::new(PathBuf::from(&path)));
     if database.ext_type == "video" {

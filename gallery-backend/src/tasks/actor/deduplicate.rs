@@ -35,7 +35,7 @@ impl DeduplicateTask {
 }
 
 impl Task for DeduplicateTask {
-    type Output = Result<Option<DatabaseSchema>>;
+    type Output = Result<Option<(DatabaseSchema, FlushTreeTask)>>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
@@ -48,18 +48,18 @@ impl Task for DeduplicateTask {
     }
 }
 
-fn deduplicate_task(task: DeduplicateTask) -> Result<Option<DatabaseSchema>> {
+fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(DatabaseSchema, FlushTreeTask)>> {
     let mut database = DatabaseSchema::new(&task.path, task.hash)?;
 
     // File already in persistent database
 
     let existing_db = TREE.load_database_from_hash(database.hash.as_str());
 
+    let metadata = task.path.metadata()?;
+    let modified = metadata.modified()?.duration_since(SystemTime::UNIX_EPOCH)?.as_millis();
+    let file_modify = FileModify::new(&task.path, modified);
+
     if let Ok(mut database_exist) = existing_db {
-        // Insert new alias into database_alias table
-        let metadata = task.path.metadata()?;
-        let modified = metadata.modified()?.duration_since(SystemTime::UNIX_EPOCH)?.as_millis();
-        let file_modify = FileModify::new(&task.path, modified);
 
         let mut operations = Vec::new();
         operations.push(FlushOperation::InsertDatabaseAlias(
@@ -78,9 +78,17 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<DatabaseSchema>> {
         warn!("File already exists in the database:\n{:#?}", database);
         Ok(None)
     } else {
+        // For new files, prepare the alias operation
+        let operations = vec![FlushOperation::InsertDatabaseAlias(
+            database.hash.as_str().to_string(),
+            file_modify.file,
+            file_modify.modified as i64,
+            file_modify.scan_time as i64,
+        )];
+
         if let Some(album_id) = task.presigned_album_id_opt {
             database.album.insert(album_id);
         }
-        Ok(Some(database))
+        Ok(Some((database, FlushTreeTask { operations })))
     }
 }
