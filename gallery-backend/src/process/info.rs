@@ -1,5 +1,4 @@
 use crate::public::structure::database_struct::database::definition::DatabaseSchema;
-use anyhow::{Context, Result};
 use crate::{
     operations::indexation::{
         fix_orientation::{fix_image_orientation, fix_image_width_height, fix_video_width_height},
@@ -11,6 +10,7 @@ use crate::{
     },
     public::constant::DEFAULT_PRIORITY_LIST,
 };
+use anyhow::{Context, Result};
 
 /// Analyse the newly‑imported **image** and populate the `DatabaseSchema` record.
 pub fn process_image_info(database: &mut DatabaseSchema) -> Result<()> {
@@ -37,7 +37,7 @@ pub fn process_image_info(database: &mut DatabaseSchema) -> Result<()> {
         .context("failed to generate JPEG thumbnail for image")?;
 
     // Compute timestamp
-    database.timestamp_ms = 0;
+    database.timestamp_ms = database.compute_timestamp_ms(&DEFAULT_PRIORITY_LIST);
 
     Ok(())
 }

@@ -20,6 +20,7 @@ pub struct AbstractDataWithTag {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AbstractData {
+    #[serde(rename = "Database")]
     DatabaseSchema(DatabaseSchema),
     Album(Album),
 }
