@@ -2,7 +2,7 @@ use crate::operations::indexation::generate_dynamic_image::generate_dynamic_imag
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database_struct::database::definition::DatabaseSchema;
+use crate::public::structure::database::definition::DatabaseSchema;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 

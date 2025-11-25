@@ -1,5 +1,5 @@
 use super::video_ffprobe::video_width_height;
-use crate::public::structure::database_struct::database::definition::DatabaseSchema;
+use crate::public::structure::database::definition::DatabaseSchema;
 use anyhow::{Context, Result};
 use image::DynamicImage;
 

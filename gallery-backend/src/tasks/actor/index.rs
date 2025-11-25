@@ -10,7 +10,7 @@ use crate::{
     public::{
         constant::VALID_IMAGE_EXTENSIONS,
         error_data::handle_error,
-        structure::{database_struct::database::definition::DatabaseSchema, guard::PendingGuard},
+        structure::{database::definition::DatabaseSchema, guard::PendingGuard},
         tui::{DASHBOARD, FileType},
     },
     tasks::batcher::flush_tree::FlushTreeTask,

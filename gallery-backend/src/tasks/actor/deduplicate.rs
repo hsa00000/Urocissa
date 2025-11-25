@@ -5,12 +5,9 @@ use crate::{
         error_data::handle_error,
         structure::{
             abstract_data::AbstractData,
-            database_struct::{
-                database::{
-                    definition::DatabaseSchema,
-                    generate_timestamp::compute_timestamp_ms_by_file_modify,
-                },
-                file_modify::FileModify,
+            database::{
+                definition::DatabaseSchema, file_modify::FileModify,
+                generate_timestamp::compute_timestamp_ms_by_file_modify,
             },
             relations::database_alias::DatabaseAliasSchema,
         },

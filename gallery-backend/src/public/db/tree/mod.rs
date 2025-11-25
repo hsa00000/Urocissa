@@ -7,7 +7,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Album;
-use crate::public::structure::database_struct::database::definition::DatabaseSchema;
+use crate::public::structure::database::definition::DatabaseSchema;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
 
 pub struct Tree {

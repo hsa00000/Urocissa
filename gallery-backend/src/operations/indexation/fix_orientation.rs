@@ -1,6 +1,6 @@
 use crate::{
     public::constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION,
-    public::structure::database_struct::database::definition::DatabaseSchema,
+    public::structure::database::definition::DatabaseSchema,
 };
 use image::DynamicImage;
 

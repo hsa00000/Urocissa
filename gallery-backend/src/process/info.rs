@@ -6,7 +6,7 @@ use crate::operations::indexation::{
     generate_thumbnail::{generate_thumbnail_for_image, generate_thumbnail_for_video},
     generate_width_height::{generate_image_width_height, generate_video_width_height},
 };
-use crate::public::structure::database_struct::database::definition::DatabaseSchema;
+use crate::public::structure::database::definition::DatabaseSchema;
 use anyhow::{Context, Result};
 
 /// Analyse the newly‑imported **image** and populate the `DatabaseSchema` record.

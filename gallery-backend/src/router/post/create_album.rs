@@ -11,7 +11,7 @@ use crate::operations::transitor::index_to_hash;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database_struct::database::definition::DatabaseSchema;
+use crate::public::structure::database::definition::DatabaseSchema;
 use crate::router::GuardResult;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 

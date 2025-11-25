@@ -7,7 +7,7 @@ use crate::public::db::tree::TREE;
 
 use super::{
     album::Album,
-    database_struct::{database::definition::DatabaseSchema, file_modify::FileModify},
+    database::{definition::DatabaseSchema, file_modify::FileModify},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

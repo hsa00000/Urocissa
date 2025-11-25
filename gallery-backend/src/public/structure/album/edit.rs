@@ -4,7 +4,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::public::db::tree::TREE;
 use crate::public::structure::{
-    abstract_data::AbstractData, database_struct::database::definition::DatabaseSchema,
+    abstract_data::AbstractData, database::definition::DatabaseSchema,
 };
 
 use super::Album;

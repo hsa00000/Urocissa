@@ -9,7 +9,7 @@ use tokio::task::spawn_blocking;
 
 use crate::process::io::copy_with_retry;
 use crate::public::error_data::handle_error;
-use crate::public::structure::database_struct::database::definition::DatabaseSchema;
+use crate::public::structure::database::definition::DatabaseSchema;
 
 static COPY_LIMIT: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::const_new(1));
 

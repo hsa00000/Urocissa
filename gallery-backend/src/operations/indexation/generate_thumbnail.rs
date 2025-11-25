@@ -3,7 +3,7 @@ use crate::{
         indexation::generate_ffmpeg::create_silent_ffmpeg_command,
         utils::resize::small_width_height,
     },
-    public::structure::database_struct::database::definition::DatabaseSchema,
+    public::structure::database::definition::DatabaseSchema,
 };
 use anyhow::{Context, Result, anyhow};
 use image::{DynamicImage, ImageFormat};

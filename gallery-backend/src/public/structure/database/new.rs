@@ -1,5 +1,5 @@
 use crate::public::constant::VALID_IMAGE_EXTENSIONS;
-use crate::public::structure::database_struct::database::definition::DatabaseSchema;
+use crate::public::structure::database::definition::DatabaseSchema;
 use anyhow::Context;
 use anyhow::Result;
 use arrayvec::ArrayString;

@@ -2,7 +2,7 @@ use super::video_ffprobe::video_duration;
 use crate::{
     operations::indexation::generate_ffmpeg::create_silent_ffmpeg_command,
     process::info::process_image_info,
-    public::{structure::database_struct::database::definition::DatabaseSchema, tui::DASHBOARD},
+    public::{structure::database::definition::DatabaseSchema, tui::DASHBOARD},
 };
 use anyhow::Context;
 use anyhow::Result;

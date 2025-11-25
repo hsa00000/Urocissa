@@ -5,7 +5,7 @@ use crate::{
         error_data::handle_error,
         structure::{
             abstract_data::AbstractData,
-            database_struct::database::definition::DatabaseSchema,
+            database::definition::DatabaseSchema,
             guard::PendingGuard,
         },
         tui::DASHBOARD,

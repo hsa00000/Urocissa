@@ -1,4 +1,4 @@
-use crate::public::structure::database_struct::database::definition::DatabaseSchema;
+use crate::public::structure::database::definition::DatabaseSchema;
 use anyhow::{Context, Result, bail};
 use image::DynamicImage;
 use std::fs::read;

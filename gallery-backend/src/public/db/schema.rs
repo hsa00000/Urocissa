@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use crate::public::structure::database_struct::database::definition::DatabaseSchema;
+use crate::public::structure::database::definition::DatabaseSchema;
 use crate::public::structure::album::Album;
 use crate::public::structure::relations::album_databases::AlbumDatabases;
 use crate::public::structure::relations::database_alias::DatabaseAlias;
