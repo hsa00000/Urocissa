@@ -1,5 +1,7 @@
 use super::video_ffprobe::video_width_height;
-use crate::public::structure::database::definition::DatabaseSchema;
+use crate::{
+    public::structure::database::definition::DatabaseSchema, tasks::actor::index::IndexTask,
+};
 use anyhow::{Context, Result};
 use image::DynamicImage;
 
@@ -11,8 +13,8 @@ pub fn generate_image_width_height(dynamic_image: &DynamicImage) -> (u32, u32) {
 
 /// Probe a video file using `ffprobe` (through `video_width_height`) to
 /// obtain `(width, height)`, adding explicit context to every `?` site.
-pub fn generate_video_width_height(database: &DatabaseSchema) -> Result<(u32, u32)> {
-    let imported = database.imported_path_string();
+pub fn generate_video_width_height(index_task: &IndexTask) -> Result<(u32, u32)> {
+    let imported = index_task.imported_path_string();
 
     let width = video_width_height("width", &imported)
         .context(format!("failed to obtain video width for {:?}", imported))?;

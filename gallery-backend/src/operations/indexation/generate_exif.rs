@@ -1,15 +1,16 @@
-use crate::public::structure::database::definition::DatabaseSchema;
+use crate::{
+    public::structure::database::definition::DatabaseSchema, tasks::actor::index::IndexTask,
+};
 use anyhow::{Context, Result, anyhow};
-use log::info;
 use regex::Regex;
 use std::{collections::BTreeMap, io, path::Path, process::Command, sync::LazyLock};
 
 /// Extract EXIF metadata for images. On any failure, returns the original
 /// map (possibly empty). Errors inside `read_exif` carry detailed context.
-pub fn generate_exif_for_image(path: &Path) -> BTreeMap<String, String> {
+pub fn generate_exif_for_image(index_task: &mut IndexTask) -> () {
     let mut exif_tuple = BTreeMap::new();
 
-    if let Ok(exif) = read_exif(&path) {
+    if let Ok(exif) = read_exif(&index_task.source_path) {
         for field in exif.fields() {
             if field.ifd_num == exif::In::PRIMARY {
                 let tag = field.tag.to_string();
@@ -19,8 +20,7 @@ pub fn generate_exif_for_image(path: &Path) -> BTreeMap<String, String> {
         }
     }
 
-    info!("Generated EXIF for image {:?}: {:#?}", path, exif_tuple);
-    exif_tuple
+    index_task.exif_vec = exif_tuple;
 }
 
 /// Open the file, read EXIF data and attach *context* to every fallible step.
@@ -45,8 +45,8 @@ static RE_VIDEO_INFO: LazyLock<Regex> =
 
 /// Use `ffprobe` to retrieve metadata for videos, propagating every error
 /// with rich context strings.
-pub fn generate_exif_for_video(database: &DatabaseSchema) -> Result<BTreeMap<String, String>> {
-    let source_path = database.source_path_string()?;
+pub fn generate_exif_for_video(index_task: &mut IndexTask) -> Result<()> {
+    let source_path = &index_task.source_path;
     let mut exif_tuple = BTreeMap::new();
 
     // Spawn ffprobe and capture its output
@@ -80,8 +80,9 @@ pub fn generate_exif_for_video(database: &DatabaseSchema) -> Result<BTreeMap<Str
                 .to_string();
             exif_tuple.insert(key, value);
         }
+        index_task.exif_vec = exif_tuple;
 
-        Ok(exif_tuple)
+        Ok(())
     } else {
         Err(anyhow!(
             "ffprobe exited with status {:?} for {:?}",

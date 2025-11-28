@@ -1,16 +1,18 @@
 use crate::public::structure::database::definition::DatabaseSchema;
+use crate::tasks::actor::index::IndexTask;
 use anyhow::{Context, Result, bail};
 use image::DynamicImage;
+use rand::seq::index;
 use std::fs::read;
 use std::path::PathBuf;
 
 /// Generate a `DynamicImage` either from the original image or
 /// from its thumbnail, adding *context* at every fallible step.
-pub fn generate_dynamic_image(database: &DatabaseSchema) -> Result<DynamicImage> {
-    let img_path = if database.ext_type == "image" {
-        database.imported_path()
+pub fn generate_dynamic_image(index_task: &IndexTask) -> Result<DynamicImage> {
+    let img_path = if index_task.ext_type == "image" {
+        index_task.imported_path()
     } else {
-        PathBuf::from(database.thumbnail_path())
+        PathBuf::from(index_task.thumbnail_path())
     };
 
     let dynamic_image =

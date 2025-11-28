@@ -89,7 +89,7 @@ pub async fn index_for_watch(
     INDEX_COORDINATOR.execute_detached(DeleteTask::new(PathBuf::from(&path)));
     if database.ext_type == "video" {
         INDEX_COORDINATOR
-            .execute_waiting(VideoTask::new(database))
+            .execute_waiting(VideoTask::new(database.into()))
             .await??;
     }
 

@@ -1,12 +1,14 @@
 use super::definition::DatabaseSchema;
 use crate::public::db::tree::TREE;
-use std::path::PathBuf;
 use anyhow::Result;
+use std::path::PathBuf;
 
 impl DatabaseSchema {
     pub fn source_path_string(&self) -> Result<String> {
         let conn = TREE.get_connection()?;
-        let mut stmt = conn.prepare("SELECT file FROM database_alias WHERE hash = ? ORDER BY scan_time DESC LIMIT 1")?;
+        let mut stmt = conn.prepare(
+            "SELECT file FROM database_alias WHERE hash = ? ORDER BY scan_time DESC LIMIT 1",
+        )?;
         let file: String = stmt.query_row([self.hash.as_str()], |row| row.get(0))?;
         Ok(file)
     }

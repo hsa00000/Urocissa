@@ -8,6 +8,8 @@ use r2d2_sqlite::SqliteConnectionManager;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Album;
 use crate::public::structure::database::definition::DatabaseSchema;
+use crate::tasks::actor::index::IndexTask;
+use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
 
 pub struct Tree {
@@ -57,5 +59,16 @@ impl Tree {
         let mut stmt = conn.prepare("SELECT * FROM database WHERE hash = ?")?;
         stmt.query_row([hash], DatabaseSchema::from_row)
             .map_err(anyhow::Error::from)
+    }
+
+    pub fn load_index_task_from_hash(&self, hash: &str) -> Result<IndexTask> {
+        let database = self.load_database_from_hash(hash)?;
+        let source_path = PathBuf::from(format!(
+            "./object/imported/{}/{}.{}",
+            &hash[0..2],
+            hash,
+            database.ext
+        ));
+        Ok(IndexTask::new(source_path, database))
     }
 }

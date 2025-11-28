@@ -2,7 +2,6 @@ use crate::operations::indexation::generate_dynamic_image::generate_dynamic_imag
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database::definition::DatabaseSchema;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
@@ -63,13 +62,15 @@ pub async fn regenerate_thumbnail_with_frame(
         .context("Failed to copy frame file")?;
 
     let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData> {
-        let mut database = TREE.load_database_from_hash(&hash)?;
-        let dyn_img = generate_dynamic_image(&DatabaseSchema::from(database.clone())).context("Failed to decode DynamicImage")?;
+        let mut index_task = TREE.load_index_task_from_hash(&hash)?;
 
-        database.thumbhash = generate_thumbhash(&dyn_img);
-        database.phash = generate_phash(&dyn_img);
+        let dyn_img =
+            generate_dynamic_image(&index_task).context("Failed to decode DynamicImage")?;
 
-        Ok(AbstractData::DatabaseSchema(database.into()))
+        index_task.thumbhash = generate_thumbhash(&dyn_img);
+        index_task.phash = generate_phash(&dyn_img);
+
+        Ok(AbstractData::DatabaseSchema(index_task.into()))
     })
     .await
     .context("Failed to spawn blocking task")??;

@@ -65,10 +65,11 @@ pub async fn reindex(
                                 }
                             } else if database.ext_type == "video" {
                                 let mut db = DatabaseSchema::from(database);
-                                match regenerate_metadata_for_video(&mut db) {
+                                todo!();
+                                /*  match regenerate_metadata_for_video(&mut db) {
                                     Ok(_) => Some(AbstractData::DatabaseSchema(db)),
                                     Err(_) => None,
-                                }
+                                } */
                             } else {
                                 None
                             }
