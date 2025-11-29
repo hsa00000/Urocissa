@@ -23,17 +23,17 @@ impl DatabaseSchema {
         let sql_create_main_table = r#"
             CREATE TABLE IF NOT EXISTS database (
                 hash TEXT PRIMARY KEY,
-                size INTEGER,
-                width INTEGER,
-                height INTEGER,
+                size INTEGER CHECK(size > 0),
+                width INTEGER CHECK(width > 0),
+                height INTEGER CHECK(height > 0),
                 thumbhash BLOB,
                 phash BLOB,
-                ext TEXT,
+                ext TEXT NOT NULL,
                 exif_vec TEXT,
                 album TEXT,
-                ext_type TEXT,
+                ext_type TEXT CHECK(ext_type IN ('image', 'video')),
                 pending INTEGER,
-                timestamp_ms INTEGER
+                timestamp_ms INTEGER CHECK(timestamp_ms > 0)
             );
         "#;
         conn.execute(sql_create_main_table, [])?;
