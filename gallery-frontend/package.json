@@ -1,6 +1,6 @@
 {
   "name": "gellery-frontend",
-  "version": "0.18.2",
+  "version": "0.18.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
   "dependencies": {
     "@mdi/font": "^7.4.47",
     "@misskey-dev/browser-image-resizer": "^2024.1.0",
-    "@vueuse/core": "^14.0.0",
+    "@vueuse/core": "^14.1.0",
     "axios": "^1.13.2",
     "axios-retry": "^4.5.0",
     "chevrotain": "^11.0.3",
@@ -29,10 +29,10 @@
     "swiper": "^12.0.3",
     "thumbhash": "^0.1.1",
     "typesafe-agent-events": "^1.0.2",
-    "vue": "^3.5.24",
+    "vue": "^3.5.25",
     "vue-router": "^4.6.3",
-    "vuetify": "^3.10.11",
-    "zod": "^4.1.12"
+    "vuetify": "^3.11.0",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -40,24 +40,24 @@
     "@types/file-saver": "^2.0.7",
     "@types/humanize-duration": "^3.27.4",
     "@types/js-cookie": "^3.0.6",
-    "@types/lodash": "^4.17.20",
+    "@types/lodash": "^4.17.21",
     "@types/node": "^24.10.1",
     "@vitejs/plugin-vue": "^6.0.2",
     "eslint": "9.39.1",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-vue": "^10.5.1",
+    "eslint-plugin-vue": "^10.6.2",
     "globals": "^16.5.0",
     "path-browserify": "^1.0.1",
     "sass-embedded": "^1.93.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.47.0",
+    "typescript-eslint": "^8.48.0",
     "upath": "^2.0.1",
-    "vite": "^7.2.2",
-    "vite-plugin-pwa": "^1.1.0",
+    "vite": "^7.2.4",
+    "vite-plugin-pwa": "^1.2.0",
     "vite-tsconfig-paths": "^5.1.4",
     "vue-eslint-parser": "^10.2.0",
-    "vue-tsc": "^3.1.4"
+    "vue-tsc": "^3.1.5"
   },
   "prettier": {
     "$schema": "https://json.schemastore.org/prettierrc",
