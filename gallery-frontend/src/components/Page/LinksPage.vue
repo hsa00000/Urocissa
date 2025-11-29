@@ -14,8 +14,7 @@
       <v-container
         v-if="albumStore.fetched"
         id="table-container"
-        class="pa-1 bg-surface-light d-flex align-start"
-        :style="{ height: `calc(100% - ${navBarHeight}px)` }"
+        class="h-100 pa-1 bg-surface-light d-flex align-start"
         fluid
       >
         <v-row justify="center" class="ma-0 w-100">
@@ -132,7 +131,6 @@ import { useClipboard } from '@vueuse/core'
 import EditShareModal from '@/components/Modal/EditShareModal.vue'
 import ShareDeleteConfirmModal from '@/components/Modal/ShareDeleteConfirmModal.vue'
 
-import { navBarHeight } from '@/type/constants'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useModalStore } from '@/store/modalStore'

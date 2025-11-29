@@ -5,7 +5,7 @@ export const scrollBarWidth = 50
 export const paddingPixel = 4
 export const fixedBigRowHeight = 2400
 export const layoutBatchNumber = 20
-export const navBarHeight = 64
+export const navBarHeight = 68
 export const DURATIONS = [
   { label: '30 minutes later', id: 30 },
   { label: '1 hour later', id: 60 },

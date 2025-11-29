@@ -3,7 +3,9 @@
     <HomeMainBar />
   </slot>
   <Drawer />
-  <slot name="content"></slot>
+  <div :style="{ height: `calc(100% - ${navBarHeight}px)` }">
+    <slot name="content"></slot>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -12,7 +14,7 @@ import Drawer from './Drawer.vue'
 import { provide, ref, onMounted, onUnmounted } from 'vue'
 import { useCollectionStore } from '@/store/collectionStore'
 import { onBeforeRouteLeave } from 'vue-router'
-
+import { navBarHeight } from '@/type/constants'
 const showDrawer = ref(false)
 const collectionStore = useCollectionStore('mainId')
 
