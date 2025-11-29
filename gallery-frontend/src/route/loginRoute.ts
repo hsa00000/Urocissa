@@ -3,7 +3,7 @@
 import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 
-import LoginPage from '@/components/Page/LoginPage.vue'
+import LoginPage from '@/components/Login/LoginPage.vue'
 
 export const loginRoute: RouteRecordRaw = {
   path: '/login',

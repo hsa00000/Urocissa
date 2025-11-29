@@ -1,51 +1,46 @@
 <template>
-  <PageTemplate>
-    <template #custom-bar></template>
-    <template #content>
-      <v-container fluid class="fill-height">
-        <!-- Theme toggle button positioned at top right -->
-        <v-btn
-          class="theme-toggle-btn"
-          :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
-          @click="themeIsLight = !themeIsLight"
-          size="large"
-          variant="text"
-        />
+  <v-container fluid class="fill-height">
+    <!-- Theme toggle button positioned at top right -->
+    <v-btn
+      class="theme-toggle-btn"
+      :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
+      @click="themeIsLight = !themeIsLight"
+      size="large"
+      variant="text"
+    />
 
-        <v-row class="fill-height justify-center align-center">
-          <v-col cols="12" sm="8" md="6" lg="4">
-            <v-card class="login-card mx-auto" elevation="8" rounded="lg">
-              <v-card-text class="pa-8">
-                <div class="text-center mb-6">
-                  <h2 class="text-h4 font-weight-light mb-2">Welcome Back!</h2>
-                </div>
+    <v-row class="fill-height justify-center align-center">
+      <v-col cols="12" sm="8" md="6" lg="4">
+        <v-card class="login-card mx-auto" elevation="8" rounded="lg">
+          <v-card-text class="pa-8">
+            <div class="text-center mb-6">
+              <h2 class="text-h4 font-weight-light mb-2">Welcome Back!</h2>
+            </div>
 
-                <v-form @submit.prevent="handleLogin" ref="form">
-                  <v-text-field
-                    v-model="password"
-                    :type="showPassword ? 'text' : 'password'"
-                    label="Password"
-                    placeholder="Password"
-                    variant="outlined"
-                    density="comfortable"
-                    :append-inner-icon="showPassword ? 'mdi-eye' : 'mdi-eye-off'"
-                    @click:append-inner="showPassword = !showPassword"
-                    required
-                    class="mb-4"
-                    :rules="[rules.required]"
-                  ></v-text-field>
+            <v-form @submit.prevent="handleLogin" ref="form">
+              <v-text-field
+                v-model="password"
+                :type="showPassword ? 'text' : 'password'"
+                label="Password"
+                placeholder="Password"
+                variant="outlined"
+                density="comfortable"
+                :append-inner-icon="showPassword ? 'mdi-eye' : 'mdi-eye-off'"
+                @click:append-inner="showPassword = !showPassword"
+                required
+                class="mb-4"
+                :rules="[rules.required]"
+              ></v-text-field>
 
-                  <v-btn type="submit" color="primary" size="large" block :loading="loading">
-                    Login
-                  </v-btn>
-                </v-form>
-              </v-card-text>
-            </v-card>
-          </v-col>
-        </v-row>
-      </v-container>
-    </template>
-  </PageTemplate>
+              <v-btn type="submit" color="primary" size="large" block :loading="loading">
+                Login
+              </v-btn>
+            </v-form>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+  </v-container>
 </template>
 
 <script setup lang="ts">
@@ -58,7 +53,6 @@ import { useRedirectionStore } from '@/store/redirectionStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
-import PageTemplate from './PageLayout/PageTemplate.vue'
 
 const password = ref('')
 const showPassword = ref(false)
