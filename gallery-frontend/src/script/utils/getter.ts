@@ -5,7 +5,6 @@ import { escapeAndWrap } from '@utils/escape'
 import { useShareStore } from '@/store/shareStore'
 
 export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded) {
-  console.log("route.meta.level is", route.meta.level);
 
   const isolationId = (route.meta.level === 3 || route.meta.level === 4) ? 'subId' : 'mainId'
   return isolationId
