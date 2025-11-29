@@ -22,14 +22,14 @@
       :search-string="null"
     >
       <template #home-toolbar>
-        <ReadingBar :album="album" />
+        <HomeIsolatedBar :album="album" />
       </template>
     </Home>
   </v-overlay>
 </template>
 <script setup lang="ts">
 import Home from './Home.vue'
-import ReadingBar from '@/components/NavBar/ReadingBar.vue'
+import HomeIsolatedBar from '@/components/NavBar/HomeBars/HomeIsolatedBar.vue'
 import { Album } from '@type/types'
 import { onBeforeMount, Ref, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

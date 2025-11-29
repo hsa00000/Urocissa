@@ -1,8 +1,13 @@
 <template>
-  <HomeMain :basic-string="basicString" />
+  <PageTemplate>
+    <template #content>
+      <HomeMain :basic-string="basicString" />
+    </template>
+  </PageTemplate>
 </template>
 
 <script setup lang="ts">
 import HomeMain from '@/components/Home/HomeMain.vue'
+import PageTemplate from './PageLayout/PageTemplate.vue'
 const basicString = 'and(type:"video", not(tag:"_archived"), not(tag:"_trashed"))'
 </script>

@@ -5,13 +5,14 @@
     :basic-string="basicString"
     :search-string="searchString"
   >
-    <template #home-toolbar> <ShareBar /> </template
-  ></Home>
+    <template #home-toolbar> <HomeShareBar /> </template>
+    ></Home
+  >
 </template>
 <script setup lang="ts">
 import { LocationQueryValue, useRoute } from 'vue-router'
 import Home from './Home.vue'
-import ShareBar from '@/components/NavBar/ShareBar.vue'
+import HomeShareBar from '@/components/NavBar/HomeBars/HomeShareBar.vue'
 import { onBeforeMount, ref, Ref } from 'vue'
 import { useShareStore } from '@/store/shareStore'
 

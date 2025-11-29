@@ -10,7 +10,7 @@
   >
     <Home isolation-id="tempId" :basic-string="basicString" :search-string="null">
       <template #home-toolbar>
-        <SelectionBar :album="album" />
+        <HomeTempBar :album="album" />
       </template>
     </Home>
   </v-overlay>
@@ -18,7 +18,7 @@
 <script setup lang="ts">
 import { Album } from '@type/types'
 import Home from './Home.vue'
-import SelectionBar from '@/components/NavBar/SelectionBar.vue'
+import HomeTempBar from '@/components/NavBar/HomeBars/HomeTempBar.vue'
 const props = defineProps<{
   album: Album
 }>()

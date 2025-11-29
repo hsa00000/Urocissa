@@ -1,46 +1,48 @@
 <template>
-  <NavBar />
-  <v-container
-    v-if="tagStore.fetched"
-    id="table-container"
-    class="pa-1 bg-surface-light d-flex align-start"
-    :style="{
-      height: `calc(100% - ${navBarHeight}px)`
-    }"
-    fluid
-  >
-    <v-row justify="center" class="ma-0 w-100">
-      <v-col cols="12" sm="12" md="10" lg="8" class="d-flex justify-center">
-        <v-card tile flat class="overflow-y-auto">
-          <v-table hover>
-            <thead ref="tableRef">
-              <tr>
-                <th>tag</th>
-                <th>number of items</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="tagsData in tagStore.tags" :key="tagsData.tag">
-                <td class="key-cell">
-                  <v-btn
-                    @click="searchByTag(tagsData.tag, router)"
-                    slim
-                    class="text-caption"
-                    variant="tonal"
-                  >
-                    {{ displayTagName(tagsData.tag) }}</v-btn
-                  >
-                </td>
-                <td>{{ tagsData.number }}</td>
-              </tr>
-            </tbody>
-          </v-table>
-        </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+  <PageTemplate>
+    <template #content>
+      <v-container
+        v-if="tagStore.fetched"
+        id="table-container"
+        class="pa-1 bg-surface-light d-flex align-start"
+        :style="{
+          height: `calc(100% - ${navBarHeight}px)`
+        }"
+        fluid
+      >
+        <v-row justify="center" class="ma-0 w-100">
+          <v-col cols="12" sm="12" md="10" lg="8" class="d-flex justify-center">
+            <v-card tile flat class="overflow-y-auto">
+              <v-table hover>
+                <thead ref="tableRef">
+                  <tr>
+                    <th>tag</th>
+                    <th>number of items</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="tagsData in tagStore.tags" :key="tagsData.tag">
+                    <td class="key-cell">
+                      <v-btn
+                        @click="searchByTag(tagsData.tag, router)"
+                        slim
+                        class="text-caption"
+                        variant="tonal"
+                      >
+                        {{ displayTagName(tagsData.tag) }}</v-btn
+                      >
+                    </td>
+                    <td>{{ tagsData.number }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </v-card>
+          </v-col>
+        </v-row>
+      </v-container>
+    </template>
+  </PageTemplate>
 </template>
-
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -50,7 +52,7 @@ import { onMounted } from 'vue'
 import { onBeforeUnmount } from 'vue'
 import { searchByTag } from '@utils/getter'
 import { navBarHeight } from '@/type/constants'
-import NavBar from '@/components/NavBar/NavBar.vue'
+import PageTemplate from './PageLayout/PageTemplate.vue'
 const initializedStore = useInitializedStore('mainId')
 const tagStore = useTagStore('mainId')
 const router = useRouter()

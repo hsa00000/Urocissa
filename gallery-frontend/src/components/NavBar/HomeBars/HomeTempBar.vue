@@ -1,56 +1,60 @@
 <template>
-  <v-toolbar class="bg-surface"
-    ><v-btn icon="mdi-close" @click="modalStore.showHomeTempModal = false"></v-btn>
-    <v-card
-      variant="flat"
-      class="w-100"
-      :title="`Add ${collectionStore.editModeCollection.size} items to ${album.title}`"
-    >
-    </v-card>
-    <v-spacer></v-spacer>
-    <SelectInverse isolation-id="tempId" />
-    <SelectAll
-      isolation-id="tempId"
-      v-if="
-        prefetchStore.dataLength === 0 ||
-        prefetchStore.dataLength !== collectionStore.editModeCollection.size
-      "
-    />
-    <SelectClear v-else isolation-id="tempId" />
-    <v-btn
-      :loading="waiting"
-      :disabled="collectionStore.editModeCollection.size === 0"
-      color="teal-accent-4"
-      variant="flat"
-      class="ma-2 button button-submit"
-      @click="submit"
-    >
-      Add
-    </v-btn>
-  </v-toolbar>
+  <HomeBarTemplate isolation-id="tempId">
+    <template #content>
+      <v-toolbar class="bg-surface"
+        ><v-btn icon="mdi-close" @click="modalStore.showHomeTempModal = false"></v-btn>
+        <v-card
+          variant="flat"
+          class="w-100"
+          :title="`Add ${collectionStore.editModeCollection.size} items to ${album.title}`"
+        >
+        </v-card>
+        <v-spacer></v-spacer>
+        <SelectInverse isolation-id="tempId" />
+        <SelectAll
+          isolation-id="tempId"
+          v-if="
+            prefetchStore.dataLength === 0 ||
+            prefetchStore.dataLength !== collectionStore.editModeCollection.size
+          "
+        />
+        <SelectClear v-else isolation-id="tempId" />
+        <v-btn
+          :loading="waiting"
+          :disabled="collectionStore.editModeCollection.size === 0"
+          color="teal-accent-4"
+          variant="flat"
+          class="ma-2 button button-submit"
+          @click="submit"
+        >
+          Add
+        </v-btn>
+      </v-toolbar>
+    </template>
+  </HomeBarTemplate>
 </template>
-
-<script lang="ts" setup>
+<script setup lang="ts">
 import { useCollectionStore } from '@/store/collectionStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import SelectAll from '@Menu/MenuButton/BtnSelectAll.vue'
 import SelectClear from '@Menu/MenuButton/BtnSelectClear.vue'
 import SelectInverse from '@Menu/MenuButton/BtnSelectInverse.vue'
+import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
 import { Album } from '@type/types'
 import { useModalStore } from '@/store/modalStore'
 import { useRerenderStore } from '@/store/rerenderStore'
-import { ref } from 'vue'
+import { ref, watchEffect } from 'vue'
 import axios from 'axios'
 import { refreshAlbumMetadata } from '@utils/refreshAlbumMetadata'
 import { useRoute } from 'vue-router'
 
+const props = defineProps<{
+  album: Album
+}>()
 const collectionStore = useCollectionStore('tempId')
 const prefetchStore = usePrefetchStore('tempId')
 const modalStore = useModalStore('mainId')
 const rerenderStore = useRerenderStore('mainId')
-const props = defineProps<{
-  album: Album
-}>()
 const route = useRoute()
 
 const waiting = ref(false)
@@ -82,4 +86,10 @@ const submit = async () => {
     rerenderStore.rerenderHomeIsolated()
   }
 }
+watchEffect(() => {
+  // persist to edit mode
+  if (!collectionStore.editModeOn) {
+    collectionStore.editModeOn = true
+  }
+})
 </script>

@@ -1,6 +1,4 @@
 <template>
-  <AppBar />
-  <ProgessBar isolation-id="mainId" />
   <v-navigation-drawer v-model="showDrawer" temporary touchless width="150" class="no-select">
     <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized">
       <v-list-item slim to="/home" prepend-icon="mdi-home" title="Home"></v-list-item>
@@ -37,18 +35,15 @@
 </template>
 
 <script setup lang="ts">
-import AppBar from '@/components/NavBar/AppBar.vue'
-import ProgessBar from './ProgessBar.vue'
+import { inject, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { provide, ref } from 'vue'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useModalStore } from '@/store/modalStore'
-const showDrawer = ref(false)
+
+const showDrawer = inject<Ref<boolean>>('showDrawer')
 const route = useRoute()
 const modalStore = useModalStore('mainId')
 const initializedStore = useInitializedStore('mainId')
-
-provide('showDrawer', showDrawer)
 </script>
 
 <style scoped>
