@@ -1,13 +1,6 @@
 <template>
   <v-overlay
-    :model-value="true"
-    @update:model-value="
-      (val) => {
-        if (val === false) {
-          router.back()
-        }
-      }
-    "
+    v-model="overlayVisible"
     height="100%"
     width="100%"
     class="d-flex"
@@ -15,11 +8,7 @@
     transition="false"
     :close-on-back="false"
   >
-    <div
-      v-if="index !== undefined"
-      class="pa-0 h-100 w-100 d-flex position-relative bg-background"
-
-    >
+    <div v-if="index !== undefined" class="pa-0 h-100 w-100 d-flex position-relative bg-background">
       <ViewPageDisplay
         :abstract-data="abstractData"
         :index="index"
@@ -63,6 +52,19 @@ const dataStore = useDataStore(props.isolationId)
 const route = useRoute()
 const router = useRouter()
 const constStore = useConstStore('mainId')
+
+const overlayVisible = computed<boolean>({
+  get() {
+    // The overlay is always visible as long as this component exists.
+    return true
+  },
+  set(val: boolean) {
+    if (!val) {
+      // When the overlay is requested to close (e.g., via ESC), navigate back.
+      router.back()
+    }
+  }
+})
 
 const hash = computed(() => {
   if (props.isolationId === 'mainId') {

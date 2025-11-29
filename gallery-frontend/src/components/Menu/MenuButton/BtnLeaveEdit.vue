@@ -1,5 +1,5 @@
 <template>
-  <v-btn icon="mdi-close" @click="leaveEdit"></v-btn>
+  <v-btn icon="mdi-close" @click="collectionStore.leaveEdit"></v-btn>
 </template>
 
 <script lang="ts" setup>
@@ -10,9 +10,4 @@ const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 
 const collectionStore = useCollectionStore(isolationId)
-
-const leaveEdit = () => {
-  collectionStore.editModeCollection.clear()
-  collectionStore.editModeOn = false
-}
 </script>

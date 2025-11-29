@@ -13,6 +13,10 @@ export const useCollectionStore = (isolationId: IsolationId) =>
       lastClick: null
     }),
     actions: {
+      leaveEdit() {
+        this.editModeCollection.clear()
+        this.editModeOn = false
+      },
       addApi(index: number) {
         this.editModeCollection.add(index)
         if (this.editModeCollection.size === 0) {
