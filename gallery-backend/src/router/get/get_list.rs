@@ -1,7 +1,7 @@
 use crate::public::config::{PUBLIC_CONFIG, PublicConfig};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::TagInfo;
-use crate::public::structure::album::Share;
+use crate::public::structure::album::{ResolvedShare, Share};
 use crate::public::structure::relations::album_share::AlbumShare;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_share::GuardShare;
@@ -53,6 +53,16 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
             })
             .collect();
         Ok(Json(album_info_list))
+    })
+    .await?
+}
+
+#[get("/get/get-all-shares")]
+pub async fn get_all_shares(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<ResolvedShare>>> {
+    let _ = auth?;
+    tokio::task::spawn_blocking(move || {
+        let shares = AlbumShare::get_all_resolved().context("Failed to read all shares")?;
+        Ok(Json(shares))
     })
     .await?
 }

@@ -1,5 +1,5 @@
 use crate::public::db::tree::TREE;
-use crate::public::structure::album::Share;
+use crate::public::structure::album::{ResolvedShare, Share};
 use arrayvec::ArrayString;
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -60,5 +60,48 @@ impl AlbumShare {
             }
         }
         Ok(map)
+    }
+
+    pub fn get_all_resolved() -> rusqlite::Result<Vec<ResolvedShare>> {
+        let conn = TREE.get_connection().unwrap();
+        let sql = r#"
+            SELECT 
+                s.url, s.description, s.password, s.show_metadata, 
+                s.show_download, s.show_upload, s.exp,
+                s.album_id, a.title
+            FROM album_share s
+            LEFT JOIN album a ON s.album_id = a.id
+        "#;
+
+        let mut stmt = conn.prepare(sql)?;
+        let share_iter = stmt.query_map([], |row| {
+            let url_str: String = row.get(0)?;
+            let url = ArrayString::from(&url_str).unwrap();
+
+            let album_id_str: String = row.get(7)?;
+            let album_id = ArrayString::from(&album_id_str).unwrap();
+
+            Ok(ResolvedShare {
+                share: Share {
+                    url,
+                    description: row.get(1)?,
+                    password: row.get(2)?,
+                    show_metadata: row.get(3)?,
+                    show_download: row.get(4)?,
+                    show_upload: row.get(5)?,
+                    exp: row.get(6)?,
+                },
+                album_id,
+                album_title: row.get(8)?,
+            })
+        })?;
+
+        let mut shares = Vec::new();
+        for share in share_iter {
+            if let Ok(s) = share {
+                shares.push(s);
+            }
+        }
+        Ok(shares)
     }
 }

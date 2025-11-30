@@ -12,7 +12,7 @@
       />
 
       <v-container
-        v-if="albumStore.fetched"
+        v-if="shareStore.fetched"
         id="table-container"
         class="h-100 pa-1 bg-surface-light d-flex align-start"
         fluid
@@ -101,7 +101,7 @@
                           @click="toggleGroup(item)"
                         />
                         <span class="ms-4 font-weight-bold">
-                          {{ albumStore.albums.get(item.value)?.displayName }}
+                          {{ item.items[0]?.displayName }}
                         </span>
                         <v-btn
                           icon="mdi-open-in-new"
@@ -132,15 +132,15 @@ import EditShareModal from '@/components/Modal/EditShareModal.vue'
 import ShareDeleteConfirmModal from '@/components/Modal/ShareDeleteConfirmModal.vue'
 
 import { useInitializedStore } from '@/store/initializedStore'
-import { useAlbumStore } from '@/store/albumStore'
+import { useShareStore } from '@/store/shareStore'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import type { EditShareData } from '@/type/types'
-import { ShareSchema } from '@/type/schemas'
+// import { ShareSchema } from '@/type/schemas'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 
 const initializedStore = useInitializedStore('mainId')
-const albumStore = useAlbumStore('mainId')
+const shareStore = useShareStore('mainId')
 const modalStore = useModalStore('mainId')
 const messageStore = useMessageStore('mainId')
 
@@ -175,15 +175,11 @@ const headers = [
 ]
 
 const tableItems = computed<EditShareData[]>(() => {
-  const arr: EditShareData[] = []
-  for (const album of albumStore.albums.values()) {
-    for (const [, share] of album.shareList) {
-      // Validate the share object to ensure type safety
-      const validatedShare = ShareSchema.parse(share)
-      arr.push({ albumId: album.albumId, displayName: album.displayName, share: validatedShare })
-    }
-  }
-  return arr
+  return shareStore.allShares.map((s) => ({
+    albumId: s.albumId,
+    displayName: s.albumTitle || 'Untitled',
+    share: s.share
+  }))
 })
 
 function clickEditShare(data: EditShareData) {
@@ -211,7 +207,7 @@ watch(
 )
 
 onMounted(async () => {
-  if (!albumStore.fetched) await albumStore.fetchAlbums()
+  if (!shareStore.fetched) await shareStore.fetchAllShares()
   initializedStore.initialized = true
   await nextTick()
 

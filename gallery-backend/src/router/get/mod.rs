@@ -12,6 +12,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_list::get_config,
         get_list::get_tags,
         get_list::get_albums,
+        get_list::get_all_shares,
         get_data::get_data,
         get_data::get_rows,
         get_data::get_scroll_bar,
