@@ -41,10 +41,12 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
     let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let album_list = TREE.read_albums().context("Failed to read albums")?;
+        let mut all_shares_map =
+            AlbumShare::get_all_shares_grouped().context("Failed to fetch shares")?;
         let album_info_list = album_list
             .into_iter()
             .map(|album| {
-                let share_list = AlbumShare::get_map(&album.id).unwrap_or_default();
+                let share_list = all_shares_map.remove(album.id.as_str()).unwrap_or_default();
                 AlbumInfo {
                     album_id: album.id.to_string(),
                     album_name: album.title,

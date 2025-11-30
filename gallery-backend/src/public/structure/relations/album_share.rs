@@ -32,33 +32,39 @@ impl AlbumShare {
         Ok(())
     }
 
-    pub fn get_map(album_id: &str) -> rusqlite::Result<HashMap<ArrayString<64>, Share>> {
+    pub fn get_all_shares_grouped()
+    -> rusqlite::Result<HashMap<String, HashMap<ArrayString<64>, Share>>> {
         let conn = TREE.get_connection().unwrap();
-        let mut stmt = conn.prepare("SELECT url, description, password, show_metadata, show_download, show_upload, exp FROM album_share WHERE album_id = ?")?;
+        let mut stmt = conn.prepare("SELECT album_id, url, description, password, show_metadata, show_download, show_upload, exp FROM album_share")?;
 
-        let share_iter = stmt.query_map([album_id], |row| {
-            let url_str: String = row.get(0)?;
+        let share_iter = stmt.query_map([], |row| {
+            let album_id: String = row.get(0)?;
+            let url_str: String = row.get(1)?;
             let url = ArrayString::from(&url_str).unwrap();
+
             Ok((
+                album_id,
                 url,
                 Share {
                     url,
-                    description: row.get(1)?,
-                    password: row.get(2)?,
-                    show_metadata: row.get(3)?,
-                    show_download: row.get(4)?,
-                    show_upload: row.get(5)?,
-                    exp: row.get(6)?,
+                    description: row.get(2)?,
+                    password: row.get(3)?,
+                    show_metadata: row.get(4)?,
+                    show_download: row.get(5)?,
+                    show_upload: row.get(6)?,
+                    exp: row.get(7)?,
                 },
             ))
         })?;
 
-        let mut map = HashMap::new();
-        for share in share_iter {
-            if let Ok((url, share)) = share {
-                map.insert(url, share);
+        let mut map: HashMap<String, HashMap<ArrayString<64>, Share>> = HashMap::new();
+
+        for share_result in share_iter {
+            if let Ok((album_id, url, share)) = share_result {
+                map.entry(album_id).or_default().insert(url, share);
             }
         }
+
         Ok(map)
     }
 
