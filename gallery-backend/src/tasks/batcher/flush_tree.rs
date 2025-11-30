@@ -94,6 +94,21 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                             database.timestamp_ms,
                         ],
                     )?;
+
+                    // Sync album_databases to ensure triggers fire
+                    // 1. Remove old relationships for this file
+                    tx.execute(
+                        "DELETE FROM album_databases WHERE hash = ?1",
+                        rusqlite::params![database.hash.as_str()],
+                    )?;
+
+                    // 2. Insert new relationships
+                    for album_id in &database.album {
+                        tx.execute(
+                            "INSERT OR IGNORE INTO album_databases (album_id, hash) VALUES (?1, ?2)",
+                            rusqlite::params![album_id.as_str(), database.hash.as_str()],
+                        )?;
+                    }
                 }
                 AbstractData::Album(album) => {
                     tx.execute(
@@ -125,6 +140,11 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 AbstractData::DatabaseSchema(database) => {
                     tx.execute(
                         "DELETE FROM database WHERE hash = ?1",
+                        rusqlite::params![database.hash.as_str()],
+                    )?;
+                    // Also remove from album_databases to trigger updates
+                    tx.execute(
+                        "DELETE FROM album_databases WHERE hash = ?1",
                         rusqlite::params![database.hash.as_str()],
                     )?;
                 }

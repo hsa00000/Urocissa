@@ -5,13 +5,10 @@ use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
+use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use anyhow::Result;
-use arrayvec::ArrayString;
-use futures::future::try_join_all;
 use rocket::serde::{Deserialize, json::Json};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,7 +23,7 @@ pub async fn delete_data(
     json_data: Json<DeleteList>,
 ) -> AppResult<()> {
     let _ = auth?;
-    let (abstract_data_to_remove, all_affected_album_ids) = tokio::task::spawn_blocking({
+    let abstract_data_to_remove = tokio::task::spawn_blocking({
         let delete_list = json_data.delete_list.clone();
         let timestamp = json_data.timestamp;
         move || process_deletes(delete_list, timestamp)
@@ -41,40 +38,21 @@ pub async fn delete_data(
         .execute_batch_waiting(UpdateTreeTask)
         .await?;
 
-    try_join_all(
-        all_affected_album_ids
-            .into_iter()
-            .map(|album_id| async move {
-                INDEX_COORDINATOR
-                    .execute_waiting(AlbumSelfUpdateTask::new(album_id))
-                    .await
-            }),
-    )
-    .await?;
+    // Album stats are now updated by database triggers
     Ok(())
 }
 
-fn process_deletes(
-    delete_list: Vec<usize>,
-    timestamp: u128,
-) -> Result<(Vec<AbstractData>, Vec<ArrayString<64>>)> {
+fn process_deletes(delete_list: Vec<usize>, timestamp: u128) -> Result<Vec<AbstractData>> {
     let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
 
-    let mut all_affected_album_ids = Vec::new();
     let mut abstract_data_to_remove = Vec::new();
 
     for index in delete_list {
         let hash = index_to_hash(&tree_snapshot, index)?;
         let abstract_data = TREE.load_from_db(&hash)?;
 
-        let affected_albums = match &abstract_data {
-            AbstractData::DatabaseSchema(db) => db.album.iter().cloned().collect(),
-            AbstractData::Album(album) => vec![album.id],
-        };
-
-        all_affected_album_ids.extend(affected_albums);
         abstract_data_to_remove.push(abstract_data);
     }
 
-    Ok((abstract_data_to_remove, all_affected_album_ids))
+    Ok(abstract_data_to_remove)
 }

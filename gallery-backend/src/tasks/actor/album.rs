@@ -33,35 +33,14 @@ impl Task for AlbumSelfUpdateTask {
 }
 
 pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
-    info!("Perform album self-update");
+    info!("Perform album self-update (handled by DB triggers)");
 
     let abstract_data = TREE.load_from_db(&album_id)?;
 
     match abstract_data {
-        AbstractData::Album(mut album) => {
-            album.pending = true;
-            album.self_update();
-            album.pending = false;
-            // Insert back
-            let conn = TREE.get_connection().unwrap();
-            conn.execute(
-                "INSERT OR REPLACE INTO album (id, title, created_time, start_time, end_time, last_modified_time, cover, thumbhash, user_defined_metadata, tag, item_count, item_size, pending) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                rusqlite::params![
-                    album.id.as_str(),
-                    album.title,
-                    album.created_time as i64,
-                    album.start_time.map(|t| t as i64),
-                    album.end_time.map(|t| t as i64),
-                    album.last_modified_time as i64,
-                    album.cover.as_ref().map(|c| c.as_str()),
-                    album.thumbhash.as_ref(),
-                    serde_json::to_string(&album.user_defined_metadata).unwrap(),
-                    serde_json::to_string(&album.tag.iter().collect::<Vec<_>>()).unwrap(),
-                    album.item_count as i64,
-                    album.item_size,
-                    album.pending as i32
-                ],
-            ).unwrap();
+        AbstractData::Album(_) => {
+            // Album updates are now handled by SQLite triggers on album_databases table.
+            // No manual update or write-back is required here.
         }
         _ => {
             // Album has been deleted

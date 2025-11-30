@@ -1,9 +1,4 @@
-use arrayvec::ArrayString;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use rocket::http::Status;
-
 use crate::process::info::regenerate_metadata_for_image;
-use crate::process::info::regenerate_metadata_for_video;
 use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
@@ -14,11 +9,12 @@ use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::INDEX_COORDINATOR;
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
+use arrayvec::ArrayString;
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rocket::http::Status;
 use rocket::serde::json::Json;
 use serde::Deserialize;
 #[derive(Debug, Deserialize)]
@@ -75,8 +71,8 @@ pub async fn reindex(
                             }
                         }
                         Some(AbstractData::Album(_)) => {
-                            // album_self_update already will commit
-                            INDEX_COORDINATOR.execute_detached(AlbumSelfUpdateTask::new(hash));
+                            // Album reindexing is now handled by database triggers.
+                            // No manual update needed.
                             None
                         }
                         None => {

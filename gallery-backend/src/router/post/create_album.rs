@@ -13,7 +13,6 @@ use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::database::definition::DatabaseSchema;
 use crate::router::GuardResult;
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
 
 use crate::public::structure::album::Album;
 use crate::router::AppResult;
@@ -100,9 +99,7 @@ async fn create_album_elements(
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
         .await?;
-    BATCH_COORDINATOR
-        .execute_waiting(AlbumSelfUpdateTask::new(album_id))
-        .await??;
+    // Album stats are now updated by database triggers
 
     Ok(())
 }
