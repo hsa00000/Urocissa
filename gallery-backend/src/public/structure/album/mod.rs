@@ -41,8 +41,6 @@ pub struct Album {
     pub thumbhash: Option<Vec<u8>>,
     pub user_defined_metadata: HashMap<String, Vec<String>>,
     pub tag: HashSet<String>,
-    pub width: u32,
-    pub height: u32,
     pub item_count: usize,
     pub item_size: u64,
     pub pending: bool,
@@ -62,8 +60,6 @@ impl Album {
                 thumbhash BLOB,
                 user_defined_metadata TEXT,
                 tag TEXT,
-                width INTEGER,
-                height INTEGER,
                 item_count INTEGER,
                 item_size INTEGER,
                 pending INTEGER
@@ -88,8 +84,6 @@ impl Album {
             serde_json::from_str(&user_defined_metadata_str).unwrap_or_default();
         let tag_str: String = row.get("tag")?;
         let tag: HashSet<String> = serde_json::from_str(&tag_str).unwrap_or_default();
-        let width: u32 = row.get("width")?;
-        let height: u32 = row.get("height")?;
         let item_count: usize = row.get::<_, i64>("item_count")? as usize;
         let item_size: u64 = row.get("item_size")?;
         let pending: bool = row.get::<_, i32>("pending")? != 0;
@@ -104,8 +98,6 @@ impl Album {
             thumbhash,
             user_defined_metadata,
             tag,
-            width,
-            height,
             item_count,
             item_size,
             pending,

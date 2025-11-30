@@ -45,7 +45,7 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
             // Insert back
             let conn = TREE.get_connection().unwrap();
             conn.execute(
-                "INSERT OR REPLACE INTO album (id, title, created_time, start_time, end_time, last_modified_time, cover, thumbhash, user_defined_metadata, tag, width, height, item_count, item_size, pending) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                "INSERT OR REPLACE INTO album (id, title, created_time, start_time, end_time, last_modified_time, cover, thumbhash, user_defined_metadata, tag, item_count, item_size, pending) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 rusqlite::params![
                     album.id.as_str(),
                     album.title,
@@ -57,8 +57,6 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
                     album.thumbhash.as_ref(),
                     serde_json::to_string(&album.user_defined_metadata).unwrap(),
                     serde_json::to_string(&album.tag.iter().collect::<Vec<_>>()).unwrap(),
-                    album.width,
-                    album.height,
                     album.item_count as i64,
                     album.item_size,
                     album.pending as i32

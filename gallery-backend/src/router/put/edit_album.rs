@@ -126,14 +126,8 @@ pub async fn set_album_cover(
         let thumbhash_json = serde_json::to_string(&album.thumbhash).unwrap();
         let conn = TREE.get_connection().unwrap();
         conn.execute(
-            "UPDATE album SET cover = ?, thumbhash = ?, width = ?, height = ? WHERE id = ?",
-            [
-                &cover_str,
-                &thumbhash_json.as_str(),
-                &album.width.to_string().as_str(),
-                &album.height.to_string().as_str(),
-                &*album_id,
-            ],
+            "UPDATE album SET cover = ?, thumbhash = ? WHERE id = ?",
+            [&cover_str, &thumbhash_json.as_str(), &*album_id],
         )
         .unwrap();
     })

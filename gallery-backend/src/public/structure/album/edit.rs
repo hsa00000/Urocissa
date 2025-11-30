@@ -3,9 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::public::db::tree::TREE;
-use crate::public::structure::{
-    abstract_data::AbstractData, database::definition::DatabaseSchema,
-};
+use crate::public::structure::{abstract_data::AbstractData, database::definition::DatabaseSchema};
 
 use super::Album;
 
@@ -13,8 +11,6 @@ impl Album {
     pub fn set_cover(&mut self, cover_data: &DatabaseSchema) {
         self.cover = Some(cover_data.hash);
         self.thumbhash = Some(cover_data.thumbhash.clone());
-        self.width = cover_data.width;
-        self.height = cover_data.height;
     }
 
     pub fn self_update(&mut self) {
@@ -24,18 +20,16 @@ impl Album {
         // Collect relevant DatabaseSchema entries along with their timestamps
         let mut data_in_album: Vec<(&DatabaseSchema, u128)> = ref_data
             .par_iter()
-            .filter_map(
-                |database_timestamp| match database_timestamp {
-                    AbstractData::DatabaseSchema(database) => {
-                        if database.album.contains(&self.id) {
-                            Some((database, database_timestamp.compute_timestamp() as u128))
-                        } else {
-                            None
-                        }
+            .filter_map(|database_timestamp| match database_timestamp {
+                AbstractData::DatabaseSchema(database) => {
+                    if database.album.contains(&self.id) {
+                        Some((database, database_timestamp.compute_timestamp() as u128))
+                    } else {
+                        None
                     }
-                    AbstractData::Album(_) => None,
-                },
-            )
+                }
+                AbstractData::Album(_) => None,
+            })
             .collect();
 
         // If there are no items in the album, there's nothing to set
@@ -50,8 +44,6 @@ impl Album {
             self.end_time = None;
             self.cover = None;
             self.thumbhash = None;
-            self.width = 0;
-            self.height = 0;
             return;
         }
 

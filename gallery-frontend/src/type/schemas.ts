@@ -101,8 +101,6 @@ export const AlbumParse = z.object({
     .default({})
     .transform((obj) => new Map(Object.entries(obj))),
   tag: z.array(z.string()),
-  width: z.number(),
-  height: z.number(),
   itemCount: z.number(),
   itemSize: z.number(),
   pending: z.boolean()

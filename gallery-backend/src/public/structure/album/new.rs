@@ -21,8 +21,6 @@ impl Album {
             thumbhash: None,
             user_defined_metadata: HashMap::new(),
             tag: HashSet::new(),
-            width: 300,
-            height: 300,
             start_time: None,
             end_time: None,
             last_modified_time: timestamp,
