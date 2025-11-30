@@ -8,7 +8,7 @@ export function createDataBase(
   timestamp: number,
   tags: string[] = [],
   alias: z.infer<typeof AliasSchema>[],
-  exif_vec: Record<string, string>
+  exifVec: Record<string, string>
 ): Database {
   const database: Database = {
     ...databaseParse,
@@ -16,12 +16,16 @@ export function createDataBase(
     thumbhashUrl: thumbHashToDataURL(databaseParse.thumbhash),
     filename: alias[0]?.file.split('/').pop() ?? '',
     tags: tags,
-    exif_vec: exif_vec
+    exifVec: exifVec
   }
   return database
 }
 
-export function createAlbum(albumParse: z.infer<typeof AlbumParse>, timestamp: number, tags: string[] = []): Album {
+export function createAlbum(
+  albumParse: z.infer<typeof AlbumParse>,
+  timestamp: number,
+  tags: string[] = []
+): Album {
   const album: Album = {
     ...albumParse,
     timestamp: timestamp,

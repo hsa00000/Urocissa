@@ -6,7 +6,7 @@
   >
     <DisplayDatabaseImage
       :key="index"
-      v-if="abstractData.database.ext_type === 'image'"
+      v-if="abstractData.database.extType === 'image'"
       :isolation-id="isolationId"
       :index="index"
       :abstract-data="abstractData"
@@ -14,14 +14,14 @@
 
     <DisplayDatabaseVideo
       :key="index"
-      v-if="abstractData.database.ext_type === 'video' && !abstractData.database.pending"
+      v-if="abstractData.database.extType === 'video' && !abstractData.database.pending"
       :database="abstractData.database"
       :hash="abstractData.database.hash"
       :isolation-id="isolationId"
       :enable-watch="enableWatch"
     />
     <v-card
-      v-if="abstractData.database.ext_type === 'video' && abstractData.database.pending"
+      v-if="abstractData.database.extType === 'video' && abstractData.database.pending"
       class="d-flex align-center justify-start"
       outlined
       style="padding: 16px"

@@ -13,9 +13,9 @@ export async function editUserDefinedDescription(
 
   function getCurrentDescription(): string {
     if (abstractData.database) {
-      return abstractData.database.exif_vec._user_defined_description ?? ''
+      return abstractData.database.exifVec._user_defined_description ?? ''
     } else if (abstractData.album) {
-      return abstractData.album.user_defined_metadata._user_defined_description?.[0] ?? ''
+      return abstractData.album.userDefinedMetadata._user_defined_description?.[0] ?? ''
     }
     return ''
   }
@@ -36,9 +36,10 @@ export async function editUserDefinedDescription(
     const item = dataStore.data.get(index)
     if (item) {
       if (abstractData.database && item.database) {
-        item.database.exif_vec._user_defined_description = descriptionModelValue
+        item.database.exifVec._user_defined_description = descriptionModelValue
       } else if (abstractData.album && item.album) {
-        item.album.user_defined_metadata._user_defined_description = descriptionModelValue == '' ? [] : [descriptionModelValue]
+        item.album.userDefinedMetadata._user_defined_description =
+          descriptionModelValue == '' ? [] : [descriptionModelValue]
       }
     }
   }

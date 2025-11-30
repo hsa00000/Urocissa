@@ -66,7 +66,7 @@ export const prefetchReturnSchema = z
 export const DataBaseParse = z.object({
   album: z.array(z.string()),
   ext: z.string(),
-  ext_type: z.string(),
+  extType: z.string(),
   hash: z.string(),
   height: z.number(),
   pending: z.boolean(),
@@ -74,7 +74,7 @@ export const DataBaseParse = z.object({
   size: z.number(),
   thumbhash: z.array(z.number()),
   width: z.number(),
-  timestamp_ms: z.number()
+  timestampMs: z.number()
 })
 
 export const DataBaseSchema = DataBaseParse.extend({
@@ -82,25 +82,25 @@ export const DataBaseSchema = DataBaseParse.extend({
   thumbhashUrl: z.string(), // need initialize
   filename: z.string(), // need initialize
   tags: z.array(z.string()),
-  exif_vec: z.record(z.string(), z.string())
+  exifVec: z.record(z.string(), z.string())
 })
 
 export const AlbumParse = z.object({
   id: z.string(),
   title: z.string().nullable(),
-  created_time: z.number(),
-  start_time: z.number().nullable(),
-  end_time: z.number().nullable(),
-  last_modified_time: z.number(),
+  createdTime: z.number(),
+  startTime: z.number().nullable(),
+  endTime: z.number().nullable(),
+  lastModifiedTime: z.number(),
   cover: z.string().nullable(),
   thumbhash: z.array(z.number()).nullable(),
-  user_defined_metadata: z.record(z.string(), z.array(z.string())),
-  share_list: z.record(z.string(), ShareSchema).transform((obj) => new Map(Object.entries(obj))),
+  userDefinedMetadata: z.record(z.string(), z.array(z.string())),
+  shareList: z.record(z.string(), ShareSchema).transform((obj) => new Map(Object.entries(obj))),
   tag: z.array(z.string()),
   width: z.number(),
   height: z.number(),
-  item_count: z.number(),
-  item_size: z.number(),
+  itemCount: z.number(),
+  itemSize: z.number(),
   pending: z.boolean()
 })
 
@@ -120,7 +120,7 @@ export const AbstractDataWithTagSchema = z.object({
   tag: z.array(z.string()).optional(),
   alias: z.array(AliasSchema),
   token: z.string(),
-  exif_vec: z.record(z.string(), z.string())
+  exifVec: z.record(z.string(), z.string())
 })
 
 export const AbstractDataSchema = z.object({
@@ -177,5 +177,5 @@ export const TokenResponseSchema = z.object({
 
 export const serverErrorSchema = z.object({
   error: z.string(),
-  chain: z.array(z.string()).optional(),
+  chain: z.array(z.string()).optional()
 })

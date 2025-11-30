@@ -1,8 +1,4 @@
-import {
-  rowSchema,
-  rowWithOffsetSchema,
-  AbstractDataWithTagSchema
-} from '@type/schemas'
+import { rowSchema, rowWithOffsetSchema, AbstractDataWithTagSchema } from '@type/schemas'
 import {
   AbstractData,
   DisplayElement,
@@ -151,18 +147,25 @@ async function fetchData(
 
     if (item === undefined) {
       console.error(
-        `Error processing item at ${fetchMethod === 'batch' ? 'batchIndex' : 'index'}: ${fetchMethod === 'batch' ? index : index
+        `Error processing item at ${fetchMethod === 'batch' ? 'batchIndex' : 'index'}: ${
+          fetchMethod === 'batch' ? index : index
         }, ` + `batchNumber: ${batchNumber}, index: ${i}. Item is undefined.`
       )
       continue
     }
 
     if ('Database' in item.data) {
-      const databaseInstance = createDataBase(item.data.Database, item.data.Database.timestamp_ms, item.tag, item.alias, item.exif_vec)
+      const databaseInstance = createDataBase(
+        item.data.Database,
+        item.data.Database.timestampMs,
+        item.tag,
+        item.alias,
+        item.exifVec
+      )
       const abstractData = createAbstractData(databaseInstance)
       data.set(key, { abstractData, hashToken: item.token })
     } else if ('Album' in item.data) {
-      const albumInstance = createAlbum(item.data.Album, item.data.Album.created_time, item.tag)
+      const albumInstance = createAlbum(item.data.Album, item.data.Album.createdTime, item.tag)
       const abstractData = createAbstractData(albumInstance)
       data.set(key, { abstractData, hashToken: item.token })
     }

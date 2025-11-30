@@ -12,6 +12,7 @@ use super::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AbstractDataWithTag {
     pub data: AbstractData,
     pub tag: Option<HashSet<String>>,

@@ -1,7 +1,7 @@
 <template>
   <img
     :key="index"
-    v-if="abstractData?.database?.ext_type === 'image' && imgStore.imgOriginal.get(index)"
+    v-if="abstractData?.database?.extType === 'image' && imgStore.imgOriginal.get(index)"
     :src="imgStore.imgOriginal.get(index)"
     :style="{
       width: `${abstractData?.database?.width}px`,

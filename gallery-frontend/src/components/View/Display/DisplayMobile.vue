@@ -1,7 +1,7 @@
 <template>
   <div class="swiper-container h-100 w-100">
     <swiper
-      v-if="abstractData && abstractData.database && abstractData.database.ext_type === 'image'"
+      v-if="abstractData && abstractData.database && abstractData.database.extType === 'image'"
       :modules="modules"
       :slides-per-view="1"
       :space-between="10"

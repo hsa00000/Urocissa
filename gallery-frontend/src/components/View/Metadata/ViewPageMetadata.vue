@@ -41,8 +41,8 @@
           <ItemDate :database="abstractData.database" />
           <ItemExif
             v-if="
-              abstractData.database.exif_vec.Make !== undefined ||
-              abstractData.database.exif_vec.Model !== undefined
+              abstractData.database.exifVec.Make !== undefined ||
+              abstractData.database.exifVec.Model !== undefined
             "
             :database="abstractData.database"
           />
@@ -118,9 +118,9 @@ function toggleInfo() {
 
 function getUserDefinedDescription(abstractData: AbstractData): string {
   if (abstractData.database) {
-    return abstractData.database.exif_vec._user_defined_description ?? ''
+    return abstractData.database.exifVec._user_defined_description ?? ''
   } else if (abstractData.album) {
-    return abstractData.album.user_defined_metadata._user_defined_description?.[0] ?? ''
+    return abstractData.album.userDefinedMetadata._user_defined_description?.[0] ?? ''
   }
   return ''
 }

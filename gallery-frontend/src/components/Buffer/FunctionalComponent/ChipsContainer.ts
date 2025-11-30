@@ -24,7 +24,7 @@ const ChipsContainer: FunctionalComponent<ChipsContainerProps> = (props) => {
     if (pending) {
       chips.push(h(ProcessingChip))
     }
-    const duration = database.exif_vec.duration
+    const duration = database.exifVec.duration
 
     if (duration !== undefined) {
       const formattedDuration = formatDuration(duration)

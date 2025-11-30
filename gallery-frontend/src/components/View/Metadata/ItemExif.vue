@@ -2,19 +2,19 @@
   <v-list-item>
     <template #prepend>
       <v-avatar>
-        <v-icon >mdi-camera-iris</v-icon>
+        <v-icon>mdi-camera-iris</v-icon>
       </v-avatar>
     </template>
     <v-list-item-title class="text-wrap">{{
-      generateExifMake(props.database.exif_vec)
+      generateExifMake(props.database.exifVec)
     }}</v-list-item-title>
     <v-list-item-subtitle class="text-wrap">
       <v-row>
-        <v-col cols="auto">{{ formatExifData(props.database.exif_vec).FNumber }}</v-col>
-        <v-col cols="auto">{{ formatExifData(props.database.exif_vec).ExposureTime }}</v-col>
-        <v-col cols="auto">{{ formatExifData(props.database.exif_vec).FocalLength }}</v-col>
+        <v-col cols="auto">{{ formatExifData(props.database.exifVec).FNumber }}</v-col>
+        <v-col cols="auto">{{ formatExifData(props.database.exifVec).ExposureTime }}</v-col>
+        <v-col cols="auto">{{ formatExifData(props.database.exifVec).FocalLength }}</v-col>
         <v-col cols="auto">{{
-          formatExifData(props.database.exif_vec).PhotographicSensitivity
+          formatExifData(props.database.exifVec).PhotographicSensitivity
         }}</v-col>
       </v-row>
     </v-list-item-subtitle>
