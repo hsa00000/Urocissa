@@ -1,6 +1,5 @@
 use crate::public::db::tree::TREE;
-use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::ResolvedShare;
+use crate::public::structure::album::{ResolvedShare, Share};
 use crate::router::claims::claims::Claims;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 use anyhow::Error;
@@ -73,6 +72,48 @@ pub fn extract_hash_from_path(req: &Request<'_>) -> Result<String> {
     }
 }
 
+fn resolve_share_from_db(album_id: &str, share_id: &str) -> Result<Claims> {
+    let conn = TREE.get_connection().map_err(|e| anyhow!("DB connection error: {}", e))?;
+    
+    // Query both share details and album title in one go
+    let sql = r#"
+        SELECT 
+            s.url, s.description, s.password, s.show_metadata, s.show_download, s.show_upload, s.exp,
+            a.title
+        FROM album_share s
+        JOIN album a ON s.album_id = a.id
+        WHERE s.album_id = ? AND s.url = ?
+    "#;
+
+    let (share, album_title): (Share, Option<String>) = conn.query_row(
+        sql,
+        [album_id, share_id],
+        |row| {
+            let url: String = row.get(0)?;
+            let share = Share {
+                url: ArrayString::from(&url).unwrap(),
+                description: row.get(1)?,
+                password: row.get(2)?,
+                show_metadata: row.get(3)?,
+                show_download: row.get(4)?,
+                show_upload: row.get(5)?,
+                exp: row.get(6)?,
+            };
+            let title: Option<String> = row.get(7)?;
+            Ok((share, title))
+        }
+    ).map_err(|_| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?;
+
+    let resolved_share = ResolvedShare::new(
+        ArrayString::<64>::from(album_id)
+            .map_err(|_| anyhow!("Failed to parse album_id"))?,
+        album_title,
+        share,
+    );
+    
+    Ok(Claims::new_share(resolved_share))
+}
+
 /// Try to resolve album and share from headers
 pub fn try_resolve_share_from_headers(req: &Request<'_>) -> Result<Option<Claims>> {
     let album_id = req.headers().get_one("x-album-id");
@@ -80,29 +121,11 @@ pub fn try_resolve_share_from_headers(req: &Request<'_>) -> Result<Option<Claims
 
     match (album_id, share_id) {
         (None, None) => Ok(None),
-
         (Some(_), None) | (None, Some(_)) => Err(anyhow!(
             "Both x-album-id and x-share-id must be provided together"
         )),
-
         (Some(album_id), Some(share_id)) => {
-            let album_abstract = TREE.load_from_db(album_id)?;
-            let album = match album_abstract {
-                AbstractData::Album(a) => a,
-                _ => return Err(anyhow!("Album not found for id '{}'", album_id)),
-            };
-
-            let share = album.share_list.get(share_id)
-                .ok_or_else(|| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?
-                .clone();
-
-            let resolved_share = ResolvedShare::new(
-                ArrayString::<64>::from(album_id)
-                    .map_err(|_| anyhow!("Failed to parse album_id"))?,
-                album.title,
-                share,
-            );
-            let claims = Claims::new_share(resolved_share);
+            let claims = resolve_share_from_db(album_id, share_id)?;
             Ok(Some(claims))
         }
     }
@@ -115,29 +138,11 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>>
 
     match (album_id, share_id) {
         (None, None) => Ok(None),
-
         (Some(_), None) | (None, Some(_)) => Err(anyhow!(
             "Both albumId and shareId must be provided together"
         )),
-
         (Some(album_id), Some(share_id)) => {
-            let album_abstract = TREE.load_from_db(album_id)?;
-            let album = match album_abstract {
-                AbstractData::Album(a) => a,
-                _ => return Err(anyhow!("Album not found for id '{}'", album_id)),
-            };
-
-            let share = album.share_list.get(share_id)
-                .ok_or_else(|| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?
-                .clone();
-
-            let resolved_share = ResolvedShare::new(
-                ArrayString::<64>::from(album_id)
-                    .map_err(|_| anyhow!("Failed to parse album_id"))?,
-                album.title,
-                share,
-            );
-            let claims = Claims::new_share(resolved_share);
+            let claims = resolve_share_from_db(album_id, share_id)?;
             Ok(Some(claims))
         }
     }
@@ -149,16 +154,18 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
     let share_id = req.headers().get_one("x-share-id");
 
     if let (Some(album_id), Some(share_id)) = (album_id, share_id) {
-        if let Ok(album_abstract) = TREE.load_from_db(album_id) {
-            if let AbstractData::Album(album) = album_abstract {
-                if let Some(share) = album.share_list.get(share_id) {
-                    if share.show_upload {
-                        if let Some(Ok(album_id_parsed)) =
-                            req.query_value::<&str>("presigned_album_id_opt")
-                        {
-                            return album.id.as_str() == album_id_parsed;
-                        }
-                    }
+        if let Ok(conn) = TREE.get_connection() {
+            let show_upload: bool = conn.query_row(
+                "SELECT show_upload FROM album_share WHERE album_id = ? AND url = ?",
+                [album_id, share_id],
+                |row| row.get(0)
+            ).unwrap_or(false);
+
+            if show_upload {
+                if let Some(Ok(album_id_parsed)) =
+                    req.query_value::<&str>("presigned_album_id_opt")
+                {
+                    return album_id == album_id_parsed;
                 }
             }
         }

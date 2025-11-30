@@ -40,7 +40,6 @@ pub struct Album {
     pub cover: Option<ArrayString<64>>,
     pub thumbhash: Option<Vec<u8>>,
     pub user_defined_metadata: HashMap<String, Vec<String>>,
-    pub share_list: HashMap<ArrayString<64>, Share>,
     pub tag: HashSet<String>,
     pub width: u32,
     pub height: u32,
@@ -62,7 +61,6 @@ impl Album {
                 cover TEXT,
                 thumbhash BLOB,
                 user_defined_metadata TEXT,
-                share_list TEXT,
                 tag TEXT,
                 width INTEGER,
                 height INTEGER,
@@ -88,9 +86,6 @@ impl Album {
         let user_defined_metadata_str: String = row.get("user_defined_metadata")?;
         let user_defined_metadata: HashMap<String, Vec<String>> =
             serde_json::from_str(&user_defined_metadata_str).unwrap_or_default();
-        let share_list_str: String = row.get("share_list")?;
-        let share_list: HashMap<ArrayString<64>, Share> =
-            serde_json::from_str(&share_list_str).unwrap_or_default();
         let tag_str: String = row.get("tag")?;
         let tag: HashSet<String> = serde_json::from_str(&tag_str).unwrap_or_default();
         let width: u32 = row.get("width")?;
@@ -108,7 +103,6 @@ impl Album {
             cover,
             thumbhash,
             user_defined_metadata,
-            share_list,
             tag,
             width,
             height,

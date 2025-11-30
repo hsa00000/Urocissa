@@ -1,6 +1,5 @@
 use crate::public::db::tree::TREE;
-use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::{Album, Share};
+use crate::public::structure::album::Share;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -11,7 +10,6 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use rocket::serde::{Deserialize, json::Json};
 use rusqlite::Connection;
-use serde_json;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditShare {
@@ -28,25 +26,32 @@ pub async fn edit_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
-        let conn = Connection::open("./gallery.db").unwrap();
-        if let Ok(mut album) = conn.query_row(
-            "SELECT * FROM album WHERE id = ?",
-            [&*json_data.album_id],
-            |row| Album::from_row(row),
-        ) {
-            album
-                .share_list
-                .insert(json_data.share.url, json_data.share.clone());
-            let share_list_json = serde_json::to_string(&album.share_list).unwrap();
-            conn.execute(
-                "UPDATE album SET share_list = ? WHERE id = ?",
-                [&share_list_json, &*json_data.album_id],
-            )
-            .unwrap();
-        }
+        let conn = TREE.get_connection().unwrap();
+        conn.execute(
+            "UPDATE album_share SET 
+                description = ?, 
+                password = ?, 
+                show_metadata = ?, 
+                show_download = ?, 
+                show_upload = ?, 
+                exp = ?
+            WHERE album_id = ? AND url = ?",
+            (
+                &json_data.share.description,
+                &json_data.share.password,
+                json_data.share.show_metadata,
+                json_data.share.show_download,
+                json_data.share.show_upload,
+                json_data.share.exp,
+                json_data.album_id.as_str(),
+                json_data.share.url.as_str(),
+            ),
+        ).unwrap();
     })
     .await
     .unwrap();
+    // UpdateTreeTask might not be needed if shares are not in the tree anymore, 
+    // but keeping it doesn't hurt if other things changed
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
         .await
@@ -70,17 +75,12 @@ pub async fn delete_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
-        let abstract_data = TREE.load_from_db(&json_data.album_id).unwrap();
-        if let AbstractData::Album(mut album) = abstract_data {
-            album.share_list.remove(&json_data.share_id);
-            let share_list_json = serde_json::to_string(&album.share_list).unwrap();
-            let conn = TREE.get_connection().unwrap();
-            conn.execute(
-                "UPDATE album SET share_list = ? WHERE id = ?",
-                [&share_list_json, &*json_data.album_id],
-            )
-            .unwrap();
-        }
+        let conn = TREE.get_connection().unwrap();
+        conn.execute(
+            "DELETE FROM album_share WHERE album_id = ? AND url = ?",
+            [&*json_data.album_id, &*json_data.share_id],
+        )
+        .unwrap();
     })
     .await
     .unwrap();

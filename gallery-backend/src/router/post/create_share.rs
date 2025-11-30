@@ -1,5 +1,4 @@
 use crate::public::db::tree::TREE;
-use crate::public::structure::album::{Album, Share};
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -12,7 +11,6 @@ use rocket::post;
 use rocket::serde::json::Json;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
@@ -48,44 +46,47 @@ pub async fn create_share(
 }
 
 fn create_and_insert_share(conn: &Connection, create_share: CreateShare) -> AppResult<String> {
-    let album_opt: Option<Album> = conn
+    // Check if album exists
+    let album_exists: bool = conn
         .query_row(
-            "SELECT * FROM album WHERE id = ?",
+            "SELECT 1 FROM album WHERE id = ?",
             [&*create_share.album_id],
-            |row| Album::from_row(row),
+            |_| Ok(true),
         )
-        .ok();
+        .unwrap_or(false);
 
-    match album_opt {
-        Some(mut album) => {
-            let link: String = rand::rng()
-                .sample_iter(&Alphanumeric)
-                .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
-                .take(64)
-                .map(char::from)
-                .collect();
-            let share_id = ArrayString::<64>::from(&link).unwrap();
-            let share = Share {
-                url: share_id,
-                description: create_share.description,
-                password: create_share.password,
-                show_metadata: create_share.show_metadata,
-                show_download: create_share.show_download,
-                show_upload: create_share.show_upload,
-                exp: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-            };
-            album.share_list.insert(share_id, share);
-            let share_list_json = serde_json::to_string(&album.share_list).unwrap();
-            conn.execute(
-                "UPDATE album SET share_list = ? WHERE id = ?",
-                [&share_list_json, &*create_share.album_id],
-            )
-            .unwrap();
-            Ok(link)
-        }
-        None => Err(anyhow::anyhow!("Album not found").into()),
+    if !album_exists {
+        return Err(anyhow::anyhow!("Album not found").into());
     }
+
+    let link: String = rand::rng()
+        .sample_iter(&Alphanumeric)
+        .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        .take(64)
+        .map(char::from)
+        .collect();
+    
+    let share_id = ArrayString::<64>::from(&link).unwrap();
+    let exp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    conn.execute(
+        "INSERT INTO album_share (
+            album_id, url, description, password, show_metadata, show_download, show_upload, exp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            create_share.album_id.as_str(),
+            share_id.as_str(),
+            &create_share.description,
+            &create_share.password,
+            create_share.show_metadata,
+            create_share.show_download,
+            create_share.show_upload,
+            exp,
+        ),
+    )?;
+
+    Ok(link)
 }

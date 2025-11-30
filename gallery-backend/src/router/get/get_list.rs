@@ -2,6 +2,7 @@ use crate::public::config::{PUBLIC_CONFIG, PublicConfig};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::TagInfo;
 use crate::public::structure::album::Share;
+use crate::public::structure::relations::album_share::AlbumShare;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
@@ -42,10 +43,13 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
         let album_list = TREE.read_albums().context("Failed to read albums")?;
         let album_info_list = album_list
             .into_iter()
-            .map(|album| AlbumInfo {
-                album_id: album.id.to_string(),
-                album_name: album.title,
-                share_list: album.share_list,
+            .map(|album| {
+                let share_list = AlbumShare::get_map(&album.id).unwrap_or_default();
+                AlbumInfo {
+                    album_id: album.id.to_string(),
+                    album_name: album.title,
+                    share_list,
+                }
             })
             .collect();
         Ok(Json(album_info_list))

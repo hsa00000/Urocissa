@@ -133,7 +133,11 @@ impl AbstractData {
             }
             AbstractData::Album(album) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
-                ClaimsHash::new(album.id, timestamp, false).encode()
+                // If the album has a cover, we must sign the cover hash
+                // because the frontend will use this token to request the cover image file.
+                // If there is no cover, we fallback to ID (though no image will be fetched).
+                let hash = album.cover.unwrap_or(album.id);
+                ClaimsHash::new(hash, timestamp, false).encode()
             }
         }
     }

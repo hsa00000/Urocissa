@@ -95,7 +95,11 @@ export const AlbumParse = z.object({
   cover: z.string().nullable(),
   thumbhash: z.array(z.number()).nullable(),
   userDefinedMetadata: z.record(z.string(), z.array(z.string())),
-  shareList: z.record(z.string(), ShareSchema).transform((obj) => new Map(Object.entries(obj))),
+  shareList: z
+    .record(z.string(), ShareSchema)
+    .optional()
+    .default({})
+    .transform((obj) => new Map(Object.entries(obj))),
   tag: z.array(z.string()),
   width: z.number(),
   height: z.number(),
