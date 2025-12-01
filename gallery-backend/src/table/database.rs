@@ -105,21 +105,6 @@ impl DatabaseSchema {
         }
     }
 
-    pub fn compressed_path(&self) -> std::path::PathBuf {
-        std::path::PathBuf::from(self.compressed_path_string())
-    }
-
-    pub fn thumbnail_path(&self) -> String {
-        format!("./object/compressed/{}/{}.jpg", &self.hash[0..2], self.hash)
-    }
-
-    pub fn compressed_path_parent(&self) -> std::path::PathBuf {
-        self.compressed_path()
-            .parent()
-            .expect("Path::new(&output_file_path_string).parent() fail")
-            .to_path_buf()
-    }
-
     pub fn generate_random_data() -> Self {
         use crate::workflow::processors::file::generate_random_hash;
         use rand::Rng;
