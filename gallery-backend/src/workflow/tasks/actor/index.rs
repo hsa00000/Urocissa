@@ -10,13 +10,13 @@ use crate::table::database::DatabaseSchema;
 use crate::table::relations::database_exif::ExifSchema;
 
 use crate::{
-    process::info::{process_image_info, process_video_info},
     public::{
         constant::VALID_IMAGE_EXTENSIONS,
         error_data::handle_error,
         structure::guard::PendingGuard,
         tui::{DASHBOARD, FileType},
     },
+    workflow::info::{process_image_info, process_video_info},
     workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask},
 };
 use mini_executor::Task;

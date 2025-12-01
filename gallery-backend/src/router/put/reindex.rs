@@ -1,4 +1,3 @@
-use crate::process::info::{regenerate_metadata_for_image, regenerate_metadata_for_video};
 use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
@@ -8,8 +7,9 @@ use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::table::database::DatabaseSchema;
-use crate::workflow::tasks::actor::index::IndexTask;
+use crate::workflow::info::{regenerate_metadata_for_image, regenerate_metadata_for_video};
 use crate::workflow::tasks::BATCH_COORDINATOR;
+use crate::workflow::tasks::actor::index::IndexTask;
 use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;

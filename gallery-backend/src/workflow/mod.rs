@@ -1,3 +1,4 @@
+pub mod info;
 pub mod operations;
 pub mod tasks;
 
