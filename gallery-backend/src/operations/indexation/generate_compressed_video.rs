@@ -1,7 +1,6 @@
 use super::video_ffprobe::video_duration;
 use crate::{
-    operations::indexation::generate_ffmpeg::create_silent_ffmpeg_command,
-    public::tui::DASHBOARD,
+    operations::indexation::generate_ffmpeg::create_silent_ffmpeg_command, public::tui::DASHBOARD,
     table::database::DatabaseSchema,
 };
 use anyhow::Context;
@@ -30,7 +29,6 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
             );
             database.ext_type = "image".to_string();
             todo!();
-            /* return process_image_info(database); */
         }
         // Handle non-GIFs that fail to parse duration.
         Err(err)
@@ -43,7 +41,6 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
             );
             database.ext_type = "image".to_string();
             todo!();
-            /* return process_image_info(database); */
         }
         Ok(d) => d,
         Err(err) => {
@@ -54,7 +51,7 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
             ));
         }
     };
-    // --- REFACTORED: Use the helper for a clean, consistent command ---
+
     let mut cmd = create_silent_ffmpeg_command();
     cmd.args([
         "-y", // Overwrite output file if it exists
@@ -90,7 +87,7 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
     for line_result in reader.lines() {
         if let Ok(line) = line_result {
             if let Some(caps) = REGEX_OUT_TIME_US.captures(&line) {
-                // The regex now captures either digits or "N/A".
+                // The regex captures the digits of the duration.
                 // We only proceed if the captured value can be parsed as a number.
                 if let Ok(microseconds) = caps[1].parse::<f64>() {
                     let percentage = (microseconds / 1_000_000.0 / duration) * 100.0;

@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate rocket;
 use anyhow::Result;
-// --- Make sure all your modules are declared ---
 
 mod operations;
 mod process;
