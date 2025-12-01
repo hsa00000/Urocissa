@@ -1,17 +1,13 @@
 use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
-use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
-use crate::router::get::get_prefetch::Prefetch;
 use anyhow::Result;
-use log::error;
+use log::{error, info};
 use mini_executor::BatchTask;
-use redb::TableDefinition;
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 pub struct FlushQuerySnapshotTask;
 
 impl BatchTask for FlushQuerySnapshotTask {
-    fn batch_run(_: Vec<Self>) -> impl Future<Output = ()> + Send {
+    fn batch_run(_: Vec<Self>) -> impl std::future::Future<Output = ()> + Send {
         async move {
             if let Err(e) = flush_query_snapshot_task() {
                 error!("Error in flush_query_snapshot_task: {}", e);
@@ -26,9 +22,8 @@ fn flush_query_snapshot_task() -> Result<()> {
             break;
         }
 
-        // Narrow scope for the DashMap reference
+        // 取得一個 entry 準備寫入
         let expression_hashed = {
-            // Attempt to get a reference to one entry:
             let Some(entry_ref) = QUERY_SNAPSHOT.in_memory.iter().next() else {
                 break;
             };
@@ -36,29 +31,29 @@ fn flush_query_snapshot_task() -> Result<()> {
             let expression_hashed = *entry_ref.key();
             let ref_data = entry_ref.value();
 
-            // Save to disk
             let timer_start = Instant::now();
-            let txn = QUERY_SNAPSHOT.in_disk.begin_write()?;
-            let count_version = &VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed).to_string();
-            let table_definition: TableDefinition<u64, Prefetch> =
-                TableDefinition::new(count_version);
+            let conn = QUERY_SNAPSHOT.in_disk.get()?;
+            
+            // 序列化資料
+            let data = bitcode::encode(ref_data);
 
-            {
-                let mut table = txn.open_table(table_definition)?;
-                table.insert(expression_hashed, ref_data)?;
-            }
+            // 寫入 SQLite
+            // 預設 expires_at 為 NULL，代表這是當前版本的有效快照
+            conn.execute(
+                "INSERT OR REPLACE INTO query_snapshot (query_hash, data, expires_at) VALUES (?, ?, NULL)",
+                (expression_hashed, data),
+            )?;
 
-            txn.commit()?;
             info!(
                 duration = &*format!("{:?}", timer_start.elapsed());
                 "Write query cache into disk"
             );
 
-            // Return the hashed key, so we can remove it below
             expression_hashed
         };
 
-        // Remove from DashMap *after* reference is dropped
+        // 從記憶體移除 (Write Buffer 行為)
+        // 註：這會清空記憶體，但讀取時我們會透過 read_query_snapshot 自動回補 (Promote)
         QUERY_SNAPSHOT.in_memory.remove(&expression_hashed);
 
         info!(

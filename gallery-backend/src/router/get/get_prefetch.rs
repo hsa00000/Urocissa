@@ -3,13 +3,13 @@ use crate::public::db::tree::TREE;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::table::relations::album_share::ResolvedShare;
 use crate::public::structure::expression::Expression;
 use crate::public::structure::reduced_data::ReducedData;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::guard_share::GuardShare;
+use crate::table::relations::album_share::ResolvedShare;
 use crate::workflow::tasks::BATCH_COORDINATOR;
 
 use crate::workflow::tasks::batcher::flush_query_snapshot::FlushQuerySnapshotTask;
@@ -89,7 +89,7 @@ fn check_query_cache(
     let find_cache_start_time = Instant::now();
 
     // Check cache first
-    if let Ok(Some(prefetch)) = QUERY_SNAPSHOT.read_query_snapshot(query_hash) {
+    if let Ok(Some(prefetch)) = (&*QUERY_SNAPSHOT).read_query_snapshot(query_hash) {
         let duration = format!("{:?}", find_cache_start_time.elapsed());
         info!(duration = &*duration; "Query cache found");
         let claims = ClaimsTimestamp::new(mem::take(resolved_share_option), prefetch.timestamp);

@@ -1,10 +1,8 @@
-use crate::workflow::processors::transitor::get_current_timestamp_u64;
-use crate::public::db::expire::{EXPIRE, EXPIRE_TABLE_DEFINITION};
+use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
-use crate::workflow::tasks::BATCH_COORDINATOR;
-use crate::workflow::tasks::batcher::expire_check::ExpireCheckTask;
+use crate::workflow::processors::transitor::get_current_timestamp_u64;
 use anyhow::Result;
-use log::error;
+use log::{info, error};
 use mini_executor::BatchTask;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -12,7 +10,7 @@ use std::time::Duration;
 pub struct UpdateExpireTask;
 
 impl BatchTask for UpdateExpireTask {
-    fn batch_run(_: Vec<Self>) -> impl Future<Output = ()> + Send {
+     fn batch_run(_: Vec<Self>) -> impl std::future::Future<Output = ()> + Send {
         async move {
             if let Err(e) = update_expire_task() {
                 error!("Error in update_expire_task: {}", e);
@@ -23,26 +21,32 @@ impl BatchTask for UpdateExpireTask {
 
 fn update_expire_task() -> Result<()> {
     let current_timestamp = get_current_timestamp_u64();
+    // 檢查版本號是否變更
     let last_timestamp = VERSION_COUNT_TIMESTAMP.swap(current_timestamp, Ordering::SeqCst);
 
     if last_timestamp > 0 {
-        let expire_write_txn = EXPIRE.in_disk.begin_write()?;
-        let new_expire_time =
-            current_timestamp.saturating_add(Duration::from_secs(60 * 60).as_millis() as u64);
-        {
-            let mut expire_table = expire_write_txn.open_table(EXPIRE_TABLE_DEFINITION)?;
+        // 設定 1 小時後過期 (Grace Period)
+        let expire_time = current_timestamp + Duration::from_secs(60 * 60).as_millis() as u64;
+        let conn = QUERY_SNAPSHOT.in_disk.get()?;
+        
+        // 1. 【機會主義清理】先刪除那些「已經過期」的舊垃圾
+        let deleted = conn.execute(
+            "DELETE FROM query_snapshot WHERE expires_at IS NOT NULL AND expires_at < ?",
+            [current_timestamp],
+        )?;
 
-            expire_table.insert(last_timestamp, Some(new_expire_time))?;
-            expire_table.insert(current_timestamp, None)?;
+        // 2. 【軟過期】將原本「永久有效 (expires_at IS NULL)」的舊快照，標記為 1 小時後過期
+        let marked = conn.execute(
+            "UPDATE query_snapshot SET expires_at = ? WHERE expires_at IS NULL",
+            [expire_time],
+        )?;
 
-            info!(
-                "Expire table updated. Next expire time set to {}",
-                new_expire_time
-            );
-        }
-
-        expire_write_txn.commit()?;
-        BATCH_COORDINATOR.execute_batch_detached(ExpireCheckTask);
+        info!(
+            "Version updated. Cleaned {} old snapshots. Marked {} snapshots to expire at {}",
+            deleted, marked, expire_time
+        );
+        
+        // 這裡不需要再觸發 ExpireCheckTask，因為我們已經順手清理了
     }
     Ok(())
 }

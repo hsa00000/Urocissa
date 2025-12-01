@@ -5,7 +5,6 @@ use std::sync::LazyLock;
 // Legacy structure (for backward compatibility)
 pub mod actor;
 pub mod batcher;
-pub mod looper;
 
 pub static INDEX_COORDINATOR: LazyLock<TaskExecutor> =
     LazyLock::new(|| TaskExecutor::new(&INDEX_RUNTIME));

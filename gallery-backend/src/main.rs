@@ -14,7 +14,6 @@ use crate::public::tui::{DASHBOARD, tui_task};
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::workflow::tasks::looper::start_expire_check_loop;
 
 use rocket::fs::FileServer;
 use router::fairing::cache_control_fairing::cache_control_fairing;
@@ -57,7 +56,6 @@ fn main() -> Result<()> {
             info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", album_count);
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
             BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
-            start_expire_check_loop();
 
             if let Some(sc) = superconsole::SuperConsole::new() {
                 INDEX_RUNTIME.spawn(async move {
