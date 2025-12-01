@@ -1,8 +1,7 @@
 use crate::public::config::{PUBLIC_CONFIG, PublicConfig};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::TagInfo;
-use crate::public::structure::album::{ResolvedShare, Share};
-use crate::public::structure::relations::album_share::AlbumShare;
+use crate::table::relations::album_share::{AlbumShareTable, ResolvedShare, Share};
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
@@ -42,7 +41,7 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
     tokio::task::spawn_blocking(move || {
         let album_list = TREE.read_albums().context("Failed to read albums")?;
         let mut all_shares_map =
-            AlbumShare::get_all_shares_grouped().context("Failed to fetch shares")?;
+            AlbumShareTable::get_all_shares_grouped().context("Failed to fetch shares")?;
         let album_info_list = album_list
             .into_iter()
             .map(|album| {
@@ -63,7 +62,7 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
 pub async fn get_all_shares(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<ResolvedShare>>> {
     let _ = auth?;
     tokio::task::spawn_blocking(move || {
-        let shares = AlbumShare::get_all_resolved().context("Failed to read all shares")?;
+        let shares = AlbumShareTable::get_all_resolved().context("Failed to read all shares")?;
         Ok(Json(shares))
     })
     .await?

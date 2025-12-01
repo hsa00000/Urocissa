@@ -9,9 +9,9 @@ pub struct DatabaseAliasSchema {
     pub scan_time: i64,
 }
 
-pub struct DatabaseAlias;
+pub struct DatabaseAliasTable;
 
-impl DatabaseAlias {
+impl DatabaseAliasTable {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
         let sql = r#"
             CREATE TABLE IF NOT EXISTS database_alias (

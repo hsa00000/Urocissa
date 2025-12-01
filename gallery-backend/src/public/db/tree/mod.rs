@@ -6,8 +6,8 @@ use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::Album;
-use crate::public::structure::database::definition::DatabaseSchema;
+use crate::table::album::AlbumSchema;
+use crate::table::database::DatabaseSchema;
 use crate::tasks::actor::index::IndexTask;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
@@ -35,7 +35,7 @@ impl Tree {
         ) {
             Ok(AbstractData::DatabaseSchema(database))
         } else if let Ok(album) =
-            conn.query_row("SELECT * FROM album WHERE id = ?", [id], Album::from_row)
+            conn.query_row("SELECT * FROM album WHERE id = ?", [id], AlbumSchema::from_row)
         {
             Ok(AbstractData::Album(album))
         } else {

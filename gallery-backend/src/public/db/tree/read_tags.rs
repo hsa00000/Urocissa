@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::public::structure::album::Album;
+use crate::table::album::AlbumSchema;
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
@@ -43,13 +43,13 @@ impl Tree {
             .collect();
         tag_infos
     }
-    pub fn read_albums(&self) -> Result<Vec<Album>> {
+    pub fn read_albums(&self) -> Result<Vec<AlbumSchema>> {
         let conn = self.get_connection()?;
         let mut stmt = conn
             .prepare("SELECT * FROM album")
             .context("Failed to prepare statement")?;
         let albums = stmt
-            .query_map([], |row| Album::from_row(row))
+            .query_map([], |row| AlbumSchema::from_row(row))
             .context("Failed to query albums")?
             .collect::<Result<Vec<_>, _>>()
             .context("Failed to collect albums")?;

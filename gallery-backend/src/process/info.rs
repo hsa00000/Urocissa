@@ -1,5 +1,3 @@
-use std::{collections::BTreeMap, path::Path};
-
 use crate::{
     operations::indexation::{
         fix_orientation::{fix_image_orientation, fix_image_width_height, fix_video_width_height},
@@ -9,9 +7,8 @@ use crate::{
         generate_thumbnail::{generate_thumbnail_for_image, generate_thumbnail_for_video},
         generate_width_height::{generate_image_width_height, generate_video_width_height},
     },
-    public::structure::database::{
-        definition::DatabaseSchema, generate_timestamp::compute_timestamp_ms_by_exif,
-    },
+    public::structure::database::generate_timestamp::compute_timestamp_ms_by_exif,
+    table::database::DatabaseSchema,
     tasks::actor::index::IndexTask,
 };
 use anyhow::{Context, Result};

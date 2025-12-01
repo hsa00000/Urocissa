@@ -3,7 +3,7 @@ use crate::public::db::tree::TREE;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::ResolvedShare;
+use crate::table::relations::album_share::ResolvedShare;
 use crate::public::structure::expression::Expression;
 use crate::public::structure::reduced_data::ReducedData;
 use crate::router::AppResult;

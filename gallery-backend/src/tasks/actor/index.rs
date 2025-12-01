@@ -1,20 +1,20 @@
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
-use rand::seq::index;
 use std::collections::{BTreeMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio_rayon::AsyncThreadPool;
 
 use crate::public::constant::runtime::WORKER_RAYON_POOL;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::relations::exif_databases::ExifSchema;
+use crate::table::database::DatabaseSchema;
+use crate::table::relations::database_exif::ExifSchema;
 
 use crate::{
     process::info::{process_image_info, process_video_info},
     public::{
         constant::VALID_IMAGE_EXTENSIONS,
         error_data::handle_error,
-        structure::{database::definition::DatabaseSchema, guard::PendingGuard},
+        structure::guard::PendingGuard,
         tui::{DASHBOARD, FileType},
     },
     tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask},
@@ -150,13 +150,11 @@ fn index_task_result(mut index_task: IndexTask) -> Result<(IndexTask, FlushTreeT
     // Insert EXIF data
     let hash_str = index_task.hash.as_str();
     for (tag, value) in &index_task.exif_vec {
-        operations.push(FlushOperation::InsertExif(
-            crate::public::structure::relations::exif_databases::ExifSchema {
-                hash: hash_str.to_string(),
-                tag: tag.clone(),
-                value: value.clone(),
-            },
-        ));
+        operations.push(FlushOperation::InsertExif(ExifSchema {
+            hash: hash_str.to_string(),
+            tag: tag.clone(),
+            value: value.clone(),
+        }));
     }
 
     let flush_task = FlushTreeTask { operations };

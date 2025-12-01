@@ -1,4 +1,4 @@
-use crate::public::structure::album::ResolvedShare;
+use crate::table::relations::album_share::ResolvedShare;
 
 pub mod hash;
 pub mod indexation;

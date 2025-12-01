@@ -11,10 +11,10 @@ use crate::operations::transitor::index_to_hash;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database::definition::DatabaseSchema;
+use crate::table::database::DatabaseSchema;
 use crate::router::GuardResult;
 
-use crate::public::structure::album::Album;
+use crate::table::album::AlbumSchema;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
@@ -66,7 +66,7 @@ async fn create_album_internal(title: Option<String>) -> Result<ArrayString<64>>
     let start_time = Instant::now();
 
     let album_id = generate_random_hash();
-    let album = AbstractData::Album(Album::new(album_id, title));
+    let album = AbstractData::Album(AlbumSchema::new(album_id, title));
     BATCH_COORDINATOR
         .execute_batch_waiting(FlushTreeTask::insert(vec![album]))
         .await?;

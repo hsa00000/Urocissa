@@ -7,9 +7,9 @@ pub struct TagDatabaseSchema {
     pub tag: String,
 }
 
-pub struct TagDatabases;
+pub struct TagDatabasesTable;
 
-impl TagDatabases {
+impl TagDatabasesTable {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
         let sql = r#"
             CREATE TABLE IF NOT EXISTS tag_databases (

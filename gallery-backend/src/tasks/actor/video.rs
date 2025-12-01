@@ -5,11 +5,11 @@ use crate::{
         error_data::handle_error,
         structure::{
             abstract_data::AbstractData,
-            database::definition::DatabaseSchema,
             guard::PendingGuard,
         },
         tui::DASHBOARD,
     },
+    table::database::DatabaseSchema,
     tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
 use anyhow::Context;

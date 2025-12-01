@@ -5,9 +5,9 @@ use serde_json;
 use crate::{
     public::db::tree::TREE,
     public::structure::abstract_data::AbstractData,
-    public::structure::relations::database_alias::DatabaseAliasSchema,
-    public::structure::relations::exif_databases::ExifSchema,
-    public::structure::relations::tag_databases::TagDatabaseSchema,
+    table::relations::database_alias::DatabaseAliasSchema,
+    table::relations::database_exif::ExifSchema,
+    table::relations::tag_databases::TagDatabaseSchema,
     tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
 

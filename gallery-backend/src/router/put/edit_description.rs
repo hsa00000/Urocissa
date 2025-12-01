@@ -41,7 +41,7 @@ pub async fn set_user_defined_description(
         let mut abstract_data = TREE.load_from_db(&hash)?;
 
         match &mut abstract_data {
-            AbstractData::DatabaseSchema(db) => {
+            AbstractData::DatabaseSchema(_db) => {
                 /* db.exif_vec.insert(
                     USER_DEFINED_DESCRIPTION.to_string(),
                     set_user_defined_description

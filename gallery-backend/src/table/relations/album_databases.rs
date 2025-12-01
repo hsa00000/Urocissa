@@ -1,10 +1,10 @@
 use rusqlite::Connection;
 
-pub struct AlbumDatabases;
+pub struct AlbumDatabasesTable;
 
-impl AlbumDatabases {
+impl AlbumDatabasesTable {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
-        let sql = r#"
+        let sql = r##"
             CREATE TABLE IF NOT EXISTS album_databases (
                 album_id TEXT NOT NULL,
                 hash     TEXT NOT NULL,
@@ -114,7 +114,7 @@ impl AlbumDatabases {
                     last_modified_time = (strftime('%s', 'now') * 1000)
                 WHERE id = OLD.album_id;
             END;
-        "#;
+        "##;
         conn.execute_batch(sql)?;
         Ok(())
     }

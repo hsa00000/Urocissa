@@ -1,12 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::{
-    public::{
-        constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION,
-        structure::database::definition::DatabaseSchema,
-    },
-    tasks::actor::index::IndexTask,
-};
+use crate::public::constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION;
+use crate::tasks::actor::index::IndexTask;
 use image::DynamicImage;
 
 pub fn fix_image_orientation(

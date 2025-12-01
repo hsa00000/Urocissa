@@ -3,7 +3,7 @@ use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database::definition::DatabaseSchema;
+use crate::table::database::DatabaseSchema;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -60,7 +60,7 @@ pub async fn reindex(
                                     Err(_) => None,
                                 }
                             } else if database.ext_type == "video" {
-                                let mut db = DatabaseSchema::from(database);
+                                let _db = DatabaseSchema::from(database);
                                 todo!();
                                 /*  match regenerate_metadata_for_video(&mut db) {
                                     Ok(_) => Some(AbstractData::DatabaseSchema(db)),

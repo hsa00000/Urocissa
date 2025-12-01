@@ -1,5 +1,5 @@
 use crate::public::db::tree::TREE;
-use crate::public::structure::album::{ResolvedShare, Share};
+use crate::table::relations::album_share::{ResolvedShare, Share};
 use crate::router::claims::claims::Claims;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 use anyhow::Error;

@@ -1,8 +1,8 @@
 use super::video_ffprobe::video_duration;
 use crate::{
     operations::indexation::generate_ffmpeg::create_silent_ffmpeg_command,
-    process::info::process_image_info,
-    public::{structure::database::definition::DatabaseSchema, tui::DASHBOARD},
+    public::tui::DASHBOARD,
+    table::database::DatabaseSchema,
 };
 use anyhow::Context;
 use anyhow::Result;

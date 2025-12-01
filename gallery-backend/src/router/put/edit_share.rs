@@ -1,5 +1,5 @@
 use crate::public::db::tree::TREE;
-use crate::public::structure::album::Share;
+use crate::table::relations::album_share::Share;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -9,7 +9,6 @@ use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rocket::serde::{Deserialize, json::Json};
-use rusqlite::Connection;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditShare {

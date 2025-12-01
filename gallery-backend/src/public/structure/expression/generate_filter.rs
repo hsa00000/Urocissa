@@ -47,7 +47,7 @@ impl Expression {
                     AbstractData::Album(_) => false,
                 })
             }
-            Expression::Model(model) => {
+            Expression::Model(_model) => {
                 /*  let model_lower = model.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::DatabaseSchema(db) => {
@@ -59,7 +59,7 @@ impl Expression {
                 }) */
                 todo!()
             }
-            Expression::Make(make) => {
+            Expression::Make(_make) => {
                 /*  let make_lower = make.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::DatabaseSchema(db) => {
@@ -71,7 +71,7 @@ impl Expression {
                 }) */
                 todo!()
             }
-            Expression::Path(path) => {
+            Expression::Path(_path) => {
                 todo!()
             }
             Expression::Album(album_id) => {
@@ -80,7 +80,7 @@ impl Expression {
                     AbstractData::Album(_) => false,
                 })
             }
-            Expression::Any(any_identifier) => {
+            Expression::Any(_any_identifier) => {
                 /*  let any_lower = any_identifier.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::DatabaseSchema(db) => {

@@ -3,33 +3,11 @@ use std::collections::{HashMap, HashSet};
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
-use serde_json;
 
-pub mod new;
-
-#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
+/// AlbumSchema: 資料庫層的 Album schema，用於從 SQLite 讀取/寫入
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Share {
-    pub url: ArrayString<64>,
-    pub description: String,
-    pub password: Option<String>,
-    pub show_metadata: bool,
-    pub show_download: bool,
-    pub show_upload: bool,
-    pub exp: u64,
-}
-
-#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "camelCase")]
-pub struct ResolvedShare {
-    pub share: Share,
-    pub album_id: ArrayString<64>,
-    pub album_title: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct Album {
+pub struct AlbumSchema {
     pub id: ArrayString<64>,
     pub title: Option<String>,
     pub created_time: u128,
@@ -45,8 +23,8 @@ pub struct Album {
     pub pending: bool,
 }
 
-impl Album {
-    pub fn create_album_table(conn: &Connection) -> rusqlite::Result<()> {
+impl AlbumSchema {
+    pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
         let sql = r#"
             CREATE TABLE IF NOT EXISTS album (
                 id TEXT PRIMARY KEY,
@@ -86,7 +64,7 @@ impl Album {
         let item_count: usize = row.get::<_, i64>("item_count")? as usize;
         let item_size: u64 = row.get("item_size")?;
         let pending: bool = row.get::<_, i32>("pending")? != 0;
-        Ok(Album {
+        Ok(AlbumSchema {
             id: ArrayString::from(&id).unwrap(),
             title,
             created_time,
@@ -101,5 +79,28 @@ impl Album {
             item_size,
             pending,
         })
+    }
+
+    pub fn new(id: ArrayString<64>, title: Option<String>) -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        Self {
+            id,
+            title,
+            created_time: timestamp,
+            cover: None,
+            thumbhash: None,
+            user_defined_metadata: HashMap::new(),
+            tag: HashSet::new(),
+            start_time: None,
+            end_time: None,
+            last_modified_time: timestamp,
+            item_count: 0,
+            item_size: 0,
+            pending: false,
+        }
     }
 }

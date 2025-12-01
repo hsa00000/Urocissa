@@ -6,11 +6,14 @@ use crate::{
         structure::{
             abstract_data::AbstractData,
             database::{
-                definition::DatabaseSchema, file_modify::FileModify,
+                file_modify::FileModify,
                 generate_timestamp::compute_timestamp_ms_by_file_modify,
             },
-            relations::database_alias::DatabaseAliasSchema,
         },
+    },
+    table::{
+        database::DatabaseSchema,
+        relations::database_alias::DatabaseAliasSchema,
     },
     tasks::{
         BATCH_COORDINATOR,

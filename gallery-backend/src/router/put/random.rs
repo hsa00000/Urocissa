@@ -4,10 +4,8 @@ use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::{
-    public::structure::database::definition::DatabaseSchema,
-    tasks::batcher::flush_tree::FlushTreeTask,
-};
+use crate::table::database::DatabaseSchema;
+use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use anyhow::Result;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 #[get("/put/generate_random_data?<number>")]

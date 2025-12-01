@@ -5,11 +5,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::public::db::tree::TREE;
+use crate::table::album::AlbumSchema;
+use crate::table::database::DatabaseSchema;
 
-use super::{
-    album::Album,
-    database::{definition::DatabaseSchema, file_modify::FileModify},
-};
+use super::database::file_modify::FileModify;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +24,7 @@ pub struct AbstractDataWithTag {
 pub enum AbstractData {
     #[serde(rename = "Database")]
     DatabaseSchema(DatabaseSchema),
-    Album(Album),
+    Album(AlbumSchema),
 }
 
 impl AbstractData {
@@ -163,8 +162,8 @@ impl From<DatabaseSchema> for AbstractData {
     }
 }
 
-impl From<Album> for AbstractData {
-    fn from(album: Album) -> Self {
+impl From<AlbumSchema> for AbstractData {
+    fn from(album: AlbumSchema) -> Self {
         AbstractData::Album(album)
     }
 }

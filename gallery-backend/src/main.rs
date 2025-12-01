@@ -7,6 +7,7 @@ mod operations;
 mod process;
 mod public;
 mod router;
+mod table;
 mod tasks;
 mod workflow;
 

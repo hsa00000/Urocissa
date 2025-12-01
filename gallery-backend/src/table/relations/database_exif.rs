@@ -1,6 +1,5 @@
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ExifSchema {
@@ -9,9 +8,9 @@ pub struct ExifSchema {
     pub value: String,
 }
 
-pub struct DatabaseExif;
+pub struct DatabaseExifTable;
 
-impl DatabaseExif {
+impl DatabaseExifTable {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
         let sql = r#"
             CREATE TABLE IF NOT EXISTS database_exif (

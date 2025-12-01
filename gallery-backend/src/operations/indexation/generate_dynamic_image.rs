@@ -1,8 +1,6 @@
-use crate::public::structure::database::definition::DatabaseSchema;
 use crate::tasks::actor::index::IndexTask;
 use anyhow::{Context, Result, bail};
 use image::DynamicImage;
-use rand::seq::index;
 use std::fs::read;
 use std::path::PathBuf;
 

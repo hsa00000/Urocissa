@@ -63,7 +63,7 @@ impl Expression {
                     AbstractData::Album(_) => false,
                 })
             }
-            Expression::Model(model) => {
+            Expression::Model(_model) => {
                 /* let model_lower = model.to_ascii_lowercase();
                 Box::new(move |data| match data {
                     AbstractData::DatabaseSchema(db) => db
@@ -74,7 +74,7 @@ impl Expression {
                 }) */
                 todo!()
             }
-            Expression::Make(make) => {
+            Expression::Make(_make) => {
                 /*  let make_lower = make.to_ascii_lowercase();
                 Box::new(move |data| match data {
                     AbstractData::DatabaseSchema(db) => db
@@ -87,7 +87,7 @@ impl Expression {
             }
 
             /* ---------- Any: removes tag / alias / album / path matching ---------- */
-            Expression::Any(identifier) => {
+            Expression::Any(_identifier) => {
                 /*  let any_lower = identifier.to_ascii_lowercase();
                 Box::new(move |data| match data {
                     AbstractData::DatabaseSchema(db) => {
