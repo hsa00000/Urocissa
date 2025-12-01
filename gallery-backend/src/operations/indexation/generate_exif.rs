@@ -70,14 +70,17 @@ pub fn generate_exif_for_video(index_task: &mut IndexTask) -> Result<()> {
                 .get(1)
                 .context(format!("capture group 1 missing in {:?}", source_path))?
                 .as_str()
+                .trim()
                 .to_string();
             let value = cap
                 .get(2)
                 .context(format!("capture group 2 missing in {:?}", source_path))?
                 .as_str()
+                .trim()
                 .to_string();
             exif_tuple.insert(key, value);
         }
+
         index_task.exif_vec = exif_tuple;
 
         Ok(())

@@ -50,8 +50,10 @@ pub fn regenerate_metadata_for_image(database: &mut DatabaseSchema) -> Result<()
         .len();
 
     // Re‑run the full processing pipeline
-    todo!();
-    /*  process_image_info(database).context("failed to process image info")?; */
+    let mut index_task = IndexTask::new(database.imported_path(), database.clone());
+    process_image_info(&mut index_task).context("failed to process image info")?;
+    *database = index_task.into();
+
     Ok(())
 }
 

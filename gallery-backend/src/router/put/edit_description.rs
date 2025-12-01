@@ -7,8 +7,9 @@ use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
+use crate::table::relations::database_exif::ExifSchema;
 use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
+use crate::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask};
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use rocket::serde::{Deserialize, json::Json};
@@ -38,20 +39,22 @@ pub async fn set_user_defined_description(
             .read_tree_snapshot(&set_user_defined_description.timestamp)
             .unwrap();
         let hash = index_to_hash(&tree_snapshot, set_user_defined_description.index)?;
-        let mut abstract_data = TREE.load_from_db(&hash)?;
+        let abstract_data = TREE.load_from_db(&hash)?;
 
-        match &mut abstract_data {
-            AbstractData::DatabaseSchema(_db) => {
-                /* db.exif_vec.insert(
-                    USER_DEFINED_DESCRIPTION.to_string(),
-                    set_user_defined_description
+        let mut operations = Vec::new();
+
+        match abstract_data {
+            AbstractData::DatabaseSchema(db) => {
+                operations.push(FlushOperation::InsertExif(ExifSchema {
+                    hash: db.hash.to_string(),
+                    tag: USER_DEFINED_DESCRIPTION.to_string(),
+                    value: set_user_defined_description
                         .description
                         .clone()
-                        .unwrap_or("".to_string()),
-                ); */
-                todo!()
+                        .unwrap_or_default(),
+                }));
             }
-            AbstractData::Album(alb) => {
+            AbstractData::Album(mut alb) => {
                 alb.user_defined_metadata.insert(
                     USER_DEFINED_DESCRIPTION.to_string(),
                     if let Some(desc) = &set_user_defined_description.description {
@@ -60,10 +63,13 @@ pub async fn set_user_defined_description(
                         vec![]
                     },
                 );
+                operations.push(FlushOperation::InsertAbstractData(AbstractData::Album(alb)));
             }
         }
 
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
+        if !operations.is_empty() {
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask { operations });
+        }
         Ok(())
     })
     .await

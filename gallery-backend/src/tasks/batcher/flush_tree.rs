@@ -69,10 +69,21 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
             FlushOperation::InsertAbstractData(abstract_data) => match abstract_data {
                 AbstractData::DatabaseSchema(database) => {
                     tx.execute(
-                        "INSERT OR REPLACE INTO database \
+                        "INSERT INTO database \
                          (hash, size, width, height, thumbhash, phash, ext, album, \
                           ext_type, pending, timestamp_ms) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) \
+                         ON CONFLICT(hash) DO UPDATE SET \
+                         size=excluded.size, \
+                         width=excluded.width, \
+                         height=excluded.height, \
+                         thumbhash=excluded.thumbhash, \
+                         phash=excluded.phash, \
+                         ext=excluded.ext, \
+                         album=excluded.album, \
+                         ext_type=excluded.ext_type, \
+                         pending=excluded.pending, \
+                         timestamp_ms=excluded.timestamp_ms",
                         rusqlite::params![
                             database.hash.as_str(),
                             database.size,
@@ -176,10 +187,12 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 )?;
             }
             FlushOperation::InsertExif(schema) => {
-                tx.execute(
+                if let Err(e) = tx.execute(
                     "INSERT OR REPLACE INTO database_exif (hash, tag, value) VALUES (?1, ?2, ?3)",
                     rusqlite::params![schema.hash, schema.tag, schema.value],
-                )?;
+                ) {
+                    return Err(e);
+                }
             }
             FlushOperation::RemoveExif(schema) => {
                 tx.execute(

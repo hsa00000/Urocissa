@@ -1,13 +1,14 @@
-use crate::process::info::regenerate_metadata_for_image;
+use crate::process::info::{regenerate_metadata_for_image, regenerate_metadata_for_video};
 use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::table::database::DatabaseSchema;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::table::database::DatabaseSchema;
+use crate::tasks::actor::index::IndexTask;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -17,6 +18,7 @@ use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterato
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use serde::Deserialize;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegenerateData {
@@ -60,12 +62,13 @@ pub async fn reindex(
                                     Err(_) => None,
                                 }
                             } else if database.ext_type == "video" {
-                                let _db = DatabaseSchema::from(database);
-                                todo!();
-                                /*  match regenerate_metadata_for_video(&mut db) {
-                                    Ok(_) => Some(AbstractData::DatabaseSchema(db)),
+                                // Convert DatabaseSchema to IndexTask to regenerate metadata
+                                let mut index_task =
+                                    IndexTask::new(database.imported_path(), database);
+                                match regenerate_metadata_for_video(&mut index_task) {
+                                    Ok(_) => Some(AbstractData::DatabaseSchema(index_task.into())),
                                     Err(_) => None,
-                                } */
+                                }
                             } else {
                                 None
                             }
