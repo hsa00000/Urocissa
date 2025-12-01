@@ -123,12 +123,24 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 }
                 AbstractData::Album(album) => {
                     tx.execute(
-                        "INSERT OR REPLACE INTO album \
+                        "INSERT INTO album \
                          (id, title, created_time, start_time, end_time, last_modified_time, \
                           cover, thumbhash, user_defined_metadata, tag, \
                           item_count, item_size, pending) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
-                                 ?13)",
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) \
+                         ON CONFLICT(id) DO UPDATE SET \
+                         title=excluded.title, \
+                         created_time=excluded.created_time, \
+                         start_time=excluded.start_time, \
+                         end_time=excluded.end_time, \
+                         last_modified_time=excluded.last_modified_time, \
+                         cover=excluded.cover, \
+                         thumbhash=excluded.thumbhash, \
+                         user_defined_metadata=excluded.user_defined_metadata, \
+                         tag=excluded.tag, \
+                         item_count=excluded.item_count, \
+                         item_size=excluded.item_size, \
+                         pending=excluded.pending",
                         rusqlite::params![
                             album.id.as_str(),
                             album.title,
@@ -180,9 +192,13 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
             }
             FlushOperation::InsertDatabaseAlias(schema) => {
                 tx.execute(
-                    "INSERT OR REPLACE INTO database_alias \
+                    "INSERT INTO database_alias \
                      (hash, file, modified, scan_time) \
-                     VALUES (?1, ?2, ?3, ?4)",
+                     VALUES (?1, ?2, ?3, ?4) \
+                     ON CONFLICT(hash, scan_time) DO UPDATE SET \
+                     file=excluded.file, \
+                     modified=excluded.modified, \
+                     scan_time=excluded.scan_time",
                     rusqlite::params![schema.hash, schema.file, schema.modified, schema.scan_time],
                 )?;
             }

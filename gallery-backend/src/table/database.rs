@@ -32,7 +32,6 @@ impl DatabaseSchema {
                 thumbhash BLOB,
                 phash BLOB,
                 ext TEXT NOT NULL,
-                exif_vec TEXT,
                 album TEXT,
                 ext_type TEXT CHECK(ext_type IN ('image', 'video')),
                 pending INTEGER,
