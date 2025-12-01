@@ -218,3 +218,11 @@ pub fn initialize_logger() -> UnboundedReceiver<String> {
 
     rx
 }
+
+pub fn initialize() -> UnboundedReceiver<String> {
+    let rx = initialize_logger();
+    check_ffmpeg_and_ffprobe();
+    initialize_folder();
+    initialize_file();
+    rx
+}

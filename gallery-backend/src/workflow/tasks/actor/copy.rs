@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 
-use crate::process::io::copy_with_retry;
+use crate::public::io::copy_with_retry;
 use crate::public::error_data::handle_error;
 use crate::table::database::DatabaseSchema;
 

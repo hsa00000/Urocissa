@@ -2,13 +2,12 @@
 extern crate rocket;
 use anyhow::Result;
 
-mod process;
 mod public;
 mod router;
 mod table;
 mod workflow;
 
-use crate::process::initialization::initialize;
+use crate::workflow::processors::setup::initialize;
 use crate::public::constant::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
 use crate::public::error_data::handle_error;
 use crate::public::tui::{DASHBOARD, tui_task};
