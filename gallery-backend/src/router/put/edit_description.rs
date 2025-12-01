@@ -1,4 +1,4 @@
-use crate::operations::transitor::index_to_hash;
+use crate::workflow::operations::transitor::index_to_hash;
 use crate::public::constant::USER_DEFINED_DESCRIPTION;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
@@ -8,9 +8,9 @@ use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
 use crate::table::relations::database_exif::ExifSchema;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask};
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::workflow::tasks::BATCH_COORDINATOR;
+use crate::workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask};
+use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;

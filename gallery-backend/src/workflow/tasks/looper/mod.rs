@@ -1,6 +1,6 @@
 use crate::public::constant::{SNAPSHOT_MAX_LIFETIME_MS, runtime::INDEX_RUNTIME};
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::expire_check::ExpireCheckTask;
+use crate::workflow::tasks::BATCH_COORDINATOR;
+use crate::workflow::tasks::batcher::expire_check::ExpireCheckTask;
 use std::sync::{Arc, LazyLock};
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};

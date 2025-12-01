@@ -6,8 +6,8 @@ use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
-use crate::operations::hash::generate_random_hash;
-use crate::operations::transitor::index_to_hash;
+use crate::workflow::operations::hash::generate_random_hash;
+use crate::workflow::operations::transitor::index_to_hash;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
@@ -18,9 +18,9 @@ use crate::table::album::AlbumSchema;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::workflow::tasks::BATCH_COORDINATOR;
+use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
+use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

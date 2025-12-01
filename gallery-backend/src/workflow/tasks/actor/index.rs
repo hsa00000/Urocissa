@@ -17,7 +17,7 @@ use crate::{
         structure::guard::PendingGuard,
         tui::{DASHBOARD, FileType},
     },
-    tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask},
+    workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask},
 };
 use mini_executor::Task;
 

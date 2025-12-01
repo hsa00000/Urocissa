@@ -8,7 +8,7 @@ use crate::{
     table::relations::database_alias::DatabaseAliasSchema,
     table::relations::database_exif::ExifSchema,
     table::relations::tag_databases::TagDatabaseSchema,
-    tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
+    workflow::tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
 
 #[derive(Debug)]

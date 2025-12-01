@@ -1,5 +1,5 @@
 use super::video_ffprobe::video_width_height;
-use crate::tasks::actor::index::IndexTask;
+use crate::workflow::tasks::actor::index::IndexTask;
 use anyhow::{Context, Result};
 use image::DynamicImage;
 

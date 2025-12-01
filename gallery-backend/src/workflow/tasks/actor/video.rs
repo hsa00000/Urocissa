@@ -1,5 +1,5 @@
 use crate::{
-    operations::indexation::generate_compressed_video::generate_compressed_video,
+    workflow::operations::indexation::generate_compressed_video::generate_compressed_video,
     public::{
         constant::runtime::WORKER_RAYON_POOL,
         error_data::handle_error,
@@ -10,7 +10,7 @@ use crate::{
         tui::DASHBOARD,
     },
     table::database::DatabaseSchema,
-    tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
+    workflow::tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
 use anyhow::Context;
 use anyhow::Result;

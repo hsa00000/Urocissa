@@ -1,4 +1,13 @@
-use crate::tasks::{
+pub mod operations;
+pub mod tasks;
+
+use anyhow::Result;
+use arrayvec::ArrayString;
+use dashmap::DashSet;
+use log::warn;
+use path_clean::PathClean;
+use std::{path::PathBuf, sync::LazyLock};
+use tasks::{
     BATCH_COORDINATOR, INDEX_COORDINATOR,
     actor::{
         copy::CopyTask, deduplicate::DeduplicateTask, delete_in_update::DeleteTask, hash::HashTask,
@@ -6,12 +15,6 @@ use crate::tasks::{
     },
     batcher::flush_tree::FlushTreeTask,
 };
-use anyhow::Result;
-use arrayvec::ArrayString;
-use dashmap::DashSet;
-use log::warn;
-use path_clean::PathClean;
-use std::{path::PathBuf, sync::LazyLock};
 
 static IN_PROGRESS: LazyLock<DashSet<ArrayString<64>>> = LazyLock::new(DashSet::new);
 

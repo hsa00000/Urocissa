@@ -1,5 +1,5 @@
-use crate::operations::resolve_show_download_and_metadata;
-use crate::operations::transitor::{index_to_hash, process_abstract_data_for_response};
+use crate::workflow::operations::resolve_show_download_and_metadata;
+use crate::workflow::operations::transitor::{index_to_hash, process_abstract_data_for_response};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractDataWithTag;

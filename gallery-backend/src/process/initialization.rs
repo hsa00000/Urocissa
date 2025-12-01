@@ -1,6 +1,6 @@
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::operations::initialization::{
+use crate::workflow::operations::initialization::{
     ffmpeg::check_ffmpeg_and_ffprobe, folder::initialize_folder, logger::initialize_logger,
     redb::initialize_file,
 };

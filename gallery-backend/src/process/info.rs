@@ -1,5 +1,5 @@
 use crate::{
-    operations::indexation::{
+    workflow::operations::indexation::{
         fix_orientation::{fix_image_orientation, fix_image_width_height, fix_video_width_height},
         generate_dynamic_image::generate_dynamic_image,
         generate_exif::{generate_exif_for_image, generate_exif_for_video},
@@ -9,7 +9,7 @@ use crate::{
     },
     public::structure::database::generate_timestamp::compute_timestamp_ms_by_exif,
     table::database::DatabaseSchema,
-    tasks::actor::index::IndexTask,
+    workflow::tasks::actor::index::IndexTask,
 };
 use anyhow::{Context, Result};
 

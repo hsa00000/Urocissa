@@ -1,4 +1,4 @@
-use crate::tasks::actor::index::IndexTask;
+use crate::workflow::tasks::actor::index::IndexTask;
 use anyhow::{Context, Result, bail};
 use image::DynamicImage;
 use std::fs::read;

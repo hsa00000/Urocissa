@@ -1,4 +1,4 @@
-use crate::operations::utils::timestamp::get_current_timestamp_u64;
+use crate::workflow::operations::utils::timestamp::get_current_timestamp_u64;
 
 // Import necessary modules and items
 use super::{EXPIRE_TABLE_DEFINITION, Expire};

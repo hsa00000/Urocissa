@@ -8,7 +8,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::table::album::AlbumSchema;
 use crate::table::database::DatabaseSchema;
-use crate::tasks::actor::index::IndexTask;
+use crate::workflow::tasks::actor::index::IndexTask;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
 

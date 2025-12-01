@@ -1,7 +1,7 @@
 use super::video_ffprobe::video_duration;
 use crate::{
-    operations::indexation::generate_ffmpeg::create_silent_ffmpeg_command, public::tui::DASHBOARD,
-    table::database::DatabaseSchema,
+    public::tui::DASHBOARD, table::database::DatabaseSchema,
+    workflow::operations::indexation::generate_ffmpeg::create_silent_ffmpeg_command,
 };
 use anyhow::Context;
 use anyhow::Result;
@@ -84,15 +84,13 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
     let reader = BufReader::new(stderr);
 
     // Process each line of progress output from ffmpeg's stderr.
-    for line_result in reader.lines() {
-        if let Ok(line) = line_result {
-            if let Some(caps) = REGEX_OUT_TIME_US.captures(&line) {
-                // The regex captures the digits of the duration.
-                // We only proceed if the captured value can be parsed as a number.
-                if let Ok(microseconds) = caps[1].parse::<f64>() {
-                    let percentage = (microseconds / 1_000_000.0 / duration) * 100.0;
-                    DASHBOARD.update_progress(database.hash, percentage);
-                }
+    for line in reader.lines().filter_map(Result::ok) {
+        if let Some(caps) = REGEX_OUT_TIME_US.captures(&line) {
+            // The regex captures the digits of the duration.
+            // We only proceed if the captured value can be parsed as a number.
+            if let Ok(microseconds) = caps[1].parse::<f64>() {
+                let percentage = (microseconds / 1_000_000.0 / duration) * 100.0;
+                DASHBOARD.update_progress(database.hash, percentage);
             }
         }
     }

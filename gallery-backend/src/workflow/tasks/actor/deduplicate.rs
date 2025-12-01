@@ -15,7 +15,7 @@ use crate::{
         database::DatabaseSchema,
         relations::database_alias::DatabaseAliasSchema,
     },
-    tasks::{
+    workflow::tasks::{
         BATCH_COORDINATOR,
         batcher::flush_tree::{FlushOperation, FlushTreeTask},
     },

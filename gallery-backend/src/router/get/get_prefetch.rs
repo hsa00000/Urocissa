@@ -10,10 +10,10 @@ use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::guard_share::GuardShare;
-use crate::tasks::BATCH_COORDINATOR;
+use crate::workflow::tasks::BATCH_COORDINATOR;
 
-use crate::tasks::batcher::flush_query_snapshot::FlushQuerySnapshotTask;
-use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
+use crate::workflow::tasks::batcher::flush_query_snapshot::FlushQuerySnapshotTask;
+use crate::workflow::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 
 use anyhow::{Result, anyhow};
 use bitcode::{Decode, Encode};

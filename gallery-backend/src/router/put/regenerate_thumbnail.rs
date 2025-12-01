@@ -1,13 +1,13 @@
-use crate::operations::indexation::generate_dynamic_image::generate_dynamic_image;
-use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
+use crate::workflow::operations::indexation::generate_dynamic_image::generate_dynamic_image;
+use crate::workflow::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
+use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
 
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::tasks::INDEX_COORDINATOR;
+use crate::workflow::tasks::INDEX_COORDINATOR;
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;

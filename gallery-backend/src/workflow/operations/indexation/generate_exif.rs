@@ -1,4 +1,4 @@
-use crate::tasks::actor::index::IndexTask;
+use crate::workflow::tasks::actor::index::IndexTask;
 use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 use std::{collections::BTreeMap, io, path::Path, process::Command, sync::LazyLock};

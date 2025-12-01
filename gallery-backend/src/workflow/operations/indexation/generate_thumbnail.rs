@@ -1,9 +1,9 @@
 use crate::{
-    operations::{
+    workflow::operations::{
         indexation::generate_ffmpeg::create_silent_ffmpeg_command,
         utils::resize::small_width_height,
     },
-    tasks::actor::index::IndexTask,
+    workflow::tasks::actor::index::IndexTask,
 };
 use anyhow::{Context, Result, anyhow};
 use image::{DynamicImage, ImageFormat};
