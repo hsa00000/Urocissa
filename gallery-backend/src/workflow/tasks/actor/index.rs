@@ -16,7 +16,8 @@ use crate::{
         structure::guard::PendingGuard,
         tui::{DASHBOARD, FileType},
     },
-    workflow::info::{process_image_info, process_video_info},
+    workflow::processors::image::process_image_info,
+    workflow::processors::video::process_video_info,
     workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask},
 };
 use mini_executor::Task;

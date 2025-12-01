@@ -6,8 +6,8 @@ use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
-use crate::workflow::operations::hash::generate_random_hash;
-use crate::workflow::operations::transitor::index_to_hash;
+use crate::workflow::processors::file::generate_random_hash;
+use crate::workflow::processors::transitor::index_to_hash;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;

@@ -121,7 +121,7 @@ impl DatabaseSchema {
     }
 
     pub fn generate_random_data() -> Self {
-        use crate::workflow::operations::hash::generate_random_hash;
+        use crate::workflow::processors::file::generate_random_hash;
         use rand::Rng;
 
         let hash = generate_random_hash();

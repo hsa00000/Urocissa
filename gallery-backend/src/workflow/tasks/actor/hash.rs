@@ -1,5 +1,5 @@
 use crate::{
-    workflow::operations::hash::blake3_hasher,
+    workflow::processors::file::blake3_hasher,
     public::{constant::runtime::WORKER_RAYON_POOL, error_data::handle_error},
 };
 use anyhow::Result;

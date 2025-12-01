@@ -1,5 +1,5 @@
 use crate::{
-    workflow::operations::indexation::generate_compressed_video::generate_compressed_video,
+    workflow::processors::video::generate_compressed_video,
     public::{
         constant::runtime::WORKER_RAYON_POOL,
         error_data::handle_error,

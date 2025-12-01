@@ -1,11 +1,24 @@
+//! Metadata processing module - handles EXIF and timestamp metadata
+//!
+//! Includes:
+//! - EXIF extraction for images
+//! - Metadata extraction for videos via ffprobe
+
 use crate::workflow::tasks::actor::index::IndexTask;
 use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 use std::{collections::BTreeMap, io, path::Path, process::Command, sync::LazyLock};
 
+static RE_VIDEO_INFO: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(.*?)=(.*?)\n").expect("regex compilation failure"));
+
+// ────────────────────────────────────────────────────────────────
+// Image EXIF Extraction
+// ────────────────────────────────────────────────────────────────
+
 /// Extract EXIF metadata for images. On any failure, returns the original
 /// map (possibly empty). Errors inside `read_exif` carry detailed context.
-pub fn generate_exif_for_image(index_task: &mut IndexTask) -> () {
+pub fn generate_exif_for_image(index_task: &mut IndexTask) {
     let mut exif_tuple = BTreeMap::new();
 
     if let Ok(exif) = read_exif(&index_task.source_path) {
@@ -21,7 +34,7 @@ pub fn generate_exif_for_image(index_task: &mut IndexTask) -> () {
     index_task.exif_vec = exif_tuple;
 }
 
-/// Open the file, read EXIF data and attach *context* to every fallible step.
+/// Open the file, read EXIF data and attach context to every fallible step.
 fn read_exif(file_path: &Path) -> Result<exif::Exif> {
     let exif_reader = exif::Reader::new();
 
@@ -38,8 +51,9 @@ fn read_exif(file_path: &Path) -> Result<exif::Exif> {
     Ok(exif)
 }
 
-static RE_VIDEO_INFO: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(.*?)=(.*?)\n").expect("regex compilation failure"));
+// ────────────────────────────────────────────────────────────────
+// Video Metadata Extraction
+// ────────────────────────────────────────────────────────────────
 
 /// Use `ffprobe` to retrieve metadata for videos, propagating every error
 /// with rich context strings.
@@ -58,13 +72,13 @@ pub fn generate_exif_for_video(index_task: &mut IndexTask) -> Result<()> {
         .context(format!("failed to spawn ffprobe for {:?}", source_path))?;
 
     if output.status.success() {
-        // Convert raw bytes to UTF‑8 text
+        // Convert raw bytes to UTF-8 text
         let stdout = String::from_utf8(output.stdout).context(format!(
-            "failed to convert ffprobe stdout to UTF‑8 for {:?}",
+            "failed to convert ffprobe stdout to UTF-8 for {:?}",
             source_path
         ))?;
 
-        // Regex‑parse key/value pairs
+        // Regex-parse key/value pairs
         for cap in RE_VIDEO_INFO.captures_iter(&stdout) {
             let key = cap
                 .get(1)

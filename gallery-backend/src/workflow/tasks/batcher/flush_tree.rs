@@ -19,7 +19,6 @@ pub enum FlushOperation {
     RemoveTag(TagDatabaseSchema),
     InsertDatabaseAlias(DatabaseAliasSchema),
     InsertExif(ExifSchema),
-    RemoveExif(ExifSchema),
 }
 
 pub struct FlushTreeTask {
@@ -209,12 +208,6 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 ) {
                     return Err(e);
                 }
-            }
-            FlushOperation::RemoveExif(schema) => {
-                tx.execute(
-                    "DELETE FROM database_exif WHERE hash = ?1 AND tag = ?2",
-                    rusqlite::params![schema.hash, schema.tag],
-                )?;
             }
         }
     }

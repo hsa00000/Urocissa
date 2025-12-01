@@ -2,6 +2,7 @@ use crate::public::constant::runtime::{BATCH_RUNTIME, INDEX_RUNTIME};
 use mini_executor::TaskExecutor;
 use std::sync::LazyLock;
 
+// Legacy structure (for backward compatibility)
 pub mod actor;
 pub mod batcher;
 pub mod looper;

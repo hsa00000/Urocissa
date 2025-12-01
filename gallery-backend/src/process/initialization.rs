@@ -1,8 +1,7 @@
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::workflow::operations::initialization::{
-    ffmpeg::check_ffmpeg_and_ffprobe, folder::initialize_folder, logger::initialize_logger,
-    redb::initialize_file,
+use crate::workflow::processors::setup::{
+    check_ffmpeg_and_ffprobe, initialize_file, initialize_folder, initialize_logger,
 };
 
 pub fn initialize() -> UnboundedReceiver<String> {
