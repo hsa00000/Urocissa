@@ -1,10 +1,6 @@
 你用 agent mode 自主完成任務。
 規則：
 
-不要使用 rm/rmdir/del/erase/dd 或任何刪除檔案的行為。
-
-優先用「不破壞」的方式處理（例如修改/替換檔案、調整設定、或用 git 忽略）。
-
 需要跑指令時，先選擇只讀或可逆指令（如 ls/find/grep/cargo check/）。
 
 不要使用 npm run build 而是要使用 npx vue-tsc --noEmit
