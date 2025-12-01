@@ -5,7 +5,6 @@ use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 use serde_json;
 
-pub mod edit;
 pub mod new;
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
