@@ -1,4 +1,5 @@
 use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
+use crate::public::db::types::SqliteU64;
 use anyhow::Result;
 use log::{error, info};
 use mini_executor::BatchTask;
@@ -33,7 +34,7 @@ fn flush_query_snapshot_task() -> Result<()> {
 
             let timer_start = Instant::now();
             let conn = QUERY_SNAPSHOT.in_disk.get()?;
-            
+
             // 序列化資料
             let data = bitcode::encode(ref_data);
 
@@ -41,7 +42,7 @@ fn flush_query_snapshot_task() -> Result<()> {
             // 預設 expires_at 為 NULL，代表這是當前版本的有效快照
             conn.execute(
                 "INSERT OR REPLACE INTO query_snapshot (query_hash, data, expires_at) VALUES (?, ?, NULL)",
-                (expression_hashed, data),
+                (SqliteU64(expression_hashed), data),
             )?;
 
             info!(

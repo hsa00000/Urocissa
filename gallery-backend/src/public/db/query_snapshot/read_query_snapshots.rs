@@ -1,5 +1,6 @@
 use super::QuerySnapshot;
 use crate::public::db::query_snapshot::Prefetch;
+use crate::public::db::types::SqliteU64;
 use crate::workflow::processors::transitor::get_current_timestamp_u64;
 use rusqlite::OptionalExtension;
 use std::error::Error; // 需確認 rusqlite 有開啟此功能，或手動處理 Error
@@ -28,7 +29,7 @@ impl QuerySnapshot {
         // 使用 query_row 搭配 optional() 處理找不到的情況
         // 需要 import rusqlite::OptionalExtension
         let result = stmt
-            .query_row([query_hash, current_time], |row| {
+            .query_row([SqliteU64(query_hash), SqliteU64(current_time)], |row| {
                 let data: Vec<u8> = row.get(0)?;
                 Ok(data)
             })

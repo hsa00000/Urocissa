@@ -5,6 +5,7 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::sync::LazyLock;
 
+use crate::public::db::types::SqliteU64;
 use crate::router::get::get_prefetch::Prefetch;
 
 #[derive(Debug)]
@@ -50,7 +51,7 @@ impl QuerySnapshot {
 
         if let Err(e) = conn.execute(
             "DELETE FROM query_snapshot WHERE expires_at IS NOT NULL AND expires_at < ?",
-            [now],
+            [SqliteU64(now)],
         ) {
             error!("Startup cleanup failed: {}", e);
         }
