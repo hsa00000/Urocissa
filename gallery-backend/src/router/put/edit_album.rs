@@ -48,7 +48,7 @@ pub async fn edit_album(
             for album_id in &json_data.remove_albums_array {
                 database.album.remove(album_id);
             }
-            to_flush.push(AbstractData::DatabaseSchema(database));
+            to_flush.push(AbstractData::Database(database));
         }
 
         Ok(to_flush)
@@ -99,7 +99,7 @@ pub async fn set_album_cover(
         let conn = TREE.get_connection().unwrap();
         conn.execute(
             "UPDATE album SET cover = ?, thumbhash = ? WHERE id = ?",
-            params![cover_str, &database.thumbhash, &*album_id],
+            params![cover_str, &database.schema.thumbhash, &*album_id],
         )
         .unwrap();
     })

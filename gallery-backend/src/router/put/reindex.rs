@@ -6,7 +6,6 @@ use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::table::database::DatabaseSchema;
 use crate::workflow::processors::image::regenerate_metadata_for_image;
 use crate::workflow::processors::video::regenerate_metadata_for_video;
 use crate::workflow::tasks::BATCH_COORDINATOR;
@@ -55,19 +54,21 @@ pub async fn reindex(
                 .filter_map(|&hash| {
                     let abstract_data_opt = TREE.load_from_db(&hash).ok();
                     match abstract_data_opt {
-                        Some(AbstractData::DatabaseSchema(database)) => {
-                            if database.ext_type == "image" {
-                                let mut db = DatabaseSchema::from(database);
-                                match regenerate_metadata_for_image(&mut db) {
-                                    Ok(_) => Some(AbstractData::DatabaseSchema(db)),
+                        Some(AbstractData::Database(mut database)) => {
+                            if database.schema.ext_type == "image" {
+                                match regenerate_metadata_for_image(&mut database.schema) {
+                                    Ok(_) => Some(AbstractData::Database(database)),
                                     Err(_) => None,
                                 }
-                            } else if database.ext_type == "video" {
+                            } else if database.schema.ext_type == "video" {
                                 // Convert DatabaseSchema to IndexTask to regenerate metadata
                                 let mut index_task =
-                                    IndexTask::new(database.imported_path(), database);
+                                    IndexTask::new(database.schema.imported_path(), database.schema.clone());
                                 match regenerate_metadata_for_video(&mut index_task) {
-                                    Ok(_) => Some(AbstractData::DatabaseSchema(index_task.into())),
+                                    Ok(_) => {
+                                        database.schema = index_task.into();
+                                        Some(AbstractData::Database(database))
+                                    },
                                     Err(_) => None,
                                 }
                             } else {

@@ -44,9 +44,9 @@ pub async fn set_user_defined_description(
         let mut operations = Vec::new();
 
         match abstract_data {
-            AbstractData::DatabaseSchema(db) => {
+            AbstractData::Database(db) => {
                 operations.push(FlushOperation::InsertExif(ExifSchema {
-                    hash: db.hash.to_string(),
+                    hash: db.schema.hash.to_string(),
                     tag: USER_DEFINED_DESCRIPTION.to_string(),
                     value: set_user_defined_description
                         .description

@@ -50,7 +50,7 @@ pub async fn edit_tag(
                     // Flush the updated album
                     flush_ops.push(FlushOperation::InsertAbstractData(abstract_data));
                 }
-                AbstractData::DatabaseSchema(_) => {
+                AbstractData::Database(_) => {
                     // Collect tag operations
                     for tag in &json_data.add_tags_array {
                         flush_ops.push(FlushOperation::InsertTag(TagDatabaseSchema {

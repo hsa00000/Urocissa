@@ -34,15 +34,15 @@ impl Expression {
             }),
             Expression::ExtType(ext_type) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::DatabaseSchema(db) => db.ext_type.contains(&ext_type),
+                    AbstractData::Database(db) => db.schema.ext_type.contains(&ext_type),
                     AbstractData::Album(_) => ext_type.contains("album"),
                 })
             }
             Expression::Ext(ext) => {
                 let ext_lower = ext.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::DatabaseSchema(db) => {
-                        db.ext.to_ascii_lowercase().contains(&ext_lower)
+                    AbstractData::Database(db) => {
+                        db.schema.ext.to_ascii_lowercase().contains(&ext_lower)
                     }
                     AbstractData::Album(_) => false,
                 })
@@ -76,7 +76,7 @@ impl Expression {
             }
             Expression::Album(album_id) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::DatabaseSchema(db) => db.album.contains(&album_id),
+                    AbstractData::Database(db) => db.album.contains(&album_id),
                     AbstractData::Album(_) => false,
                 })
             }

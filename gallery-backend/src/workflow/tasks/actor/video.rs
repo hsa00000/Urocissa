@@ -46,7 +46,10 @@ pub fn video_task(mut database: DatabaseSchema) -> Result<()> {
     match generate_compressed_video(&mut database) {
         Ok(_) => {
             database.pending = false;
-            let abstract_data = AbstractData::DatabaseSchema(database.clone());
+            let abstract_data = AbstractData::Database(crate::public::structure::abstract_data::Database {
+                schema: database.clone(),
+                album: std::collections::HashSet::new(),
+            });
             BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
 
             DASHBOARD.advance_task_state(&hash);

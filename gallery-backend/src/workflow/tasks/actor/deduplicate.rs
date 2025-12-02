@@ -4,7 +4,7 @@ use crate::{
         db::tree::TREE,
         error_data::handle_error,
         structure::{
-            abstract_data::AbstractData,
+            abstract_data::{AbstractData, Database},
             database::{
                 file_modify::FileModify,
                 generate_timestamp::compute_timestamp_ms_by_file_modify,
@@ -47,7 +47,7 @@ impl DeduplicateTask {
 }
 
 impl Task for DeduplicateTask {
-    type Output = Result<Option<(DatabaseSchema, FlushTreeTask)>>;
+    type Output = Result<Option<(Database, FlushTreeTask)>>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
@@ -60,7 +60,7 @@ impl Task for DeduplicateTask {
     }
 }
 
-fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(DatabaseSchema, FlushTreeTask)>> {
+fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(crate::public::structure::abstract_data::Database, FlushTreeTask)>> {
     let mut database = DatabaseSchema::new(&task.path, task.hash)?;
 
     // File already in persistent database
@@ -80,7 +80,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(DatabaseSchema, Flu
     if let Ok(mut database_exist) = existing_db {
         let mut operations = Vec::new();
         operations.push(FlushOperation::InsertDatabaseAlias(DatabaseAliasSchema {
-            hash: database_exist.hash.as_str().to_string(),
+            hash: database_exist.schema.hash.as_str().to_string(),
             file: file_modify.file,
             modified: file_modify.modified as i64,
             scan_time: file_modify.scan_time as i64,
@@ -90,7 +90,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(DatabaseSchema, Flu
             database_exist.album.insert(album_id);
         }
         operations.push(FlushOperation::InsertAbstractData(
-            AbstractData::DatabaseSchema(database_exist.into()),
+            AbstractData::Database(database_exist),
         ));
 
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask { operations });
@@ -105,9 +105,13 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(DatabaseSchema, Flu
             scan_time: file_modify.scan_time as i64,
         })];
 
+        let mut db = crate::public::structure::abstract_data::Database {
+            schema: database,
+            album: std::collections::HashSet::new(),
+        };
         if let Some(album_id) = task.presigned_album_id_opt {
-            database.album.insert(album_id);
+            db.album.insert(album_id);
         }
-        Ok(Some((database, FlushTreeTask { operations })))
+        Ok(Some((db, FlushTreeTask { operations })))
     }
 }

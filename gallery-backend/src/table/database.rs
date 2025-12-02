@@ -1,7 +1,6 @@
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::path::Path;
 
 /// DatabaseSchema: 資料庫層的 schema，用於從 SQLite 讀取/寫入
@@ -15,7 +14,6 @@ pub struct DatabaseSchema {
     pub thumbhash: Vec<u8>,
     pub phash: Vec<u8>,
     pub ext: String,
-    pub album: HashSet<ArrayString<64>>,
     pub ext_type: String,
     pub pending: bool,
     pub timestamp_ms: i64,
@@ -32,7 +30,6 @@ impl DatabaseSchema {
                 thumbhash BLOB,
                 phash BLOB,
                 ext TEXT NOT NULL,
-                album TEXT,
                 ext_type TEXT CHECK(ext_type IN ('image', 'video')),
                 pending INTEGER,
                 timestamp_ms INTEGER CHECK(timestamp_ms > 0)
@@ -57,12 +54,15 @@ impl DatabaseSchema {
         let phash: Vec<u8> = row.get("phash")?;
         let ext: String = row.get("ext")?;
 
+        // 移除 album 讀取邏輯
+        /*
         let album_str: String = row.get("album")?;
         let album_vec: Vec<String> = serde_json::from_str(&album_str).unwrap_or_default();
         let album: HashSet<ArrayString<64>> = album_vec
             .into_iter()
             .filter_map(|s| ArrayString::from(&s).ok())
             .collect();
+        */
 
         let ext_type: String = row.get("ext_type")?;
         let pending: bool = row.get::<_, i32>("pending")? != 0;
@@ -77,7 +77,7 @@ impl DatabaseSchema {
             thumbhash,
             phash,
             ext,
-            album,
+            // album, // 已移除
             ext_type,
             pending,
             timestamp_ms,
@@ -122,7 +122,7 @@ impl DatabaseSchema {
             phash: Vec::<u8>::new(),
             ext_type: "image".to_string(),
             ext: "jpg".to_string(),
-            album: HashSet::new(),
+            // album: HashSet::new(), // 已移除
             pending: false,
             timestamp_ms: 0,
         }
@@ -151,7 +151,7 @@ impl DatabaseSchema {
             phash: Vec::new(),
             ext_type: Self::determine_type(&ext),
             ext,
-            album: HashSet::new(),
+            // album: HashSet::new(), // 已移除
             pending: false,
             timestamp_ms: 0,
         })

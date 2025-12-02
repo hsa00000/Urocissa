@@ -66,12 +66,14 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
     for op in operations {
         match op {
             FlushOperation::InsertAbstractData(abstract_data) => match abstract_data {
-                AbstractData::DatabaseSchema(database) => {
+                // 改為匹配 Database Wrapper
+                AbstractData::Database(database) => {
+                    // 1. 寫入 Database Schema (純淨表)
                     tx.execute(
                         "INSERT INTO database \
-                         (hash, size, width, height, thumbhash, phash, ext, album, \
+                         (hash, size, width, height, thumbhash, phash, ext, \
                           ext_type, pending, timestamp_ms) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
                          ON CONFLICT(hash) DO UPDATE SET \
                          size=excluded.size, \
                          width=excluded.width, \
@@ -79,44 +81,33 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                          thumbhash=excluded.thumbhash, \
                          phash=excluded.phash, \
                          ext=excluded.ext, \
-                         album=excluded.album, \
                          ext_type=excluded.ext_type, \
                          pending=excluded.pending, \
                          timestamp_ms=excluded.timestamp_ms",
                         rusqlite::params![
-                            database.hash.as_str(),
-                            database.size,
-                            database.width,
-                            database.height,
-                            &database.thumbhash,
-                            &database.phash,
-                            &database.ext,
-                            serde_json::to_string(
-                                &database
-                                    .album
-                                    .iter()
-                                    .map(|a| a.as_str())
-                                    .collect::<Vec<_>>()
-                            )
-                            .unwrap(),
-                            &database.ext_type,
-                            database.pending as i32,
-                            database.timestamp_ms,
+                            database.schema.hash.as_str(),
+                            database.schema.size,
+                            database.schema.width,
+                            database.schema.height,
+                            &database.schema.thumbhash,
+                            &database.schema.phash,
+                            &database.schema.ext,
+                            &database.schema.ext_type,
+                            database.schema.pending as i32,
+                            database.schema.timestamp_ms,
                         ],
                     )?;
 
-                    // Sync album_databases to ensure triggers fire
-                    // 1. Remove old relationships for this file
+                    // 2. 同步相簿關聯
                     tx.execute(
                         "DELETE FROM album_databases WHERE hash = ?1",
-                        rusqlite::params![database.hash.as_str()],
+                        rusqlite::params![database.schema.hash.as_str()],
                     )?;
 
-                    // 2. Insert new relationships
                     for album_id in &database.album {
                         tx.execute(
                             "INSERT OR IGNORE INTO album_databases (album_id, hash) VALUES (?1, ?2)",
-                            rusqlite::params![album_id.as_str(), database.hash.as_str()],
+                            rusqlite::params![album_id.as_str(), database.schema.hash.as_str()],
                         )?;
                     }
                 }
@@ -159,15 +150,14 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 }
             },
             FlushOperation::RemoveAbstractData(abstract_data) => match abstract_data {
-                AbstractData::DatabaseSchema(database) => {
+                AbstractData::Database(database) => {
                     tx.execute(
                         "DELETE FROM database WHERE hash = ?1",
-                        rusqlite::params![database.hash.as_str()],
+                        rusqlite::params![database.schema.hash.as_str()],
                     )?;
-                    // Also remove from album_databases to trigger updates
                     tx.execute(
                         "DELETE FROM album_databases WHERE hash = ?1",
-                        rusqlite::params![database.hash.as_str()],
+                        rusqlite::params![database.schema.hash.as_str()],
                     )?;
                 }
                 AbstractData::Album(album) => {

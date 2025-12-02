@@ -62,15 +62,21 @@ pub async fn regenerate_thumbnail_with_frame(
         .context("Failed to copy frame file")?;
 
     let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData> {
-        let mut index_task = TREE.load_index_task_from_hash(&hash)?;
+        let mut database = TREE.load_database_from_hash(&hash)?;
+
+        // Create a temporary IndexTask for image processing
+        let index_task = crate::workflow::tasks::actor::index::IndexTask::new(
+            database.schema.imported_path(),
+            database.schema.clone(),
+        );
 
         let dyn_img =
             generate_dynamic_image(&index_task).context("Failed to decode DynamicImage")?;
 
-        index_task.thumbhash = generate_thumbhash(&dyn_img);
-        index_task.phash = generate_phash(&dyn_img);
+        database.schema.thumbhash = generate_thumbhash(&dyn_img);
+        database.schema.phash = generate_phash(&dyn_img);
 
-        Ok(AbstractData::DatabaseSchema(index_task.into()))
+        Ok(AbstractData::Database(database))
     })
     .await
     .context("Failed to spawn blocking task")??;

@@ -35,7 +35,7 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
 /// Clear metadata from abstract data based on permissions
 pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metadata: bool) {
     match abstract_data {
-        AbstractData::DatabaseSchema(database) => {
+        AbstractData::Database(database) => {
             if !show_metadata {
                 database.album.clear();
             }

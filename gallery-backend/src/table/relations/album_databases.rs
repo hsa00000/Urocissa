@@ -13,11 +13,8 @@ impl AlbumDatabasesTable {
                 FOREIGN KEY (hash)     REFERENCES database(hash) ON DELETE CASCADE
             );
 
-            CREATE INDEX IF NOT EXISTS idx_album_databases_album_id
-                ON album_databases(album_id);
-
             CREATE INDEX IF NOT EXISTS idx_album_databases_hash
-                ON album_databases(hash);
+            ON album_databases(hash);
 
             CREATE TRIGGER IF NOT EXISTS update_album_stats_after_insert AFTER INSERT ON album_databases
             BEGIN

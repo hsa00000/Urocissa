@@ -145,7 +145,10 @@ fn index_task_result(mut index_task: IndexTask) -> Result<(IndexTask, FlushTreeT
         index_task.pending = true;
     };
 
-    let abstract_data = AbstractData::DatabaseSchema(index_task.clone().into());
+    let abstract_data = AbstractData::Database(crate::public::structure::abstract_data::Database {
+        schema: index_task.clone().into(),
+        album: HashSet::new(),
+    });
     let mut operations = vec![FlushOperation::InsertAbstractData(abstract_data)];
 
     // Insert EXIF data
@@ -173,7 +176,7 @@ impl From<IndexTask> for DatabaseSchema {
             thumbhash: task.thumbhash,
             phash: task.phash,
             ext: task.ext,
-            album: HashSet::new(),
+            // album: HashSet::new(), // 已移除
             ext_type: task.ext_type,
             pending: task.pending,
             timestamp_ms: task.timestamp_ms,

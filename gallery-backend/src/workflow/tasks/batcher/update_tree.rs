@@ -47,7 +47,7 @@ fn update_tree_task() -> Result<()> {
         let databases = TREE.load_all_databases_from_db()?;
         databases
             .into_par_iter()
-            .map(|db| AbstractData::DatabaseSchema(db.into()))
+            .map(|db| AbstractData::Database(db))
             .collect()
     };
 

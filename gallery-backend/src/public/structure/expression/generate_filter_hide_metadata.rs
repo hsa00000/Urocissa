@@ -37,7 +37,7 @@ impl Expression {
             Expression::Album(album_id) => {
                 if album_id == shared_album_id {
                     Box::new(move |data| match data {
-                        AbstractData::DatabaseSchema(db) => db.album.contains(&album_id),
+                        AbstractData::Database(db) => db.album.contains(&album_id),
                         AbstractData::Album(_) => false,
                     })
                 } else {
@@ -51,14 +51,14 @@ impl Expression {
 
             /* ---------- Still allowed embedded / file-related conditions ---------- */
             Expression::ExtType(ext_type) => Box::new(move |data| match data {
-                AbstractData::DatabaseSchema(db) => db.ext_type.contains(&ext_type),
+                AbstractData::Database(db) => db.schema.ext_type.contains(&ext_type),
                 AbstractData::Album(_) => false,
             }),
             Expression::Ext(ext) => {
                 let ext_lower = ext.to_ascii_lowercase();
                 Box::new(move |data| match data {
-                    AbstractData::DatabaseSchema(db) => {
-                        db.ext.to_ascii_lowercase().contains(&ext_lower)
+                    AbstractData::Database(db) => {
+                        db.schema.ext.to_ascii_lowercase().contains(&ext_lower)
                     }
                     AbstractData::Album(_) => false,
                 })

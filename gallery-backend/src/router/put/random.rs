@@ -19,7 +19,10 @@ pub async fn generate_random_data(
     let database_list: Vec<AbstractData> = (0..number)
         .into_par_iter()
         .map(|_| DatabaseSchema::generate_random_data())
-        .map(|database| AbstractData::DatabaseSchema(database))
+        .map(|database| AbstractData::Database(crate::public::structure::abstract_data::Database {
+            schema: database,
+            album: std::collections::HashSet::new(),
+        }))
         .collect();
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(database_list));
     BATCH_COORDINATOR

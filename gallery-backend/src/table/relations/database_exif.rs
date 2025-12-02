@@ -21,7 +21,6 @@ impl DatabaseExifTable {
                 FOREIGN KEY(hash) REFERENCES database(hash) ON DELETE CASCADE
             );
 
-            CREATE INDEX IF NOT EXISTS idx_database_exif_hash ON database_exif(hash);
             CREATE INDEX IF NOT EXISTS idx_database_exif_tag ON database_exif(tag);
         "#;
         conn.execute_batch(sql)?;
