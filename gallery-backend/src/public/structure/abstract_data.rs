@@ -128,7 +128,7 @@ impl AbstractData {
         match self {
             AbstractData::DatabaseSchema(db) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
-                ClaimsHash::new(db.hash, timestamp, false).encode()
+                ClaimsHash::new(db.hash, timestamp, true).encode()
             }
             AbstractData::Album(album) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
@@ -136,7 +136,7 @@ impl AbstractData {
                 // because the frontend will use this token to request the cover image file.
                 // If there is no cover, we fallback to ID (though no image will be fetched).
                 let hash = album.cover.unwrap_or(album.id);
-                ClaimsHash::new(hash, timestamp, false).encode()
+                ClaimsHash::new(hash, timestamp, true).encode()
             }
         }
     }
