@@ -4,5 +4,4 @@ pub mod delete_in_update;
 pub mod hash;
 pub mod index;
 pub mod open_file;
-pub mod remove_tree_snapshot;
 pub mod video;
