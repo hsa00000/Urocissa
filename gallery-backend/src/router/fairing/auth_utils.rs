@@ -11,21 +11,24 @@ use rocket::Request;
 use serde::de::DeserializeOwned;
 /// Extract and validate Authorization header Bearer token
 pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {
-    let auth_header = match req.headers().get_one("Authorization") {
-        Some(header) => header,
-        None => {
-            return Err(anyhow!("Request is missing the Authorization header"));
-        }
-    };
-
-    match auth_header.strip_prefix("Bearer ") {
-        Some(token) => Ok(token),
-        None => {
-            return Err(anyhow!(
-                "Authorization header format is invalid, expected 'Bearer <token>'"
-            ));
+    if let Some(auth_header) = req.headers().get_one("Authorization") {
+        match auth_header.strip_prefix("Bearer ") {
+            Some(token) => return Ok(token),
+            None => {
+                return Err(anyhow!(
+                    "Authorization header format is invalid, expected 'Bearer <token>'"
+                ));
+            }
         }
     }
+
+    if let Some(Ok(token)) = req.query_value::<&str>("token") {
+        return Ok(token);
+    }
+
+    Err(anyhow!(
+        "Request is missing the Authorization header or token query parameter"
+    ))
 }
 
 /// Decode JWT token with given claims type and validation

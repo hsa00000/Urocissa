@@ -5,7 +5,7 @@
     </template>
     <v-list>
       <ItemViewOriginalFile
-        :src="getSrcOriginal(database.hash, true, database.ext)"
+        :src="getSrcOriginal(database.hash, true, database.ext, tokenStore.hashTokenMap.get(database.hash))"
         :hash="database.hash"
         :isolation-id="props.isolationId"
       />
@@ -16,6 +16,7 @@
 <script setup lang="ts">
 import { Database, IsolationId } from '@type/types'
 import { getSrcOriginal } from '@utils/getter'
+import { useTokenStore } from '@/store/tokenStore'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
 const props = defineProps<{
@@ -24,4 +25,5 @@ const props = defineProps<{
   index: number
   database: Database
 }>()
+const tokenStore = useTokenStore(props.isolationId)
 </script>
