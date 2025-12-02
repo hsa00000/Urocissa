@@ -3,7 +3,15 @@
     v-if="tokenReady"
     controls
     :autoplay="enableWatch !== false"
-    :src="getSrc(hash, false, 'mp4', tokenStore.hashTokenMap.get(hash))"
+    :src="
+      getSrc(
+        hash,
+        false,
+        'mp4',
+        { albumId: shareStore.albumId || null, shareId: shareStore.shareId || null },
+        tokenStore.hashTokenMap.get(hash)
+      )
+    "
     :style="{
       width: `${database.width}px`,
       height: `${database.height}px`,
@@ -24,6 +32,7 @@ import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getSrc } from '@utils/getter'
 import { useTokenStore } from '@/store/tokenStore'
+import { useShareStore } from '@/store/shareStore'
 const props = defineProps<{
   isolationId: IsolationId
   hash: string
@@ -35,6 +44,7 @@ const tokenReady = ref(false)
 
 const tokenStore = useTokenStore(props.isolationId)
 const currentFrameStore = useCurrentFrameStore(props.isolationId)
+const shareStore = useShareStore('mainId')
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 

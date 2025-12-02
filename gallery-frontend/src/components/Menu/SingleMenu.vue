@@ -5,7 +5,15 @@
     </template>
     <v-list>
       <ItemViewOriginalFile
-        :src="getSrc(database.hash, true, database.ext, tokenStore.hashTokenMap.get(database.hash))"
+        :src="
+          getSrc(
+            database.hash,
+            true,
+            database.ext,
+            { albumId: shareStore.albumId || null, shareId: shareStore.shareId || null },
+            tokenStore.hashTokenMap.get(database.hash)
+          )
+        "
         :isolation-id="props.isolationId"
         :hash="database.hash"
       />
@@ -16,7 +24,10 @@
       <ItemEditAlbums />
       <ItemDelete v-if="!database.tags.includes('_trashed')" :index-list="[props.index]" />
       <ItemRestore v-if="database.tags.includes('_trashed')" :index-list="[props.index]" />
-      <ItemPermanentlyDelete v-if="database.tags.includes('_trashed')" :index-list="[props.index]" />
+      <ItemPermanentlyDelete
+        v-if="database.tags.includes('_trashed')"
+        :index-list="[props.index]"
+      />
       <v-divider></v-divider>
       <ItemRegenerateMetadata :index-list="[props.index]" />
       <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
@@ -27,6 +38,7 @@
 import { Database, IsolationId } from '@type/types'
 import { getSrc } from '@utils/getter'
 import { useTokenStore } from '@/store/tokenStore'
+import { useShareStore } from '@/store/shareStore'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
 import ItemFindInTimeline from '@Menu/MenuItem/ItemFindInTimeline.vue'
@@ -46,4 +58,5 @@ const props = defineProps<{
 }>()
 const currentFrameStore = useCurrentFrameStore(props.isolationId)
 const tokenStore = useTokenStore(props.isolationId)
+const shareStore = useShareStore('mainId')
 </script>

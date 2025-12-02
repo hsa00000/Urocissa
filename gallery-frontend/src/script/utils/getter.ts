@@ -2,11 +2,9 @@ import { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { inject } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import { escapeAndWrap } from '@utils/escape'
-import { useShareStore } from '@/store/shareStore'
 
 export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded) {
-
-  const isolationId = (route.meta.level === 3 || route.meta.level === 4) ? 'subId' : 'mainId'
+  const isolationId = route.meta.level === 3 || route.meta.level === 4 ? 'subId' : 'mainId'
   return isolationId
 }
 
@@ -130,24 +128,44 @@ export function extractHashFromPath(path: string): string | null {
   return lastSegment?.split('.').shift() ?? null // 移除副檔名，保留 hash
 }
 
-export function getSrc(hash: string, original: boolean, ext: string, token?: string) {
-  const compressedOrImported = original ? 'imported' : 'compressed'
-  const basePath = `/object/${compressedOrImported}/${hash.slice(0, 2)}/${hash}.${ext}`
-  if (token) {
-    return `${basePath}?token=${token}`
-  }
-  return basePath
-}
-
-export function getSrcOriginal(hash: string, original: boolean, ext: string, token?: string) {
-  const shareStore = useShareStore('mainId')
+export function getSrc(
+  hash: string,
+  original: boolean,
+  ext: string,
+  shareContext?: { albumId: string | null; shareId: string | null },
+  token?: string
+) {
   const compressedOrImported = original ? 'imported' : 'compressed'
   const basePath = `/object/${compressedOrImported}/${hash.slice(0, 2)}/${hash}.${ext}`
   const params = new URLSearchParams()
 
-  if (typeof shareStore.albumId === 'string' && typeof shareStore.shareId === 'string') {
-    params.append('albumId', shareStore.albumId)
-    params.append('shareId', shareStore.shareId)
+  if (shareContext?.albumId && shareContext?.shareId) {
+    params.append('albumId', shareContext.albumId)
+    params.append('shareId', shareContext.shareId)
+  }
+
+  if (token) {
+    params.append('token', token)
+  }
+
+  const queryString = params.toString()
+  return queryString ? `${basePath}?${queryString}` : basePath
+}
+
+export function getSrcOriginal(
+  hash: string,
+  original: boolean,
+  ext: string,
+  shareContext?: { albumId: string | null; shareId: string | null },
+  token?: string
+) {
+  const compressedOrImported = original ? 'imported' : 'compressed'
+  const basePath = `/object/${compressedOrImported}/${hash.slice(0, 2)}/${hash}.${ext}`
+  const params = new URLSearchParams()
+
+  if (shareContext?.albumId && shareContext?.shareId) {
+    params.append('albumId', shareContext.albumId)
+    params.append('shareId', shareContext.shareId)
   }
 
   if (token) {
