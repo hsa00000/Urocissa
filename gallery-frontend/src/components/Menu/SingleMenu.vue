@@ -5,11 +5,15 @@
     </template>
     <v-list>
       <ItemViewOriginalFile
+        v-if="shareStore.resolvedShare === null || shareStore.resolvedShare.share.showDownload"
         :src="getSrc(database.hash, true, database.ext, tokenStore.hashTokenMap.get(database.hash))"
         :isolation-id="props.isolationId"
         :hash="database.hash"
       />
-      <ItemDownload :index-list="[props.index]" />
+      <ItemDownload
+        v-if="shareStore.resolvedShare === null || shareStore.resolvedShare.share.showDownload"
+        :index-list="[props.index]"
+      />
       <ItemFindInTimeline :hash="props.hash" />
       <v-divider></v-divider>
       <ItemEditTags />
@@ -27,6 +31,7 @@
 import { Database, IsolationId } from '@type/types'
 import { getSrc } from '@utils/getter'
 import { useTokenStore } from '@/store/tokenStore'
+import { useShareStore } from '@/store/shareStore'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
 import ItemFindInTimeline from '@Menu/MenuItem/ItemFindInTimeline.vue'
@@ -46,4 +51,5 @@ const props = defineProps<{
 }>()
 const currentFrameStore = useCurrentFrameStore(props.isolationId)
 const tokenStore = useTokenStore(props.isolationId)
+const shareStore = useShareStore(props.isolationId)
 </script>
