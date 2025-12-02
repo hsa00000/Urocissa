@@ -24,7 +24,7 @@ pub async fn get_data(
         let start_time = Instant::now();
 
         let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
-        let (_show_download, show_metadata) =
+        let (show_download, show_metadata) =
             resolve_show_download_and_metadata(resolved_share_opt);
 
         let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
@@ -43,7 +43,7 @@ pub async fn get_data(
 
                 let processed_data =
                     process_abstract_data_for_response(abstract_data, show_metadata);
-                Ok(processed_data.with_tag(guard_timestamp.claims.timestamp))
+                Ok(processed_data.with_tag(guard_timestamp.claims.timestamp, show_download))
             })
             .collect();
 

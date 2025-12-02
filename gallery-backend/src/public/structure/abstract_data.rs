@@ -124,11 +124,11 @@ impl AbstractData {
         }
     }
 
-    pub fn generate_token(&self, timestamp: u128) -> String {
+    pub fn generate_token(&self, timestamp: u128, allow_original: bool) -> String {
         match self {
             AbstractData::DatabaseSchema(db) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
-                ClaimsHash::new(db.hash, timestamp, true).encode()
+                ClaimsHash::new(db.hash, timestamp, allow_original).encode()
             }
             AbstractData::Album(album) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
@@ -136,16 +136,16 @@ impl AbstractData {
                 // because the frontend will use this token to request the cover image file.
                 // If there is no cover, we fallback to ID (though no image will be fetched).
                 let hash = album.cover.unwrap_or(album.id);
-                ClaimsHash::new(hash, timestamp, true).encode()
+                ClaimsHash::new(hash, timestamp, allow_original).encode()
             }
         }
     }
 
-    pub fn with_tag(self, timestamp: u128) -> AbstractDataWithTag {
+    pub fn with_tag(self, timestamp: u128, allow_original: bool) -> AbstractDataWithTag {
         let tag = self.tag();
         let exif_vec = self.exif_vec().unwrap_or_default();
         let alias = self.alias();
-        let token = self.generate_token(timestamp);
+        let token = self.generate_token(timestamp, allow_original);
         AbstractDataWithTag {
             data: self,
             tag,
