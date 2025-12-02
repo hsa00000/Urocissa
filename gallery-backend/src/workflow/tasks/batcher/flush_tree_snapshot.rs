@@ -1,9 +1,7 @@
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
-use crate::public::structure::reduced_data::ReducedData;
 use anyhow::Result;
-use log::error;
+use log::{error, info};
 use mini_executor::BatchTask;
-use redb::TableDefinition;
 use std::time::Instant;
 
 pub struct FlushTreeSnapshotTask;
@@ -35,18 +33,23 @@ fn flush_tree_snapshot_task() -> Result<()> {
             let timestamp_str = timestamp.to_string();
 
             let timer_start = Instant::now();
-            let txn = TREE_SNAPSHOT.in_disk.begin_write()?;
-            let table_definition: TableDefinition<u64, ReducedData> =
-                TableDefinition::new(&timestamp_str);
+            
+            let mut conn = TREE_SNAPSHOT.in_disk.get()?;
+            let tx = conn.transaction()?;
 
             {
-                let mut table = txn.open_table(table_definition)?;
+                let mut stmt = tx.prepare(
+                    "INSERT OR REPLACE INTO snapshots (timestamp, row_index, data) VALUES (?, ?, ?)"
+                )?;
+
                 for (index, data) in entry_ref.iter().enumerate() {
-                    table.insert(index as u64, data)?;
+                    // 使用 bitcode 序列化資料
+                    let encoded_data = bitcode::encode(data);
+                    stmt.execute(rusqlite::params![timestamp_str, index, encoded_data])?;
                 }
             }
 
-            txn.commit()?;
+            tx.commit()?;
 
             info!(
                 duration = &*format!("{:?}", timer_start.elapsed());

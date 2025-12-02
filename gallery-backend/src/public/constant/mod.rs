@@ -1,6 +1,4 @@
-pub mod redb;
 pub mod runtime;
-pub mod ser_de;
 
 pub const ROW_BATCH_NUMBER: usize = 20;
 
@@ -23,7 +21,6 @@ pub const VALID_VIDEO_EXTENSIONS: &'static [&'static str] = &[
     "gif", "mp4", "webm", "mkv", "mov", "avi", "flv", "wmv", "mpeg",
 ];
 
-pub const DEFAULT_PRIORITY_LIST: &'static [&'static str] =
-    &["filename", "modified", "scan_time"];
+pub const DEFAULT_PRIORITY_LIST: &'static [&'static str] = &["filename", "modified", "scan_time"];
 
 pub const USER_DEFINED_DESCRIPTION: &str = "_user_defined_description";
