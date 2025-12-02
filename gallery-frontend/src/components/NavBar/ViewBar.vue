@@ -40,7 +40,7 @@
       :isolation-id="isolationId"
     />
     <ShareMenu
-      v-if="abstractData && abstractData.database && share !== null"
+      v-if="abstractData && abstractData.database && share !== null && share.showDownload"
       :database="abstractData.database"
       :index="index"
       :hash="hash"
@@ -65,11 +65,12 @@ import LeaveView from '@Menu/MenuButton/BtnLeaveView.vue'
 import ShowInfo from '@Menu/MenuButton/BtnShowInfo.vue'
 import { useRoute } from 'vue-router'
 import { useShareStore } from '@/store/shareStore'
+import { computed } from 'vue'
 
 const route = useRoute()
 const shareStore = useShareStore('mainId')
 
-const share = shareStore.resolvedShare?.share ?? null
+const share = computed(() => shareStore.resolvedShare?.share ?? null)
 
 defineProps<{
   isolationId: IsolationId
