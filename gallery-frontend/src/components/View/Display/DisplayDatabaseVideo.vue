@@ -3,7 +3,7 @@
     v-if="tokenReady"
     controls
     :autoplay="enableWatch !== false"
-    :src="getSrc(hash, false, 'mp4')"
+    :src="getSrc(hash, false, 'mp4', tokenStore.hashTokenMap.get(hash))"
     :style="{
       width: `${database.width}px`,
       height: `${database.height}px`,

@@ -130,19 +130,30 @@ export function extractHashFromPath(path: string): string | null {
   return lastSegment?.split('.').shift() ?? null // 移除副檔名，保留 hash
 }
 
-export function getSrc(hash: string, original: boolean, ext: string) {
+export function getSrc(hash: string, original: boolean, ext: string, token?: string) {
   const compressedOrImported = original ? 'imported' : 'compressed'
-  return `/object/${compressedOrImported}/${hash.slice(0, 2)}/${hash}.${ext}`
+  const basePath = `/object/${compressedOrImported}/${hash.slice(0, 2)}/${hash}.${ext}`
+  if (token) {
+    return `${basePath}?token=${token}`
+  }
+  return basePath
 }
 
-export function getSrcOriginal(hash: string, original: boolean, ext: string) {
+export function getSrcOriginal(hash: string, original: boolean, ext: string, token?: string) {
   const shareStore = useShareStore('mainId')
   const compressedOrImported = original ? 'imported' : 'compressed'
   const basePath = `/object/${compressedOrImported}/${hash.slice(0, 2)}/${hash}.${ext}`
+  const params = new URLSearchParams()
 
   if (typeof shareStore.albumId === 'string' && typeof shareStore.shareId === 'string') {
-    return `${basePath}?albumId=${shareStore.albumId}&shareId=${shareStore.shareId}`
-  } else {
-    return basePath
+    params.append('albumId', shareStore.albumId)
+    params.append('shareId', shareStore.shareId)
   }
+
+  if (token) {
+    params.append('token', token)
+  }
+
+  const queryString = params.toString()
+  return queryString ? `${basePath}?${queryString}` : basePath
 }

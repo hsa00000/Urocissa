@@ -21,6 +21,11 @@ const tokenStore = useTokenStore(props.isolationId)
 
 async function handleClick() {
   await tokenStore.tryRefreshAndStoreTokenToDb(props.hash)
-  window.open(props.src, '_blank')
+  const token = tokenStore.hashTokenMap.get(props.hash)
+  const url = new URL(props.src, window.location.origin)
+  if (token) {
+    url.searchParams.set('token', token)
+  }
+  window.open(url.toString(), '_blank')
 }
 </script>
