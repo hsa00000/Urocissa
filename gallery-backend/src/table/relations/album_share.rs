@@ -22,6 +22,7 @@ pub struct Share {
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedShare {
+    #[serde(flatten)]
     pub share: Share,
     pub album_id: ArrayString<64>,
     pub album_title: Option<String>,

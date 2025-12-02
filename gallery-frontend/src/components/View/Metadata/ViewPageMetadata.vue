@@ -107,7 +107,7 @@ const props = defineProps<{
 }>()
 
 const showMetadata = computed(() => {
-  return route.meta.baseName !== 'share' || shareStore.resolvedShare?.share.showMetadata
+  return route.meta.baseName !== 'share' || shareStore.resolvedShare?.showMetadata
 })
 const constStore = useConstStore('mainId')
 const shareStore = useShareStore('mainId')

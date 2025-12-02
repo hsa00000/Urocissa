@@ -178,7 +178,7 @@ const tableItems = computed<EditShareData[]>(() => {
   return shareStore.allShares.map((s) => ({
     albumId: s.albumId,
     displayName: s.albumTitle || 'Untitled',
-    share: s.share
+    share: s
   }))
 })
 

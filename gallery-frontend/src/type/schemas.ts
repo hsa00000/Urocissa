@@ -45,8 +45,7 @@ export const ShareSchema = z.object({
   exp: z.number()
 })
 
-export const ResolvedShareSchema = z.object({
-  share: ShareSchema,
+export const ResolvedShareSchema = ShareSchema.extend({
   albumId: z.string().max(64),
   albumTitle: z.string().nullable()
 })

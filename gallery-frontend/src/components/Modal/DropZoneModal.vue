@@ -109,7 +109,7 @@ function onDrop(e: DragEvent) {
   // 4. Determine presignedAlbumId (guaranteed to be string | undefined)
   let presignedAlbumId: string | undefined
   if (isSharedAlbum) {
-    const sresolveShareAllowUpload = shareStore.resolvedShare?.share.showUpload
+    const sresolveShareAllowUpload = shareStore.resolvedShare?.showUpload
     if (sresolveShareAllowUpload !== true) {
       messageStore.error('Public uploads are not allowed for this album share setting.')
       return

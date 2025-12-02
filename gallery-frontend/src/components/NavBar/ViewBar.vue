@@ -69,7 +69,7 @@ import { useShareStore } from '@/store/shareStore'
 const route = useRoute()
 const shareStore = useShareStore('mainId')
 
-const share = shareStore.resolvedShare?.share ?? null
+const share = shareStore.resolvedShare ?? null
 
 defineProps<{
   isolationId: IsolationId
