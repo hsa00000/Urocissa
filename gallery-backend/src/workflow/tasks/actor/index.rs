@@ -1,15 +1,15 @@
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tokio_rayon::AsyncThreadPool;
 
 use crate::public::constant::runtime::WORKER_RAYON_POOL;
 use crate::public::structure::abstract_data::{AbstractData, Database, MediaWithAlbum};
-use crate::table::relations::database_exif::ExifSchema;
 use crate::table::image::ImageCombined;
-use crate::table::object::ObjectSchema;
 use crate::table::meta_image::ImageMetadataSchema;
+use crate::table::object::ObjectSchema;
+use crate::table::relations::database_exif::ExifSchema;
 
 use crate::{
     public::{
@@ -185,7 +185,7 @@ impl From<IndexTask> for Database {
                     phash: Some(task.phash),
                 },
             };
-            
+
             Database {
                 media: MediaWithAlbum::Image(image),
                 album: std::collections::HashSet::new(),
@@ -211,7 +211,7 @@ impl From<IndexTask> for Database {
                     duration: 0.0, // Will be updated during video processing
                 },
             };
-            
+
             Database {
                 media: MediaWithAlbum::Video(video),
                 album: std::collections::HashSet::new(),
