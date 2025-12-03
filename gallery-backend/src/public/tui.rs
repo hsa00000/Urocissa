@@ -19,6 +19,8 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::public::constant::runtime::CURRENT_NUM_THREADS;
+// [修改]: 引入 ObjectType
+use crate::table::object::ObjectType;
 
 /// ---------- async driver ----------
 pub async fn tui_task(
@@ -42,22 +44,6 @@ pub async fn tui_task(
 }
 
 /// ---------- task model ----------
-#[derive(Debug, Clone)]
-pub enum FileType {
-    Image,
-    Video,
-}
-
-impl TryFrom<&str> for FileType {
-    type Error = anyhow::Error;
-    fn try_from(s: &str) -> Result<Self> {
-        match s {
-            "image" => Ok(FileType::Image),
-            "video" => Ok(FileType::Video),
-            _ => Err(anyhow::anyhow!("Unknown file type: {s}")),
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum TaskState {
@@ -71,7 +57,8 @@ pub enum TaskState {
 pub struct TaskRow {
     pub hash: ArrayString<64>,
     pub path: String,
-    pub file_type: FileType,
+    // [修改]: 使用 ObjectType
+    pub obj_type: ObjectType,
     pub state: TaskState,
     pub progress: Option<f64>,
 }
@@ -80,9 +67,11 @@ impl TaskRow {
     pub fn advance_state(&mut self) {
         let old = mem::replace(&mut self.state, TaskState::Done(0.0));
         self.state = match old {
-            TaskState::Indexing(t0) => match self.file_type {
-                FileType::Image => TaskState::Done(t0.elapsed().as_secs_f64()),
-                FileType::Video => TaskState::Transcoding(Instant::now()),
+            TaskState::Indexing(t0) => match self.obj_type {
+                // [修改]: 只有 Video 需要進入 Transcoding 階段
+                // Image (以及未來可能的 Album) 索引完即算完成
+                ObjectType::Video => TaskState::Transcoding(Instant::now()),
+                _ => TaskState::Done(t0.elapsed().as_secs_f64()),
             },
             TaskState::Transcoding(t0) => TaskState::Done(t0.elapsed().as_secs_f64()),
             TaskState::Done(d) => TaskState::Done(d),
@@ -198,19 +187,20 @@ impl Dashboard {
     }
 
     /* ---------- mutation API ---------- */
-    pub fn add_task(&self, hash: ArrayString<64>, path: String, file_type: FileType) {
+    // [修改]: 參數改為 ObjectType
+    pub fn add_task(&self, hash: ArrayString<64>, path: String, obj_type: ObjectType) {
         self.tasks
             .entry(hash.clone())
             .and_modify(|t| {
                 t.path = path.clone();
-                t.file_type = file_type.clone();
+                t.obj_type = obj_type.clone(); // 更新類型
                 t.state = TaskState::Indexing(Instant::now());
                 t.progress = None;
             })
             .or_insert_with(|| TaskRow {
                 hash,
                 path,
-                file_type,
+                obj_type,
                 state: TaskState::Indexing(Instant::now()),
                 progress: None,
             });

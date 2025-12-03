@@ -2,6 +2,9 @@ use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 
+// [新增]: 引入常量定義
+use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ObjectType {
@@ -26,6 +29,23 @@ impl ObjectType {
             "album" => Some(ObjectType::Album),
             _ => None,
         }
+    }
+
+    /// 根據副檔名判斷類型
+    pub fn from_ext(ext: &str) -> Option<Self> {
+        if VALID_IMAGE_EXTENSIONS.contains(&ext) {
+            Some(ObjectType::Image)
+        } else if VALID_VIDEO_EXTENSIONS.contains(&ext) {
+            Some(ObjectType::Video)
+        } else {
+            None
+        }
+    }
+
+    /// [新增]: 直接取得類型字串，若未知則回傳 "unknown"
+    /// 這樣外部調用時就不需要再寫 .map(...).unwrap_or(...)
+    pub fn str_from_ext(ext: &str) -> &'static str {
+        Self::from_ext(ext).map(|t| t.as_str()).unwrap_or("unknown")
     }
 }
 

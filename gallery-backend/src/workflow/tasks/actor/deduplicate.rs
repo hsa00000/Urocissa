@@ -1,6 +1,6 @@
 use crate::{
     public::{
-        constant::{DEFAULT_PRIORITY_LIST, VALID_IMAGE_EXTENSIONS},
+        constant::DEFAULT_PRIORITY_LIST,
         db::tree::TREE,
         error_data::handle_error,
         structure::{
@@ -9,11 +9,11 @@ use crate::{
                 file_modify::FileModify, generate_timestamp::compute_timestamp_ms_by_file_modify,
             },
         },
-        tui::{DASHBOARD, FileType},
+        tui::DASHBOARD,
     },
     table::{
         image::ImageCombined, meta_image::ImageMetadataSchema, meta_video::VideoMetadataSchema,
-        object::ObjectSchema, relations::database_alias::DatabaseAliasSchema, video::VideoCombined,
+        object::{ObjectSchema, ObjectType}, relations::database_alias::DatabaseAliasSchema, video::VideoCombined,
     },
     workflow::tasks::{
         BATCH_COORDINATOR,
@@ -101,56 +101,60 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(Database, FlushTree
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_ascii_lowercase())
                 .unwrap_or_default();
-            let ext_type = if VALID_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
-                "image"
-            } else {
-                "video"
-            };
+            let ext_type = ObjectType::str_from_ext(&ext);
 
             // Register to Dashboard (Task Start)
+            let obj_type = ObjectType::from_str(ext_type).unwrap_or(ObjectType::Image);
             DASHBOARD.add_task(
                 task.hash,
                 task.path.to_string_lossy().to_string(),
-                FileType::try_from(ext_type).unwrap_or(FileType::Image),
+                obj_type.clone(),
             );
 
             let created_time =
                 compute_timestamp_ms_by_file_modify(&file_modify, DEFAULT_PRIORITY_LIST);
 
-            let media = if ext_type == "image" {
-                let object = ObjectSchema {
-                    id: task.hash,
-                    created_time,
-                    obj_type: "image".to_string(),
-                    thumbhash: None,
-                    pending: false,
-                };
-                let metadata = ImageMetadataSchema {
-                    id: task.hash,
-                    size: metadata.len(),
-                    width: 0,
-                    height: 0,
-                    ext: ext.clone(),
-                    phash: None,
-                };
-                MediaWithAlbum::Image(ImageCombined { object, metadata })
-            } else {
-                let object = ObjectSchema {
-                    id: task.hash,
-                    created_time,
-                    obj_type: "video".to_string(),
-                    thumbhash: None,
-                    pending: true, // Video starts as pending until processed
-                };
-                let metadata = VideoMetadataSchema {
-                    id: task.hash,
-                    size: metadata.len(),
-                    width: 0,
-                    height: 0,
-                    ext: ext.clone(),
-                    duration: 0.0,
-                };
-                MediaWithAlbum::Video(VideoCombined { object, metadata })
+            let media = match obj_type {
+                ObjectType::Image => {
+                    let object = ObjectSchema {
+                        id: task.hash,
+                        created_time,
+                        obj_type: "image".to_string(),
+                        thumbhash: None,
+                        pending: false,
+                    };
+                    let metadata = ImageMetadataSchema {
+                        id: task.hash,
+                        size: metadata.len(),
+                        width: 0,
+                        height: 0,
+                        ext: ext.clone(),
+                        phash: None,
+                    };
+                    MediaWithAlbum::Image(ImageCombined { object, metadata })
+                }
+                ObjectType::Video => {
+                    let object = ObjectSchema {
+                        id: task.hash,
+                        created_time,
+                        obj_type: "video".to_string(),
+                        thumbhash: None,
+                        pending: true, // Video starts as pending until processed
+                    };
+                    let metadata = VideoMetadataSchema {
+                        id: task.hash,
+                        size: metadata.len(),
+                        width: 0,
+                        height: 0,
+                        ext: ext.clone(),
+                        duration: 0.0,
+                    };
+                    MediaWithAlbum::Video(VideoCombined { object, metadata })
+                }
+                ObjectType::Album => {
+                    // 不應該發生
+                    panic!("Unexpected album type in deduplicate task");
+                }
             };
 
             let mut database = Database {

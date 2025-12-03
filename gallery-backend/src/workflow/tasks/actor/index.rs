@@ -9,6 +9,7 @@ use crate::public::structure::abstract_data::{AbstractData, Database, MediaWithA
 use crate::table::image::ImageCombined;
 use crate::table::meta_image::ImageMetadataSchema;
 use crate::table::object::ObjectSchema;
+use crate::table::object::ObjectType;
 use crate::table::relations::database_exif::ExifSchema;
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
         constant::VALID_IMAGE_EXTENSIONS,
         error_data::handle_error,
         structure::guard::PendingGuard,
-        tui::{DASHBOARD, FileType},
+        tui::DASHBOARD,
     },
     workflow::processors::image::process_image_info,
     workflow::processors::video::process_video_info,
@@ -124,11 +125,12 @@ fn index_task_match(index_task: IndexTask) -> Result<(IndexTask, FlushTreeTask)>
 fn index_task_result(mut index_task: IndexTask) -> Result<(IndexTask, FlushTreeTask)> {
     let hash = index_task.hash;
     let newest_path = index_task.source_path.to_string_lossy().to_string();
-    // Register task in dashboard; attach context if extension is invalid
+    // [修改]: 使用 ObjectType::from_str 取代原本的 FileType::try_from
+    // 因為 ObjectType::from_str 回傳 Option，配合 .context() 可以完美轉換錯誤
     DASHBOARD.add_task(
         hash,
         newest_path.clone(),
-        FileType::try_from(index_task.ext_type.as_str())
+        ObjectType::from_str(index_task.ext_type.as_str())
             .context(format!("unsupported file type: {}", index_task.ext))?,
     );
 
