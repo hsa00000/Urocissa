@@ -1,24 +1,23 @@
+use crate::public::db::tree::TREE;
+use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
+use crate::public::structure::abstract_data::AbstractData;
+use crate::router::GuardResult;
+use crate::workflow::processors::transitor::index_to_hash;
 use anyhow::Result;
 use arrayvec::ArrayString;
+use rand::{Rng, distr::Alphanumeric};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::post;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
-use crate::workflow::processors::file::generate_random_hash;
-use crate::workflow::processors::transitor::index_to_hash;
-use crate::public::db::tree::TREE;
-use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
-use crate::public::structure::abstract_data::AbstractData;
-use crate::router::GuardResult;
-
-use crate::table::album::AlbumCombined;
-use crate::table::meta_album::AlbumMetadataSchema;
-use crate::table::object::ObjectSchema;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::table::album::AlbumCombined;
+use crate::table::meta_album::AlbumMetadataSchema;
+use crate::table::object::ObjectSchema;
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
@@ -116,4 +115,16 @@ pub fn index_edit_album_insert(
     let mut db = TREE.load_database_from_hash(&hash)?;
     db.album.insert(album_id);
     Ok(AbstractData::Database(db))
+}
+
+/// Generate a random 64-character lowercase alphanumeric hash
+pub fn generate_random_hash() -> ArrayString<64> {
+    let hash: String = rand::rng()
+        .sample_iter(&Alphanumeric)
+        .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        .take(64)
+        .map(char::from)
+        .collect();
+
+    ArrayString::<64>::from(&hash).unwrap()
 }
