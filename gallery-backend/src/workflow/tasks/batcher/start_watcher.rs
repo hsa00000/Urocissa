@@ -1,5 +1,6 @@
 use crate::public::constant::runtime::INDEX_RUNTIME;
 use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
+use crate::utils::PathExt;
 use crate::{
     public::config::PRIVATE_CONFIG, public::error_data::handle_error, workflow::index_workflow,
 };
@@ -61,14 +62,8 @@ fn start_watcher_task() -> Result<()> {
 }
 
 fn is_valid_media_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_lowercase())
-        .map(|ext| {
-            VALID_IMAGE_EXTENSIONS.contains(&ext.as_str())
-                || VALID_VIDEO_EXTENSIONS.contains(&ext.as_str())
-        })
-        .unwrap_or(false)
+    let ext = path.ext_lower();
+    VALID_IMAGE_EXTENSIONS.contains(&ext.as_str()) || VALID_VIDEO_EXTENSIONS.contains(&ext.as_str())
 }
 
 /// Push the path into the debounce pool: if there is no later event for the same path within 1 second, trigger indexing

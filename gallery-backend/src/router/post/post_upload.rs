@@ -2,11 +2,13 @@ use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_upload::GuardUpload;
 use crate::router::{AppResult, GuardResult};
+use crate::utils::PathExt;
 use crate::workflow::index_workflow;
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow};
 use arrayvec::ArrayString;
 use rocket::form::{Errors, Form};
 use rocket::fs::TempFile;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 use tokio::task::spawn_blocking;
@@ -119,17 +121,6 @@ fn set_last_modified_time(path: &str, last_modified_time: u64) -> Result<()> {
 }
 
 fn get_extension(file: &TempFile<'_>) -> Result<String> {
-    match file.content_type() {
-        Some(ct) => match ct.extension() {
-            Some(ext) => Ok(ext.as_str().to_lowercase()),
-            None => {
-                error!("Failed to extract file extension.");
-                bail!("Failed to extract file extension.")
-            }
-        },
-        None => {
-            error!("Failed to get content type.");
-            bail!("Failed to get content type.")
-        }
-    }
+    let filename = get_filename(file);
+    Ok(Path::new(&filename).ext_lower())
 }

@@ -19,6 +19,7 @@ use crate::{
         relations::database_alias::DatabaseAliasSchema,
         video::VideoCombined,
     },
+    utils::PathExt,
     workflow::tasks::{
         BATCH_COORDINATOR,
         batcher::flush_tree::{FlushOperation, FlushTreeTask},
@@ -96,16 +97,10 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(Database, FlushTree
         None => {
             // new files
 
-            let ext = task
-                .path
-                .extension()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_ascii_lowercase())
-                .unwrap_or_default();
-            let ext_type = ObjectType::str_from_ext(&ext);
+            let ext = task.path.ext_lower();
 
             // Register to Dashboard (Task Start)
-            let obj_type = ObjectType::from_str(ext_type).unwrap_or(ObjectType::Image);
+            let obj_type = ObjectType::from_ext(&ext).unwrap();
             DASHBOARD.add_task(task.hash, task.path.to_string_lossy().to_string(), obj_type);
 
             let created_time =
@@ -150,7 +145,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(Database, FlushTree
                 }
                 ObjectType::Album => {
                     // 不應該發生
-                    panic!("Unexpected album type in deduplicate task");
+                    unreachable!("Unexpected album type in deduplicate task");
                 }
             };
 

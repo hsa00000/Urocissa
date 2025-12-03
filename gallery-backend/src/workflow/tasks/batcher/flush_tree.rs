@@ -5,11 +5,9 @@ use serde_json;
 use crate::{
     public::db::tree::TREE,
     public::structure::abstract_data::{AbstractData, MediaWithAlbum},
-    table::image::ImageCombined,
     table::relations::database_alias::DatabaseAliasSchema,
     table::relations::database_exif::ExifSchema,
     table::relations::tag_database::TagDatabaseSchema,
-    table::video::VideoCombined,
     workflow::tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
 

@@ -5,6 +5,7 @@ use crate::router::{
         guard_share::GuardShare,
     },
 };
+use crate::utils::PathExt;
 use anyhow::Context;
 use rocket::fs::NamedFile;
 use rocket::response::Responder;
@@ -26,17 +27,15 @@ pub async fn compressed_file(
     let _ = hash_guard?;
     let compressed_file_path = Path::new("./object/compressed").join(&file_path);
 
-    let result = match compressed_file_path
-        .extension()
-        .and_then(std::ffi::OsStr::to_str)
-    {
-        Some("mp4") => SeekStream::from_path(&compressed_file_path)
+    let ext = compressed_file_path.ext_lower();
+    let result = match ext.as_str() {
+        "mp4" => SeekStream::from_path(&compressed_file_path)
             .map(CompressedFileResponse::SeekStream)
             .context(format!(
                 "Failed to open MP4 file: {}",
                 compressed_file_path.display()
             ))?,
-        Some("jpg") => {
+        "jpg" => {
             let named_file = NamedFile::open(&compressed_file_path)
                 .await
                 .context(format!(
@@ -45,13 +44,13 @@ pub async fn compressed_file(
                 ))?;
             CompressedFileResponse::NamedFile(named_file)
         }
-        Some(ext) => {
-            return Err(anyhow::anyhow!("Unsupported file extension: {}", ext)
+        "" => {
+            return Err(anyhow::anyhow!("File has no extension")
                 .context(format!("File path: {}", compressed_file_path.display()))
                 .into());
         }
-        None => {
-            return Err(anyhow::anyhow!("File has no extension")
+        ext => {
+            return Err(anyhow::anyhow!("Unsupported file extension: {}", ext)
                 .context(format!("File path: {}", compressed_file_path.display()))
                 .into());
         }
