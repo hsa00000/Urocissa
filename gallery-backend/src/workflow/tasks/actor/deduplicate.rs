@@ -114,12 +114,9 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(Database, FlushTree
                 FileType::try_from(ext_type).unwrap_or(FileType::Image),
             );
 
-            // Create timestamp
             let created_time =
                 compute_timestamp_ms_by_file_modify(&file_modify, DEFAULT_PRIORITY_LIST);
 
-            // Construct minimal MediaWithAlbum
-            // Note: Actual metadata (width, height, hashes) will be populated by IndexTask later
             let media = if ext_type == "image" {
                 let object = ObjectSchema {
                     id: task.hash,
