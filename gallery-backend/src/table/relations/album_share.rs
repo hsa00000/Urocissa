@@ -53,7 +53,7 @@ impl AlbumShareTable {
                 show_upload INTEGER NOT NULL,
                 exp INTEGER NOT NULL,
                 PRIMARY KEY (album_id, url),
-                FOREIGN KEY (album_id) REFERENCES album(id) ON DELETE CASCADE
+                FOREIGN KEY (album_id) REFERENCES meta_album(id) ON DELETE CASCADE
             );
             
             CREATE INDEX IF NOT EXISTS idx_album_share_url
