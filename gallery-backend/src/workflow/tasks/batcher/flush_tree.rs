@@ -4,7 +4,7 @@ use serde_json;
 
 use crate::{
     public::db::tree::TREE,
-    public::structure::abstract_data::AbstractData,
+    public::structure::abstract_data::{AbstractData, MediaWithAlbum},
     table::image::ImageCombined,
     table::video::VideoCombined,
     table::relations::database_alias::DatabaseAliasSchema,
@@ -133,7 +133,13 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                             ],
                         )?;
                     } else {
-                        // 處理 Video (注意：DatabaseSchema 沒有 duration，這裡暫補 0.0)
+                        // 確保從 Database 中讀取正確的 duration
+                        let duration = if let MediaWithAlbum::Video(ref v) = database.media {
+                            v.metadata.duration
+                        } else {
+                            0.0
+                        };
+
                         tx.execute(
                             "INSERT INTO meta_video (id, size, width, height, ext, duration) \
                              VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
@@ -142,14 +148,14 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                              width=excluded.width, \
                              height=excluded.height, \
                              ext=excluded.ext, \
-                             duration=excluded.duration",
+                             duration=excluded.duration", // [FIX]: 這裡原本邏輯是對的，但參數要傳對
                             rusqlite::params![
                                 database.hash().as_str(),
                                 database.size(),
                                 database.width(),
                                 database.height(),
                                 database.ext(),
-                                0.0, // Video duration - will be updated later
+                                duration, // [FIX]: 替換掉原本寫死的 0.0
                             ],
                         )?;
                     }

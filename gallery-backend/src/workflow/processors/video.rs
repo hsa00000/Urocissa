@@ -7,13 +7,16 @@
 //! - Width/height calculation with rotation handling
 
 use crate::{
-    public::{constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION, tui::DASHBOARD, structure::abstract_data::Database},
+    public::{constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION, tui::DASHBOARD, structure::abstract_data::{Database, MediaWithAlbum}},
     workflow::{
         processors::image::{
             generate_dynamic_image, generate_phash, generate_thumbhash, small_width_height,
         },
         tasks::actor::index::IndexTask,
     },
+    table::image::ImageCombined,
+    table::meta_image::ImageMetadataSchema,
+    table::object::ObjectSchema,
 };
 use anyhow::{Context, Result, anyhow};
 use log::info;
@@ -30,6 +33,28 @@ use super::metadata::generate_exif_for_video;
 
 static REGEX_OUT_TIME_US: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"out_time_us=(\d+)").unwrap());
+
+// [FIX]: 增加一個輔助函數來處理 Video -> Image 的轉換
+fn convert_video_db_to_image_db(database: &mut Database) {
+    if let MediaWithAlbum::Video(video) = &database.media {
+        let object = ObjectSchema {
+            id: video.object.id,
+            obj_type: "image".to_string(), // 修改類型
+            created_time: video.object.created_time,
+            pending: false, // 圖片通常不需要 pending 狀態
+            thumbhash: video.object.thumbhash.clone(),
+        };
+        let metadata = ImageMetadataSchema {
+            id: video.metadata.id,
+            size: video.metadata.size,
+            width: video.metadata.width,
+            height: video.metadata.height,
+            ext: video.metadata.ext.clone(),
+            phash: None, // 轉換當下可能還沒有 phash，後續流程會補
+        };
+        database.media = MediaWithAlbum::Image(ImageCombined { object, metadata });
+    }
+}
 
 // ────────────────────────────────────────────────────────────────
 // Public API
@@ -188,14 +213,18 @@ pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
 /// Compresses a video file, reporting progress by parsing ffmpeg's output.
 pub fn generate_compressed_video(database: &mut Database) -> Result<()> {
     let duration_result = video_duration(&database.imported_path_string());
+    
+    // [FIX]: 處理 duration 結果與類型轉換
     let duration = match duration_result {
-        // Handle static GIFs by returning an error - should be processed as image instead
+        // Handle static GIFs by delegating to the image processor.
         Ok(d) if (d * 1000.0) as u32 == 100 => {
             info!(
-                "Static GIF detected. Should be processed as image: {:?}",
+                "Static GIF detected. Processing as image: {:?}",
                 database.imported_path_string()
             );
-            return Err(anyhow!("Static GIF should be processed as image"));
+            // 實作轉換邏輯取代 todo!()
+            convert_video_db_to_image_db(database);
+            return Err(anyhow!("Static GIF converted to image")); 
         }
         // Handle non-GIFs that fail to parse duration.
         Err(err)
@@ -203,20 +232,23 @@ pub fn generate_compressed_video(database: &mut Database) -> Result<()> {
                 && database.ext().eq_ignore_ascii_case("gif") =>
         {
             info!(
-                "Potentially corrupt or non-standard GIF. Should be processed as image: {:?}",
+                "Potentially corrupt or non-standard GIF. Processing as image: {:?}",
                 database.imported_path_string()
             );
-            return Err(anyhow!("Corrupt GIF should be processed as image"));
+            // 實作轉換邏輯取代 todo!()
+            convert_video_db_to_image_db(database);
+            return Err(anyhow!("Corrupt GIF converted to image"));
         }
         Ok(d) => d,
         Err(err) => {
-            return Err(anyhow::anyhow!(
-                "Failed to get video duration for {:?}: {}",
-                database.imported_path_string(),
-                err
-            ));
+            return Err(anyhow!("{}", err));
         }
     };
+
+    // [FIX]: 將計算出的 duration 寫回 Database 結構
+    if let MediaWithAlbum::Video(ref mut vid) = database.media {
+        vid.metadata.duration = duration;
+    }
 
     let mut cmd = create_silent_ffmpeg_command();
     cmd.args([

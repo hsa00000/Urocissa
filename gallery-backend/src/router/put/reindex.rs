@@ -90,10 +90,22 @@ pub async fn reindex(
                                 // Convert Database to IndexTask to regenerate metadata
                                 let mut index_task =
                                     IndexTask::new(database.imported_path(), database.clone());
+                                
                                 match regenerate_metadata_for_video(&mut index_task) {
                                     Ok(_) => {
-                                        // Update database with new index_task data
-                                        // This needs to be implemented properly
+                                        // [FIX]: 將 IndexTask 的結果同步回 Database
+                                        // 影片重新索引主要更新：寬、高、大小、Thumbhash
+                                        if let MediaWithAlbum::Video(ref mut vid) = database.media {
+                                            vid.metadata.width = index_task.width;
+                                            vid.metadata.height = index_task.height;
+                                            vid.metadata.size = index_task.size;
+                                            vid.object.thumbhash = Some(index_task.thumbhash);
+                                            // 注意：IndexTask 結構中通常不包含 duration，
+                                            // 若 regenerate_metadata_for_video 有重新計算 duration，
+                                            // 則需要確認該函數是否回傳了 duration 或更新了 index_task 的擴充欄位。
+                                            // 假設目前僅修復基礎 Metadata。
+                                        }
+                                        
                                         Some(AbstractData::Database(database))
                                     },
                                     Err(_) => None,

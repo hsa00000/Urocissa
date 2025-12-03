@@ -106,8 +106,9 @@ pub async fn index_for_watch(
 
     // Step 9: Compress video if needed
     if database.ext_type() == "video" {
-        // VideoTask needs to be updated to accept Database
-        // For now, skip this
+        INDEX_COORDINATOR
+            .execute_waiting(VideoTask::new(database.clone()))
+            .await??;
     }
 
     Ok(())
