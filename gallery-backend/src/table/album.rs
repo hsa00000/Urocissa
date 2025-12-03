@@ -15,9 +15,13 @@ pub struct AlbumCombined {
 
 impl AlbumCombined {
     /// 根據 Hash (ID) 讀取單一相簿資料
-    pub fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
+    pub fn _get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
         let sql = r#"
-            SELECT object.*, meta_album.* FROM object
+            SELECT 
+                object.id, object.obj_type, object.created_time, object.pending, object.thumbhash,
+                meta_album.title, meta_album.start_time, meta_album.end_time, meta_album.last_modified_time, meta_album.cover, 
+                meta_album.user_defined_metadata, meta_album.item_count, meta_album.item_size
+            FROM object
             INNER JOIN meta_album ON object.id = meta_album.id
             WHERE object.id = ?
         "#;
@@ -38,21 +42,9 @@ impl AlbumCombined {
         "#;
 
         let mut stmt = conn.prepare(sql)?;
-        let rows = stmt.query_map([], |row| Self::from_joined_row(row))?;
+        let rows = stmt.query_map([], |row| Self::from_row(row))?;
 
-        let mut albums = Vec::new();
-        for album in rows {
-            albums.push(album?);
-        }
-        Ok(albums)
-    }
-
-    /// 從 JOIN 後的 Row 解析資料
-    fn from_joined_row(row: &Row) -> rusqlite::Result<Self> {
-        let object = ObjectSchema::from_row(row)?;
-        let metadata = AlbumMetadataSchema::from_row(row)?;
-
-        Ok(Self { object, metadata })
+        rows.collect::<rusqlite::Result<Vec<_>>>()
     }
 
     fn from_row(row: &Row) -> rusqlite::Result<Self> {
