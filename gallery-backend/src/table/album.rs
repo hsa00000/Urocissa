@@ -17,9 +17,9 @@ impl AlbumCombined {
     /// 根據 Hash (ID) 讀取單一相簿資料
     pub fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
         let sql = r#"
-            SELECT o.*, m.* FROM object o
-            INNER JOIN meta_album m ON o.id = m.id
-            WHERE o.id = ?
+            SELECT object.*, meta_album.* FROM object
+            INNER JOIN meta_album ON object.id = meta_album.id
+            WHERE object.id = ?
         "#;
         conn.query_row(sql, [id], Self::from_row)
     }
@@ -28,12 +28,12 @@ impl AlbumCombined {
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
         let sql = r#"
             SELECT 
-                o.id, o.obj_type, o.created_time, o.pending, o.thumbhash,
-                m.title, m.start_time, m.end_time, m.last_modified_time, m.cover, 
-                m.user_defined_metadata, m.tag, m.item_count, m.item_size
-            FROM object o
-            INNER JOIN meta_album m ON o.id = m.id
-            WHERE o.obj_type = 'album'
+                object.id, object.obj_type, object.created_time, object.pending, object.thumbhash,
+                meta_album.title, meta_album.start_time, meta_album.end_time, meta_album.last_modified_time, meta_album.cover, 
+                meta_album.user_defined_metadata, meta_album.tag, meta_album.item_count, meta_album.item_size
+            FROM object
+            INNER JOIN meta_album ON object.id = meta_album.id
+            WHERE object.obj_type = 'album'
         "#;
 
         let mut stmt = conn.prepare(sql)?;

@@ -106,11 +106,11 @@ impl AlbumShareTable {
         let conn = TREE.get_connection().unwrap();
         let sql = r#"
             SELECT 
-                s.url, s.description, s.password, s.show_metadata, 
-                s.show_download, s.show_upload, s.exp,
-                s.album_id, a.title
-            FROM album_share s
-            LEFT JOIN album a ON s.album_id = a.id
+                album_share.url, album_share.description, album_share.password, album_share.show_metadata, 
+                album_share.show_download, album_share.show_upload, album_share.exp,
+                album_share.album_id, meta_album.title
+            FROM album_share
+            LEFT JOIN meta_album ON album_share.album_id = meta_album.id
         "#;
 
         let mut stmt = conn.prepare(sql)?;

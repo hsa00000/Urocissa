@@ -16,9 +16,9 @@ impl VideoCombined {
     /// 根據 Hash (ID) 讀取單一影片資料
     pub fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
         let sql = r#"
-            SELECT o.*, m.* FROM object o
-            INNER JOIN meta_video m ON o.id = m.id
-            WHERE o.id = ?
+            SELECT object.*, meta_video.* FROM object
+            INNER JOIN meta_video ON object.id = meta_video.id
+            WHERE object.id = ?
         "#;
         conn.query_row(sql, [id], Self::from_row)
     }
@@ -26,9 +26,9 @@ impl VideoCombined {
     /// 讀取所有影片資料
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
         let sql = r#"
-            SELECT o.*, m.* FROM object o
-            INNER JOIN meta_video m ON o.id = m.id
-            WHERE o.obj_type = 'video'
+            SELECT object.*, meta_video.* FROM object
+            INNER JOIN meta_video ON object.id = meta_video.id
+            WHERE object.obj_type = 'video'
         "#;
         let mut stmt = conn.prepare(sql)?;
         let rows = stmt.query_map([], Self::from_row)?;
