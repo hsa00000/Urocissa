@@ -3,7 +3,8 @@ use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
 use crate::public::structure::abstract_data::AbstractData;
-use crate::table::database::MediaCombined;
+use crate::table::image::ImageCombined;
+use crate::table::video::VideoCombined;
 use crate::table::relations::tag_databases::TagDatabaseSchema;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
@@ -40,15 +41,21 @@ pub async fn edit_tag(
             let mut abstract_data = TREE.load_from_db(&hash)?;
 
             match &mut abstract_data {
-                AbstractData::Media(media) => {
-                    // 媒體的 tag 通過關聯表處理
-                    let id = match media {
-                        MediaCombined::Image(i) => i.object.id,
-                        MediaCombined::Video(v) => v.object.id,
-                    };
+                AbstractData::Image(i) => {
+                    // 圖片的 tag 通過關聯表處理
                     for tag in &json_data.add_tags_array {
                         flush_ops.push(FlushOperation::InsertTag(TagDatabaseSchema {
-                            hash: id.to_string(),
+                            hash: i.object.id.to_string(),
+                            tag: tag.clone(),
+                        }));
+                    }
+                    // 移除 tag 需要額外的處理，這裡簡化
+                }
+                AbstractData::Video(v) => {
+                    // 影片的 tag 通過關聯表處理
+                    for tag in &json_data.add_tags_array {
+                        flush_ops.push(FlushOperation::InsertTag(TagDatabaseSchema {
+                            hash: v.object.id.to_string(),
                             tag: tag.clone(),
                         }));
                     }

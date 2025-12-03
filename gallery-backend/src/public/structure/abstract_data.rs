@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 
 use crate::public::db::tree::TREE;
 use crate::table::album::AlbumCombined;
-use crate::table::database::MediaCombined;
+use crate::table::image::ImageCombined;
+use crate::table::video::VideoCombined;
 
 use super::database::file_modify::FileModify;
 
@@ -31,7 +32,8 @@ pub struct Database {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)] // 這很重要，讓 JSON 輸出時不會多一層 Key，直接根據內容判斷
 pub enum AbstractData {
-    Media(MediaCombined),
+    Image(ImageCombined),
+    Video(VideoCombined),
     Album(AlbumCombined),
     #[serde(rename = "Database")]
     Database(Database), // 保留舊的用於向後兼容
@@ -40,40 +42,32 @@ pub enum AbstractData {
 impl AbstractData {
     pub fn compute_timestamp(self: &Self) -> i64 {
         match self {
-            AbstractData::Media(media) => match media {
-                MediaCombined::Image(i) => i.object.created_time,
-                MediaCombined::Video(v) => v.object.created_time,
-            },
+            AbstractData::Image(i) => i.object.created_time,
+            AbstractData::Video(v) => v.object.created_time,
             AbstractData::Album(album) => album.object.created_time,
             AbstractData::Database(database) => database.schema.timestamp_ms,
         }
     }
     pub fn hash(self: &Self) -> ArrayString<64> {
         match self {
-            AbstractData::Media(media) => match media {
-                MediaCombined::Image(i) => i.object.id,
-                MediaCombined::Video(v) => v.object.id,
-            },
+            AbstractData::Image(i) => i.object.id,
+            AbstractData::Video(v) => v.object.id,
             AbstractData::Album(album) => album.object.id,
             AbstractData::Database(database) => database.schema.hash,
         }
     }
     pub fn width(self: &Self) -> u32 {
         match self {
-            AbstractData::Media(media) => match media {
-                MediaCombined::Image(i) => i.metadata.width,
-                MediaCombined::Video(v) => v.metadata.width,
-            },
+            AbstractData::Image(i) => i.metadata.width,
+            AbstractData::Video(v) => v.metadata.width,
             AbstractData::Database(database) => database.schema.width,
             AbstractData::Album(_) => 300,
         }
     }
     pub fn height(self: &Self) -> u32 {
         match self {
-            AbstractData::Media(media) => match media {
-                MediaCombined::Image(i) => i.metadata.height,
-                MediaCombined::Video(v) => v.metadata.height,
-            },
+            AbstractData::Image(i) => i.metadata.height,
+            AbstractData::Video(v) => v.metadata.height,
             AbstractData::Database(database) => database.schema.height,
             AbstractData::Album(_) => 300,
         }
@@ -99,18 +93,34 @@ impl AbstractData {
                 }
                 Some(tags)
             }
-            AbstractData::Media(media) => {
-                // 媒體的 tag 從關聯表讀取，類似 Database
+            AbstractData::Image(i) => {
+                // 圖片的 tag 從關聯表讀取
                 let conn = TREE.get_connection().unwrap();
-                let id = match media {
-                    MediaCombined::Image(i) => &i.object.id,
-                    MediaCombined::Video(v) => &v.object.id,
-                };
                 let mut stmt = conn
                     .prepare("SELECT tag FROM tag_databases WHERE hash = ?")
                     .unwrap();
                 let tag_iter = stmt
-                    .query_map([id.as_str()], |row| {
+                    .query_map([i.object.id.as_str()], |row| {
+                        let tag: String = row.get(0)?;
+                        Ok(tag)
+                    })
+                    .unwrap();
+                let mut tags = HashSet::new();
+                for tag_result in tag_iter {
+                    if let Ok(tag) = tag_result {
+                        tags.insert(tag);
+                    }
+                }
+                Some(tags)
+            }
+            AbstractData::Video(v) => {
+                // 影片的 tag 從關聯表讀取
+                let conn = TREE.get_connection().unwrap();
+                let mut stmt = conn
+                    .prepare("SELECT tag FROM tag_databases WHERE hash = ?")
+                    .unwrap();
+                let tag_iter = stmt
+                    .query_map([v.object.id.as_str()], |row| {
                         let tag: String = row.get(0)?;
                         Ok(tag)
                     })
@@ -128,17 +138,30 @@ impl AbstractData {
     }
     pub fn alias(self: &Self) -> Vec<FileModify> {
         match self {
-            AbstractData::Media(media) => {
+            AbstractData::Image(i) => {
                 let conn = TREE.get_connection().unwrap();
-                let id = match media {
-                    MediaCombined::Image(i) => &i.object.id,
-                    MediaCombined::Video(v) => &v.object.id,
-                };
                 let mut stmt = conn
                     .prepare("SELECT file, modified, scan_time FROM database_alias WHERE hash = ? ORDER BY scan_time DESC")
                     .unwrap();
                 let alias_iter = stmt
-                    .query_map([id.as_str()], |row| {
+                    .query_map([i.object.id.as_str()], |row| {
+                        Ok(FileModify {
+                            file: row.get(0)?,
+                            modified: row.get::<_, i64>(1)? as u128,
+                            scan_time: row.get::<_, i64>(2)? as u128,
+                        })
+                    })
+                    .unwrap();
+                let aliases: Vec<FileModify> = alias_iter.filter_map(|r| r.ok()).collect();
+                aliases
+            }
+            AbstractData::Video(v) => {
+                let conn = TREE.get_connection().unwrap();
+                let mut stmt = conn
+                    .prepare("SELECT file, modified, scan_time FROM database_alias WHERE hash = ? ORDER BY scan_time DESC")
+                    .unwrap();
+                let alias_iter = stmt
+                    .query_map([v.object.id.as_str()], |row| {
                         Ok(FileModify {
                             file: row.get(0)?,
                             modified: row.get::<_, i64>(1)? as u128,
@@ -171,17 +194,33 @@ impl AbstractData {
     }
     pub fn exif_vec(self: &Self) -> Option<BTreeMap<String, String>> {
         match self {
-            AbstractData::Media(media) => {
+            AbstractData::Image(i) => {
                 let conn = TREE.get_connection().unwrap();
-                let id = match media {
-                    MediaCombined::Image(i) => &i.object.id,
-                    MediaCombined::Video(v) => &v.object.id,
-                };
                 let mut stmt = conn
                     .prepare("SELECT tag, value FROM database_exif WHERE hash = ?")
                     .unwrap();
                 let exif_iter = stmt
-                    .query_map([id.as_str()], |row| {
+                    .query_map([i.object.id.as_str()], |row| {
+                        let tag: String = row.get(0)?;
+                        let value: String = row.get(1)?;
+                        Ok((tag, value))
+                    })
+                    .unwrap();
+                let mut exif_map = BTreeMap::new();
+                for exif_result in exif_iter {
+                    if let Ok((tag, value)) = exif_result {
+                        exif_map.insert(tag, value);
+                    }
+                }
+                Some(exif_map)
+            }
+            AbstractData::Video(v) => {
+                let conn = TREE.get_connection().unwrap();
+                let mut stmt = conn
+                    .prepare("SELECT tag, value FROM database_exif WHERE hash = ?")
+                    .unwrap();
+                let exif_iter = stmt
+                    .query_map([v.object.id.as_str()], |row| {
                         let tag: String = row.get(0)?;
                         let value: String = row.get(1)?;
                         Ok((tag, value))
@@ -221,13 +260,13 @@ impl AbstractData {
 
     pub fn generate_token(&self, timestamp: u128, allow_original: bool) -> String {
         match self {
-            AbstractData::Media(media) => {
+            AbstractData::Image(i) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
-                let hash = match media {
-                    MediaCombined::Image(i) => i.object.id,
-                    MediaCombined::Video(v) => v.object.id,
-                };
-                ClaimsHash::new(hash, timestamp, allow_original).encode()
+                ClaimsHash::new(i.object.id, timestamp, allow_original).encode()
+            }
+            AbstractData::Video(v) => {
+                use crate::router::claims::claims_hash::ClaimsHash;
+                ClaimsHash::new(v.object.id, timestamp, allow_original).encode()
             }
             AbstractData::Database(db) => {
                 use crate::router::claims::claims_hash::ClaimsHash;

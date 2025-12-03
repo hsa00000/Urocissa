@@ -9,7 +9,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::public::structure::abstract_data::{AbstractData, Database};
 use crate::table::album::AlbumCombined;
-use crate::table::database::{DatabaseSchema, MediaCombined};
+use crate::table::database::{DatabaseSchema};
+use crate::table::image::ImageCombined;
+use crate::table::video::VideoCombined;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
 
 pub struct Tree {
@@ -44,10 +46,15 @@ impl Tree {
                         .ok_or_else(|| anyhow::anyhow!("Album not found"))?;
                     Ok(AbstractData::Album(album))
                 }
-                "image" | "video" => {
-                    // 讀取媒體
-                    let media = MediaCombined::get_by_id(&conn, id)?;
-                    Ok(AbstractData::Media(media))
+                "image" => {
+                    // 讀取圖片
+                    let image = ImageCombined::get_by_id(&conn, id)?;
+                    Ok(AbstractData::Image(image))
+                }
+                "video" => {
+                    // 讀取影片
+                    let video = VideoCombined::get_by_id(&conn, id)?;
+                    Ok(AbstractData::Video(video))
                 }
                 _ => Err(anyhow::anyhow!("Unknown object type")),
             }
@@ -60,14 +67,25 @@ impl Tree {
     pub fn load_all_databases_from_db(&self) -> Result<Vec<Database>> {
         let conn = self.get_connection()?;
 
-        // 使用 MediaCombined::get_all() 來載入所有媒體
-        let all_media = MediaCombined::get_all(&conn)?;
+        // 載入所有圖片
+        let all_images = ImageCombined::get_all(&conn)?;
+        // 載入所有影片
+        let all_videos = VideoCombined::get_all(&conn)?;
 
         let mut databases = Vec::new();
 
-        for media in all_media {
-            // 將 MediaCombined 轉換為舊的 Database 格式以保持兼容性
-            let (schema, album_set) = self.media_combined_to_database(&conn, media)?;
+        for image in all_images {
+            // 將 ImageCombined 轉換為舊的 Database 格式以保持兼容性
+            let (schema, album_set) = self.image_combined_to_database(&conn, image)?;
+            databases.push(Database {
+                schema,
+                album: album_set,
+            });
+        }
+
+        for video in all_videos {
+            // 將 VideoCombined 轉換為舊的 Database 格式以保持兼容性
+            let (schema, album_set) = self.video_combined_to_database(&conn, video)?;
             databases.push(Database {
                 schema,
                 album: album_set,
@@ -79,58 +97,54 @@ impl Tree {
 
     pub fn load_database_from_hash(&self, hash: &str) -> Result<Database> {
         let conn = self.get_connection()?;
-        
-        // 1. 使用 MediaCombined 透過 ID (Hash) 獲取資料
-        let media = MediaCombined::get_by_id(&conn, hash)?;
 
-        // 2. 重用 media_combined_to_database 函式來轉換資料結構並獲取相簿關聯
-        //    (此函式您已經在檔案下方定義好了)
-        let (schema, album_set) = self.media_combined_to_database(&conn, media)?;
+        // 1. 先查詢 object 表確認類型
+        let type_sql = "SELECT obj_type FROM object WHERE id = ?";
+        let obj_type: String = conn.query_row(type_sql, [hash], |row| row.get(0))?;
 
-        Ok(Database {
-            schema,
-            album: album_set,
-        })
+        // 2. 根據類型載入資料並轉換
+        match obj_type.as_str() {
+            "image" => {
+                let image = ImageCombined::get_by_id(&conn, hash)?;
+                let (schema, album_set) = self.image_combined_to_database(&conn, image)?;
+                Ok(Database {
+                    schema,
+                    album: album_set,
+                })
+            }
+            "video" => {
+                let video = VideoCombined::get_by_id(&conn, hash)?;
+                let (schema, album_set) = self.video_combined_to_database(&conn, video)?;
+                Ok(Database {
+                    schema,
+                    album: album_set,
+                })
+            }
+            _ => Err(anyhow::anyhow!("Unknown object type for hash: {}", hash)),
+        }
     }
 
     // 輔助函數：將 MediaCombined 轉換為舊的 Database 格式
-    fn media_combined_to_database(
+    fn image_combined_to_database(
         &self,
         conn: &rusqlite::Connection,
-        media: MediaCombined,
+        image: ImageCombined,
     ) -> Result<(
         crate::table::database::DatabaseSchema,
         HashSet<ArrayString<64>>,
     )> {
         use crate::table::database::DatabaseSchema;
 
-        let (hash, size, width, height, thumbhash, phash, ext, ext_type, pending, timestamp_ms) =
-            match media {
-                MediaCombined::Image(img) => (
-                    img.object.id,
-                    img.metadata.size,
-                    img.metadata.width,
-                    img.metadata.height,
-                    img.object.thumbhash.unwrap_or_default(),
-                    img.metadata.phash.unwrap_or_default(),
-                    img.metadata.ext,
-                    "image".to_string(),
-                    img.object.pending,
-                    img.object.created_time,
-                ),
-                MediaCombined::Video(vid) => (
-                    vid.object.id,
-                    vid.metadata.size,
-                    vid.metadata.width,
-                    vid.metadata.height,
-                    vid.object.thumbhash.unwrap_or_default(),
-                    Vec::new(), // Video 沒有 phash
-                    vid.metadata.ext,
-                    "video".to_string(),
-                    vid.object.pending,
-                    vid.object.created_time,
-                ),
-            };
+        let hash = image.object.id;
+        let size = image.metadata.size;
+        let width = image.metadata.width;
+        let height = image.metadata.height;
+        let thumbhash = image.object.thumbhash.unwrap_or_default();
+        let phash = image.metadata.phash.unwrap_or_default();
+        let ext = image.metadata.ext;
+        let ext_type = "image".to_string();
+        let pending = image.object.pending;
+        let timestamp_ms = image.object.created_time;
 
         let schema = DatabaseSchema {
             hash,
@@ -146,17 +160,66 @@ impl Tree {
         };
 
         // 讀取相簿關聯
+        let album_set = self.get_album_associations(conn, &hash)?;
+
+        Ok((schema, album_set))
+    }
+
+    fn video_combined_to_database(
+        &self,
+        conn: &rusqlite::Connection,
+        video: VideoCombined,
+    ) -> Result<(
+        crate::table::database::DatabaseSchema,
+        HashSet<ArrayString<64>>,
+    )> {
+        use crate::table::database::DatabaseSchema;
+
+        let hash = video.object.id;
+        let size = video.metadata.size;
+        let width = video.metadata.width;
+        let height = video.metadata.height;
+        let thumbhash = video.object.thumbhash.unwrap_or_default();
+        let phash = Vec::new(); // Video 沒有 phash
+        let ext = video.metadata.ext;
+        let ext_type = "video".to_string();
+        let pending = video.object.pending;
+        let timestamp_ms = video.object.created_time;
+
+        let schema = DatabaseSchema {
+            hash,
+            size,
+            width,
+            height,
+            thumbhash,
+            phash,
+            ext,
+            ext_type,
+            pending,
+            timestamp_ms,
+        };
+
+        // 讀取相簿關聯
+        let album_set = self.get_album_associations(conn, &hash)?;
+
+        Ok((schema, album_set))
+    }
+
+    fn get_album_associations(
+        &self,
+        conn: &rusqlite::Connection,
+        hash: &ArrayString<64>,
+    ) -> Result<HashSet<ArrayString<64>>> {
         let mut stmt_albums =
             conn.prepare("SELECT album_id FROM album_databases WHERE hash = ?")?;
         let albums =
-            stmt_albums.query_map([schema.hash.as_str()], |row| row.get::<_, String>(0))?;
+            stmt_albums.query_map([hash.as_str()], |row| row.get::<_, String>(0))?;
         let mut album_set = HashSet::new();
         for album_id in albums {
             if let Ok(as_str) = ArrayString::from(&album_id?) {
                 album_set.insert(as_str);
             }
         }
-
-        Ok((schema, album_set))
+        Ok(album_set)
     }
 }

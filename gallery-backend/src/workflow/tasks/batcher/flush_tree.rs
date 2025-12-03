@@ -5,7 +5,8 @@ use serde_json;
 use crate::{
     public::db::tree::TREE,
     public::structure::abstract_data::AbstractData,
-    table::database::MediaCombined,
+    table::image::ImageCombined,
+    table::video::VideoCombined,
     table::relations::database_alias::DatabaseAliasSchema,
     table::relations::database_exif::ExifSchema,
     table::relations::tag_databases::TagDatabaseSchema,
@@ -67,32 +68,30 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
     for op in operations {
         match op {
             FlushOperation::InsertAbstractData(abstract_data) => match abstract_data {
-                AbstractData::Media(media) => match media {
-                    MediaCombined::Image(img) => {
-                        // 1. Insert Object
-                        tx.execute(
-                            "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) VALUES (?, 'image', ?, ?, ?)",
-                            rusqlite::params![img.object.id.as_str(), img.object.created_time, img.object.pending as i32, img.object.thumbhash],
-                        )?;
-                        // 2. Insert Meta Image
-                        tx.execute(
-                            "INSERT INTO meta_image (id, size, width, height, ext, phash) VALUES (?, ?, ?, ?, ?, ?)",
-                            rusqlite::params![img.object.id.as_str(), img.metadata.size, img.metadata.width, img.metadata.height, img.metadata.ext, img.metadata.phash],
-                        )?;
-                    }
-                    MediaCombined::Video(vid) => {
-                        // 1. Insert Object
-                        tx.execute(
-                            "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) VALUES (?, 'video', ?, ?, ?)",
-                            rusqlite::params![vid.object.id.as_str(), vid.object.created_time, vid.object.pending as i32, vid.object.thumbhash],
-                        )?;
-                        // 2. Insert Meta Video
-                        tx.execute(
-                            "INSERT INTO meta_video (id, size, width, height, ext, duration) VALUES (?, ?, ?, ?, ?, ?)",
-                            rusqlite::params![vid.object.id.as_str(), vid.metadata.size, vid.metadata.width, vid.metadata.height, vid.metadata.ext, vid.metadata.duration],
-                        )?;
-                    }
-                },
+                AbstractData::Image(img) => {
+                    // 1. Insert Object
+                    tx.execute(
+                        "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) VALUES (?, 'image', ?, ?, ?)",
+                        rusqlite::params![img.object.id.as_str(), img.object.created_time, img.object.pending as i32, img.object.thumbhash],
+                    )?;
+                    // 2. Insert Meta Image
+                    tx.execute(
+                        "INSERT INTO meta_image (id, size, width, height, ext, phash) VALUES (?, ?, ?, ?, ?, ?)",
+                        rusqlite::params![img.object.id.as_str(), img.metadata.size, img.metadata.width, img.metadata.height, img.metadata.ext, img.metadata.phash],
+                    )?;
+                }
+                AbstractData::Video(vid) => {
+                    // 1. Insert Object
+                    tx.execute(
+                        "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) VALUES (?, 'video', ?, ?, ?)",
+                        rusqlite::params![vid.object.id.as_str(), vid.object.created_time, vid.object.pending as i32, vid.object.thumbhash],
+                    )?;
+                    // 2. Insert Meta Video
+                    tx.execute(
+                        "INSERT INTO meta_video (id, size, width, height, ext, duration) VALUES (?, ?, ?, ?, ?, ?)",
+                        rusqlite::params![vid.object.id.as_str(), vid.metadata.size, vid.metadata.width, vid.metadata.height, vid.metadata.ext, vid.metadata.duration],
+                    )?;
+                }
                 // --- 修改開始：更新 AbstractData::Database 的寫入邏輯 ---
                 AbstractData::Database(database) => {
                     // 1. 寫入 Object 表 (取代舊的 database 表)
@@ -219,14 +218,16 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 }
             },
             FlushOperation::RemoveAbstractData(abstract_data) => match abstract_data {
-                AbstractData::Media(media) => {
-                    let id = match media {
-                        MediaCombined::Image(i) => i.object.id,
-                        MediaCombined::Video(v) => v.object.id,
-                    };
+                AbstractData::Image(i) => {
                     tx.execute(
                         "DELETE FROM object WHERE id = ?1",
-                        rusqlite::params![id.as_str()],
+                        rusqlite::params![i.object.id.as_str()],
+                    )?;
+                }
+                AbstractData::Video(v) => {
+                    tx.execute(
+                        "DELETE FROM object WHERE id = ?1",
+                        rusqlite::params![v.object.id.as_str()],
                     )?;
                 }
                 AbstractData::Database(database) => {
