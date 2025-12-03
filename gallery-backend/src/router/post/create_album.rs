@@ -13,7 +13,8 @@ use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::GuardResult;
 
-use crate::table::album::{AlbumCombined, AlbumMetadataSchema};
+use crate::table::album::AlbumCombined;
+use crate::table::meta_album::AlbumMetadataSchema;
 use crate::table::object::ObjectSchema;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;

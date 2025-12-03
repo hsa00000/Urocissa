@@ -1,7 +1,7 @@
 use crate::table::object::ObjectSchema;
 use crate::table::meta_image::ImageMetadataSchema;
 use crate::table::meta_video::VideoMetadataSchema;
-use crate::table::album::AlbumMetadataSchema; // 修改為新的 meta_album
+use crate::table::meta_album::AlbumMetadataSchema;
 use crate::table::relations::album_databases::AlbumDatabasesTable;
 use crate::table::relations::album_share::AlbumShareTable;
 use crate::table::relations::database_alias::DatabaseAliasTable;
