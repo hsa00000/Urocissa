@@ -9,23 +9,23 @@ use tokio::task::spawn_blocking;
 
 use crate::public::io::copy_with_retry;
 use crate::public::error_data::handle_error;
-use crate::table::database::DatabaseSchema;
+use crate::public::structure::abstract_data::Database;
 
 static COPY_LIMIT: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::const_new(1));
 
 pub struct CopyTask {
     pub path: PathBuf,
-    pub database: DatabaseSchema,
+    pub database: Database,
 }
 
 impl CopyTask {
-    pub fn new(path: PathBuf, database: DatabaseSchema) -> Self {
+    pub fn new(path: PathBuf, database: Database) -> Self {
         Self { path, database }
     }
 }
 
 impl Task for CopyTask {
-    type Output = Result<DatabaseSchema>;
+    type Output = Result<Database>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
@@ -38,7 +38,7 @@ impl Task for CopyTask {
     }
 }
 
-fn copy_task(task: CopyTask) -> Result<DatabaseSchema> {
+fn copy_task(task: CopyTask) -> Result<Database> {
     let source_path = task.path;
     let dest_path = task.database.imported_path();
 

@@ -66,15 +66,15 @@ pub async fn regenerate_thumbnail_with_frame(
 
         // Create a temporary IndexTask for image processing
         let index_task = crate::workflow::tasks::actor::index::IndexTask::new(
-            database.schema.imported_path(),
-            database.schema.clone(),
+            database.imported_path(),
+            database.clone(),
         );
 
         let dyn_img =
             generate_dynamic_image(&index_task).context("Failed to decode DynamicImage")?;
 
-        database.schema.thumbhash = generate_thumbhash(&dyn_img);
-        database.schema.phash = generate_phash(&dyn_img);
+        database.set_thumbhash(generate_thumbhash(&dyn_img));
+        database.set_phash(generate_phash(&dyn_img));
 
         Ok(AbstractData::Database(database))
     })

@@ -104,16 +104,16 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                          pending=excluded.pending, \
                          thumbhash=excluded.thumbhash",
                         rusqlite::params![
-                            database.schema.hash.as_str(),
-                            database.schema.ext_type,
-                            database.schema.timestamp_ms,
-                            database.schema.pending as i32,
-                            database.schema.thumbhash,
+                            database.hash().as_str(),
+                            database.ext_type(),
+                            database.timestamp_ms(),
+                            database.pending() as i32,
+                            database.thumbhash(),
                         ],
                     )?;
 
                     // 2. 根據類型寫入 Meta 表
-                    if database.schema.ext_type == "image" {
+                    if database.ext_type() == "image" {
                         tx.execute(
                             "INSERT INTO meta_image (id, size, width, height, ext, phash) \
                              VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
@@ -124,12 +124,12 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                              ext=excluded.ext, \
                              phash=excluded.phash",
                             rusqlite::params![
-                                database.schema.hash.as_str(),
-                                database.schema.size,
-                                database.schema.width,
-                                database.schema.height,
-                                database.schema.ext,
-                                database.schema.phash,
+                                database.hash().as_str(),
+                                database.size(),
+                                database.width(),
+                                database.height(),
+                                database.ext(),
+                                database.phash(),
                             ],
                         )?;
                     } else {
@@ -144,12 +144,12 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                              ext=excluded.ext, \
                              duration=excluded.duration",
                             rusqlite::params![
-                                database.schema.hash.as_str(),
-                                database.schema.size,
-                                database.schema.width,
-                                database.schema.height,
-                                database.schema.ext,
-                                0.0, 
+                                database.hash().as_str(),
+                                database.size(),
+                                database.width(),
+                                database.height(),
+                                database.ext(),
+                                0.0, // Video duration - will be updated later
                             ],
                         )?;
                     }
@@ -157,13 +157,13 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                     // 3. 同步相簿關聯 (維持不變)
                     tx.execute(
                         "DELETE FROM album_databases WHERE hash = ?1",
-                        rusqlite::params![database.schema.hash.as_str()],
+                        rusqlite::params![database.hash().as_str()],
                     )?;
 
                     for album_id in &database.album {
                         tx.execute(
                             "INSERT OR IGNORE INTO album_databases (album_id, hash) VALUES (?1, ?2)",
-                            rusqlite::params![album_id.as_str(), database.schema.hash.as_str()],
+                            rusqlite::params![album_id.as_str(), database.hash().as_str()],
                         )?;
                     }
                 }
@@ -233,12 +233,12 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 AbstractData::Database(database) => {
                     tx.execute(
                         "DELETE FROM object WHERE id = ?1",
-                        rusqlite::params![database.schema.hash.as_str()],
+                        rusqlite::params![database.hash().as_str()],
                     )?;
                     // album_databases 會因為 FK Cascade 自動刪除，或手動刪除亦可
                     tx.execute(
                         "DELETE FROM album_databases WHERE hash = ?1",
-                        rusqlite::params![database.schema.hash.as_str()],
+                        rusqlite::params![database.hash().as_str()],
                     )?;
                 }
                 AbstractData::Album(album) => {

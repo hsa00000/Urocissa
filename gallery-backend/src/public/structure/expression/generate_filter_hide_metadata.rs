@@ -58,7 +58,7 @@ impl Expression {
             Expression::ExtType(ext_type) => Box::new(move |data| match data {
                 AbstractData::Image(_) => ext_type.contains("image"),
                 AbstractData::Video(_) => ext_type.contains("video"),
-                AbstractData::Database(db) => db.schema.ext_type.contains(&ext_type),
+                AbstractData::Database(db) => db.ext_type().contains(&ext_type),
                 AbstractData::Album(_) => false,
             }),
             Expression::Ext(ext) => {
@@ -67,7 +67,7 @@ impl Expression {
                     AbstractData::Image(i) => i.metadata.ext.to_ascii_lowercase().contains(&ext_lower),
                     AbstractData::Video(v) => v.metadata.ext.to_ascii_lowercase().contains(&ext_lower),
                     AbstractData::Database(db) => {
-                        db.schema.ext.to_ascii_lowercase().contains(&ext_lower)
+                        db.ext().to_ascii_lowercase().contains(&ext_lower)
                     }
                     AbstractData::Album(_) => false,
                 })

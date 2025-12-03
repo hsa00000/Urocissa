@@ -99,7 +99,7 @@ pub async fn set_album_cover(
         let conn = TREE.get_connection().unwrap();
         conn.execute(
             "UPDATE album SET cover = ?, thumbhash = ? WHERE id = ?",
-            params![cover_str, &database.schema.thumbhash, &*album_id],
+            params![cover_str, &database.thumbhash(), &*album_id],
         )
         .unwrap();
     })

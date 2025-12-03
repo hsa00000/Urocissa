@@ -4,12 +4,11 @@ use crate::{
         constant::runtime::WORKER_RAYON_POOL,
         error_data::handle_error,
         structure::{
-            abstract_data::AbstractData,
+            abstract_data::{AbstractData, Database},
             guard::PendingGuard,
         },
         tui::DASHBOARD,
     },
-    table::database::DatabaseSchema,
     workflow::tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
 use anyhow::Context;
@@ -18,11 +17,11 @@ use mini_executor::Task;
 use tokio_rayon::AsyncThreadPool;
 
 pub struct VideoTask {
-    database: DatabaseSchema,
+    database: Database,
 }
 
 impl VideoTask {
-    pub fn new(database: DatabaseSchema) -> Self {
+    pub fn new(database: Database) -> Self {
         Self { database }
     }
 }
@@ -41,15 +40,12 @@ impl Task for VideoTask {
     }
 }
 
-pub fn video_task(mut database: DatabaseSchema) -> Result<()> {
-    let hash = database.hash;
+pub fn video_task(mut database: Database) -> Result<()> {
+    let hash = database.hash();
     match generate_compressed_video(&mut database) {
         Ok(_) => {
-            database.pending = false;
-            let abstract_data = AbstractData::Database(crate::public::structure::abstract_data::Database {
-                schema: database.clone(),
-                album: std::collections::HashSet::new(),
-            });
+            database.set_pending(false);
+            let abstract_data = AbstractData::Database(database);
             BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
 
             DASHBOARD.advance_task_state(&hash);

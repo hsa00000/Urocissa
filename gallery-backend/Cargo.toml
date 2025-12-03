@@ -33,6 +33,7 @@ image_hasher = "3.0.0"
 jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
 kamadak-exif = "0.6.1"
 log = { version = "0.4.28", features = ["kv"] }
+mime_guess = "2.0"
 mini_executor = "2.0.3"
 notify = "8.2.0"
 num_cpus = "1.17.0"

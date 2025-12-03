@@ -7,8 +7,7 @@
 //! - Width/height calculation with rotation handling
 
 use crate::{
-    public::{constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION, tui::DASHBOARD},
-    table::database::DatabaseSchema,
+    public::{constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION, tui::DASHBOARD, structure::abstract_data::Database},
     workflow::{
         processors::image::{
             generate_dynamic_image, generate_phash, generate_thumbhash, small_width_height,
@@ -187,29 +186,27 @@ pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
 // ────────────────────────────────────────────────────────────────
 
 /// Compresses a video file, reporting progress by parsing ffmpeg's output.
-pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
+pub fn generate_compressed_video(database: &mut Database) -> Result<()> {
     let duration_result = video_duration(&database.imported_path_string());
     let duration = match duration_result {
-        // Handle static GIFs by delegating to the image processor.
+        // Handle static GIFs by returning an error - should be processed as image instead
         Ok(d) if (d * 1000.0) as u32 == 100 => {
             info!(
-                "Static GIF detected. Processing as image: {:?}",
+                "Static GIF detected. Should be processed as image: {:?}",
                 database.imported_path_string()
             );
-            database.ext_type = "image".to_string();
-            todo!();
+            return Err(anyhow!("Static GIF should be processed as image"));
         }
         // Handle non-GIFs that fail to parse duration.
         Err(err)
             if err.to_string().contains("fail to parse to f32")
-                && database.ext.eq_ignore_ascii_case("gif") =>
+                && database.ext().eq_ignore_ascii_case("gif") =>
         {
             info!(
-                "Potentially corrupt or non-standard GIF. Processing as image: {:?}",
+                "Potentially corrupt or non-standard GIF. Should be processed as image: {:?}",
                 database.imported_path_string()
             );
-            database.ext_type = "image".to_string();
-            todo!();
+            return Err(anyhow!("Corrupt GIF should be processed as image"));
         }
         Ok(d) => d,
         Err(err) => {
@@ -230,7 +227,7 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
         // Scale video to a max height of 720p, ensuring dimensions are even.
         &format!(
             "scale=trunc(oh*a/2)*2:{}",
-            (cmp::min(database.height, 720) / 2) * 2
+            (cmp::min(database.height(), 720) / 2) * 2
         ),
         "-movflags",
         "faststart", // Optimize for web streaming
@@ -259,7 +256,7 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
             // We only proceed if the captured value can be parsed as a number.
             if let Ok(microseconds) = caps[1].parse::<f64>() {
                 let percentage = (microseconds / 1_000_000.0 / duration) * 100.0;
-                DASHBOARD.update_progress(database.hash, percentage);
+                DASHBOARD.update_progress(database.hash(), percentage);
             }
         }
     }
