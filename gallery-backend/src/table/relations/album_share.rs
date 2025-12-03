@@ -55,9 +55,6 @@ impl AlbumShareTable {
                 PRIMARY KEY (album_id, url),
                 FOREIGN KEY (album_id) REFERENCES album(id) ON DELETE CASCADE
             );
-
-            CREATE INDEX IF NOT EXISTS idx_album_share_album_id
-                ON album_share(album_id);
             
             CREATE INDEX IF NOT EXISTS idx_album_share_url
                 ON album_share(url);
