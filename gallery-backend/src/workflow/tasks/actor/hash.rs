@@ -1,11 +1,9 @@
-use crate::{
-    workflow::processors::file::blake3_hasher,
-    public::{constant::runtime::WORKER_RAYON_POOL, error_data::handle_error},
-};
-use anyhow::Result;
+use crate::public::{constant::runtime::WORKER_RAYON_POOL, error_data::handle_error};
+use anyhow::{Context, Result};
 use arrayvec::ArrayString;
+use blake3::Hasher;
 use mini_executor::Task;
-use std::fs::File;
+use std::{fs::File, io::Read};
 use tokio_rayon::AsyncThreadPool;
 
 pub struct HashTask {
@@ -32,4 +30,19 @@ impl Task for HashTask {
 }
 fn hash_task(file: File) -> Result<ArrayString<64>> {
     blake3_hasher(file)
+}
+
+/// Compute Blake3 hash of a file
+pub fn blake3_hasher(mut file: File) -> Result<ArrayString<64>> {
+    let mut hasher = Hasher::new();
+    let mut buffer = [0u8; 512 * 1024];
+
+    loop {
+        let n = file.read(&mut buffer).context("Failed to read file")?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    Ok(hasher.finalize().to_hex())
 }

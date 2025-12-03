@@ -1,34 +1,10 @@
 //! File operations module - handles file system operations
 //!
 //! Includes:
-//! - Blake3 hash computation
 //! - Random hash generation
-//! - File opening with retry logic
 
-use anyhow::{Context, Result};
 use arrayvec::ArrayString;
-use blake3::Hasher;
 use rand::{Rng, distr::Alphanumeric};
-use std::{fs::File, io::Read};
-
-// ────────────────────────────────────────────────────────────────
-// Hash Computation
-// ────────────────────────────────────────────────────────────────
-
-/// Compute Blake3 hash of a file
-pub fn blake3_hasher(mut file: File) -> Result<ArrayString<64>> {
-    let mut hasher = Hasher::new();
-    let mut buffer = [0u8; 512 * 1024];
-
-    loop {
-        let n = file.read(&mut buffer).context("Failed to read file")?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-    Ok(hasher.finalize().to_hex())
-}
 
 /// Generate a random 64-character lowercase alphanumeric hash
 pub fn generate_random_hash() -> ArrayString<64> {
