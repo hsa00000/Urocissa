@@ -1,12 +1,12 @@
-use crate::table::object::ObjectSchema;
+use crate::table::meta_album::AlbumMetadataSchema;
 use crate::table::meta_image::ImageMetadataSchema;
 use crate::table::meta_video::VideoMetadataSchema;
-use crate::table::meta_album::AlbumMetadataSchema;
-use crate::table::relations::album_databases::AlbumDatabasesTable;
+use crate::table::object::ObjectSchema;
+use crate::table::relations::album_database::AlbumDatabasesTable;
 use crate::table::relations::album_share::AlbumShareTable;
 use crate::table::relations::database_alias::DatabaseAliasTable;
 use crate::table::relations::database_exif::DatabaseExifTable;
-use crate::table::relations::tag_databases::TagDatabasesTable;
+use crate::table::relations::tag_database::TagDatabasesTable;
 use rusqlite::Connection;
 
 pub fn create_all_tables(conn: &Connection) -> rusqlite::Result<()> {

@@ -158,7 +158,7 @@ impl Tree {
         hash: &ArrayString<64>,
     ) -> Result<HashSet<ArrayString<64>>> {
         let mut stmt_albums =
-            conn.prepare("SELECT album_id FROM album_databases WHERE hash = ?")?;
+            conn.prepare("SELECT album_id FROM album_database WHERE hash = ?")?;
         let albums =
             stmt_albums.query_map([hash.as_str()], |row| row.get::<_, String>(0))?;
         let mut album_set = HashSet::new();

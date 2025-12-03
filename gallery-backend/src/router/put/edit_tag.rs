@@ -5,7 +5,7 @@ use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::table::image::ImageCombined;
 use crate::table::video::VideoCombined;
-use crate::table::relations::tag_databases::TagDatabaseSchema;
+use crate::table::relations::tag_database::TagDatabaseSchema;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};

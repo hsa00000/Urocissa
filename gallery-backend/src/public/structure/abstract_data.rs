@@ -211,11 +211,11 @@ impl AbstractData {
         }
     }
     pub fn tag(self: &Self) -> Option<HashSet<String>> {
-        // 統一邏輯：所有類型的 tag 都從 tag_databases 關聯表讀取
+        // 統一邏輯：所有類型的 tag 都從 tag_database 關聯表讀取
         let hash = self.hash();
         let conn = TREE.get_connection().unwrap();
         let mut stmt = conn
-            .prepare("SELECT tag FROM tag_databases WHERE hash = ?")
+            .prepare("SELECT tag FROM tag_database WHERE hash = ?")
             .unwrap();
         let tag_iter = stmt
             .query_map([hash.as_str()], |row| {

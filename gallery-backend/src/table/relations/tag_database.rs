@@ -12,14 +12,14 @@ pub struct TagDatabasesTable;
 impl TagDatabasesTable {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
         let sql = r#"
-            CREATE TABLE IF NOT EXISTS tag_databases (
+            CREATE TABLE IF NOT EXISTS tag_database (
                 hash TEXT NOT NULL,
                 tag  TEXT NOT NULL,
                 PRIMARY KEY (hash, tag),
                 FOREIGN KEY (hash) REFERENCES object(id) ON DELETE CASCADE
             );
 
-            CREATE INDEX IF NOT EXISTS idx_tag_databases_tag ON tag_databases(tag);
+            CREATE INDEX IF NOT EXISTS idx_tag_databases_tag ON tag_database(tag);
         "#;
         conn.execute_batch(sql)?;
         Ok(())

@@ -6,10 +6,10 @@ use crate::{
     public::db::tree::TREE,
     public::structure::abstract_data::{AbstractData, MediaWithAlbum},
     table::image::ImageCombined,
-    table::video::VideoCombined,
     table::relations::database_alias::DatabaseAliasSchema,
     table::relations::database_exif::ExifSchema,
-    table::relations::tag_databases::TagDatabaseSchema,
+    table::relations::tag_database::TagDatabaseSchema,
+    table::video::VideoCombined,
     workflow::tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
 
@@ -162,13 +162,13 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
 
                     // 3. 同步相簿關聯 (維持不變)
                     tx.execute(
-                        "DELETE FROM album_databases WHERE hash = ?1",
+                        "DELETE FROM album_database WHERE hash = ?1",
                         rusqlite::params![database.hash().as_str()],
                     )?;
 
                     for album_id in &database.album {
                         tx.execute(
-                            "INSERT OR IGNORE INTO album_databases (album_id, hash) VALUES (?1, ?2)",
+                            "INSERT OR IGNORE INTO album_database (album_id, hash) VALUES (?1, ?2)",
                             rusqlite::params![album_id.as_str(), database.hash().as_str()],
                         )?;
                     }
@@ -184,12 +184,12 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                          created_time=excluded.created_time, \
                          pending=excluded.pending, \
                          thumbhash=excluded.thumbhash",
-                         rusqlite::params![
+                        rusqlite::params![
                             album.object.id.as_str(),
                             album.object.created_time,
                             album.object.pending as i32,
                             album.object.thumbhash,
-                         ]
+                        ],
                     )?;
 
                     // [FIX]: 然後才插入 Meta Album
@@ -240,9 +240,9 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                         "DELETE FROM object WHERE id = ?1",
                         rusqlite::params![database.hash().as_str()],
                     )?;
-                    // album_databases 會因為 FK Cascade 自動刪除，或手動刪除亦可
+                    // album_database 會因為 FK Cascade 自動刪除，或手動刪除亦可
                     tx.execute(
-                        "DELETE FROM album_databases WHERE hash = ?1",
+                        "DELETE FROM album_database WHERE hash = ?1",
                         rusqlite::params![database.hash().as_str()],
                     )?;
                 }
@@ -256,13 +256,13 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
             },
             FlushOperation::InsertTag(schema) => {
                 tx.execute(
-                    "INSERT OR IGNORE INTO tag_databases (hash, tag) VALUES (?1, ?2)",
+                    "INSERT OR IGNORE INTO tag_database (hash, tag) VALUES (?1, ?2)",
                     rusqlite::params![schema.hash, schema.tag],
                 )?;
             }
             FlushOperation::RemoveTag(schema) => {
                 tx.execute(
-                    "DELETE FROM tag_databases WHERE hash = ?1 AND tag = ?2",
+                    "DELETE FROM tag_database WHERE hash = ?1 AND tag = ?2",
                     rusqlite::params![schema.hash, schema.tag],
                 )?;
             }

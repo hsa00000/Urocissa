@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// AlbumMetadataSchema: 相簿專用屬性
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub struct AlbumMetadataSchema {
     pub cover: Option<ArrayString<64>>,
     // 這些 JSON 欄位保留在這裡
     pub user_defined_metadata: HashMap<String, Vec<String>>,
-    // tag 欄位已移除，統一使用 tag_databases 關聯表
+    // tag 欄位已移除，統一使用 tag_database 關聯表
     pub item_count: usize,
     pub item_size: u64,
 }
@@ -47,16 +47,16 @@ impl AlbumMetadataSchema {
         let start_time: Option<i64> = row.get("start_time")?;
         let end_time: Option<i64> = row.get("end_time")?;
         let last_modified_time: i64 = row.get("last_modified_time")?;
-        
+
         let cover_str: Option<String> = row.get("cover")?;
         let cover: Option<ArrayString<64>> = cover_str.and_then(|s| ArrayString::from(&s).ok());
-        
+
         let user_defined_metadata_str: String = row.get("user_defined_metadata")?;
         let user_defined_metadata: HashMap<String, Vec<String>> =
             serde_json::from_str(&user_defined_metadata_str).unwrap_or_default();
-            
+
         // tag 讀取已移除
-        
+
         let item_count: usize = row.get::<_, i64>("item_count")? as usize;
         let item_size: u64 = row.get("item_size")?;
 
