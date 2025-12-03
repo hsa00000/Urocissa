@@ -13,7 +13,8 @@ impl Tree {
         let manager = SqliteConnectionManager::file("./db/gallery.db").with_init(|c| {
             c.execute_batch(
                 "PRAGMA temp_store = MEMORY;
-             PRAGMA busy_timeout = 5000;",
+             PRAGMA busy_timeout = 5000;
+             PRAGMA foreign_keys = ON;",
             )
         });
 
