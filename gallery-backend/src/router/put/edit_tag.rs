@@ -62,15 +62,19 @@ pub async fn edit_tag(
                     // 移除 tag 需要額外的處理，這裡簡化
                 }
                 AbstractData::Album(album) => {
-                    // Apply tag additions and removals in one pass
+                    // 相簿現在也使用關聯表，行為與其他類型一致
                     for tag in &json_data.add_tags_array {
-                        album.metadata.tag.insert(tag.clone());
+                        flush_ops.push(FlushOperation::InsertTag(TagDatabaseSchema {
+                            hash: album.object.id.to_string(),
+                            tag: tag.clone(),
+                        }));
                     }
                     for tag in &json_data.remove_tags_array {
-                        album.metadata.tag.remove(tag);
+                        flush_ops.push(FlushOperation::RemoveTag(TagDatabaseSchema {
+                            hash: album.object.id.to_string(),
+                            tag: tag.clone(),
+                        }));
                     }
-                    // Flush the updated album
-                    flush_ops.push(FlushOperation::InsertAbstractData(abstract_data));
                 }
                 AbstractData::Database(_) => {
                     // Collect tag operations

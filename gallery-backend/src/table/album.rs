@@ -26,11 +26,12 @@ impl AlbumCombined {
 
     /// 讀取所有相簿 (JOIN 查詢)
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
+        // 移除了 meta_album.tag
         let sql = r#"
             SELECT 
                 object.id, object.obj_type, object.created_time, object.pending, object.thumbhash,
                 meta_album.title, meta_album.start_time, meta_album.end_time, meta_album.last_modified_time, meta_album.cover, 
-                meta_album.user_defined_metadata, meta_album.tag, meta_album.item_count, meta_album.item_size
+                meta_album.user_defined_metadata, meta_album.item_count, meta_album.item_size
             FROM object
             INNER JOIN meta_album ON object.id = meta_album.id
             WHERE object.obj_type = 'album'

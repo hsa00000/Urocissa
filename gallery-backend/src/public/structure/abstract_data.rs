@@ -211,68 +211,25 @@ impl AbstractData {
         }
     }
     pub fn tag(self: &Self) -> Option<HashSet<String>> {
-        match self {
-            AbstractData::Database(database) => {
-                let conn = TREE.get_connection().unwrap();
-                let mut stmt = conn
-                    .prepare("SELECT tag FROM tag_databases WHERE hash = ?")
-                    .unwrap();
-                let tag_iter = stmt
-                    .query_map([database.hash().as_str()], |row| {
-                        let tag: String = row.get(0)?;
-                        Ok(tag)
-                    })
-                    .unwrap();
-                let mut tags = HashSet::new();
-                for tag_result in tag_iter {
-                    if let Ok(tag) = tag_result {
-                        tags.insert(tag);
-                    }
-                }
-                Some(tags)
+        // 統一邏輯：所有類型的 tag 都從 tag_databases 關聯表讀取
+        let hash = self.hash();
+        let conn = TREE.get_connection().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT tag FROM tag_databases WHERE hash = ?")
+            .unwrap();
+        let tag_iter = stmt
+            .query_map([hash.as_str()], |row| {
+                let tag: String = row.get(0)?;
+                Ok(tag)
+            })
+            .unwrap();
+        let mut tags = HashSet::new();
+        for tag_result in tag_iter {
+            if let Ok(tag) = tag_result {
+                tags.insert(tag);
             }
-            AbstractData::Image(i) => {
-                // 圖片的 tag 從關聯表讀取
-                let conn = TREE.get_connection().unwrap();
-                let mut stmt = conn
-                    .prepare("SELECT tag FROM tag_databases WHERE hash = ?")
-                    .unwrap();
-                let tag_iter = stmt
-                    .query_map([i.object.id.as_str()], |row| {
-                        let tag: String = row.get(0)?;
-                        Ok(tag)
-                    })
-                    .unwrap();
-                let mut tags = HashSet::new();
-                for tag_result in tag_iter {
-                    if let Ok(tag) = tag_result {
-                        tags.insert(tag);
-                    }
-                }
-                Some(tags)
-            }
-            AbstractData::Video(v) => {
-                // 影片的 tag 從關聯表讀取
-                let conn = TREE.get_connection().unwrap();
-                let mut stmt = conn
-                    .prepare("SELECT tag FROM tag_databases WHERE hash = ?")
-                    .unwrap();
-                let tag_iter = stmt
-                    .query_map([v.object.id.as_str()], |row| {
-                        let tag: String = row.get(0)?;
-                        Ok(tag)
-                    })
-                    .unwrap();
-                let mut tags = HashSet::new();
-                for tag_result in tag_iter {
-                    if let Ok(tag) = tag_result {
-                        tags.insert(tag);
-                    }
-                }
-                Some(tags)
-            }
-            AbstractData::Album(album) => Some(album.metadata.tag.clone()),
         }
+        Some(tags)
     }
     pub fn alias(self: &Self) -> Vec<FileModify> {
         match self {

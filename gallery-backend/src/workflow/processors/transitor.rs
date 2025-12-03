@@ -43,10 +43,8 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
                 database.album.clear();
             }
         }
-        AbstractData::Album(album) => {
-            if !show_metadata {
-                album.metadata.tag.clear();
-            }
+        AbstractData::Album(_) => {
+            // Album 的 tag 現在從關聯表讀取，不需要清除
         }
     }
 }

@@ -175,37 +175,7 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 }
                 // --- 修改結束 ---
                 AbstractData::Album(album) => {
-                    tx.execute(
-                        "INSERT INTO meta_album \
-                         (id, title, start_time, end_time, last_modified_time, \
-                          cover, user_defined_metadata, tag, \
-                          item_count, item_size) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
-                         ON CONFLICT(id) DO UPDATE SET \
-                         title=excluded.title, \
-                         start_time=excluded.start_time, \
-                         end_time=excluded.end_time, \
-                         last_modified_time=excluded.last_modified_time, \
-                         cover=excluded.cover, \
-                         user_defined_metadata=excluded.user_defined_metadata, \
-                         tag=excluded.tag, \
-                         item_count=excluded.item_count, \
-                         item_size=excluded.item_size",
-                        rusqlite::params![
-                            album.object.id.as_str(),
-                            album.metadata.title,
-                            album.metadata.start_time.map(|t| t as i64),
-                            album.metadata.end_time.map(|t| t as i64),
-                            album.metadata.last_modified_time as i64,
-                            album.metadata.cover.as_ref().map(|c| c.as_str()),
-                            serde_json::to_string(&album.metadata.user_defined_metadata).unwrap(),
-                            serde_json::to_string(&album.metadata.tag.iter().collect::<Vec<_>>()).unwrap(),
-                            album.metadata.item_count as i64,
-                            album.metadata.item_size,
-                        ],
-                    )?;
-                    
-                    // 補寫 Object 表 (Album 也是 Object)
+                    // [FIX]: 必須先插入 Object 表，因為 meta_album 有 foreign key 指向 object.id
                     tx.execute(
                         "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) \
                          VALUES (?1, 'album', ?2, ?3, ?4) \
@@ -220,6 +190,35 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                             album.object.pending as i32,
                             album.object.thumbhash,
                          ]
+                    )?;
+
+                    // [FIX]: 然後才插入 Meta Album
+                    tx.execute(
+                        "INSERT INTO meta_album \
+                         (id, title, start_time, end_time, last_modified_time, \
+                          cover, user_defined_metadata, \
+                          item_count, item_size) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+                         ON CONFLICT(id) DO UPDATE SET \
+                         title=excluded.title, \
+                         start_time=excluded.start_time, \
+                         end_time=excluded.end_time, \
+                         last_modified_time=excluded.last_modified_time, \
+                         cover=excluded.cover, \
+                         user_defined_metadata=excluded.user_defined_metadata, \
+                         item_count=excluded.item_count, \
+                         item_size=excluded.item_size",
+                        rusqlite::params![
+                            album.object.id.as_str(),
+                            album.metadata.title,
+                            album.metadata.start_time.map(|t| t as i64),
+                            album.metadata.end_time.map(|t| t as i64),
+                            album.metadata.last_modified_time as i64,
+                            album.metadata.cover.as_ref().map(|c| c.as_str()),
+                            serde_json::to_string(&album.metadata.user_defined_metadata).unwrap(),
+                            album.metadata.item_count as i64,
+                            album.metadata.item_size,
+                        ],
                     )?;
                 }
             },

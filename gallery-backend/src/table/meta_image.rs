@@ -42,14 +42,4 @@ impl ImageMetadataSchema {
         })
     }
 
-    pub fn new(id: ArrayString<64>, size: u64, width: u32, height: u32, ext: String) -> Self {
-        Self {
-            id,
-            size,
-            width,
-            height,
-            ext,
-            phash: None,
-        }
-    }
 }

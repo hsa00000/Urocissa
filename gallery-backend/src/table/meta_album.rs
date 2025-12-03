@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ pub struct AlbumMetadataSchema {
     pub cover: Option<ArrayString<64>>,
     // 這些 JSON 欄位保留在這裡
     pub user_defined_metadata: HashMap<String, Vec<String>>,
-    pub tag: HashSet<String>,
+    // tag 欄位已移除，統一使用 tag_databases 關聯表
     pub item_count: usize,
     pub item_size: u64,
 }
@@ -31,7 +31,7 @@ impl AlbumMetadataSchema {
                 last_modified_time INTEGER,
                 cover TEXT,
                 user_defined_metadata TEXT,
-                tag TEXT,
+                -- tag 欄位已移除
                 item_count INTEGER DEFAULT 0,
                 item_size INTEGER DEFAULT 0,
                 FOREIGN KEY(id) REFERENCES object(id) ON DELETE CASCADE
@@ -55,8 +55,7 @@ impl AlbumMetadataSchema {
         let user_defined_metadata: HashMap<String, Vec<String>> =
             serde_json::from_str(&user_defined_metadata_str).unwrap_or_default();
             
-        let tag_str: String = row.get("tag")?;
-        let tag: HashSet<String> = serde_json::from_str(&tag_str).unwrap_or_default();
+        // tag 讀取已移除
         
         let item_count: usize = row.get::<_, i64>("item_count")? as usize;
         let item_size: u64 = row.get("item_size")?;
@@ -69,7 +68,6 @@ impl AlbumMetadataSchema {
             last_modified_time,
             cover,
             user_defined_metadata,
-            tag,
             item_count,
             item_size,
         })
@@ -89,7 +87,6 @@ impl AlbumMetadataSchema {
             last_modified_time: timestamp,
             cover: None,
             user_defined_metadata: HashMap::new(),
-            tag: HashSet::new(),
             item_count: 0,
             item_size: 0,
         }
