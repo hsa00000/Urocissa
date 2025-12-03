@@ -43,13 +43,7 @@ impl BatchTask for UpdateTreeTask {
 fn update_tree_task() -> Result<()> {
     let start_time = Instant::now();
 
-    let mut abstract_data_vec: Vec<AbstractData> = {
-        let databases = TREE.load_all_databases_from_db()?;
-        databases
-            .into_par_iter()
-            .map(|db| AbstractData::Database(db))
-            .collect()
-    };
+    let mut abstract_data_vec: Vec<AbstractData> = TREE.load_all_data_from_db()?;
 
     let album_vec: Vec<AbstractData> = {
         let rows = TREE.read_albums()?;

@@ -1,223 +1,105 @@
-use anyhow::{Context, Result};
+use crate::public::structure::abstract_data::AbstractData;
 use arrayvec::ArrayString;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use tokio_rayon::AsyncThreadPool;
-
-use crate::public::constant::runtime::WORKER_RAYON_POOL;
-use crate::public::structure::abstract_data::{AbstractData, Database, MediaWithAlbum};
-use crate::table::image::ImageCombined;
-use crate::table::meta_image::ImageMetadataSchema;
-use crate::table::object::ObjectSchema;
-use crate::table::object::ObjectType;
-use crate::table::relations::database_exif::ExifSchema;
-
-use crate::{
-    public::{
-        constant::VALID_IMAGE_EXTENSIONS,
-        error_data::handle_error,
-        structure::guard::PendingGuard,
-        tui::DASHBOARD,
-    },
-    workflow::processors::image::process_image_info,
-    workflow::processors::video::process_video_info,
-    workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask},
-};
-use mini_executor::Task;
 
 #[derive(Debug, Clone)]
 pub struct IndexTask {
-    pub source_path: PathBuf,
-    pub hash: ArrayString<64>,
-    pub size: u64,
+    pub imported_path: PathBuf,
+    pub data: AbstractData,
     pub width: u32,
     pub height: u32,
+    pub size: u64,
     pub thumbhash: Vec<u8>,
     pub phash: Vec<u8>,
-    pub ext: String,
-    pub ext_type: String,
     pub exif_vec: BTreeMap<String, String>,
-    pub timestamp_ms: i64,
-    pub pending: bool,
+    pub ext_type: String,
 }
 
 impl IndexTask {
-    pub fn new(source_path: PathBuf, database: Database) -> Self {
+    pub fn new(imported_path: PathBuf, data: AbstractData) -> Self {
+        let (width, height, size, thumbhash, phash, ext_type) = match &data {
+            AbstractData::Image(i) => (
+                i.metadata.width,
+                i.metadata.height,
+                i.metadata.size,
+                i.object.thumbhash.clone().unwrap_or_default(),
+                i.metadata.phash.clone().unwrap_or_default(),
+                "image".to_string(),
+            ),
+            AbstractData::Video(v) => (
+                v.metadata.width,
+                v.metadata.height,
+                v.metadata.size,
+                v.object.thumbhash.clone().unwrap_or_default(),
+                Vec::new(),
+                "video".to_string(),
+            ),
+            _ => (0, 0, 0, Vec::new(), Vec::new(), "unknown".to_string()),
+        };
+
         Self {
-            source_path,
-            hash: database.hash(),
-            size: database.size(),
-            width: database.width(),
-            height: database.height(),
-            thumbhash: database.thumbhash(),
-            phash: database.phash(),
-            ext: database.ext().to_string(),
-            ext_type: database.ext_type().to_string(),
+            imported_path,
+            data,
+            width,
+            height,
+            size,
+            thumbhash,
+            phash,
             exif_vec: BTreeMap::new(),
-            timestamp_ms: database.timestamp_ms(),
-            pending: false,
+            ext_type,
         }
     }
 
-    pub fn imported_path_string(&self) -> String {
-        format!(
-            "./object/imported/{}/{}.{}",
-            &self.hash[0..2],
-            self.hash,
-            self.ext
-        )
-    }
+    // Helper methods...
     pub fn imported_path(&self) -> PathBuf {
-        PathBuf::from(self.imported_path_string())
+        self.imported_path.clone()
     }
-    pub fn compressed_path_string(&self) -> String {
-        if self.ext_type == "image" {
-            format!("./object/compressed/{}/{}.jpg", &self.hash[0..2], self.hash)
-        } else {
-            format!("./object/compressed/{}/{}.mp4", &self.hash[0..2], self.hash)
-        }
-    }
+
     pub fn compressed_path(&self) -> PathBuf {
-        PathBuf::from(self.compressed_path_string())
-    }
-    pub fn thumbnail_path(&self) -> String {
-        format!("./object/compressed/{}/{}.jpg", &self.hash[0..2], self.hash)
-    }
-    pub fn compressed_path_parent(&self) -> PathBuf {
-        self.compressed_path()
-            .parent()
-            .expect("Path::new(&output_file_path_string).parent() fail")
-            .to_path_buf()
-    }
-}
-
-impl Task for IndexTask {
-    type Output = Result<(IndexTask, FlushTreeTask)>;
-
-    fn run(self) -> impl Future<Output = Self::Output> + Send {
-        async move {
-            let _pending_guard = PendingGuard::new();
-            WORKER_RAYON_POOL
-                .spawn_async(move || index_task_match(self))
-                .await
-                .map_err(|err| handle_error(err.context("Failed to run index task")))
-        }
-    }
-}
-
-/// Outer layer: unify business result matching and update TUI  
-/// (success -> advance, failure -> mark_failed)
-fn index_task_match(index_task: IndexTask) -> Result<(IndexTask, FlushTreeTask)> {
-    let hash = index_task.hash; // hash is Copy, no need to clone
-    match index_task_result(index_task) {
-        Ok((index_task, task)) => {
-            DASHBOARD.advance_task_state(&hash);
-            Ok((index_task, task))
-        }
-        Err(e) => {
-            DASHBOARD.mark_failed(&hash);
-            Err(e)
-        }
-    }
-}
-
-/// Inner layer: only responsible for business logic, no TUI state updates
-fn index_task_result(mut index_task: IndexTask) -> Result<(IndexTask, FlushTreeTask)> {
-    let hash = index_task.hash;
-    let newest_path = index_task.source_path.to_string_lossy().to_string();
-    // [修改]: 使用 ObjectType::from_str 取代原本的 FileType::try_from
-    // 因為 ObjectType::from_str 回傳 Option，配合 .context() 可以完美轉換錯誤
-    DASHBOARD.add_task(
-        hash,
-        newest_path.clone(),
-        ObjectType::from_str(index_task.ext_type.as_str())
-            .context(format!("unsupported file type: {}", index_task.ext))?,
-    );
-
-    // Branch processing based on file extension
-    let is_image = VALID_IMAGE_EXTENSIONS.contains(&index_task.ext.as_str());
-    if is_image {
-        process_image_info(&mut index_task).context(format!(
-            "failed to process image metadata pipeline:\n{:#?}",
-            index_task
-        ))?;
-    } else {
-        process_video_info(&mut index_task).context(format!(
-            "failed to process video metadata pipeline:\n{:#?}",
-            index_task
-        ))?;
-        index_task.pending = true;
-    };
-
-    let abstract_data = AbstractData::Database(index_task.clone().into());
-    let mut operations = vec![FlushOperation::InsertAbstractData(abstract_data)];
-
-    // Insert EXIF data
-    let hash_str = index_task.hash.as_str();
-    for (tag, value) in &index_task.exif_vec {
-        operations.push(FlushOperation::InsertExif(ExifSchema {
-            hash: hash_str.to_string(),
-            tag: tag.clone(),
-            value: value.clone(),
-        }));
-    }
-
-    let flush_task = FlushTreeTask { operations };
-
-    Ok((index_task, flush_task))
-}
-
-impl From<IndexTask> for Database {
-    fn from(task: IndexTask) -> Self {
-        if task.ext_type == "image" {
-            let image = ImageCombined {
-                object: ObjectSchema {
-                    id: task.hash.clone(),
-                    obj_type: "image".to_string(),
-                    created_time: task.timestamp_ms,
-                    pending: task.pending,
-                    thumbhash: Some(task.thumbhash),
-                },
-                metadata: ImageMetadataSchema {
-                    id: task.hash,
-                    size: task.size,
-                    width: task.width,
-                    height: task.height,
-                    ext: task.ext,
-                    phash: Some(task.phash),
-                },
-            };
-
-            Database {
-                media: MediaWithAlbum::Image(image),
-                album: std::collections::HashSet::new(),
-            }
+        // Logic to generate compressed path based on hash
+        let hash = self.hash();
+        if self.ext_type == "image" {
+             PathBuf::from(format!("./object/compressed/{}/{}.jpg", &hash[0..2], hash))
         } else {
-            // For video, we need to create a VideoCombined
-            // Since we don't have VideoMetadataSchema easily available here,
-            // we'll create a minimal one and assume it will be updated later
-            let video = crate::table::video::VideoCombined {
-                object: ObjectSchema {
-                    id: task.hash.clone(),
-                    obj_type: "video".to_string(),
-                    created_time: task.timestamp_ms,
-                    pending: task.pending,
-                    thumbhash: Some(task.thumbhash),
-                },
-                metadata: crate::table::meta_video::VideoMetadataSchema {
-                    id: task.hash,
-                    size: task.size,
-                    width: task.width,
-                    height: task.height,
-                    ext: task.ext,
-                    duration: 0.0, // Will be updated during video processing
-                },
-            };
+             PathBuf::from(format!("./object/compressed/{}/{}.mp4", &hash[0..2], hash))
+        }
+    }
+    
+    pub fn thumbnail_path(&self) -> String {
+         let hash = self.hash();
+         format!("./object/compressed/{}/{}.jpg", &hash[0..2], hash)
+    }
 
-            Database {
-                media: MediaWithAlbum::Video(video),
-                album: std::collections::HashSet::new(),
+    pub fn hash(&self) -> ArrayString<64> {
+        match &self.data {
+            AbstractData::Image(i) => i.object.id,
+            AbstractData::Video(v) => v.object.id,
+            AbstractData::Album(a) => a.object.id,
+        }
+    }
+}
+
+// Implement From<IndexTask> for AbstractData (or update logic)
+impl From<IndexTask> for AbstractData {
+    fn from(task: IndexTask) -> Self {
+        match task.data {
+            AbstractData::Image(mut i) => {
+                i.metadata.width = task.width;
+                i.metadata.height = task.height;
+                i.metadata.size = task.size;
+                i.object.thumbhash = Some(task.thumbhash);
+                i.metadata.phash = Some(task.phash);
+                AbstractData::Image(i)
             }
+            AbstractData::Video(mut v) => {
+                v.metadata.width = task.width;
+                v.metadata.height = task.height;
+                v.metadata.size = task.size;
+                v.object.thumbhash = Some(task.thumbhash);
+                AbstractData::Video(v)
+            }
+            other => other,
         }
     }
 }

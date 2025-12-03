@@ -2,17 +2,16 @@ use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::{AbstractData, Database, MediaWithAlbum};
-use crate::table::image::ImageCombined;
-use crate::table::video::VideoCombined;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::table::relations::database_exif::ExifSchema; // [FIX] Import ExifSchema
 use crate::workflow::processors::image::regenerate_metadata_for_image;
 use crate::workflow::processors::video::{regenerate_metadata_for_video, video_duration};
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::actor::index::IndexTask;
-use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
+use crate::workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask}; // [FIX] Import FlushOperation
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -52,75 +51,92 @@ pub async fn reindex(
         for (i, batch) in hash_vec.chunks(PROCESS_BATCH_NUMBER).enumerate() {
             info!("Processing batch {}/{}", i + 1, total_batches);
 
-            let database_list: Vec<_> = batch
+            // [FIX] Collect Vec<FlushOperation> instead of Vec<AbstractData>
+            let operations_list: Vec<Vec<FlushOperation>> = batch
                 .into_par_iter()
                 .filter_map(|&hash| {
                     let abstract_data_opt = TREE.load_from_db(&hash).ok();
                     match abstract_data_opt {
-                        Some(AbstractData::Image(mut img)) => {
+                        Some(AbstractData::Image(img)) => {
                             // 創建 Database 結構體來調用現有函數
                             let mut db = Database {
                                 media: MediaWithAlbum::Image(img),
                                 album: HashSet::new(),
                             };
+                            // [FIX] Capture EXIF data
                             match regenerate_metadata_for_image(&mut db) {
-                                Ok(_) => {
-                                    // 從更新後的 Database 中提取 ImageCombined
+                                Ok(exif_vec) => {
                                     if let MediaWithAlbum::Image(updated_img) = db.media {
-                                        Some(AbstractData::Image(updated_img))
+                                        let mut ops = vec![FlushOperation::InsertAbstractData(
+                                            AbstractData::Image(updated_img),
+                                        )];
+
+                                        // [FIX] Add InsertExif operations
+                                        let hash_str = hash.as_str();
+                                        for (tag, value) in exif_vec {
+                                            ops.push(FlushOperation::InsertExif(ExifSchema {
+                                                hash: hash_str.to_string(),
+                                                tag,
+                                                value,
+                                            }));
+                                        }
+                                        Some(ops)
                                     } else {
                                         None
                                     }
                                 }
-                                Err(_) => None,
-                            }
-                        }
-                        Some(AbstractData::Video(mut vid)) => {
-                            // 需要將 metadata 轉換為 IndexTask 或直接更新
-                            // 這裡簡化處理，假設有 regenerate_metadata_for_video_meta
-                            // 實際上可能需要調整
-                            Some(AbstractData::Video(vid)) // 暫時保持
-                        }
-                        Some(AbstractData::Database(mut database)) => {
-                            if database.ext_type() == "image" {
-                                // For images, we need to modify the underlying ImageCombined
-                                // This is a simplified version - in practice we'd need to update the media
-                                Some(AbstractData::Database(database))
-                            } else if database.ext_type() == "video" {
-                                // Convert Database to IndexTask to regenerate metadata
-                                let mut index_task =
-                                    IndexTask::new(database.imported_path(), database.clone());
-                                
-                                match regenerate_metadata_for_video(&mut index_task) {
-                                    Ok(_) => {
-                                        // 1. 重新計算 Duration (直接呼叫 helper function)
-                                        let duration = video_duration(&database.imported_path_string())
-                                            .unwrap_or(0.0); // 若失敗預設為 0.0
-
-                                        if let MediaWithAlbum::Video(ref mut vid) = database.media {
-                                            // 2. 同步 IndexTask 的基礎資料
-                                            vid.metadata.width = index_task.width;
-                                            vid.metadata.height = index_task.height;
-                                            vid.metadata.size = index_task.size;
-                                            vid.object.thumbhash = Some(index_task.thumbhash);
-                                            
-                                            // 3. 更新 Duration
-                                            vid.metadata.duration = duration;
-                                        }
-                                        
-                                        Some(AbstractData::Database(database))
-                                    },
-                                    Err(_) => None,
+                                Err(e) => {
+                                    error!("Failed to regenerate image {}: {}", hash, e);
+                                    None
                                 }
-                            } else {
-                                None
                             }
                         }
-                        Some(AbstractData::Album(_)) => {
-                            // Album reindexing is now handled by database triggers.
-                            // No manual update needed.
-                            None
+                        Some(AbstractData::Video(vid)) => {
+                            // [FIX] Implement Video logic similar to Image/Database
+                            let mut db = Database {
+                                media: MediaWithAlbum::Video(vid),
+                                album: HashSet::new(),
+                            };
+                            let mut index_task =
+                                IndexTask::new(db.imported_path(), db.media.clone());
+
+                            match regenerate_metadata_for_video(&mut index_task) {
+                                Ok(_) => {
+                                    let duration =
+                                        video_duration(&db.imported_path_string()).unwrap_or(0.0);
+
+                                    if let MediaWithAlbum::Video(ref mut vid) = db.media {
+                                        vid.metadata.width = index_task.width;
+                                        vid.metadata.height = index_task.height;
+                                        vid.metadata.size = index_task.size;
+                                        vid.object.thumbhash = Some(index_task.thumbhash);
+                                        vid.metadata.duration = duration;
+
+                                        let mut ops = vec![FlushOperation::InsertAbstractData(
+                                            AbstractData::Video(vid.clone()),
+                                        )];
+
+                                        // [FIX] Add InsertExif operations from index_task
+                                        let hash_str = hash.as_str();
+                                        for (tag, value) in index_task.exif_vec {
+                                            ops.push(FlushOperation::InsertExif(ExifSchema {
+                                                hash: hash_str.to_string(),
+                                                tag,
+                                                value,
+                                            }));
+                                        }
+                                        Some(ops)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to regenerate video {}: {}", hash, e);
+                                    None
+                                }
+                            }
                         }
+                        Some(AbstractData::Album(_)) => None,
                         None => {
                             error!("Reindex failed: cannot find data with hash/id: {}", hash);
                             None
@@ -128,7 +144,12 @@ pub async fn reindex(
                     }
                 })
                 .collect();
-            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(database_list));
+
+            // [FIX] Flatten the list of operations and execute
+            let all_ops: Vec<FlushOperation> = operations_list.into_iter().flatten().collect();
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask {
+                operations: all_ops,
+            });
         }
     })
     .await

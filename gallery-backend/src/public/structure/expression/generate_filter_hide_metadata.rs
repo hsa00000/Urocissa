@@ -37,12 +37,8 @@ impl Expression {
             Expression::Album(album_id) => {
                 if album_id == shared_album_id {
                     Box::new(move |data| match data {
-                        AbstractData::Image(_) | AbstractData::Video(_) => {
-                            // 媒體的 album 關聯需要從關聯表查詢
-                            // 這裡簡化，返回 false，因為媒體的 album 關聯是動態的
-                            false
-                        }
-                        AbstractData::Database(db) => db.album.contains(&album_id),
+                        AbstractData::Image(i) => i.albums.contains(&album_id),
+                        AbstractData::Video(v) => v.albums.contains(&album_id),
                         AbstractData::Album(_) => false,
                     })
                 } else {
@@ -58,16 +54,16 @@ impl Expression {
             Expression::ExtType(ext_type) => Box::new(move |data| match data {
                 AbstractData::Image(_) => ext_type.contains("image"),
                 AbstractData::Video(_) => ext_type.contains("video"),
-                AbstractData::Database(db) => db.ext_type().contains(&ext_type),
                 AbstractData::Album(_) => false,
             }),
             Expression::Ext(ext) => {
                 let ext_lower = ext.to_ascii_lowercase();
                 Box::new(move |data| match data {
-                    AbstractData::Image(i) => i.metadata.ext.to_ascii_lowercase().contains(&ext_lower),
-                    AbstractData::Video(v) => v.metadata.ext.to_ascii_lowercase().contains(&ext_lower),
-                    AbstractData::Database(db) => {
-                        db.ext().to_ascii_lowercase().contains(&ext_lower)
+                    AbstractData::Image(i) => {
+                        i.metadata.ext.to_ascii_lowercase().contains(&ext_lower)
+                    }
+                    AbstractData::Video(v) => {
+                        v.metadata.ext.to_ascii_lowercase().contains(&ext_lower)
                     }
                     AbstractData::Album(_) => false,
                 })

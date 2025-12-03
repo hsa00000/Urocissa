@@ -1,6 +1,6 @@
 use crate::public::db::tree::TREE;
 use crate::router::{AppResult, GuardResult};
-use crate::public::structure::abstract_data::Database;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_auth::GuardAuth;
 use rocket::get;
 use rocket::response::stream::ByteStream;
@@ -8,14 +8,14 @@ use serde::Serialize;
 #[derive(Debug, Serialize)]
 pub struct ExportEntry {
     key: String,
-    value: Database,
+    value: AbstractData,
 }
 
 #[get("/get/get-export")]
 pub async fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;
     // Collect all data synchronously
-    let entries = TREE.load_all_databases_from_db()?;
+    let entries = TREE.load_all_data_from_db()?;
     let entries = entries
         .into_iter()
         .map(|db| ExportEntry {

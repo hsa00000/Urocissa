@@ -5,7 +5,10 @@ use regex::Regex;
 
 use std::{path::PathBuf, sync::LazyLock};
 
-use crate::{public::structure::database::file_modify::FileModify, workflow::tasks::actor::index::IndexTask};
+use crate::{
+    public::structure::abstract_data::AbstractData,
+    public::structure::database::file_modify::FileModify, workflow::tasks::actor::index::IndexTask,
+};
 
 static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(\d{4})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})\b").unwrap()
@@ -14,16 +17,23 @@ static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 pub fn compute_timestamp_ms_by_exif(index_task: &mut IndexTask) -> () {
     let now_time = Local::now().naive_local();
 
+    // 嘗試從 EXIF 解析 DateTimeOriginal
     if let Some(value) = index_task.exif_vec.get("DateTimeOriginal")
         && let Ok(naive_dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
         && let Some(local_dt) = Local.from_local_datetime(&naive_dt).single()
         && local_dt.naive_local() <= now_time
     {
-        info!(
-            "local_dt.timestamp_millis() is {:?}",
-            local_dt.timestamp_millis()
-        );
-        index_task.timestamp_ms = local_dt.timestamp_millis();
+        let timestamp = local_dt.timestamp_millis();
+        // 更新 AbstractData 中的 created_time
+        match &mut index_task.data {
+            AbstractData::Image(img) => {
+                img.object.created_time = timestamp;
+            }
+            AbstractData::Video(vid) => {
+                vid.object.created_time = timestamp;
+            }
+            _ => {}
+        }
     }
 }
 

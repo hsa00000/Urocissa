@@ -4,8 +4,6 @@ use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
 use crate::public::structure::abstract_data::AbstractData;
-use crate::table::image::ImageCombined;
-use crate::table::video::VideoCombined;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
@@ -60,16 +58,6 @@ pub async fn set_user_defined_description(
                     hash: v.object.id.to_string(),
                     tag: USER_DEFINED_DESCRIPTION.to_string(),
                     value: set_user_defined_description.description.clone().unwrap_or_default(),
-                }));
-            }
-            AbstractData::Database(db) => {
-                operations.push(FlushOperation::InsertExif(ExifSchema {
-                    hash: db.hash().to_string(),
-                    tag: USER_DEFINED_DESCRIPTION.to_string(),
-                    value: set_user_defined_description
-                        .description
-                        .clone()
-                        .unwrap_or_default(),
                 }));
             }
             AbstractData::Album(mut alb) => {

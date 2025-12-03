@@ -8,8 +8,8 @@
 //! - Perceptual hash (thumbhash, phash) computation
 
 use crate::{
-    public::structure::database::generate_timestamp::compute_timestamp_ms_by_exif,
     public::structure::abstract_data::{Database, MediaWithAlbum},
+    public::structure::database::generate_timestamp::compute_timestamp_ms_by_exif,
     workflow::tasks::actor::index::IndexTask,
 };
 use anyhow::{Context, Result, anyhow, bail};
@@ -54,7 +54,8 @@ pub fn process_image_info(index_task: &mut IndexTask) -> Result<()> {
 }
 
 /// Rebuild all metadata for an existing image (e.g. after replace/fix)
-pub fn regenerate_metadata_for_image(database: &mut Database) -> Result<()> {
+/// [FIX] Now returns the EXIF data collected during processing
+pub fn regenerate_metadata_for_image(database: &mut Database) -> Result<BTreeMap<String, String>> {
     // Refresh size from filesystem - we need to update the underlying ImageCombined
     let new_size = std::fs::metadata(database.imported_path())
         .context("failed to read metadata for imported image file")?
@@ -66,14 +67,14 @@ pub fn regenerate_metadata_for_image(database: &mut Database) -> Result<()> {
     }
 
     // Re-run the full processing pipeline
-    let mut index_task = IndexTask::new(database.imported_path(), database.clone());
+    let mut index_task = IndexTask::new(database.imported_path(), database.media.clone());
     process_image_info(&mut index_task).context("failed to process image info")?;
-    *database = index_task.into();
+    let exif_vec = index_task.exif_vec.clone();
+    database.media = index_task.into();
 
-    Ok(())
-}
-
-// ────────────────────────────────────────────────────────────────
+    // [FIX] Return the EXIF data
+    Ok(exif_vec)
+} // ────────────────────────────────────────────────────────────────
 // DynamicImage Generation
 // ────────────────────────────────────────────────────────────────
 

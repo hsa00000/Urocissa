@@ -6,9 +6,9 @@ use arrayvec::ArrayString;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::OptionalExtension;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use crate::public::structure::abstract_data::{AbstractData, Database, MediaWithAlbum};
+use crate::public::structure::abstract_data::AbstractData;
 use crate::table::album::AlbumCombined;
 use crate::table::image::ImageCombined;
 use crate::table::video::VideoCombined;
@@ -28,6 +28,7 @@ impl Tree {
         let conn = self.in_disk.get().context("Failed to get DB connection")?;
         Ok(conn)
     }
+
     pub fn load_from_db(&self, id: &str) -> Result<AbstractData> {
         let conn = self.get_connection()?;
 
@@ -39,7 +40,6 @@ impl Tree {
         {
             match obj_type.as_str() {
                 "album" => {
-                    // 讀取相簿
                     let album = AlbumCombined::get_all(&conn)?
                         .into_iter()
                         .find(|a| a.object.id.as_str() == id)
@@ -47,13 +47,15 @@ impl Tree {
                     Ok(AbstractData::Album(album))
                 }
                 "image" => {
-                    // 讀取圖片
-                    let image = ImageCombined::get_by_id(&conn, id)?;
+                    let mut image = ImageCombined::get_by_id(&conn, id)?;
+                    // 填入 albums
+                    image.albums = self.get_album_associations(&conn, &image.object.id)?;
                     Ok(AbstractData::Image(image))
                 }
                 "video" => {
-                    // 讀取影片
-                    let video = VideoCombined::get_by_id(&conn, id)?;
+                    let mut video = VideoCombined::get_by_id(&conn, id)?;
+                    // 填入 albums
+                    video.albums = self.get_album_associations(&conn, &video.object.id)?;
                     Ok(AbstractData::Video(video))
                 }
                 _ => Err(anyhow::anyhow!("Unknown object type")),
@@ -63,94 +65,77 @@ impl Tree {
         }
     }
 
-    // 修改回傳型別為 Vec<Database>，因為單純的 Schema 在這裡可能不夠用
-    pub fn load_all_databases_from_db(&self) -> Result<Vec<Database>> {
+    // 回傳型別改為 Vec<AbstractData>
+    pub fn load_all_data_from_db(&self) -> Result<Vec<AbstractData>> {
         let conn = self.get_connection()?;
 
-        // 載入所有圖片
         let all_images = ImageCombined::get_all(&conn)?;
-        // 載入所有影片
         let all_videos = VideoCombined::get_all(&conn)?;
 
-        let mut databases = Vec::new();
+        // 一次性讀取所有 album 關聯
+        let mut stmt = conn.prepare("SELECT hash, album_id FROM album_database")?;
+        let relations: Vec<(String, String)> = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?.collect::<Result<Vec<_>, _>>()?;
 
-        for image in all_images {
-            // 將 ImageCombined 轉換為舊的 Database 格式以保持兼容性
-            let (media, album_set) = self.image_combined_to_database(&conn, image)?;
-            databases.push(Database {
-                media,
-                album: album_set,
-            });
+        let mut relation_map: std::collections::HashMap<String, HashSet<ArrayString<64>>> = std::collections::HashMap::new();
+        for (hash, album_id) in relations {
+            if let Ok(as_str) = ArrayString::from(&album_id) {
+                relation_map.entry(hash).or_insert_with(HashSet::new).insert(as_str);
+            }
         }
 
-        for video in all_videos {
-            // 將 VideoCombined 轉換為舊的 Database 格式以保持兼容性
-            let (media, album_set) = self.video_combined_to_database(&conn, video)?;
-            databases.push(Database {
-                media,
-                album: album_set,
-            });
+        let mut result = Vec::with_capacity(all_images.len() + all_videos.len());
+
+        for mut image in all_images {
+            if let Some(albums) = relation_map.remove(image.object.id.as_str()) {
+                image.albums = albums;
+            }
+            result.push(AbstractData::Image(image));
+        }
+        
+        for mut video in all_videos {
+            if let Some(albums) = relation_map.remove(video.object.id.as_str()) {
+                video.albums = albums;
+            }
+            result.push(AbstractData::Video(video));
         }
 
-        Ok(databases)
+        Ok(result)
     }
 
-    pub fn load_database_from_hash(&self, hash: &str) -> Result<Option<Database>> {
+    pub fn load_data_from_hash(&self, hash: &str) -> Result<Option<AbstractData>> {
         let conn = self.get_connection()?;
 
-        // 1. 先查詢 object 表確認類型
         let type_sql = "SELECT obj_type FROM object WHERE id = ?";
         let obj_type: Option<String> = conn
             .query_row(type_sql, [hash], |row| row.get(0))
             .optional()?;
 
-        // 2. 根據類型載入資料並轉換
         if let Some(obj_type) = obj_type {
             match obj_type.as_str() {
                 "image" => {
-                    let image = ImageCombined::get_by_id(&conn, hash)?;
-                    let (media, album_set) = self.image_combined_to_database(&conn, image)?;
-                    Ok(Some(Database {
-                        media,
-                        album: album_set,
-                    }))
+                    let mut image = ImageCombined::get_by_id(&conn, hash)?;
+                    image.albums = self.get_album_associations(&conn, &image.object.id)?;
+                    Ok(Some(AbstractData::Image(image)))
                 }
                 "video" => {
-                    let video = VideoCombined::get_by_id(&conn, hash)?;
-                    let (media, album_set) = self.video_combined_to_database(&conn, video)?;
-                    Ok(Some(Database {
-                        media,
-                        album: album_set,
-                    }))
+                    let mut video = VideoCombined::get_by_id(&conn, hash)?;
+                    video.albums = self.get_album_associations(&conn, &video.object.id)?;
+                    Ok(Some(AbstractData::Video(video)))
+                }
+                "album" => {
+                     let album = AlbumCombined::get_all(&conn)?
+                        .into_iter()
+                        .find(|a| a.object.id.as_str() == hash)
+                        .ok_or_else(|| anyhow::anyhow!("Album not found"))?;
+                     Ok(Some(AbstractData::Album(album)))
                 }
                 _ => Err(anyhow::anyhow!("Unknown object type for hash: {}", hash)),
             }
         } else {
             Ok(None)
         }
-    }
-
-    // 輔助函數：將 MediaCombined 轉換為舊的 Database 格式
-    fn image_combined_to_database(
-        &self,
-        conn: &rusqlite::Connection,
-        image: ImageCombined,
-    ) -> Result<(MediaWithAlbum, HashSet<ArrayString<64>>)> {
-        // 讀取相簿關聯
-        let album_set = self.get_album_associations(conn, &image.object.id)?;
-
-        Ok((MediaWithAlbum::Image(image), album_set))
-    }
-
-    fn video_combined_to_database(
-        &self,
-        conn: &rusqlite::Connection,
-        video: VideoCombined,
-    ) -> Result<(MediaWithAlbum, HashSet<ArrayString<64>>)> {
-        // 讀取相簿關聯
-        let album_set = self.get_album_associations(conn, &video.object.id)?;
-
-        Ok((MediaWithAlbum::Video(video), album_set))
     }
 
     fn get_album_associations(

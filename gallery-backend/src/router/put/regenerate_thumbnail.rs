@@ -62,23 +62,40 @@ pub async fn regenerate_thumbnail_with_frame(
         .context("Failed to copy frame file")?;
 
     let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData> {
-        let database_opt = TREE.load_database_from_hash(&hash)?;
-        let mut database =
+        let database_opt = TREE.load_data_from_hash(hash.as_str())?;
+        let mut data =
             database_opt.ok_or_else(|| anyhow::anyhow!("Database not found for hash: {}", hash))?;
 
+        let (imported_path, is_image) = match &data {
+            AbstractData::Image(i) => (i.imported_path(), true),
+            AbstractData::Video(v) => (v.imported_path(), false),
+            _ => return Err(anyhow!("Unsupported type")),
+        };
+
         // Create a temporary IndexTask for image processing
-        let index_task = crate::workflow::tasks::actor::index::IndexTask::new(
-            database.imported_path(),
-            database.clone(),
-        );
+        // 這裡需要注意 IndexTask 的定義，假設它現在接受 AbstractData
+        let index_task =
+            crate::workflow::tasks::actor::index::IndexTask::new(imported_path, data.clone());
 
         let dyn_img =
             generate_dynamic_image(&index_task).context("Failed to decode DynamicImage")?;
 
-        database.set_thumbhash(generate_thumbhash(&dyn_img));
-        database.set_phash(generate_phash(&dyn_img));
+        let thumbhash = generate_thumbhash(&dyn_img);
+        let phash = generate_phash(&dyn_img);
 
-        Ok(AbstractData::Database(database))
+        match &mut data {
+            AbstractData::Image(i) => {
+                i.object.thumbhash = Some(thumbhash);
+                i.metadata.phash = Some(phash);
+            }
+            AbstractData::Video(v) => {
+                v.object.thumbhash = Some(thumbhash);
+                // Video 沒有 phash
+            }
+            _ => {}
+        }
+
+        Ok(data)
     })
     .await
     .context("Failed to spawn blocking task")??;

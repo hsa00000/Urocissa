@@ -41,15 +41,20 @@ pub async fn edit_album(
         let mut to_flush = Vec::with_capacity(json_data.index_array.len());
         for &index in &json_data.index_array {
             let hash = index_to_hash(&tree_snapshot, index)?;
-            let database_opt = TREE.load_database_from_hash(&hash)?;
-            if let Some(mut database) = database_opt {
-                for album_id in &json_data.add_albums_array {
-                    database.album.insert(album_id.clone());
+            let data_opt = TREE.load_data_from_hash(&hash)?;
+            if let Some(mut data) = data_opt {
+                match &mut data {
+                    AbstractData::Image(i) => {
+                        for album_id in &json_data.add_albums_array { i.albums.insert(album_id.clone()); }
+                        for album_id in &json_data.remove_albums_array { i.albums.remove(album_id); }
+                    }
+                    AbstractData::Video(v) => {
+                        for album_id in &json_data.add_albums_array { v.albums.insert(album_id.clone()); }
+                        for album_id in &json_data.remove_albums_array { v.albums.remove(album_id); }
+                    }
+                    _ => {}
                 }
-                for album_id in &json_data.remove_albums_array {
-                    database.album.remove(album_id);
-                }
-                to_flush.push(AbstractData::Database(database));
+                to_flush.push(data);
             }
         }
 
@@ -94,8 +99,8 @@ pub async fn set_album_cover(
         let album_id = set_album_cover_inner.album_id;
         let cover_hash = set_album_cover_inner.cover_hash;
 
-        let database_opt = TREE.load_database_from_hash(&cover_hash).unwrap();
-        let database = database_opt.unwrap();
+        let data_opt = TREE.load_data_from_hash(&cover_hash).unwrap();
+        let data = data_opt.unwrap();
         let cover_str = cover_hash.as_str();
 
         // 修正：分別更新 object 與 meta_album
@@ -110,9 +115,14 @@ pub async fn set_album_cover(
         .unwrap();
 
         // 2. 更新 object 的 thumbhash
+        let thumbhash = match &data {
+            AbstractData::Image(i) => i.object.thumbhash.clone(),
+            AbstractData::Video(v) => v.object.thumbhash.clone(),
+            AbstractData::Album(_) => None,
+        };
         tx.execute(
             "UPDATE object SET thumbhash = ? WHERE id = ?",
-            params![&database.thumbhash(), &*album_id],
+            params![&thumbhash, &*album_id],
         )
         .unwrap();
 

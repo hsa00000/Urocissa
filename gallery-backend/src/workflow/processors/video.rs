@@ -7,16 +7,17 @@
 //! - Width/height calculation with rotation handling
 
 use crate::{
-    public::{constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION, tui::DASHBOARD, structure::abstract_data::{Database, MediaWithAlbum}},
+    public::{
+        constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION, structure::abstract_data::AbstractData,
+        tui::DASHBOARD,
+    },
+    table::{image::ImageCombined, meta_image::ImageMetadataSchema, object::ObjectSchema},
     workflow::{
         processors::image::{
             generate_dynamic_image, generate_phash, generate_thumbhash, small_width_height,
         },
         tasks::actor::index::IndexTask,
     },
-    table::image::ImageCombined,
-    table::meta_image::ImageMetadataSchema,
-    table::object::ObjectSchema,
 };
 use anyhow::{Context, Result, anyhow};
 use log::info;
@@ -40,26 +41,39 @@ pub enum VideoProcessResult {
     ConvertedToImage,
 }
 
-// [FIX]: 增加一個輔助函數來處理 Video -> Image 的轉換
-fn convert_video_db_to_image_db(database: &mut Database) {
-    if let MediaWithAlbum::Video(video) = &database.media {
-        let object = ObjectSchema {
-            id: video.object.id,
-            obj_type: "image".to_string(), // 修改類型
-            created_time: video.object.created_time,
-            pending: false, // 圖片通常不需要 pending 狀態
-            thumbhash: video.object.thumbhash.clone(),
-        };
-        let metadata = ImageMetadataSchema {
-            id: video.metadata.id,
-            size: video.metadata.size,
-            width: video.metadata.width,
-            height: video.metadata.height,
-            ext: video.metadata.ext.clone(),
-            phash: None, // 轉換當下可能還沒有 phash，後續流程會補
-        };
-        database.media = MediaWithAlbum::Image(ImageCombined { object, metadata });
-    }
+// 輔助函數：將 Video AbstractData 轉換為 Image AbstractData
+fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
+    // 暫存需要轉移的資料，避免 borrow checker 衝突
+    let (video_combined, albums) = match data {
+        AbstractData::Video(v) => (v.clone(), v.albums.clone()),
+        _ => return Err(anyhow!("Data is not a video")),
+    };
+
+    let object = ObjectSchema {
+        id: video_combined.object.id,
+        obj_type: "image".to_string(), // 修改類型
+        created_time: video_combined.object.created_time,
+        pending: false, // 圖片通常不需要 pending 狀態
+        thumbhash: video_combined.object.thumbhash,
+    };
+    let metadata = ImageMetadataSchema {
+        id: video_combined.metadata.id,
+        size: video_combined.metadata.size,
+        width: video_combined.metadata.width,
+        height: video_combined.metadata.height,
+        ext: video_combined.metadata.ext,
+        phash: None, // 轉換當下可能還沒有 phash，後續流程會補
+    };
+
+    let image_combined = ImageCombined {
+        object,
+        metadata,
+        albums,
+    };
+
+    // 將修改後的資料寫回 data
+    *data = AbstractData::Image(image_combined);
+    Ok(())
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -109,7 +123,7 @@ pub fn regenerate_metadata_for_video(index_task: &mut IndexTask) -> Result<()> {
 
 /// Probe a video file using ffprobe to obtain `(width, height)`
 pub fn generate_video_width_height(index_task: &IndexTask) -> Result<(u32, u32)> {
-    let imported = index_task.imported_path_string();
+    let imported = index_task.imported_path().to_string_lossy().to_string();
 
     let width = video_width_height("width", &imported)
         .context(format!("failed to obtain video width for {:?}", imported))?;
@@ -177,15 +191,17 @@ pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
     let thumbnail_path = index_task.thumbnail_path();
 
     // Create target directory tree if missing
-    std::fs::create_dir_all(index_task.compressed_path_parent())
-        .context("failed to create parent directory for video thumbnail")?;
+    if let Some(parent) = std::path::Path::new(&thumbnail_path).parent() {
+        std::fs::create_dir_all(parent)
+            .context("failed to create parent directory for video thumbnail")?;
+    }
 
     // Assemble silent ffmpeg command
     let mut cmd = create_silent_ffmpeg_command();
     cmd.args([
         "-y",
         "-i",
-        &index_task.imported_path_string(),
+        &index_task.imported_path().to_string_lossy(),
         "-ss",
         "0",
         "-vframes",
@@ -217,32 +233,47 @@ pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
 // ────────────────────────────────────────────────────────────────
 
 /// Compresses a video file, reporting progress by parsing ffmpeg's output.
-pub fn generate_compressed_video(database: &mut Database) -> Result<VideoProcessResult> {
-    let duration_result = video_duration(&database.imported_path_string());
-    
-    // [FIX]: 處理 duration 結果與類型轉換
+pub fn generate_compressed_video(data: &mut AbstractData) -> Result<VideoProcessResult> {
+    // 確保是 Video 類型，並取得必要資訊
+    let (imported_path, compressed_path, height, ext, hash) = match data {
+        AbstractData::Video(v) => (
+            v.imported_path_string(),
+            // 這裡我們需要重新構建 compressed path 邏輯，或從 IndexTask 取得，但這裡簡單重寫：
+            format!(
+                "./object/compressed/{}/{}.mp4",
+                &v.object.id[0..2],
+                v.object.id
+            ),
+            v.metadata.height,
+            v.metadata.ext.clone(),
+            v.object.id,
+        ),
+        _ => return Err(anyhow!("Cannot compress non-video data")),
+    };
+
+    let duration_result = video_duration(&imported_path);
+
+    // 處理 duration 結果與類型轉換 (例如 GIF 處理)
     let duration = match duration_result {
         // Handle static GIFs by delegating to the image processor.
         Ok(d) if (d * 1000.0) as u32 == 100 => {
             info!(
                 "Static GIF detected. Processing as image: {:?}",
-                database.imported_path_string()
+                imported_path
             );
-            // 實作轉換邏輯取代 todo!()
-            convert_video_db_to_image_db(database);
-            return Ok(VideoProcessResult::ConvertedToImage); 
+            convert_video_data_to_image_data(data)?;
+            return Ok(VideoProcessResult::ConvertedToImage);
         }
         // Handle non-GIFs that fail to parse duration.
         Err(err)
             if err.to_string().contains("fail to parse to f32")
-                && database.ext().eq_ignore_ascii_case("gif") =>
+                && ext.eq_ignore_ascii_case("gif") =>
         {
             info!(
                 "Potentially corrupt or non-standard GIF. Processing as image: {:?}",
-                database.imported_path_string()
+                imported_path
             );
-            // 實作轉換邏輯取代 todo!()
-            convert_video_db_to_image_db(database);
+            convert_video_data_to_image_data(data)?;
             return Ok(VideoProcessResult::ConvertedToImage);
         }
         Ok(d) => d,
@@ -251,8 +282,8 @@ pub fn generate_compressed_video(database: &mut Database) -> Result<VideoProcess
         }
     };
 
-    // [FIX]: 將計算出的 duration 寫回 Database 結構
-    if let MediaWithAlbum::Video(ref mut vid) = database.media {
+    // 將計算出的 duration 寫回 Video 結構
+    if let AbstractData::Video(vid) = data {
         vid.metadata.duration = duration;
     }
 
@@ -260,16 +291,13 @@ pub fn generate_compressed_video(database: &mut Database) -> Result<VideoProcess
     cmd.args([
         "-y", // Overwrite output file if it exists
         "-i",
-        &database.imported_path_string(),
+        &imported_path,
         "-vf",
         // Scale video to a max height of 720p, ensuring dimensions are even.
-        &format!(
-            "scale=trunc(oh*a/2)*2:{}",
-            (cmp::min(database.height(), 720) / 2) * 2
-        ),
+        &format!("scale=trunc(oh*a/2)*2:{}", (cmp::min(height, 720) / 2) * 2),
         "-movflags",
         "faststart", // Optimize for web streaming
-        &database.compressed_path_string(),
+        &compressed_path,
         "-progress",
         "pipe:2", // Send machine-readable progress to stderr (pipe 2)
     ]);
@@ -294,7 +322,7 @@ pub fn generate_compressed_video(database: &mut Database) -> Result<VideoProcess
             // We only proceed if the captured value can be parsed as a number.
             if let Ok(microseconds) = caps[1].parse::<f64>() {
                 let percentage = (microseconds / 1_000_000.0 / duration) * 100.0;
-                DASHBOARD.update_progress(database.hash(), percentage);
+                DASHBOARD.update_progress(hash, percentage);
             }
         }
     }

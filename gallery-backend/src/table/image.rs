@@ -1,8 +1,11 @@
+use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::path::PathBuf;
 
-use crate::table::object::ObjectSchema;
 use crate::table::meta_image::ImageMetadataSchema;
+use crate::table::object::ObjectSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageCombined {
@@ -10,6 +13,8 @@ pub struct ImageCombined {
     pub object: ObjectSchema,
     #[serde(flatten)]
     pub metadata: ImageMetadataSchema,
+    #[serde(default)]
+    pub albums: HashSet<ArrayString<64>>,
 }
 
 impl ImageCombined {
@@ -44,6 +49,20 @@ impl ImageCombined {
         Ok(ImageCombined {
             object: ObjectSchema::from_row(row)?,
             metadata: ImageMetadataSchema::from_row(row)?,
+            albums: HashSet::new(),
         })
+    }
+
+    pub fn imported_path(&self) -> PathBuf {
+        PathBuf::from(self.imported_path_string())
+    }
+
+    pub fn imported_path_string(&self) -> String {
+        format!(
+            "./object/imported/{}/{}.{}",
+            &self.object.id[0..2],
+            self.object.id,
+            self.metadata.ext
+        )
     }
 }

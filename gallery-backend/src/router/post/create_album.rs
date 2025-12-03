@@ -112,10 +112,16 @@ pub fn index_edit_album_insert(
     album_id: ArrayString<64>,
 ) -> Result<AbstractData> {
     let hash = index_to_hash(tree_snapshot, database_index)?;
-    let db_opt = TREE.load_database_from_hash(&hash)?;
-    let mut db = db_opt.ok_or_else(|| anyhow::anyhow!("Database not found for hash: {}", hash))?;
-    db.album.insert(album_id);
-    Ok(AbstractData::Database(db))
+    let data_opt = TREE.load_data_from_hash(&hash)?;
+    let mut data = data_opt.ok_or_else(|| anyhow::anyhow!("Data not found for hash: {}", hash))?;
+    
+    match &mut data {
+        AbstractData::Image(i) => { i.albums.insert(album_id); },
+        AbstractData::Video(v) => { v.albums.insert(album_id); },
+        _ => {}
+    }
+    
+    Ok(data)
 }
 
 /// Generate a random 64-character lowercase alphanumeric hash

@@ -36,17 +36,17 @@ impl Expression {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::Image(_) => ext_type.contains("image"),
                     AbstractData::Video(_) => ext_type.contains("video"),
-                    AbstractData::Database(db) => db.ext_type().contains(&ext_type),
                     AbstractData::Album(_) => ext_type.contains("album"),
                 })
             }
             Expression::Ext(ext) => {
                 let ext_lower = ext.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Image(i) => i.metadata.ext.to_ascii_lowercase().contains(&ext_lower),
-                    AbstractData::Video(v) => v.metadata.ext.to_ascii_lowercase().contains(&ext_lower),
-                    AbstractData::Database(db) => {
-                        db.ext().to_ascii_lowercase().contains(&ext_lower)
+                    AbstractData::Image(i) => {
+                        i.metadata.ext.to_ascii_lowercase().contains(&ext_lower)
+                    }
+                    AbstractData::Video(v) => {
+                        v.metadata.ext.to_ascii_lowercase().contains(&ext_lower)
                     }
                     AbstractData::Album(_) => false,
                 })
@@ -80,11 +80,8 @@ impl Expression {
             }
             Expression::Album(album_id) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Image(_) | AbstractData::Video(_) => {
-                        // 媒體的 album 關聯需要查詢關聯表，這裡簡化為 false
-                        false
-                    }
-                    AbstractData::Database(db) => db.album.contains(&album_id),
+                    AbstractData::Image(i) => i.albums.contains(&album_id),
+                    AbstractData::Video(v) => v.albums.contains(&album_id),
                     AbstractData::Album(_) => false,
                 })
             }

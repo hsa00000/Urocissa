@@ -9,23 +9,23 @@ use tokio::task::spawn_blocking;
 
 use crate::public::io::copy_with_retry;
 use crate::public::error_data::handle_error;
-use crate::public::structure::abstract_data::Database;
+use crate::public::structure::abstract_data::AbstractData;
 
 static COPY_LIMIT: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::const_new(1));
 
 pub struct CopyTask {
     pub path: PathBuf,
-    pub database: Database,
+    pub data: AbstractData,
 }
 
 impl CopyTask {
-    pub fn new(path: PathBuf, database: Database) -> Self {
-        Self { path, database }
+    pub fn new(path: PathBuf, data: AbstractData) -> Self {
+        Self { path, data }
     }
 }
 
 impl Task for CopyTask {
-    type Output = Result<Database>;
+    type Output = Result<AbstractData>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
@@ -38,9 +38,13 @@ impl Task for CopyTask {
     }
 }
 
-fn copy_task(task: CopyTask) -> Result<Database> {
+fn copy_task(task: CopyTask) -> Result<AbstractData> {
     let source_path = task.path;
-    let dest_path = task.database.imported_path();
+    let dest_path = match &task.data {
+        AbstractData::Image(i) => i.imported_path(),
+        AbstractData::Video(v) => v.imported_path(),
+        _ => return Err(anyhow::anyhow!("Unsupported type")),
+    };
 
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent)
@@ -54,5 +58,5 @@ fn copy_task(task: CopyTask) -> Result<Database> {
         )
     })?; // If it fails three times, it goes into the Err branch
 
-    Ok(task.database)
+    Ok(task.data)
 }

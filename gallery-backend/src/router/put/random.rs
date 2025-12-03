@@ -6,7 +6,6 @@ use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::table::image::ImageCombined;
-use crate::public::structure::abstract_data::{Database, MediaWithAlbum};
 use crate::table::object::ObjectSchema;
 use crate::table::meta_image::ImageMetadataSchema;
 use arrayvec::ArrayString;
@@ -14,7 +13,7 @@ use anyhow::Result;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::HashSet;
 
-fn create_random_database() -> Database {
+fn create_random_data() -> AbstractData {
     // 簡單的隨機數據生成 - 創建一個假的 ImageCombined
     let image = ImageCombined {
         object: ObjectSchema {
@@ -32,12 +31,10 @@ fn create_random_database() -> Database {
             ext: "jpg".to_string(),
             phash: None,
         },
+        albums: HashSet::new(),
     };
     
-    Database {
-        media: MediaWithAlbum::Image(image),
-        album: HashSet::new(),
-    }
+    AbstractData::Image(image)
 }
 #[get("/put/generate_random_data?<number>")]
 pub async fn generate_random_data(
@@ -49,8 +46,7 @@ pub async fn generate_random_data(
     let _ = read_only_mode?;
     let database_list: Vec<AbstractData> = (0..number)
         .into_par_iter()
-        .map(|_| create_random_database())
-        .map(|database| AbstractData::Database(database))
+        .map(|_| create_random_data())
         .collect();
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(database_list));
     BATCH_COORDINATOR

@@ -21,7 +21,7 @@ static RE_VIDEO_INFO: LazyLock<Regex> =
 pub fn generate_exif_for_image(index_task: &mut IndexTask) {
     let mut exif_tuple = BTreeMap::new();
 
-    if let Ok(exif) = read_exif(&index_task.source_path) {
+    if let Ok(exif) = read_exif(&index_task.imported_path) {
         for field in exif.fields() {
             if field.ifd_num == exif::In::PRIMARY {
                 let tag = field.tag.to_string();
@@ -58,7 +58,7 @@ fn read_exif(file_path: &Path) -> Result<exif::Exif> {
 /// Use `ffprobe` to retrieve metadata for videos, propagating every error
 /// with rich context strings.
 pub fn generate_exif_for_video(index_task: &mut IndexTask) -> Result<()> {
-    let source_path = &index_task.source_path;
+    let source_path = &index_task.imported_path;
     let mut exif_tuple = BTreeMap::new();
 
     // Spawn ffprobe and capture its output

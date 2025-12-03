@@ -1,25 +1,24 @@
-//! Business flows module - high-level workflow orchestration
-//!
-//! This module contains the main business logic flows that coordinate
-//! multiple tasks together to accomplish complete operations.
-
-use anyhow::Result;
+use crate::workflow::types::try_acquire;
+use anyhow::{Result, anyhow};
 use arrayvec::ArrayString;
 use log::warn;
 use path_clean::PathClean;
 use std::path::PathBuf;
+use tokio::task::spawn_blocking;
 
-use crate::workflow::{
-    tasks::{
-        BATCH_COORDINATOR, INDEX_COORDINATOR,
-        actor::{
-            copy::CopyTask, deduplicate::DeduplicateTask, delete_in_update::DeleteTask,
-            hash::HashTask, index::IndexTask, open_file::OpenFileTask, video::VideoTask,
-        },
-        batcher::flush_tree::FlushTreeTask,
+use crate::public::structure::abstract_data::AbstractData;
+use crate::public::tui::DASHBOARD;
+use crate::workflow::tasks::{
+    BATCH_COORDINATOR,
+    INDEX_COORDINATOR,
+    actor::{
+        copy::CopyTask, deduplicate::DeduplicateTask, delete_in_update::DeleteTask, hash::HashTask,
+        index::IndexTask, open_file::OpenFileTask, video::VideoTask,
     },
-    types::try_acquire,
+    batcher::flush_tree::{FlushOperation, FlushTreeTask}, // 確保引入 FlushOperation
 };
+// 引入 ExifSchema 以便建立寫入操作
+use crate::table::relations::database_exif::ExifSchema;
 
 pub async fn index_workflow(
     path: PathBuf,
@@ -32,12 +31,12 @@ pub async fn index_workflow(
         .execute_waiting(OpenFileTask::new(path.clone()))
         .await??;
 
-    // Step 2: Compute hash
+    // Step 2: Calculate Hash
     let hash = INDEX_COORDINATOR
         .execute_waiting(HashTask::new(file))
         .await??;
 
-    // Step 3: Acquire processing guard to prevent duplicate processing
+    // Step 2: Acquire processing guard
     let _guard = match try_acquire(hash) {
         Some(g) => g,
         None => {
@@ -49,7 +48,7 @@ pub async fn index_workflow(
         }
     };
 
-    // Step 4: Check for duplicates
+    // Step 3: Deduplicate Check
     let result = INDEX_COORDINATOR
         .execute_waiting(DeduplicateTask::new(
             path.clone(),
@@ -58,45 +57,97 @@ pub async fn index_workflow(
         ))
         .await??;
 
-    let (mut database, dedup_flush) = match result {
-        Some((db, flush_task)) => (db, flush_task),
+    let (mut data, dedup_ops) = match result {
+        Some((d, ops)) => (d, ops),
         None => {
-            // File already exists, just delete the source
+            // File exists, processed in DeduplicateTask, just delete source
             INDEX_COORDINATOR.execute_detached(DeleteTask::new(path));
             return Ok(());
         }
     };
 
-    // Step 5: Copy file to imported directory
-    let copied_database = INDEX_COORDINATOR
-        .execute_waiting(CopyTask::new(path.clone(), database.clone()))
+    // Step 4: Copy file to imported directory
+    let copied_data = INDEX_COORDINATOR
+        .execute_waiting(CopyTask::new(path.clone(), data.clone()))
         .await??;
-    database = copied_database;
+    data = copied_data;
 
-    // Step 6: Process metadata
-    let (index_task, flush_task_from_index) = INDEX_COORDINATOR
-        .execute_waiting(IndexTask::new(path.clone(), database.clone()))
+    // Step 5: Process metadata (in blocking thread)
+    let data_clone = data.clone();
+    let imported_path = match &data {
+        AbstractData::Image(i) => i.imported_path(),
+        AbstractData::Video(v) => v.imported_path(),
+        _ => return Err(anyhow!("Unsupported data type")),
+    };
+
+    // 這裡我們會拿回更新後的 index_task，它包含了 process_image_info 解析出的 EXIF 資料
+    let (updated_index_task, duration_opt) =
+        spawn_blocking(move || -> Result<(IndexTask, Option<f64>)> {
+            let mut index_task = IndexTask::new(imported_path.clone(), data_clone.clone());
+            let mut duration = None;
+
+            match &data_clone {
+                AbstractData::Image(_) => {
+                    crate::workflow::processors::image::process_image_info(&mut index_task)?;
+                }
+                AbstractData::Video(_) => {
+                    crate::workflow::processors::video::regenerate_metadata_for_video(
+                        &mut index_task,
+                    )?;
+                    let d = crate::workflow::processors::video::video_duration(
+                        &imported_path.to_string_lossy(),
+                    )
+                    .unwrap_or(0.0);
+                    duration = Some(d);
+                }
+                _ => {}
+            }
+            Ok((index_task, duration))
+        })
         .await??;
 
-    // Update database schema from index_task
-    database = index_task.into();
+    // Update data with processed results (width, height, etc.)
+    data = updated_index_task.clone().into();
 
-    // Step 7: Combine all flush operations and persist
+    // [新增]: 在這裡通知 TUI 任務進度已推進 (完成索引/處理)
+    DASHBOARD.advance_task_state(&hash);
+
+    if let (AbstractData::Video(vid), Some(d)) = (&mut data, duration_opt) {
+        vid.metadata.duration = d;
+    }
+
+    // Step 6: Create Flush Operations
     let mut all_operations = vec![];
-    all_operations.extend(flush_task_from_index.operations);
-    all_operations.extend(dedup_flush.operations);
 
+    // 1. 寫入主要物件資料 (Object, MetaImage/MetaVideo, Album關聯)
+    all_operations.push(FlushOperation::InsertAbstractData(data.clone()));
+
+    // 2. 寫入 Alias (從 deduplicate task 來的)
+    all_operations.extend(dedup_ops);
+
+    // 3. [FIXED] 寫入 EXIF 資料
+    // 從 updated_index_task 中提取 exif_vec 並轉換為 InsertExif 操作
+    let hash_string = data.hash().to_string();
+    for (tag, value) in updated_index_task.exif_vec {
+        all_operations.push(FlushOperation::InsertExif(ExifSchema {
+            hash: hash_string.clone(),
+            tag,
+            value,
+        }));
+    }
+
+    // 執行所有寫入操作
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask {
         operations: all_operations,
     });
 
-    // Step 8: Cleanup source file
+    // Step 7: Cleanup source file
     INDEX_COORDINATOR.execute_detached(DeleteTask::new(PathBuf::from(&path)));
 
-    // Step 9: Compress video if needed
-    if database.ext_type() == "video" {
+    // Step 8: Compress video if needed
+    if let AbstractData::Video(_) = &data {
         INDEX_COORDINATOR
-            .execute_waiting(VideoTask::new(database.clone()))
+            .execute_waiting(VideoTask::new(data.clone()))
             .await??;
     }
 
