@@ -63,6 +63,10 @@ impl AlbumShareTable {
         Ok(())
     }
 
+    /// Retrieves all album shares from the database, grouped by album ID.
+    ///
+    /// Returns a `HashMap` where the key is the album ID as a `String`, and the value is another
+    /// `HashMap` with the share URL as the key (`ArrayString<64>`) and the `Share` struct as the value.
     pub fn get_all_shares_grouped()
     -> rusqlite::Result<HashMap<String, HashMap<ArrayString<64>, Share>>> {
         let conn = TREE.get_connection().unwrap();
