@@ -18,7 +18,7 @@ impl DatabaseExifTable {
                 tag   TEXT NOT NULL,
                 value TEXT NOT NULL,
                 PRIMARY KEY (hash, tag),
-                FOREIGN KEY(hash) REFERENCES database(hash) ON DELETE CASCADE
+                FOREIGN KEY(hash) REFERENCES object(id) ON DELETE CASCADE
             );
 
             CREATE INDEX IF NOT EXISTS idx_database_exif_tag ON database_exif(tag);

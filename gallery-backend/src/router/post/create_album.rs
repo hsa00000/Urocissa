@@ -13,7 +13,8 @@ use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::GuardResult;
 
-use crate::table::album::AlbumSchema;
+use crate::table::album::{AlbumCombined, AlbumMetadataSchema};
+use crate::table::object::ObjectSchema;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
@@ -65,7 +66,9 @@ async fn create_album_internal(title: Option<String>) -> Result<ArrayString<64>>
     let start_time = Instant::now();
 
     let album_id = generate_random_hash();
-    let album = AbstractData::Album(AlbumSchema::new(album_id, title));
+    let object = ObjectSchema::new(album_id, "album");
+    let metadata = AlbumMetadataSchema::new(album_id, title);
+    let album = AbstractData::Album(AlbumCombined { object, metadata });
     BATCH_COORDINATOR
         .execute_batch_waiting(FlushTreeTask::insert(vec![album]))
         .await?;

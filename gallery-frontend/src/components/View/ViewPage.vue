@@ -37,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDataStore } from '@/store/dataStore'
 import ViewPageDisplay from '@/components/View/Display/Display.vue'
@@ -84,6 +84,10 @@ const abstractData = computed(() => {
   } else {
     return undefined
   }
+})
+
+watchEffect(() => {
+  console.log('index:', index.value, 'v-if condition (index !== undefined):', index.value !== undefined)
 })
 </script>
 <style scoped>

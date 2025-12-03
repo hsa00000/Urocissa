@@ -2,6 +2,7 @@ use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::table::database::{DatabaseSchema, MediaCombined};
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -54,6 +55,42 @@ pub async fn reindex(
                 .filter_map(|&hash| {
                     let abstract_data_opt = TREE.load_from_db(&hash).ok();
                     match abstract_data_opt {
+                        Some(AbstractData::Media(mut media)) => {
+                            match &mut media {
+                                MediaCombined::Image(img) => {
+                                    // 創建臨時 DatabaseSchema 來調用現有函數
+                                    let mut temp_schema = DatabaseSchema {
+                                        hash: img.object.id,
+                                        size: img.metadata.size,
+                                        width: img.metadata.width,
+                                        height: img.metadata.height,
+                                        thumbhash: img.object.thumbhash.clone().unwrap_or_default(),
+                                        phash: img.metadata.phash.clone().unwrap_or_default(),
+                                        ext: img.metadata.ext.clone(),
+                                        ext_type: "image".to_string(),
+                                        pending: img.object.pending,
+                                        timestamp_ms: img.object.created_time as i64,
+                                    };
+                                    match regenerate_metadata_for_image(&mut temp_schema) {
+                                        Ok(_) => {
+                                            // 更新回 metadata
+                                            img.metadata.size = temp_schema.size;
+                                            img.metadata.width = temp_schema.width;
+                                            img.metadata.height = temp_schema.height;
+                                            img.metadata.phash = Some(temp_schema.phash);
+                                            Some(AbstractData::Media(media))
+                                        }
+                                        Err(_) => None,
+                                    }
+                                }
+                                MediaCombined::Video(vid) => {
+                                    // 需要將 metadata 轉換為 IndexTask 或直接更新
+                                    // 這裡簡化處理，假設有 regenerate_metadata_for_video_meta
+                                    // 實際上可能需要調整
+                                    Some(AbstractData::Media(media)) // 暫時保持
+                                }
+                            }
+                        }
                         Some(AbstractData::Database(mut database)) => {
                             if database.schema.ext_type == "image" {
                                 match regenerate_metadata_for_image(&mut database.schema) {

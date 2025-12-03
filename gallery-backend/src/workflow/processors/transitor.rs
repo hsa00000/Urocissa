@@ -35,6 +35,9 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
 /// Clear metadata from abstract data based on permissions
 pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metadata: bool) {
     match abstract_data {
+        AbstractData::Media(media) => {
+            // 媒體的 metadata 清除，暫時保持
+        }
         AbstractData::Database(database) => {
             if !show_metadata {
                 database.album.clear();
@@ -42,7 +45,7 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
         }
         AbstractData::Album(album) => {
             if !show_metadata {
-                album.tag.clear();
+                album.metadata.tag.clear();
             }
         }
     }

@@ -7,10 +7,10 @@ mod router;
 mod table;
 mod workflow;
 
-use crate::workflow::processors::setup::initialize;
 use crate::public::constant::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
 use crate::public::error_data::handle_error;
 use crate::public::tui::{DASHBOARD, tui_task};
+use crate::workflow::processors::setup::initialize;
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
@@ -50,9 +50,17 @@ fn main() -> Result<()> {
             if let Err(e) = crate::public::db::schema::create_all_tables(&conn) {
                 panic!("Failed to create tables: {:?}", e);
             }
-            let data_count: i64 = conn.query_row("SELECT COUNT(*) FROM database", [], |row| row.get(0)).unwrap();
+            let data_count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM object WHERE obj_type IN ('image', 'video')", 
+                [], 
+                |row| row.get(0)
+            ).unwrap();
             info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", data_count);
-            let album_count: i64 = conn.query_row("SELECT COUNT(*) FROM album", [], |row| row.get(0)).unwrap();
+            let album_count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM object WHERE obj_type = 'album'", 
+                [], 
+                |row| row.get(0)
+            ).unwrap();
             info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", album_count);
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
             BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);

@@ -111,9 +111,56 @@ export const AlbumSchema = AlbumParse.extend({
   tags: z.array(z.string())
 })
 
+// --- New Flat Schemas (Matching Backend Response) ---
+
+const ObjTypeEnum = z.enum(['image', 'video', 'album'])
+
+const FlatObjectBase = z.object({
+  id: z.string(),
+  objType: ObjTypeEnum,
+  createdTime: z.number(),
+  pending: z.boolean(),
+  thumbhash: z.array(z.number()).nullable().optional()
+})
+
+export const FlatImageSchema = FlatObjectBase.extend({
+  objType: z.literal('image'),
+  type: z.literal('image').optional(), // Backend's MediaCombined tag
+  size: z.number(),
+  width: z.number(),
+  height: z.number(),
+  ext: z.string(),
+  phash: z.array(z.number()).nullable().optional()
+})
+
+export const FlatVideoSchema = FlatObjectBase.extend({
+  objType: z.literal('video'),
+  type: z.literal('video').optional(), // Backend's MediaCombined tag
+  size: z.number(),
+  width: z.number(),
+  height: z.number(),
+  ext: z.string(),
+  duration: z.number().default(0)
+})
+
+export const FlatAlbumSchema = FlatObjectBase.extend({
+  objType: z.literal('album'),
+  title: z.string().nullable(),
+  startTime: z.number().nullable(),
+  endTime: z.number().nullable(),
+  lastModifiedTime: z.number(),
+  cover: z.string().nullable(),
+  userDefinedMetadata: z.record(z.string(), z.array(z.string())),
+  tag: z.array(z.string()).optional().default([]),
+  itemCount: z.number(),
+  itemSize: z.number()
+})
+
+// REPLACED: Now uses the flat schemas union
 export const AbstractDataParseSchema = z.union([
-  z.object({ Database: DataBaseParse }),
-  z.object({ Album: AlbumParse })
+  FlatImageSchema,
+  FlatVideoSchema,
+  FlatAlbumSchema
 ])
 
 export const AbstractDataWithTagSchema = z.object({

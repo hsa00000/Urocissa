@@ -45,10 +45,10 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
         let album_info_list = album_list
             .into_iter()
             .map(|album| {
-                let share_list = all_shares_map.remove(album.id.as_str()).unwrap_or_default();
+                let share_list = all_shares_map.remove(album.object.id.as_str()).unwrap_or_default();
                 AlbumInfo {
-                    album_id: album.id.to_string(),
-                    album_name: album.title,
+                    album_id: album.object.id.to_string(),
+                    album_name: album.metadata.title,
                     share_list,
                 }
             })

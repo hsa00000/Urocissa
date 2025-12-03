@@ -5,6 +5,7 @@ use serde_json;
 use crate::{
     public::db::tree::TREE,
     public::structure::abstract_data::AbstractData,
+    table::database::MediaCombined,
     table::relations::database_alias::DatabaseAliasSchema,
     table::relations::database_exif::ExifSchema,
     table::relations::tag_databases::TagDatabaseSchema,
@@ -66,39 +67,95 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
     for op in operations {
         match op {
             FlushOperation::InsertAbstractData(abstract_data) => match abstract_data {
-                // 改為匹配 Database Wrapper
+                AbstractData::Media(media) => match media {
+                    MediaCombined::Image(img) => {
+                        // 1. Insert Object
+                        tx.execute(
+                            "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) VALUES (?, 'image', ?, ?, ?)",
+                            rusqlite::params![img.object.id.as_str(), img.object.created_time, img.object.pending as i32, img.object.thumbhash],
+                        )?;
+                        // 2. Insert Meta Image
+                        tx.execute(
+                            "INSERT INTO meta_image (id, size, width, height, ext, phash) VALUES (?, ?, ?, ?, ?, ?)",
+                            rusqlite::params![img.object.id.as_str(), img.metadata.size, img.metadata.width, img.metadata.height, img.metadata.ext, img.metadata.phash],
+                        )?;
+                    }
+                    MediaCombined::Video(vid) => {
+                        // 1. Insert Object
+                        tx.execute(
+                            "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) VALUES (?, 'video', ?, ?, ?)",
+                            rusqlite::params![vid.object.id.as_str(), vid.object.created_time, vid.object.pending as i32, vid.object.thumbhash],
+                        )?;
+                        // 2. Insert Meta Video
+                        tx.execute(
+                            "INSERT INTO meta_video (id, size, width, height, ext, duration) VALUES (?, ?, ?, ?, ?, ?)",
+                            rusqlite::params![vid.object.id.as_str(), vid.metadata.size, vid.metadata.width, vid.metadata.height, vid.metadata.ext, vid.metadata.duration],
+                        )?;
+                    }
+                },
+                // --- 修改開始：更新 AbstractData::Database 的寫入邏輯 ---
                 AbstractData::Database(database) => {
-                    // 1. 寫入 Database Schema (純淨表)
+                    // 1. 寫入 Object 表 (取代舊的 database 表)
                     tx.execute(
-                        "INSERT INTO database \
-                         (hash, size, width, height, thumbhash, phash, ext, \
-                          ext_type, pending, timestamp_ms) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
-                         ON CONFLICT(hash) DO UPDATE SET \
-                         size=excluded.size, \
-                         width=excluded.width, \
-                         height=excluded.height, \
-                         thumbhash=excluded.thumbhash, \
-                         phash=excluded.phash, \
-                         ext=excluded.ext, \
-                         ext_type=excluded.ext_type, \
+                        "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) \
+                         VALUES (?1, ?2, ?3, ?4, ?5) \
+                         ON CONFLICT(id) DO UPDATE SET \
+                         obj_type=excluded.obj_type, \
+                         created_time=excluded.created_time, \
                          pending=excluded.pending, \
-                         timestamp_ms=excluded.timestamp_ms",
+                         thumbhash=excluded.thumbhash",
                         rusqlite::params![
                             database.schema.hash.as_str(),
-                            database.schema.size,
-                            database.schema.width,
-                            database.schema.height,
-                            &database.schema.thumbhash,
-                            &database.schema.phash,
-                            &database.schema.ext,
-                            &database.schema.ext_type,
-                            database.schema.pending as i32,
+                            database.schema.ext_type,
                             database.schema.timestamp_ms,
+                            database.schema.pending as i32,
+                            database.schema.thumbhash,
                         ],
                     )?;
 
-                    // 2. 同步相簿關聯
+                    // 2. 根據類型寫入 Meta 表
+                    if database.schema.ext_type == "image" {
+                        tx.execute(
+                            "INSERT INTO meta_image (id, size, width, height, ext, phash) \
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                             ON CONFLICT(id) DO UPDATE SET \
+                             size=excluded.size, \
+                             width=excluded.width, \
+                             height=excluded.height, \
+                             ext=excluded.ext, \
+                             phash=excluded.phash",
+                            rusqlite::params![
+                                database.schema.hash.as_str(),
+                                database.schema.size,
+                                database.schema.width,
+                                database.schema.height,
+                                database.schema.ext,
+                                database.schema.phash,
+                            ],
+                        )?;
+                    } else {
+                        // 處理 Video (注意：DatabaseSchema 沒有 duration，這裡暫補 0.0)
+                        tx.execute(
+                            "INSERT INTO meta_video (id, size, width, height, ext, duration) \
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                             ON CONFLICT(id) DO UPDATE SET \
+                             size=excluded.size, \
+                             width=excluded.width, \
+                             height=excluded.height, \
+                             ext=excluded.ext, \
+                             duration=excluded.duration",
+                            rusqlite::params![
+                                database.schema.hash.as_str(),
+                                database.schema.size,
+                                database.schema.width,
+                                database.schema.height,
+                                database.schema.ext,
+                                0.0, 
+                            ],
+                        )?;
+                    }
+
+                    // 3. 同步相簿關聯 (維持不變)
                     tx.execute(
                         "DELETE FROM album_databases WHERE hash = ?1",
                         rusqlite::params![database.schema.hash.as_str()],
@@ -111,59 +168,83 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                         )?;
                     }
                 }
+                // --- 修改結束 ---
                 AbstractData::Album(album) => {
                     tx.execute(
-                        "INSERT INTO album \
-                         (id, title, created_time, start_time, end_time, last_modified_time, \
-                          cover, thumbhash, user_defined_metadata, tag, \
-                          item_count, item_size, pending) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) \
+                        "INSERT INTO meta_album \
+                         (id, title, start_time, end_time, last_modified_time, \
+                          cover, user_defined_metadata, tag, \
+                          item_count, item_size) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
                          ON CONFLICT(id) DO UPDATE SET \
                          title=excluded.title, \
-                         created_time=excluded.created_time, \
                          start_time=excluded.start_time, \
                          end_time=excluded.end_time, \
                          last_modified_time=excluded.last_modified_time, \
                          cover=excluded.cover, \
-                         thumbhash=excluded.thumbhash, \
                          user_defined_metadata=excluded.user_defined_metadata, \
                          tag=excluded.tag, \
                          item_count=excluded.item_count, \
-                         item_size=excluded.item_size, \
-                         pending=excluded.pending",
+                         item_size=excluded.item_size",
                         rusqlite::params![
-                            album.id.as_str(),
-                            album.title,
-                            album.created_time as i64,
-                            album.start_time.map(|t| t as i64),
-                            album.end_time.map(|t| t as i64),
-                            album.last_modified_time as i64,
-                            album.cover.as_ref().map(|c| c.as_str()),
-                            album.thumbhash.as_ref(),
-                            serde_json::to_string(&album.user_defined_metadata).unwrap(),
-                            serde_json::to_string(&album.tag.iter().collect::<Vec<_>>()).unwrap(),
-                            album.item_count as i64,
-                            album.item_size,
-                            album.pending as i32,
+                            album.object.id.as_str(),
+                            album.metadata.title,
+                            album.metadata.start_time.map(|t| t as i64),
+                            album.metadata.end_time.map(|t| t as i64),
+                            album.metadata.last_modified_time as i64,
+                            album.metadata.cover.as_ref().map(|c| c.as_str()),
+                            serde_json::to_string(&album.metadata.user_defined_metadata).unwrap(),
+                            serde_json::to_string(&album.metadata.tag.iter().collect::<Vec<_>>()).unwrap(),
+                            album.metadata.item_count as i64,
+                            album.metadata.item_size,
                         ],
+                    )?;
+                    
+                    // 補寫 Object 表 (Album 也是 Object)
+                    tx.execute(
+                        "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) \
+                         VALUES (?1, 'album', ?2, ?3, ?4) \
+                         ON CONFLICT(id) DO UPDATE SET \
+                         obj_type=excluded.obj_type, \
+                         created_time=excluded.created_time, \
+                         pending=excluded.pending, \
+                         thumbhash=excluded.thumbhash",
+                         rusqlite::params![
+                            album.object.id.as_str(),
+                            album.object.created_time,
+                            album.object.pending as i32,
+                            album.object.thumbhash,
+                         ]
                     )?;
                 }
             },
             FlushOperation::RemoveAbstractData(abstract_data) => match abstract_data {
+                AbstractData::Media(media) => {
+                    let id = match media {
+                        MediaCombined::Image(i) => i.object.id,
+                        MediaCombined::Video(v) => v.object.id,
+                    };
+                    tx.execute(
+                        "DELETE FROM object WHERE id = ?1",
+                        rusqlite::params![id.as_str()],
+                    )?;
+                }
                 AbstractData::Database(database) => {
                     tx.execute(
-                        "DELETE FROM database WHERE hash = ?1",
+                        "DELETE FROM object WHERE id = ?1",
                         rusqlite::params![database.schema.hash.as_str()],
                     )?;
+                    // album_databases 會因為 FK Cascade 自動刪除，或手動刪除亦可
                     tx.execute(
                         "DELETE FROM album_databases WHERE hash = ?1",
                         rusqlite::params![database.schema.hash.as_str()],
                     )?;
                 }
                 AbstractData::Album(album) => {
+                    // 刪除 Object 會 Cascade 刪除 meta_album
                     tx.execute(
-                        "DELETE FROM album WHERE id = ?1",
-                        rusqlite::params![album.id.as_str()],
+                        "DELETE FROM object WHERE id = ?1",
+                        rusqlite::params![album.object.id.as_str()],
                     )?;
                 }
             },

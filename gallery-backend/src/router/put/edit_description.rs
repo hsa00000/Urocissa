@@ -4,6 +4,7 @@ use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
 use crate::public::structure::abstract_data::AbstractData;
+use crate::table::database::MediaCombined;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
@@ -44,6 +45,18 @@ pub async fn set_user_defined_description(
         let mut operations = Vec::new();
 
         match abstract_data {
+            AbstractData::Media(media) => {
+                // 媒體的 exif 處理類似 Database
+                let id = match media {
+                    MediaCombined::Image(i) => i.object.id,
+                    MediaCombined::Video(v) => v.object.id,
+                };
+                operations.push(FlushOperation::InsertExif(ExifSchema {
+                    hash: id.to_string(),
+                    tag: USER_DEFINED_DESCRIPTION.to_string(),
+                    value: set_user_defined_description.description.clone().unwrap_or_default(),
+                }));
+            }
             AbstractData::Database(db) => {
                 operations.push(FlushOperation::InsertExif(ExifSchema {
                     hash: db.schema.hash.to_string(),
@@ -55,7 +68,7 @@ pub async fn set_user_defined_description(
                 }));
             }
             AbstractData::Album(mut alb) => {
-                alb.user_defined_metadata.insert(
+                alb.metadata.user_defined_metadata.insert(
                     USER_DEFINED_DESCRIPTION.to_string(),
                     if let Some(desc) = &set_user_defined_description.description {
                         vec![desc.clone()]

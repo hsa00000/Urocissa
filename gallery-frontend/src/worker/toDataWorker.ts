@@ -154,19 +154,56 @@ async function fetchData(
       continue
     }
 
-    if ('Database' in item.data) {
+    // Adapt Flat JSON (Backend) to Legacy Structure (Frontend)
+    const dataObj = item.data
+
+    if (dataObj.objType === 'album') {
+      // Construct Legacy Album Object
+      const legacyAlbumData = {
+        id: dataObj.id,
+        title: dataObj.title,
+        createdTime: dataObj.createdTime,
+        startTime: dataObj.startTime,
+        endTime: dataObj.endTime,
+        lastModifiedTime: dataObj.lastModifiedTime,
+        cover: dataObj.cover,
+        thumbhash: dataObj.thumbhash || null,
+        userDefinedMetadata: dataObj.userDefinedMetadata,
+        tag: dataObj.tag,
+        itemCount: dataObj.itemCount,
+        itemSize: dataObj.itemSize,
+        pending: dataObj.pending,
+        shareList: new Map() // Backend 'get-data' does not return share list currently
+      }
+
+      const albumInstance = createAlbum(legacyAlbumData, legacyAlbumData.createdTime, item.tag || [])
+      const abstractData = createAbstractData(albumInstance)
+      data.set(key, { abstractData, hashToken: item.token })
+
+    } else {
+      // It is 'image' or 'video' -> Database
+      const legacyDbData = {
+        album: [], // Backend 'get-data' does not return album list currently
+        ext: dataObj.ext,
+        extType: dataObj.objType === 'video' ? 'video' : 'image',
+        hash: dataObj.id,
+        height: dataObj.height,
+        pending: dataObj.pending,
+        phash: (dataObj.objType === 'image' ? dataObj.phash : []) || [],
+        size: dataObj.size,
+        thumbhash: dataObj.thumbhash || [],
+        width: dataObj.width,
+        timestampMs: dataObj.createdTime
+      }
+      
       const databaseInstance = createDataBase(
-        item.data.Database,
-        item.data.Database.timestampMs,
-        item.tag,
+        legacyDbData,
+        legacyDbData.timestampMs,
+        item.tag || [],
         item.alias,
         item.exifVec
       )
       const abstractData = createAbstractData(databaseInstance)
-      data.set(key, { abstractData, hashToken: item.token })
-    } else if ('Album' in item.data) {
-      const albumInstance = createAlbum(item.data.Album, item.data.Album.createdTime, item.tag)
-      const abstractData = createAbstractData(albumInstance)
       data.set(key, { abstractData, hashToken: item.token })
     }
 

@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::table::album::AlbumSchema;
+use crate::table::album::AlbumCombined; // 修改為新的組合結構
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
@@ -43,16 +43,8 @@ impl Tree {
             .collect();
         tag_infos
     }
-    pub fn read_albums(&self) -> Result<Vec<AlbumSchema>> {
+    pub fn read_albums(&self) -> Result<Vec<AlbumCombined>> {
         let conn = self.get_connection()?;
-        let mut stmt = conn
-            .prepare("SELECT * FROM album")
-            .context("Failed to prepare statement")?;
-        let albums = stmt
-            .query_map([], |row| AlbumSchema::from_row(row))
-            .context("Failed to query albums")?
-            .collect::<Result<Vec<_>, _>>()
-            .context("Failed to collect albums")?;
-        Ok(albums)
+        Ok(AlbumCombined::get_all(&conn)?)
     }
 }

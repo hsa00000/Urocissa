@@ -3,7 +3,117 @@ use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// DatabaseSchema: 資料庫層的 schema，用於從 SQLite 讀取/寫入
+use crate::table::object::ObjectSchema;
+use crate::table::meta_image::ImageMetadataSchema;
+use crate::table::meta_video::VideoMetadataSchema;
+
+// 統一的媒體列舉，用於 load_from_db 回傳
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum MediaCombined {
+    Image(ImageCombined),
+    Video(VideoCombined),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageCombined {
+    #[serde(flatten)]
+    pub object: ObjectSchema,
+    #[serde(flatten)]
+    pub metadata: ImageMetadataSchema,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoCombined {
+    #[serde(flatten)]
+    pub object: ObjectSchema,
+    #[serde(flatten)]
+    pub metadata: VideoMetadataSchema,
+}
+
+impl MediaCombined {
+    /// 根據 Hash (ID) 讀取單一媒體資料
+    pub fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
+        // 1. 先查詢 object 表確認類型
+        let type_sql = "SELECT obj_type FROM object WHERE id = ?";
+        let obj_type: String = conn.query_row(type_sql, [id], |row| row.get(0))?;
+
+        // 2. 根據類型執行對應的 JOIN
+        match obj_type.as_str() {
+            "image" => {
+                let sql = r#"
+                    SELECT o.*, m.* FROM object o
+                    INNER JOIN meta_image m ON o.id = m.id
+                    WHERE o.id = ?
+                "#;
+                conn.query_row(sql, [id], |row| {
+                    Ok(MediaCombined::Image(ImageCombined {
+                        object: ObjectSchema::from_row(row)?,
+                        metadata: ImageMetadataSchema::from_row(row)?,
+                    }))
+                })
+            }
+            "video" => {
+                let sql = r#"
+                    SELECT o.*, m.* FROM object o
+                    INNER JOIN meta_video m ON o.id = m.id
+                    WHERE o.id = ?
+                "#;
+                conn.query_row(sql, [id], |row| {
+                    Ok(MediaCombined::Video(VideoCombined {
+                        object: ObjectSchema::from_row(row)?,
+                        metadata: VideoMetadataSchema::from_row(row)?,
+                    }))
+                })
+            }
+            _ => Err(rusqlite::Error::QueryReturnedNoRows), // 或其他錯誤
+        }
+    }
+
+    /// 讀取所有媒體資料
+    pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
+        let mut result = Vec::new();
+
+        // 讀取所有 image
+        let image_sql = r#"
+            SELECT o.*, m.* FROM object o
+            INNER JOIN meta_image m ON o.id = m.id
+            WHERE o.obj_type = 'image'
+        "#;
+        let mut stmt = conn.prepare(image_sql)?;
+        let image_rows = stmt.query_map([], |row| {
+            Ok(MediaCombined::Image(ImageCombined {
+                object: ObjectSchema::from_row(row)?,
+                metadata: ImageMetadataSchema::from_row(row)?,
+            }))
+        })?;
+        for row in image_rows {
+            result.push(row?);
+        }
+
+        // 讀取所有 video
+        let video_sql = r#"
+            SELECT o.*, m.* FROM object o
+            INNER JOIN meta_video m ON o.id = m.id
+            WHERE o.obj_type = 'video'
+        "#;
+        let mut stmt = conn.prepare(video_sql)?;
+        let video_rows = stmt.query_map([], |row| {
+            Ok(MediaCombined::Video(VideoCombined {
+                object: ObjectSchema::from_row(row)?,
+                metadata: VideoMetadataSchema::from_row(row)?,
+            }))
+        })?;
+        for row in video_rows {
+            result.push(row?);
+        }
+
+        Ok(result)
+    }
+}
+
+// 保留舊的 DatabaseSchema 用於向後兼容或遷移
+/// DatabaseSchema: 舊的 schema，保留用於遷移
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DatabaseSchema {
@@ -21,27 +131,7 @@ pub struct DatabaseSchema {
 
 impl DatabaseSchema {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
-        let sql_create_main_table = r#"
-            CREATE TABLE IF NOT EXISTS database (
-                hash TEXT PRIMARY KEY,
-                size INTEGER CHECK(size > 0),
-                width INTEGER CHECK(width > 0),
-                height INTEGER CHECK(height > 0),
-                thumbhash BLOB,
-                phash BLOB,
-                ext TEXT NOT NULL,
-                ext_type TEXT CHECK(ext_type IN ('image', 'video')),
-                pending INTEGER,
-                timestamp_ms INTEGER CHECK(timestamp_ms > 0)
-            );
-        "#;
-        conn.execute(sql_create_main_table, [])?;
-
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_database_timestamp ON database(timestamp_ms);",
-            [],
-        )?;
-
+        // 舊表已棄用，不再創建
         Ok(())
     }
 
@@ -53,20 +143,8 @@ impl DatabaseSchema {
         let thumbhash: Vec<u8> = row.get("thumbhash")?;
         let phash: Vec<u8> = row.get("phash")?;
         let ext: String = row.get("ext")?;
-
-        // 移除 album 讀取邏輯
-        /*
-        let album_str: String = row.get("album")?;
-        let album_vec: Vec<String> = serde_json::from_str(&album_str).unwrap_or_default();
-        let album: HashSet<ArrayString<64>> = album_vec
-            .into_iter()
-            .filter_map(|s| ArrayString::from(&s).ok())
-            .collect();
-        */
-
         let ext_type: String = row.get("ext_type")?;
         let pending: bool = row.get::<_, i32>("pending")? != 0;
-
         let timestamp_ms: i64 = row.get("timestamp_ms").unwrap_or(0);
 
         Ok(DatabaseSchema {
@@ -77,7 +155,6 @@ impl DatabaseSchema {
             thumbhash,
             phash,
             ext,
-            // album, // 已移除
             ext_type,
             pending,
             timestamp_ms,
@@ -122,7 +199,6 @@ impl DatabaseSchema {
             phash: Vec::<u8>::new(),
             ext_type: "image".to_string(),
             ext: "jpg".to_string(),
-            // album: HashSet::new(), // 已移除
             pending: false,
             timestamp_ms: 0,
         }
@@ -151,7 +227,6 @@ impl DatabaseSchema {
             phash: Vec::new(),
             ext_type: Self::determine_type(&ext),
             ext,
-            // album: HashSet::new(), // 已移除
             pending: false,
             timestamp_ms: 0,
         })

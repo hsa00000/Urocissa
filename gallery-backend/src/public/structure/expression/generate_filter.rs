@@ -1,5 +1,6 @@
 use super::Expression;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::table::database::MediaCombined;
 
 impl Expression {
     pub fn generate_filter(self) -> Box<dyn Fn(&AbstractData) -> bool + Sync + Send> {
@@ -34,6 +35,10 @@ impl Expression {
             }),
             Expression::ExtType(ext_type) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                    AbstractData::Media(media) => match media {
+                        MediaCombined::Image(_) => ext_type.contains("image"),
+                        MediaCombined::Video(_) => ext_type.contains("video"),
+                    },
                     AbstractData::Database(db) => db.schema.ext_type.contains(&ext_type),
                     AbstractData::Album(_) => ext_type.contains("album"),
                 })
@@ -41,6 +46,10 @@ impl Expression {
             Expression::Ext(ext) => {
                 let ext_lower = ext.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                    AbstractData::Media(media) => match media {
+                        MediaCombined::Image(i) => i.metadata.ext.to_ascii_lowercase().contains(&ext_lower),
+                        MediaCombined::Video(v) => v.metadata.ext.to_ascii_lowercase().contains(&ext_lower),
+                    },
                     AbstractData::Database(db) => {
                         db.schema.ext.to_ascii_lowercase().contains(&ext_lower)
                     }
@@ -76,6 +85,10 @@ impl Expression {
             }
             Expression::Album(album_id) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                    AbstractData::Media(media) => {
+                        // 媒體的 album 關聯需要查詢關聯表，這裡簡化為 false
+                        false
+                    }
                     AbstractData::Database(db) => db.album.contains(&album_id),
                     AbstractData::Album(_) => false,
                 })

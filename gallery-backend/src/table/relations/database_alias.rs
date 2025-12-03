@@ -20,7 +20,7 @@ impl DatabaseAliasTable {
                 modified INTEGER NOT NULL,
                 scan_time INTEGER NOT NULL,
                 PRIMARY KEY (hash, scan_time),
-                FOREIGN KEY (hash) REFERENCES database(hash) ON DELETE CASCADE
+                FOREIGN KEY (hash) REFERENCES object(id) ON DELETE CASCADE
             );
 
             CREATE INDEX IF NOT EXISTS idx_database_alias_scan_time ON database_alias(scan_time);
