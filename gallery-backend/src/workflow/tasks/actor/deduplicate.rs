@@ -12,8 +12,12 @@ use crate::{
         tui::DASHBOARD,
     },
     table::{
-        image::ImageCombined, meta_image::ImageMetadataSchema, meta_video::VideoMetadataSchema,
-        object::{ObjectSchema, ObjectType}, relations::database_alias::DatabaseAliasSchema, video::VideoCombined,
+        image::ImageCombined,
+        meta_image::ImageMetadataSchema,
+        meta_video::VideoMetadataSchema,
+        object::{ObjectSchema, ObjectType},
+        relations::database_alias::DatabaseAliasSchema,
+        video::VideoCombined,
     },
     workflow::tasks::{
         BATCH_COORDINATOR,
@@ -60,7 +64,7 @@ impl Task for DeduplicateTask {
 }
 
 fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(Database, FlushTreeTask)>> {
-    let existing_db_result = TREE.load_database_from_hash(task.hash.as_str());
+    let existing_db_opt = TREE.load_database_from_hash(task.hash.as_str())?;
 
     let metadata = task.path.metadata()?;
     let modified = metadata
@@ -69,8 +73,8 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(Database, FlushTree
         .as_millis();
     let file_modify = FileModify::new(&task.path, modified);
 
-    match existing_db_result {
-        Ok(mut database_exist) => {
+    match existing_db_opt {
+        Some(mut database_exist) => {
             let mut operations = Vec::new();
             operations.push(FlushOperation::InsertDatabaseAlias(DatabaseAliasSchema {
                 hash: database_exist.hash().as_str().to_string(),
@@ -89,11 +93,8 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(Database, FlushTree
 
             Ok(None)
         }
-        Err(_) => {
-            // For new files:
-            // 1. Determine type
-            // 2. Create a basic Database structure (with 0 width/height, empty hashes)
-            // 3. Return it so the flow can pass it to CopyTask and IndexTask
+        None => {
+            // new files
 
             let ext = task
                 .path
@@ -105,11 +106,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(Database, FlushTree
 
             // Register to Dashboard (Task Start)
             let obj_type = ObjectType::from_str(ext_type).unwrap_or(ObjectType::Image);
-            DASHBOARD.add_task(
-                task.hash,
-                task.path.to_string_lossy().to_string(),
-                obj_type.clone(),
-            );
+            DASHBOARD.add_task(task.hash, task.path.to_string_lossy().to_string(), obj_type);
 
             let created_time =
                 compute_timestamp_ms_by_file_modify(&file_modify, DEFAULT_PRIORITY_LIST);

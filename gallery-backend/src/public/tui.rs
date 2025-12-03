@@ -193,7 +193,7 @@ impl Dashboard {
             .entry(hash.clone())
             .and_modify(|t| {
                 t.path = path.clone();
-                t.obj_type = obj_type.clone(); // 更新類型
+                t.obj_type = obj_type; // 更新類型
                 t.state = TaskState::Indexing(Instant::now());
                 t.progress = None;
             })

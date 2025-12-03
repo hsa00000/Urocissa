@@ -112,7 +112,8 @@ pub fn index_edit_album_insert(
     album_id: ArrayString<64>,
 ) -> Result<AbstractData> {
     let hash = index_to_hash(tree_snapshot, database_index)?;
-    let mut db = TREE.load_database_from_hash(&hash)?;
+    let db_opt = TREE.load_database_from_hash(&hash)?;
+    let mut db = db_opt.ok_or_else(|| anyhow::anyhow!("Database not found for hash: {}", hash))?;
     db.album.insert(album_id);
     Ok(AbstractData::Database(db))
 }

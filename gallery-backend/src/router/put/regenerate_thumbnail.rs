@@ -1,8 +1,8 @@
-use crate::workflow::processors::image::generate_dynamic_image;
-use crate::workflow::processors::image::{generate_phash, generate_thumbhash};
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::{AppResult, GuardResult};
+use crate::workflow::processors::image::generate_dynamic_image;
+use crate::workflow::processors::image::{generate_phash, generate_thumbhash};
 use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
 
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -62,7 +62,9 @@ pub async fn regenerate_thumbnail_with_frame(
         .context("Failed to copy frame file")?;
 
     let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData> {
-        let mut database = TREE.load_database_from_hash(&hash)?;
+        let database_opt = TREE.load_database_from_hash(&hash)?;
+        let mut database =
+            database_opt.ok_or_else(|| anyhow::anyhow!("Database not found for hash: {}", hash))?;
 
         // Create a temporary IndexTask for image processing
         let index_task = crate::workflow::tasks::actor::index::IndexTask::new(

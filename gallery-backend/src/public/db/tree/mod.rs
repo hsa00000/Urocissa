@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::OptionalExtension;
 use std::collections::{HashMap, HashSet};
 
 use crate::public::structure::abstract_data::{AbstractData, Database, MediaWithAlbum};
@@ -94,32 +95,38 @@ impl Tree {
         Ok(databases)
     }
 
-    pub fn load_database_from_hash(&self, hash: &str) -> Result<Database> {
+    pub fn load_database_from_hash(&self, hash: &str) -> Result<Option<Database>> {
         let conn = self.get_connection()?;
 
         // 1. 先查詢 object 表確認類型
         let type_sql = "SELECT obj_type FROM object WHERE id = ?";
-        let obj_type: String = conn.query_row(type_sql, [hash], |row| row.get(0))?;
+        let obj_type: Option<String> = conn
+            .query_row(type_sql, [hash], |row| row.get(0))
+            .optional()?;
 
         // 2. 根據類型載入資料並轉換
-        match obj_type.as_str() {
-            "image" => {
-                let image = ImageCombined::get_by_id(&conn, hash)?;
-                let (media, album_set) = self.image_combined_to_database(&conn, image)?;
-                Ok(Database {
-                    media,
-                    album: album_set,
-                })
+        if let Some(obj_type) = obj_type {
+            match obj_type.as_str() {
+                "image" => {
+                    let image = ImageCombined::get_by_id(&conn, hash)?;
+                    let (media, album_set) = self.image_combined_to_database(&conn, image)?;
+                    Ok(Some(Database {
+                        media,
+                        album: album_set,
+                    }))
+                }
+                "video" => {
+                    let video = VideoCombined::get_by_id(&conn, hash)?;
+                    let (media, album_set) = self.video_combined_to_database(&conn, video)?;
+                    Ok(Some(Database {
+                        media,
+                        album: album_set,
+                    }))
+                }
+                _ => Err(anyhow::anyhow!("Unknown object type for hash: {}", hash)),
             }
-            "video" => {
-                let video = VideoCombined::get_by_id(&conn, hash)?;
-                let (media, album_set) = self.video_combined_to_database(&conn, video)?;
-                Ok(Database {
-                    media,
-                    album: album_set,
-                })
-            }
-            _ => Err(anyhow::anyhow!("Unknown object type for hash: {}", hash)),
+        } else {
+            Ok(None)
         }
     }
 
@@ -128,10 +135,7 @@ impl Tree {
         &self,
         conn: &rusqlite::Connection,
         image: ImageCombined,
-    ) -> Result<(
-        MediaWithAlbum,
-        HashSet<ArrayString<64>>,
-    )> {
+    ) -> Result<(MediaWithAlbum, HashSet<ArrayString<64>>)> {
         // 讀取相簿關聯
         let album_set = self.get_album_associations(conn, &image.object.id)?;
 
@@ -142,10 +146,7 @@ impl Tree {
         &self,
         conn: &rusqlite::Connection,
         video: VideoCombined,
-    ) -> Result<(
-        MediaWithAlbum,
-        HashSet<ArrayString<64>>,
-    )> {
+    ) -> Result<(MediaWithAlbum, HashSet<ArrayString<64>>)> {
         // 讀取相簿關聯
         let album_set = self.get_album_associations(conn, &video.object.id)?;
 
@@ -157,10 +158,8 @@ impl Tree {
         conn: &rusqlite::Connection,
         hash: &ArrayString<64>,
     ) -> Result<HashSet<ArrayString<64>>> {
-        let mut stmt_albums =
-            conn.prepare("SELECT album_id FROM album_database WHERE hash = ?")?;
-        let albums =
-            stmt_albums.query_map([hash.as_str()], |row| row.get::<_, String>(0))?;
+        let mut stmt_albums = conn.prepare("SELECT album_id FROM album_database WHERE hash = ?")?;
+        let albums = stmt_albums.query_map([hash.as_str()], |row| row.get::<_, String>(0))?;
         let mut album_set = HashSet::new();
         for album_id in albums {
             if let Ok(as_str) = ArrayString::from(&album_id?) {

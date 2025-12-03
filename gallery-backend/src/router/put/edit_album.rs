@@ -1,4 +1,3 @@
-use crate::workflow::processors::transitor::index_to_hash;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
@@ -6,6 +5,7 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
+use crate::workflow::processors::transitor::index_to_hash;
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
@@ -41,14 +41,16 @@ pub async fn edit_album(
         let mut to_flush = Vec::with_capacity(json_data.index_array.len());
         for &index in &json_data.index_array {
             let hash = index_to_hash(&tree_snapshot, index)?;
-            let mut database = TREE.load_database_from_hash(&hash)?;
-            for album_id in &json_data.add_albums_array {
-                database.album.insert(album_id.clone());
+            let database_opt = TREE.load_database_from_hash(&hash)?;
+            if let Some(mut database) = database_opt {
+                for album_id in &json_data.add_albums_array {
+                    database.album.insert(album_id.clone());
+                }
+                for album_id in &json_data.remove_albums_array {
+                    database.album.remove(album_id);
+                }
+                to_flush.push(AbstractData::Database(database));
             }
-            for album_id in &json_data.remove_albums_array {
-                database.album.remove(album_id);
-            }
-            to_flush.push(AbstractData::Database(database));
         }
 
         Ok(to_flush)
@@ -92,9 +94,10 @@ pub async fn set_album_cover(
         let album_id = set_album_cover_inner.album_id;
         let cover_hash = set_album_cover_inner.cover_hash;
 
-        let database = TREE.load_database_from_hash(&cover_hash).unwrap();
+        let database_opt = TREE.load_database_from_hash(&cover_hash).unwrap();
+        let database = database_opt.unwrap();
         let cover_str = cover_hash.as_str();
-        
+
         // 修正：分別更新 object 與 meta_album
         let mut conn = TREE.get_connection().unwrap();
         let tx = conn.transaction().unwrap();
