@@ -9,7 +9,7 @@ use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::workflow::processors::image::regenerate_metadata_for_image;
-use crate::workflow::processors::video::regenerate_metadata_for_video;
+use crate::workflow::processors::video::{regenerate_metadata_for_video, video_duration};
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::actor::index::IndexTask;
 use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
@@ -93,17 +93,19 @@ pub async fn reindex(
                                 
                                 match regenerate_metadata_for_video(&mut index_task) {
                                     Ok(_) => {
-                                        // [FIX]: 將 IndexTask 的結果同步回 Database
-                                        // 影片重新索引主要更新：寬、高、大小、Thumbhash
+                                        // 1. 重新計算 Duration (直接呼叫 helper function)
+                                        let duration = video_duration(&database.imported_path_string())
+                                            .unwrap_or(0.0); // 若失敗預設為 0.0
+
                                         if let MediaWithAlbum::Video(ref mut vid) = database.media {
+                                            // 2. 同步 IndexTask 的基礎資料
                                             vid.metadata.width = index_task.width;
                                             vid.metadata.height = index_task.height;
                                             vid.metadata.size = index_task.size;
                                             vid.object.thumbhash = Some(index_task.thumbhash);
-                                            // 注意：IndexTask 結構中通常不包含 duration，
-                                            // 若 regenerate_metadata_for_video 有重新計算 duration，
-                                            // 則需要確認該函數是否回傳了 duration 或更新了 index_task 的擴充欄位。
-                                            // 假設目前僅修復基礎 Metadata。
+                                            
+                                            // 3. 更新 Duration
+                                            vid.metadata.duration = duration;
                                         }
                                         
                                         Some(AbstractData::Database(database))

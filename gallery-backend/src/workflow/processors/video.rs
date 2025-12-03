@@ -34,6 +34,12 @@ use super::metadata::generate_exif_for_video;
 static REGEX_OUT_TIME_US: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"out_time_us=(\d+)").unwrap());
 
+// 定義新的結果列舉
+pub enum VideoProcessResult {
+    Success,
+    ConvertedToImage,
+}
+
 // [FIX]: 增加一個輔助函數來處理 Video -> Image 的轉換
 fn convert_video_db_to_image_db(database: &mut Database) {
     if let MediaWithAlbum::Video(video) = &database.media {
@@ -211,7 +217,7 @@ pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
 // ────────────────────────────────────────────────────────────────
 
 /// Compresses a video file, reporting progress by parsing ffmpeg's output.
-pub fn generate_compressed_video(database: &mut Database) -> Result<()> {
+pub fn generate_compressed_video(database: &mut Database) -> Result<VideoProcessResult> {
     let duration_result = video_duration(&database.imported_path_string());
     
     // [FIX]: 處理 duration 結果與類型轉換
@@ -224,7 +230,7 @@ pub fn generate_compressed_video(database: &mut Database) -> Result<()> {
             );
             // 實作轉換邏輯取代 todo!()
             convert_video_db_to_image_db(database);
-            return Err(anyhow!("Static GIF converted to image")); 
+            return Ok(VideoProcessResult::ConvertedToImage); 
         }
         // Handle non-GIFs that fail to parse duration.
         Err(err)
@@ -237,7 +243,7 @@ pub fn generate_compressed_video(database: &mut Database) -> Result<()> {
             );
             // 實作轉換邏輯取代 todo!()
             convert_video_db_to_image_db(database);
-            return Err(anyhow!("Corrupt GIF converted to image"));
+            return Ok(VideoProcessResult::ConvertedToImage);
         }
         Ok(d) => d,
         Err(err) => {
@@ -296,7 +302,7 @@ pub fn generate_compressed_video(database: &mut Database) -> Result<()> {
     child
         .wait()
         .context("Failed to wait for ffmpeg child process")?;
-    Ok(())
+    Ok(VideoProcessResult::Success)
 }
 
 // ────────────────────────────────────────────────────────────────
