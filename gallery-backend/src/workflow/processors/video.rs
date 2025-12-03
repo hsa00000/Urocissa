@@ -7,14 +7,16 @@
 //! - Width/height calculation with rotation handling
 
 use crate::{
-    public::{constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION, tui::DASHBOARD},
-    table::database::DatabaseSchema,
+    public::{constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION, tui::DASHBOARD, structure::abstract_data::{Database, MediaWithAlbum}},
     workflow::{
         processors::image::{
             generate_dynamic_image, generate_phash, generate_thumbhash, small_width_height,
         },
         tasks::actor::index::IndexTask,
     },
+    table::image::ImageCombined,
+    table::meta_image::ImageMetadataSchema,
+    table::object::ObjectSchema,
 };
 use anyhow::{Context, Result, anyhow};
 use log::info;
@@ -31,6 +33,34 @@ use super::metadata::generate_exif_for_video;
 
 static REGEX_OUT_TIME_US: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"out_time_us=(\d+)").unwrap());
+
+// 定義新的結果列舉
+pub enum VideoProcessResult {
+    Success,
+    ConvertedToImage,
+}
+
+// [FIX]: 增加一個輔助函數來處理 Video -> Image 的轉換
+fn convert_video_db_to_image_db(database: &mut Database) {
+    if let MediaWithAlbum::Video(video) = &database.media {
+        let object = ObjectSchema {
+            id: video.object.id,
+            obj_type: "image".to_string(), // 修改類型
+            created_time: video.object.created_time,
+            pending: false, // 圖片通常不需要 pending 狀態
+            thumbhash: video.object.thumbhash.clone(),
+        };
+        let metadata = ImageMetadataSchema {
+            id: video.metadata.id,
+            size: video.metadata.size,
+            width: video.metadata.width,
+            height: video.metadata.height,
+            ext: video.metadata.ext.clone(),
+            phash: None, // 轉換當下可能還沒有 phash，後續流程會補
+        };
+        database.media = MediaWithAlbum::Image(ImageCombined { object, metadata });
+    }
+}
 
 // ────────────────────────────────────────────────────────────────
 // Public API
@@ -187,8 +217,10 @@ pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
 // ────────────────────────────────────────────────────────────────
 
 /// Compresses a video file, reporting progress by parsing ffmpeg's output.
-pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
+pub fn generate_compressed_video(database: &mut Database) -> Result<VideoProcessResult> {
     let duration_result = video_duration(&database.imported_path_string());
+    
+    // [FIX]: 處理 duration 結果與類型轉換
     let duration = match duration_result {
         // Handle static GIFs by delegating to the image processor.
         Ok(d) if (d * 1000.0) as u32 == 100 => {
@@ -196,30 +228,33 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
                 "Static GIF detected. Processing as image: {:?}",
                 database.imported_path_string()
             );
-            database.ext_type = "image".to_string();
-            todo!();
+            // 實作轉換邏輯取代 todo!()
+            convert_video_db_to_image_db(database);
+            return Ok(VideoProcessResult::ConvertedToImage); 
         }
         // Handle non-GIFs that fail to parse duration.
         Err(err)
             if err.to_string().contains("fail to parse to f32")
-                && database.ext.eq_ignore_ascii_case("gif") =>
+                && database.ext().eq_ignore_ascii_case("gif") =>
         {
             info!(
                 "Potentially corrupt or non-standard GIF. Processing as image: {:?}",
                 database.imported_path_string()
             );
-            database.ext_type = "image".to_string();
-            todo!();
+            // 實作轉換邏輯取代 todo!()
+            convert_video_db_to_image_db(database);
+            return Ok(VideoProcessResult::ConvertedToImage);
         }
         Ok(d) => d,
         Err(err) => {
-            return Err(anyhow::anyhow!(
-                "Failed to get video duration for {:?}: {}",
-                database.imported_path_string(),
-                err
-            ));
+            return Err(anyhow!("{}", err));
         }
     };
+
+    // [FIX]: 將計算出的 duration 寫回 Database 結構
+    if let MediaWithAlbum::Video(ref mut vid) = database.media {
+        vid.metadata.duration = duration;
+    }
 
     let mut cmd = create_silent_ffmpeg_command();
     cmd.args([
@@ -230,7 +265,7 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
         // Scale video to a max height of 720p, ensuring dimensions are even.
         &format!(
             "scale=trunc(oh*a/2)*2:{}",
-            (cmp::min(database.height, 720) / 2) * 2
+            (cmp::min(database.height(), 720) / 2) * 2
         ),
         "-movflags",
         "faststart", // Optimize for web streaming
@@ -259,7 +294,7 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
             // We only proceed if the captured value can be parsed as a number.
             if let Ok(microseconds) = caps[1].parse::<f64>() {
                 let percentage = (microseconds / 1_000_000.0 / duration) * 100.0;
-                DASHBOARD.update_progress(database.hash, percentage);
+                DASHBOARD.update_progress(database.hash(), percentage);
             }
         }
     }
@@ -267,7 +302,7 @@ pub fn generate_compressed_video(database: &mut DatabaseSchema) -> Result<()> {
     child
         .wait()
         .context("Failed to wait for ffmpeg child process")?;
-    Ok(())
+    Ok(VideoProcessResult::Success)
 }
 
 // ────────────────────────────────────────────────────────────────

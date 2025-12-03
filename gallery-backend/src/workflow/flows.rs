@@ -79,18 +79,18 @@ pub async fn index_for_watch(
     };
 
     // Step 5: Copy file to imported directory
-    let copied_schema = INDEX_COORDINATOR
-        .execute_waiting(CopyTask::new(path.clone(), database.schema))
+    let copied_database = INDEX_COORDINATOR
+        .execute_waiting(CopyTask::new(path.clone(), database.clone()))
         .await??;
-    database.schema = copied_schema;
+    database = copied_database;
 
     // Step 6: Process metadata
     let (index_task, flush_task_from_index) = INDEX_COORDINATOR
-        .execute_waiting(IndexTask::new(path.clone(), database.schema.clone()))
+        .execute_waiting(IndexTask::new(path.clone(), database.clone()))
         .await??;
 
     // Update database schema from index_task
-    database.schema = index_task.into();
+    database = index_task.into();
 
     // Step 7: Combine all flush operations and persist
     let mut all_operations = vec![];
@@ -105,9 +105,9 @@ pub async fn index_for_watch(
     INDEX_COORDINATOR.execute_detached(DeleteTask::new(PathBuf::from(&path)));
 
     // Step 9: Compress video if needed
-    if database.schema.ext_type == "video" {
+    if database.ext_type() == "video" {
         INDEX_COORDINATOR
-            .execute_waiting(VideoTask::new(database.schema))
+            .execute_waiting(VideoTask::new(database.clone()))
             .await??;
     }
 

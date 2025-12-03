@@ -19,7 +19,7 @@ pub async fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![V
     let entries = entries
         .into_iter()
         .map(|db| ExportEntry {
-            key: db.schema.hash.to_string(),
+            key: db.hash().to_string(),
             value: db,
         })
         .collect::<Vec<_>>();

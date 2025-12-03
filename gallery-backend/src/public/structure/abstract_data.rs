@@ -25,8 +25,146 @@ pub struct AbstractDataWithTag {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Database {
     #[serde(flatten)]
-    pub schema: crate::table::database::DatabaseSchema, // 保留舊的用於兼容
+    pub media: MediaWithAlbum,
     pub album: HashSet<ArrayString<64>>,
+}
+
+impl Database {
+    /// 獲取 hash
+    pub fn hash(&self) -> ArrayString<64> {
+        match &self.media {
+            MediaWithAlbum::Image(img) => img.object.id,
+            MediaWithAlbum::Video(vid) => vid.object.id,
+        }
+    }
+
+    /// 獲取 timestamp
+    pub fn timestamp_ms(&self) -> i64 {
+        match &self.media {
+            MediaWithAlbum::Image(img) => img.object.created_time,
+            MediaWithAlbum::Video(vid) => vid.object.created_time,
+        }
+    }
+
+    /// 獲取 ext_type
+    pub fn ext_type(&self) -> &str {
+        match &self.media {
+            MediaWithAlbum::Image(_) => "image",
+            MediaWithAlbum::Video(_) => "video",
+        }
+    }
+
+    /// 獲取 size
+    pub fn size(&self) -> u64 {
+        match &self.media {
+            MediaWithAlbum::Image(img) => img.metadata.size,
+            MediaWithAlbum::Video(vid) => vid.metadata.size,
+        }
+    }
+
+    /// 獲取 width
+    pub fn width(&self) -> u32 {
+        match &self.media {
+            MediaWithAlbum::Image(img) => img.metadata.width,
+            MediaWithAlbum::Video(vid) => vid.metadata.width,
+        }
+    }
+
+    /// 獲取 height
+    pub fn height(&self) -> u32 {
+        match &self.media {
+            MediaWithAlbum::Image(img) => img.metadata.height,
+            MediaWithAlbum::Video(vid) => vid.metadata.height,
+        }
+    }
+
+    /// 獲取 ext
+    pub fn ext(&self) -> &str {
+        match &self.media {
+            MediaWithAlbum::Image(img) => &img.metadata.ext,
+            MediaWithAlbum::Video(vid) => &vid.metadata.ext,
+        }
+    }
+
+    /// 獲取 thumbhash (mutable)
+    pub fn thumbhash(&self) -> Vec<u8> {
+        match &self.media {
+            MediaWithAlbum::Image(img) => img.object.thumbhash.clone().unwrap_or_default(),
+            MediaWithAlbum::Video(vid) => vid.object.thumbhash.clone().unwrap_or_default(),
+        }
+    }
+
+    /// 設置 thumbhash
+    pub fn set_thumbhash(&mut self, thumbhash: Vec<u8>) {
+        match &mut self.media {
+            MediaWithAlbum::Image(img) => img.object.thumbhash = Some(thumbhash),
+            MediaWithAlbum::Video(vid) => vid.object.thumbhash = Some(thumbhash),
+        }
+    }
+
+    /// 獲取 phash (mutable)
+    pub fn phash(&self) -> Vec<u8> {
+        match &self.media {
+            MediaWithAlbum::Image(img) => img.metadata.phash.clone().unwrap_or_default(),
+            MediaWithAlbum::Video(_) => Vec::new(), // Video 沒有 phash
+        }
+    }
+
+    /// 設置 phash
+    pub fn set_phash(&mut self, phash: Vec<u8>) {
+        match &mut self.media {
+            MediaWithAlbum::Image(img) => img.metadata.phash = Some(phash),
+            MediaWithAlbum::Video(_) => {} // Video 沒有 phash
+        }
+    }
+
+    /// 獲取 pending
+    pub fn pending(&self) -> bool {
+        match &self.media {
+            MediaWithAlbum::Image(img) => img.object.pending,
+            MediaWithAlbum::Video(vid) => vid.object.pending,
+        }
+    }
+
+    /// 設置 pending
+    pub fn set_pending(&mut self, pending: bool) {
+        match &mut self.media {
+            MediaWithAlbum::Image(img) => img.object.pending = pending,
+            MediaWithAlbum::Video(vid) => vid.object.pending = pending,
+        }
+    }
+
+    /// 獲取 imported_path
+    pub fn imported_path(&self) -> std::path::PathBuf {
+        std::path::PathBuf::from(self.imported_path_string())
+    }
+
+    /// 獲取 imported_path_string
+    pub fn imported_path_string(&self) -> String {
+        format!(
+            "./object/imported/{}/{}.{}",
+            &self.hash()[0..2],
+            self.hash(),
+            self.ext()
+        )
+    }
+
+    /// 獲取 compressed_path_string
+    pub fn compressed_path_string(&self) -> String {
+        if self.ext_type() == "image" {
+            format!("./object/compressed/{}/{}.jpg", &self.hash()[0..2], self.hash())
+        } else {
+            format!("./object/compressed/{}/{}.mp4", &self.hash()[0..2], self.hash())
+        }
+    }
+}
+
+/// 媒體與相簿關聯的組合
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MediaWithAlbum {
+    Image(ImageCombined),
+    Video(VideoCombined),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,7 +183,7 @@ impl AbstractData {
             AbstractData::Image(i) => i.object.created_time,
             AbstractData::Video(v) => v.object.created_time,
             AbstractData::Album(album) => album.object.created_time,
-            AbstractData::Database(database) => database.schema.timestamp_ms,
+            AbstractData::Database(database) => database.timestamp_ms(),
         }
     }
     pub fn hash(self: &Self) -> ArrayString<64> {
@@ -53,14 +191,14 @@ impl AbstractData {
             AbstractData::Image(i) => i.object.id,
             AbstractData::Video(v) => v.object.id,
             AbstractData::Album(album) => album.object.id,
-            AbstractData::Database(database) => database.schema.hash,
+            AbstractData::Database(database) => database.hash(),
         }
     }
     pub fn width(self: &Self) -> u32 {
         match self {
             AbstractData::Image(i) => i.metadata.width,
             AbstractData::Video(v) => v.metadata.width,
-            AbstractData::Database(database) => database.schema.width,
+            AbstractData::Database(database) => database.width(),
             AbstractData::Album(_) => 300,
         }
     }
@@ -68,7 +206,7 @@ impl AbstractData {
         match self {
             AbstractData::Image(i) => i.metadata.height,
             AbstractData::Video(v) => v.metadata.height,
-            AbstractData::Database(database) => database.schema.height,
+            AbstractData::Database(database) => database.height(),
             AbstractData::Album(_) => 300,
         }
     }
@@ -80,7 +218,7 @@ impl AbstractData {
                     .prepare("SELECT tag FROM tag_databases WHERE hash = ?")
                     .unwrap();
                 let tag_iter = stmt
-                    .query_map([database.schema.hash.as_str()], |row| {
+                    .query_map([database.hash().as_str()], |row| {
                         let tag: String = row.get(0)?;
                         Ok(tag)
                     })
@@ -178,7 +316,7 @@ impl AbstractData {
                     .prepare("SELECT file, modified, scan_time FROM database_alias WHERE hash = ? ORDER BY scan_time DESC")
                     .unwrap();
                 let alias_iter = stmt
-                    .query_map([database.schema.hash.as_str()], |row| {
+                    .query_map([database.hash().as_str()], |row| {
                         Ok(FileModify {
                             file: row.get(0)?,
                             modified: row.get::<_, i64>(1)? as u128,
@@ -240,7 +378,7 @@ impl AbstractData {
                     .prepare("SELECT tag, value FROM database_exif WHERE hash = ?")
                     .unwrap();
                 let exif_iter = stmt
-                    .query_map([database.schema.hash.as_str()], |row| {
+                    .query_map([database.hash().as_str()], |row| {
                         let tag: String = row.get(0)?;
                         let value: String = row.get(1)?;
                         Ok((tag, value))
@@ -270,7 +408,7 @@ impl AbstractData {
             }
             AbstractData::Database(db) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
-                ClaimsHash::new(db.schema.hash, timestamp, allow_original).encode()
+                ClaimsHash::new(db.hash(), timestamp, allow_original).encode()
             }
             AbstractData::Album(album) => {
                 use crate::router::claims::claims_hash::ClaimsHash;

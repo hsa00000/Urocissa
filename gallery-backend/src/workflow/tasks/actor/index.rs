@@ -5,9 +5,11 @@ use std::path::PathBuf;
 use tokio_rayon::AsyncThreadPool;
 
 use crate::public::constant::runtime::WORKER_RAYON_POOL;
-use crate::public::structure::abstract_data::AbstractData;
-use crate::table::database::DatabaseSchema;
+use crate::public::structure::abstract_data::{AbstractData, Database, MediaWithAlbum};
 use crate::table::relations::database_exif::ExifSchema;
+use crate::table::image::ImageCombined;
+use crate::table::object::ObjectSchema;
+use crate::table::meta_image::ImageMetadataSchema;
 
 use crate::{
     public::{
@@ -39,19 +41,19 @@ pub struct IndexTask {
 }
 
 impl IndexTask {
-    pub fn new(source_path: PathBuf, database: DatabaseSchema) -> Self {
+    pub fn new(source_path: PathBuf, database: Database) -> Self {
         Self {
             source_path,
-            hash: database.hash,
-            size: database.size,
-            width: database.width,
-            height: database.height,
-            thumbhash: database.thumbhash,
-            phash: database.phash,
-            ext: database.ext,
-            ext_type: database.ext_type,
+            hash: database.hash(),
+            size: database.size(),
+            width: database.width(),
+            height: database.height(),
+            thumbhash: database.thumbhash(),
+            phash: database.phash(),
+            ext: database.ext().to_string(),
+            ext_type: database.ext_type().to_string(),
             exif_vec: BTreeMap::new(),
-            timestamp_ms: database.timestamp_ms,
+            timestamp_ms: database.timestamp_ms(),
             pending: false,
         }
     }
@@ -145,10 +147,7 @@ fn index_task_result(mut index_task: IndexTask) -> Result<(IndexTask, FlushTreeT
         index_task.pending = true;
     };
 
-    let abstract_data = AbstractData::Database(crate::public::structure::abstract_data::Database {
-        schema: index_task.clone().into(),
-        album: HashSet::new(),
-    });
+    let abstract_data = AbstractData::Database(index_task.clone().into());
     let mut operations = vec![FlushOperation::InsertAbstractData(abstract_data)];
 
     // Insert EXIF data
@@ -166,20 +165,57 @@ fn index_task_result(mut index_task: IndexTask) -> Result<(IndexTask, FlushTreeT
     Ok((index_task, flush_task))
 }
 
-impl From<IndexTask> for DatabaseSchema {
+impl From<IndexTask> for Database {
     fn from(task: IndexTask) -> Self {
-        Self {
-            hash: task.hash,
-            size: task.size,
-            width: task.width,
-            height: task.height,
-            thumbhash: task.thumbhash,
-            phash: task.phash,
-            ext: task.ext,
-            // album: HashSet::new(), // 已移除
-            ext_type: task.ext_type,
-            pending: task.pending,
-            timestamp_ms: task.timestamp_ms,
+        if task.ext_type == "image" {
+            let image = ImageCombined {
+                object: ObjectSchema {
+                    id: task.hash.clone(),
+                    obj_type: "image".to_string(),
+                    created_time: task.timestamp_ms,
+                    pending: task.pending,
+                    thumbhash: Some(task.thumbhash),
+                },
+                metadata: ImageMetadataSchema {
+                    id: task.hash,
+                    size: task.size,
+                    width: task.width,
+                    height: task.height,
+                    ext: task.ext,
+                    phash: Some(task.phash),
+                },
+            };
+            
+            Database {
+                media: MediaWithAlbum::Image(image),
+                album: std::collections::HashSet::new(),
+            }
+        } else {
+            // For video, we need to create a VideoCombined
+            // Since we don't have VideoMetadataSchema easily available here,
+            // we'll create a minimal one and assume it will be updated later
+            let video = crate::table::video::VideoCombined {
+                object: ObjectSchema {
+                    id: task.hash.clone(),
+                    obj_type: "video".to_string(),
+                    created_time: task.timestamp_ms,
+                    pending: task.pending,
+                    thumbhash: Some(task.thumbhash),
+                },
+                metadata: crate::table::meta_video::VideoMetadataSchema {
+                    id: task.hash,
+                    size: task.size,
+                    width: task.width,
+                    height: task.height,
+                    ext: task.ext,
+                    duration: 0.0, // Will be updated during video processing
+                },
+            };
+            
+            Database {
+                media: MediaWithAlbum::Video(video),
+                album: std::collections::HashSet::new(),
+            }
         }
     }
 }

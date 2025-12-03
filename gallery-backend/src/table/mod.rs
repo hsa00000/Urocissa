@@ -1,5 +1,4 @@
 pub mod album;
-pub mod database;
 pub mod image;
 pub mod meta_image;
 pub mod meta_video;

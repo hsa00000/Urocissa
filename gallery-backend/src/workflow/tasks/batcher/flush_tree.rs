@@ -4,7 +4,7 @@ use serde_json;
 
 use crate::{
     public::db::tree::TREE,
-    public::structure::abstract_data::AbstractData,
+    public::structure::abstract_data::{AbstractData, MediaWithAlbum},
     table::image::ImageCombined,
     table::video::VideoCombined,
     table::relations::database_alias::DatabaseAliasSchema,
@@ -104,16 +104,16 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                          pending=excluded.pending, \
                          thumbhash=excluded.thumbhash",
                         rusqlite::params![
-                            database.schema.hash.as_str(),
-                            database.schema.ext_type,
-                            database.schema.timestamp_ms,
-                            database.schema.pending as i32,
-                            database.schema.thumbhash,
+                            database.hash().as_str(),
+                            database.ext_type(),
+                            database.timestamp_ms(),
+                            database.pending() as i32,
+                            database.thumbhash(),
                         ],
                     )?;
 
                     // 2. 根據類型寫入 Meta 表
-                    if database.schema.ext_type == "image" {
+                    if database.ext_type() == "image" {
                         tx.execute(
                             "INSERT INTO meta_image (id, size, width, height, ext, phash) \
                              VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
@@ -124,16 +124,22 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                              ext=excluded.ext, \
                              phash=excluded.phash",
                             rusqlite::params![
-                                database.schema.hash.as_str(),
-                                database.schema.size,
-                                database.schema.width,
-                                database.schema.height,
-                                database.schema.ext,
-                                database.schema.phash,
+                                database.hash().as_str(),
+                                database.size(),
+                                database.width(),
+                                database.height(),
+                                database.ext(),
+                                database.phash(),
                             ],
                         )?;
                     } else {
-                        // 處理 Video (注意：DatabaseSchema 沒有 duration，這裡暫補 0.0)
+                        // 確保從 Database 中讀取正確的 duration
+                        let duration = if let MediaWithAlbum::Video(ref v) = database.media {
+                            v.metadata.duration
+                        } else {
+                            0.0
+                        };
+
                         tx.execute(
                             "INSERT INTO meta_video (id, size, width, height, ext, duration) \
                              VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
@@ -142,14 +148,14 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                              width=excluded.width, \
                              height=excluded.height, \
                              ext=excluded.ext, \
-                             duration=excluded.duration",
+                             duration=excluded.duration", // [FIX]: 這裡原本邏輯是對的，但參數要傳對
                             rusqlite::params![
-                                database.schema.hash.as_str(),
-                                database.schema.size,
-                                database.schema.width,
-                                database.schema.height,
-                                database.schema.ext,
-                                0.0, 
+                                database.hash().as_str(),
+                                database.size(),
+                                database.width(),
+                                database.height(),
+                                database.ext(),
+                                duration, // [FIX]: 替換掉原本寫死的 0.0
                             ],
                         )?;
                     }
@@ -157,13 +163,13 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                     // 3. 同步相簿關聯 (維持不變)
                     tx.execute(
                         "DELETE FROM album_databases WHERE hash = ?1",
-                        rusqlite::params![database.schema.hash.as_str()],
+                        rusqlite::params![database.hash().as_str()],
                     )?;
 
                     for album_id in &database.album {
                         tx.execute(
                             "INSERT OR IGNORE INTO album_databases (album_id, hash) VALUES (?1, ?2)",
-                            rusqlite::params![album_id.as_str(), database.schema.hash.as_str()],
+                            rusqlite::params![album_id.as_str(), database.hash().as_str()],
                         )?;
                     }
                 }
@@ -233,12 +239,12 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 AbstractData::Database(database) => {
                     tx.execute(
                         "DELETE FROM object WHERE id = ?1",
-                        rusqlite::params![database.schema.hash.as_str()],
+                        rusqlite::params![database.hash().as_str()],
                     )?;
                     // album_databases 會因為 FK Cascade 自動刪除，或手動刪除亦可
                     tx.execute(
                         "DELETE FROM album_databases WHERE hash = ?1",
-                        rusqlite::params![database.schema.hash.as_str()],
+                        rusqlite::params![database.hash().as_str()],
                     )?;
                 }
                 AbstractData::Album(album) => {

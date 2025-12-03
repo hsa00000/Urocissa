@@ -9,7 +9,8 @@
 
 use crate::{
     public::structure::database::generate_timestamp::compute_timestamp_ms_by_exif,
-    table::database::DatabaseSchema, workflow::tasks::actor::index::IndexTask,
+    public::structure::abstract_data::{Database, MediaWithAlbum},
+    workflow::tasks::actor::index::IndexTask,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use image::{DynamicImage, ImageFormat};
@@ -53,11 +54,16 @@ pub fn process_image_info(index_task: &mut IndexTask) -> Result<()> {
 }
 
 /// Rebuild all metadata for an existing image (e.g. after replace/fix)
-pub fn regenerate_metadata_for_image(database: &mut DatabaseSchema) -> Result<()> {
-    // Refresh size from filesystem
-    database.size = std::fs::metadata(database.imported_path())
+pub fn regenerate_metadata_for_image(database: &mut Database) -> Result<()> {
+    // Refresh size from filesystem - we need to update the underlying ImageCombined
+    let new_size = std::fs::metadata(database.imported_path())
         .context("failed to read metadata for imported image file")?
         .len();
+
+    // Update the size in the ImageCombined
+    if let MediaWithAlbum::Image(ref mut img) = database.media {
+        img.metadata.size = new_size;
+    }
 
     // Re-run the full processing pipeline
     let mut index_task = IndexTask::new(database.imported_path(), database.clone());
