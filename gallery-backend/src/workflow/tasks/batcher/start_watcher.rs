@@ -1,7 +1,7 @@
 use crate::public::constant::runtime::INDEX_RUNTIME;
 use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::{
-    public::config::PRIVATE_CONFIG, public::error_data::handle_error, workflow::index_for_watch,
+    public::config::PRIVATE_CONFIG, public::error_data::handle_error, workflow::index_workflow,
 };
 use anyhow::Result;
 use log::info;
@@ -99,7 +99,7 @@ fn submit_to_debounce_pool(path: PathBuf) {
 
         if should_run && is_valid_media_file(&path) {
             // Really need to do indexing
-            if let Err(e) = index_for_watch(path, None).await {
+            if let Err(e) = index_workflow(path, None).await {
                 handle_error(e);
             }
         }

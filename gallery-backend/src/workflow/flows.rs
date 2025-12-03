@@ -21,18 +21,7 @@ use crate::workflow::{
     types::try_acquire,
 };
 
-/// Main indexing flow for file watcher events
-///
-/// This flow handles the complete lifecycle of importing a new media file:
-/// 1. Open file with retry logic
-/// 2. Compute Blake3 hash
-/// 3. Check for duplicates
-/// 4. Copy to imported directory
-/// 5. Process metadata (image/video)
-/// 6. Flush to database
-/// 7. Cleanup source file (if in upload directory)
-/// 8. Compress video (if applicable)
-pub async fn index_for_watch(
+pub async fn index_workflow(
     path: PathBuf,
     presigned_album_id_opt: Option<ArrayString<64>>,
 ) -> Result<()> {

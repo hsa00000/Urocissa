@@ -2,7 +2,7 @@ use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_upload::GuardUpload;
 use crate::router::{AppResult, GuardResult};
-use crate::workflow::index_for_watch;
+use crate::workflow::index_workflow;
 use anyhow::{Result, anyhow, bail};
 use arrayvec::ArrayString;
 use rocket::form::{Errors, Form};
@@ -79,7 +79,7 @@ pub async fn upload(
             || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str())
         {
             let final_path = save_file(file, filename, extension, last_modified_time).await?;
-            index_for_watch(PathBuf::from(final_path), presigned_album_id_opt).await?;
+            index_workflow(PathBuf::from(final_path), presigned_album_id_opt).await?;
         } else {
             error!("Invalid file type");
             return Err(anyhow::anyhow!("Invalid file type: {}", extension).into());
