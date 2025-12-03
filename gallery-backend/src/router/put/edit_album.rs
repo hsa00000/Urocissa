@@ -93,15 +93,27 @@ pub async fn set_album_cover(
         let cover_hash = set_album_cover_inner.cover_hash;
 
         let database = TREE.load_database_from_hash(&cover_hash).unwrap();
-
-        // Directly update the album's cover and thumbhash in database
         let cover_str = cover_hash.as_str();
-        let conn = TREE.get_connection().unwrap();
-        conn.execute(
-            "UPDATE album SET cover = ?, thumbhash = ? WHERE id = ?",
-            params![cover_str, &database.thumbhash(), &*album_id],
+        
+        // 修正：分別更新 object 與 meta_album
+        let mut conn = TREE.get_connection().unwrap();
+        let tx = conn.transaction().unwrap();
+
+        // 1. 更新 meta_album 的 cover
+        tx.execute(
+            "UPDATE meta_album SET cover = ? WHERE id = ?",
+            params![cover_str, &*album_id],
         )
         .unwrap();
+
+        // 2. 更新 object 的 thumbhash
+        tx.execute(
+            "UPDATE object SET thumbhash = ? WHERE id = ?",
+            params![&database.thumbhash(), &*album_id],
+        )
+        .unwrap();
+
+        tx.commit().unwrap();
     })
     .await
     .unwrap();
@@ -132,9 +144,9 @@ pub async fn set_album_title(
         let album_id = set_album_title_inner.album_id;
 
         let conn = TREE.get_connection().unwrap();
-        // Update the title
+        // 修正：更新 meta_album 表
         conn.execute(
-            "UPDATE album SET title = ? WHERE id = ?",
+            "UPDATE meta_album SET title = ? WHERE id = ?",
             [
                 set_album_title_inner.title.as_deref().unwrap_or(""),
                 &*album_id,

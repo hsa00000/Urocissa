@@ -79,12 +79,13 @@ fn resolve_share_from_db(album_id: &str, share_id: &str) -> Result<Claims> {
     let conn = TREE.get_connection().map_err(|e| anyhow!("DB connection error: {}", e))?;
     
     // Query both share details and album title in one go
+    // 修正：將 JOIN album 改為 JOIN meta_album
     let sql = r#"
         SELECT 
             s.url, s.description, s.password, s.show_metadata, s.show_download, s.show_upload, s.exp,
             a.title
         FROM album_share s
-        JOIN album a ON s.album_id = a.id
+        JOIN meta_album a ON s.album_id = a.id
         WHERE s.album_id = ? AND s.url = ?
     "#;
 

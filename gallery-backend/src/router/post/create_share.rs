@@ -47,9 +47,10 @@ pub async fn create_share(
 
 fn create_and_insert_share(conn: &Connection, create_share: CreateShare) -> AppResult<String> {
     // Check if album exists
+    // 修正：查詢 meta_album 表確認相簿存在
     let album_exists: bool = conn
         .query_row(
-            "SELECT 1 FROM album WHERE id = ?",
+            "SELECT 1 FROM meta_album WHERE id = ?",
             [&*create_share.album_id],
             |_| Ok(true),
         )
