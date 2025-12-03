@@ -7,9 +7,9 @@
       <FindInTimeline :hash="props.hash" />
       <v-divider></v-divider>
       <EditTags />
-      <Delete v-if="!album.tag.includes('_trashed')" :index-list="[props.index]" />
-      <Restore v-if="album.tag.includes('_trashed')" :index-list="[props.index]" />
-      <PermanentlyDelete v-if="album.tag.includes('_trashed')" :index-list="[props.index]" />
+      <Delete v-if="!album.tags.includes('_trashed')" :index-list="[props.index]" />
+      <Restore v-if="album.tags.includes('_trashed')" :index-list="[props.index]" />
+      <PermanentlyDelete v-if="album.tags.includes('_trashed')" :index-list="[props.index]" />
     </v-list>
   </v-menu>
 </template>

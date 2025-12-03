@@ -69,7 +69,7 @@
           <ItemTag
             :isolation-id="props.isolationId"
             :index="props.index"
-            :tags="abstractData.album.tag"
+            :tags="abstractData.album.tags"
           />
         </v-list>
       </div>
