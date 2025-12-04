@@ -1,7 +1,7 @@
 use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
-use crate::public::structure::abstract_data::{AbstractData, Database};
+use crate::public::structure::abstract_data::AbstractData;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -19,7 +19,6 @@ use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterato
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use serde::Deserialize;
-use std::collections::HashSet;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,32 +57,23 @@ pub async fn reindex(
                     let abstract_data_opt = TREE.load_from_db(&hash).ok();
                     match abstract_data_opt {
                         Some(AbstractData::Image(img)) => {
-                            // 創建 Database 結構體來調用現有函數
-                            let mut db = Database {
-                                media: AbstractData::Image(img),
-                                album: HashSet::new(),
-                            };
+                            let mut abstract_data = AbstractData::Image(img);
                             // [FIX] Capture EXIF data
-                            match regenerate_metadata_for_image(&mut db) {
+                            match regenerate_metadata_for_image(&mut abstract_data) {
                                 Ok(exif_vec) => {
-                                    if let AbstractData::Image(updated_img) = db.media {
-                                        let mut ops = vec![FlushOperation::InsertAbstractData(
-                                            AbstractData::Image(updated_img),
-                                        )];
+                                    let mut ops =
+                                        vec![FlushOperation::InsertAbstractData(abstract_data)];
 
-                                        // [FIX] Add InsertExif operations
-                                        let hash_str = hash.as_str();
-                                        for (tag, value) in exif_vec {
-                                            ops.push(FlushOperation::InsertExif(ExifSchema {
-                                                hash: hash_str.to_string(),
-                                                tag,
-                                                value,
-                                            }));
-                                        }
-                                        Some(ops)
-                                    } else {
-                                        None
+                                    // [FIX] Add InsertExif operations
+                                    let hash_str = hash.as_str();
+                                    for (tag, value) in exif_vec {
+                                        ops.push(FlushOperation::InsertExif(ExifSchema {
+                                            hash: hash_str.to_string(),
+                                            tag,
+                                            value,
+                                        }));
                                     }
+                                    Some(ops)
                                 }
                                 Err(e) => {
                                     error!("Failed to regenerate image {}: {}", hash, e);
@@ -92,29 +82,27 @@ pub async fn reindex(
                             }
                         }
                         Some(AbstractData::Video(vid)) => {
-                            // [FIX] Implement Video logic similar to Image/Database
-                            let mut db = Database {
-                                media: AbstractData::Video(vid),
-                                album: HashSet::new(),
-                            };
-                            let mut index_task =
-                                IndexTask::new(db.imported_path(), db.media.clone());
+                            let mut abstract_data = AbstractData::Video(vid);
+                            let mut index_task = IndexTask::new(
+                                abstract_data.imported_path(),
+                                abstract_data.clone(),
+                            );
 
                             match regenerate_metadata_for_video(&mut index_task) {
                                 Ok(_) => {
                                     let duration =
-                                        video_duration(&db.imported_path_string()).unwrap_or(0.0);
+                                        video_duration(&abstract_data.imported_path_string())
+                                            .unwrap_or(0.0);
 
-                                    if let AbstractData::Video(ref mut vid) = db.media {
+                                    if let AbstractData::Video(ref mut vid) = abstract_data {
                                         vid.metadata.width = index_task.width;
                                         vid.metadata.height = index_task.height;
                                         vid.metadata.size = index_task.size;
                                         vid.object.thumbhash = Some(index_task.thumbhash);
                                         vid.metadata.duration = duration;
 
-                                        let mut ops = vec![FlushOperation::InsertAbstractData(
-                                            AbstractData::Video(vid.clone()),
-                                        )];
+                                        let mut ops =
+                                            vec![FlushOperation::InsertAbstractData(abstract_data)];
 
                                         // [FIX] Add InsertExif operations from index_task
                                         let hash_str = hash.as_str();
