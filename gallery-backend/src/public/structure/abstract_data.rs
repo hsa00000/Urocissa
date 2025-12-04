@@ -81,26 +81,12 @@ impl AbstractData {
             AbstractData::Album(_) => 300,
         }
     }
-    pub fn tag(self: &Self) -> Option<HashSet<String>> {
-        // 統一邏輯：所有類型的 tag 都從 tag_database 關聯表讀取
-        let hash = self.hash();
-        let conn = TREE.get_connection().unwrap();
-        let mut stmt = conn
-            .prepare("SELECT tag FROM tag_database WHERE hash = ?")
-            .unwrap();
-        let tag_iter = stmt
-            .query_map([hash.as_str()], |row| {
-                let tag: String = row.get(0)?;
-                Ok(tag)
-            })
-            .unwrap();
-        let mut tags = HashSet::new();
-        for tag_result in tag_iter {
-            if let Ok(tag) = tag_result {
-                tags.insert(tag);
-            }
+    pub fn tag(&self) -> Option<&HashSet<String>> {
+        match self {
+            AbstractData::Image(i) => Some(&i.tags),
+            AbstractData::Video(v) => Some(&v.tags),
+            AbstractData::Album(a) => Some(&a.tags),
         }
-        Some(tags)
     }
     pub fn alias(self: &Self) -> Vec<FileModify> {
         match self {
@@ -209,7 +195,8 @@ impl AbstractData {
     }
 
     pub fn with_tag(self, timestamp: u128, allow_original: bool) -> AbstractDataWithTag {
-        let tag = self.tag();
+        // 優化：這裡不再查詢 DB，而是直接複製內存中的 tags
+        let tag = self.tag().cloned();
         let exif_vec = self.exif_vec().unwrap_or_default();
         let alias = self.alias();
         let token = self.generate_token(timestamp, allow_original);

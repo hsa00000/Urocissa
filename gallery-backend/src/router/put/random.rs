@@ -32,6 +32,7 @@ fn create_random_data() -> AbstractData {
             phash: None,
         },
         albums: HashSet::new(),
+        tags: HashSet::new(),
     };
     
     AbstractData::Image(image)

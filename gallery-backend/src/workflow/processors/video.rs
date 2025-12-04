@@ -45,8 +45,8 @@ pub enum VideoProcessResult {
 // 輔助函數：將 Video AbstractData 轉換為 Image AbstractData
 fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
     // 暫存需要轉移的資料，避免 borrow checker 衝突
-    let (video_combined, albums) = match data {
-        AbstractData::Video(v) => (v.clone(), v.albums.clone()),
+    let (video_combined, albums, tags) = match data {
+        AbstractData::Video(v) => (v.clone(), v.albums.clone(), v.tags.clone()),
         _ => return Err(anyhow!("Data is not a video")),
     };
 
@@ -79,6 +79,7 @@ fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
         object,
         metadata,
         albums,
+        tags,
     };
 
     // 將修改後的資料寫回 data

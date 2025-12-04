@@ -1,5 +1,7 @@
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use arrayvec::ArrayString;
 
 use crate::table::meta_album::AlbumMetadataSchema;
 use crate::table::object::ObjectSchema;
@@ -11,6 +13,8 @@ pub struct AlbumCombined {
     pub object: ObjectSchema,
     #[serde(flatten)]
     pub metadata: AlbumMetadataSchema,
+    #[serde(default)]
+    pub tags: HashSet<String>,
 }
 
 impl AlbumCombined {
@@ -30,7 +34,7 @@ impl AlbumCombined {
 
     /// 讀取所有相簿 (JOIN 查詢)
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
-        // 移除了 meta_album.tag
+        // 1. 讀取相簿本體
         let sql = r#"
             SELECT 
                 object.id, object.obj_type, object.created_time, object.pending, object.thumbhash,
@@ -43,14 +47,49 @@ impl AlbumCombined {
 
         let mut stmt = conn.prepare(sql)?;
         let rows = stmt.query_map([], |row| Self::from_row(row))?;
+        let mut albums: Vec<Self> = rows.collect::<rusqlite::Result<_>>()?;
 
-        rows.collect::<rusqlite::Result<Vec<_>>>()
+        if albums.is_empty() {
+            return Ok(albums);
+        }
+
+        // 2. 批次讀取所有「相簿」類型的標籤關聯
+        let sql_tag_relations = r#"
+            SELECT td.hash, td.tag
+            FROM tag_database td
+            INNER JOIN object o ON td.hash = o.id
+            WHERE o.obj_type = 'album'
+        "#;
+
+        let mut stmt_tag_rel = conn.prepare(sql_tag_relations)?;
+        let tag_rel_rows = stmt_tag_rel.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        let mut tag_map: HashMap<ArrayString<64>, HashSet<String>> = HashMap::new();
+
+        for rel in tag_rel_rows {
+            let (hash, tag) = rel?;
+            if let Ok(hash_as) = ArrayString::from(&hash) {
+                tag_map.entry(hash_as).or_default().insert(tag);
+            }
+        }
+
+        // 3. 將資料填回相簿 Struct
+        for album in &mut albums {
+            if let Some(tags) = tag_map.remove(&album.object.id) {
+                album.tags = tags;
+            }
+        }
+
+        Ok(albums)
     }
 
     fn from_row(row: &Row) -> rusqlite::Result<Self> {
         Ok(AlbumCombined {
             object: ObjectSchema::from_row(row)?,
             metadata: AlbumMetadataSchema::from_row(row)?,
+            tags: HashSet::new(),
         })
     }
 }

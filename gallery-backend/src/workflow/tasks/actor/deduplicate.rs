@@ -143,6 +143,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                         object,
                         metadata,
                         albums: HashSet::new(),
+                        tags: HashSet::new(),
                     })
                 }
                 ObjectType::Video => {
@@ -165,6 +166,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                         object,
                         metadata,
                         albums: HashSet::new(),
+                        tags: HashSet::new(),
                     })
                 }
                 ObjectType::Album => unreachable!("Unexpected album type in deduplicate task"),

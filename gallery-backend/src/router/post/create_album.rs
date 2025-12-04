@@ -8,6 +8,7 @@ use arrayvec::ArrayString;
 use rand::{Rng, distr::Alphanumeric};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::post;
+use std::collections::HashSet;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -68,7 +69,7 @@ async fn create_album_internal(title: Option<String>) -> Result<ArrayString<64>>
     let album_id = generate_random_hash();
     let object = ObjectSchema::new(album_id, "album");
     let metadata = AlbumMetadataSchema::new(album_id, title);
-    let album = AbstractData::Album(AlbumCombined { object, metadata });
+    let album = AbstractData::Album(AlbumCombined { object, metadata, tags: HashSet::new() });
     BATCH_COORDINATOR
         .execute_batch_waiting(FlushTreeTask::insert(vec![album]))
         .await?;
