@@ -86,13 +86,13 @@ pub fn generate_dynamic_image(index_task: &IndexTask) -> Result<DynamicImage> {
         PathBuf::from(index_task.thumbnail_path())
     };
 
-    let dynamic_image =
-        decode_image(&img_path).context(format!("failed to decode image: {:?}", img_path))?;
+    let dynamic_image = generate_dynamic_image_from_path(&img_path)
+        .context(format!("failed to decode image: {:?}", img_path))?;
 
     Ok(dynamic_image)
 }
 
-fn decode_image(file_path: &PathBuf) -> Result<DynamicImage> {
+pub fn generate_dynamic_image_from_path(file_path: &PathBuf) -> Result<DynamicImage> {
     let file_in_memory =
         read(file_path).context(format!("failed to read file into memory: {:?}", file_path))?;
 

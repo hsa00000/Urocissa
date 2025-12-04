@@ -14,7 +14,8 @@ use crate::{
     table::{image::ImageCombined, meta_image::ImageMetadataSchema, object::ObjectSchema},
     workflow::{
         processors::image::{
-            generate_dynamic_image, generate_phash, generate_thumbhash, small_width_height,
+            generate_dynamic_image, generate_dynamic_image_from_path, generate_phash,
+            generate_thumbhash, small_width_height,
         },
         tasks::actor::index::IndexTask,
     },
@@ -49,6 +50,14 @@ fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
         _ => return Err(anyhow!("Data is not a video")),
     };
 
+    let phash = if let Ok(dyn_img) =
+        generate_dynamic_image_from_path(&video_combined.imported_path())
+    {
+        Some(generate_phash(&dyn_img))
+    } else {
+        None
+    };
+
     let object = ObjectSchema {
         id: video_combined.object.id,
         obj_type: "image".to_string(), // 修改類型
@@ -56,13 +65,14 @@ fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
         pending: false, // 圖片通常不需要 pending 狀態
         thumbhash: video_combined.object.thumbhash,
     };
+
     let metadata = ImageMetadataSchema {
         id: video_combined.metadata.id,
         size: video_combined.metadata.size,
         width: video_combined.metadata.width,
         height: video_combined.metadata.height,
         ext: video_combined.metadata.ext,
-        phash: None, // 轉換當下可能還沒有 phash，後續流程會補
+        phash,
     };
 
     let image_combined = ImageCombined {
