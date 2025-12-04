@@ -29,7 +29,6 @@ impl AlbumMetadataSchema {
                 last_modified_time INTEGER,
                 cover TEXT,
                 user_defined_metadata TEXT,
-                -- tag 欄位已移除
                 item_count INTEGER DEFAULT 0,
                 item_size INTEGER DEFAULT 0,
                 FOREIGN KEY(id) REFERENCES object(id) ON DELETE CASCADE
