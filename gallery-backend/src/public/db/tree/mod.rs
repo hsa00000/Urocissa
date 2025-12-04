@@ -2,11 +2,9 @@ pub mod new;
 pub mod read_tags;
 
 use anyhow::{Context, Result};
-use arrayvec::ArrayString;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::OptionalExtension;
-use std::collections::HashSet;
 
 use crate::public::structure::abstract_data::AbstractData;
 use crate::table::album::AlbumCombined;
@@ -47,15 +45,11 @@ impl Tree {
                     Ok(AbstractData::Album(album))
                 }
                 "image" => {
-                    let mut image = ImageCombined::get_by_id(&conn, id)?;
-                    // 填入 albums
-                    image.albums = self.get_album_associations(&conn, &image.object.id)?;
+                    let image = ImageCombined::get_by_id(&conn, id)?;
                     Ok(AbstractData::Image(image))
                 }
                 "video" => {
-                    let mut video = VideoCombined::get_by_id(&conn, id)?;
-                    // 填入 albums
-                    video.albums = self.get_album_associations(&conn, &video.object.id)?;
+                    let video = VideoCombined::get_by_id(&conn, id)?;
                     Ok(AbstractData::Video(video))
                 }
                 _ => Err(anyhow::anyhow!("Unknown object type")),
@@ -72,32 +66,13 @@ impl Tree {
         let all_images = ImageCombined::get_all(&conn)?;
         let all_videos = VideoCombined::get_all(&conn)?;
 
-        // 一次性讀取所有 album 關聯
-        let mut stmt = conn.prepare("SELECT hash, album_id FROM album_database")?;
-        let relations: Vec<(String, String)> = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?.collect::<Result<Vec<_>, _>>()?;
-
-        let mut relation_map: std::collections::HashMap<String, HashSet<ArrayString<64>>> = std::collections::HashMap::new();
-        for (hash, album_id) in relations {
-            if let Ok(as_str) = ArrayString::from(&album_id) {
-                relation_map.entry(hash).or_insert_with(HashSet::new).insert(as_str);
-            }
-        }
-
         let mut result = Vec::with_capacity(all_images.len() + all_videos.len());
 
-        for mut image in all_images {
-            if let Some(albums) = relation_map.remove(image.object.id.as_str()) {
-                image.albums = albums;
-            }
+        for image in all_images {
             result.push(AbstractData::Image(image));
         }
-        
-        for mut video in all_videos {
-            if let Some(albums) = relation_map.remove(video.object.id.as_str()) {
-                video.albums = albums;
-            }
+
+        for video in all_videos {
             result.push(AbstractData::Video(video));
         }
 
@@ -115,21 +90,19 @@ impl Tree {
         if let Some(obj_type) = obj_type {
             match obj_type.as_str() {
                 "image" => {
-                    let mut image = ImageCombined::get_by_id(&conn, hash)?;
-                    image.albums = self.get_album_associations(&conn, &image.object.id)?;
+                    let image = ImageCombined::get_by_id(&conn, hash)?;
                     Ok(Some(AbstractData::Image(image)))
                 }
                 "video" => {
-                    let mut video = VideoCombined::get_by_id(&conn, hash)?;
-                    video.albums = self.get_album_associations(&conn, &video.object.id)?;
+                    let video = VideoCombined::get_by_id(&conn, hash)?;
                     Ok(Some(AbstractData::Video(video)))
                 }
                 "album" => {
-                     let album = AlbumCombined::get_all(&conn)?
+                    let album = AlbumCombined::get_all(&conn)?
                         .into_iter()
                         .find(|a| a.object.id.as_str() == hash)
                         .ok_or_else(|| anyhow::anyhow!("Album not found"))?;
-                     Ok(Some(AbstractData::Album(album)))
+                    Ok(Some(AbstractData::Album(album)))
                 }
                 _ => Err(anyhow::anyhow!("Unknown object type for hash: {}", hash)),
             }
@@ -138,19 +111,5 @@ impl Tree {
         }
     }
 
-    fn get_album_associations(
-        &self,
-        conn: &rusqlite::Connection,
-        hash: &ArrayString<64>,
-    ) -> Result<HashSet<ArrayString<64>>> {
-        let mut stmt_albums = conn.prepare("SELECT album_id FROM album_database WHERE hash = ?")?;
-        let albums = stmt_albums.query_map([hash.as_str()], |row| row.get::<_, String>(0))?;
-        let mut album_set = HashSet::new();
-        for album_id in albums {
-            if let Ok(as_str) = ArrayString::from(&album_id?) {
-                album_set.insert(as_str);
-            }
-        }
-        Ok(album_set)
-    }
+
 }
