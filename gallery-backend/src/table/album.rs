@@ -1,8 +1,8 @@
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 
-use crate::table::object::ObjectSchema;
 use crate::table::meta_album::AlbumMetadataSchema;
+use crate::table::object::ObjectSchema;
 
 /// 這是給 API 回傳用的組合結構，透過 serde(flatten) 保持 JSON 格式與舊版相容
 #[derive(Debug, Clone, Serialize, Deserialize)]

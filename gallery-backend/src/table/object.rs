@@ -14,23 +14,6 @@ pub enum ObjectType {
 }
 
 impl ObjectType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ObjectType::Image => "image",
-            ObjectType::Video => "video",
-            ObjectType::Album => "album",
-        }
-    }
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "image" => Some(ObjectType::Image),
-            "video" => Some(ObjectType::Video),
-            "album" => Some(ObjectType::Album),
-            _ => None,
-        }
-    }
-
     /// 根據副檔名判斷類型
     pub fn from_ext(ext: &str) -> Option<Self> {
         if VALID_IMAGE_EXTENSIONS.contains(&ext) {
@@ -41,15 +24,9 @@ impl ObjectType {
             None
         }
     }
-
-    /// [新增]: 直接取得類型字串，若未知則回傳 "unknown"
-    /// 這樣外部調用時就不需要再寫 .map(...).unwrap_or(...)
-    pub fn str_from_ext(ext: &str) -> &'static str {
-        Self::from_ext(ext).map(|t| t.as_str()).unwrap_or("unknown")
-    }
 }
 
-/// ObjectSchema: 系統中所有實體(File/Album)的共同基類
+/// ObjectSchema: 系統中所有實體的共同基類
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectSchema {
@@ -83,7 +60,7 @@ impl ObjectSchema {
             id: ArrayString::from(&id_str).unwrap(),
             obj_type: row.get("obj_type")?,
             created_time: row.get("created_time")?,
-            pending: row.get::<_, i32>("pending")? != 0,
+            pending: row.get("pending")?,
             thumbhash: row.get("thumbhash")?,
         })
     }

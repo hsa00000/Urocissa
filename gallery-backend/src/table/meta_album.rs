@@ -7,15 +7,13 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumMetadataSchema {
-    pub id: ArrayString<64>, // FK to object.id
+    pub id: ArrayString<64>,
     pub title: Option<String>,
-    pub start_time: Option<i64>, // 使用 i64 以保持與 DB 一致
+    pub start_time: Option<i64>,
     pub end_time: Option<i64>,
     pub last_modified_time: i64,
     pub cover: Option<ArrayString<64>>,
-    // 這些 JSON 欄位保留在這裡
     pub user_defined_metadata: HashMap<String, Vec<String>>,
-    // tag 欄位已移除，統一使用 tag_database 關聯表
     pub item_count: usize,
     pub item_size: u64,
 }
@@ -54,9 +52,6 @@ impl AlbumMetadataSchema {
         let user_defined_metadata_str: String = row.get("user_defined_metadata")?;
         let user_defined_metadata: HashMap<String, Vec<String>> =
             serde_json::from_str(&user_defined_metadata_str).unwrap_or_default();
-
-        // tag 讀取已移除
-
         let item_count: usize = row.get::<_, i64>("item_count")? as usize;
         let item_size: u64 = row.get("item_size")?;
 
