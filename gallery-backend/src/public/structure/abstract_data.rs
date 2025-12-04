@@ -12,20 +12,18 @@ use crate::table::video::VideoCombined;
 
 use super::database::file_modify::FileModify;
 
-pub type MediaWithAlbum = AbstractData;
-
 #[derive(Debug, Clone)]
 pub struct Database {
-    pub media: MediaWithAlbum,
+    pub media: AbstractData,
     pub album: HashSet<String>,
 }
 
 impl Database {
     pub fn imported_path(&self) -> PathBuf {
         match &self.media {
-            MediaWithAlbum::Image(img) => img.imported_path(),
-            MediaWithAlbum::Video(vid) => vid.imported_path(),
-            MediaWithAlbum::Album(_) => PathBuf::new(), // or handle appropriately
+            AbstractData::Image(img) => img.imported_path(),
+            AbstractData::Video(vid) => vid.imported_path(),
+            AbstractData::Album(_) => PathBuf::new(), // or handle appropriately
         }
     }
 

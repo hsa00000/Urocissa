@@ -1,7 +1,7 @@
 use crate::public::constant::PROCESS_BATCH_NUMBER;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
-use crate::public::structure::abstract_data::{AbstractData, Database, MediaWithAlbum};
+use crate::public::structure::abstract_data::{AbstractData, Database};
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -60,13 +60,13 @@ pub async fn reindex(
                         Some(AbstractData::Image(img)) => {
                             // 創建 Database 結構體來調用現有函數
                             let mut db = Database {
-                                media: MediaWithAlbum::Image(img),
+                                media: AbstractData::Image(img),
                                 album: HashSet::new(),
                             };
                             // [FIX] Capture EXIF data
                             match regenerate_metadata_for_image(&mut db) {
                                 Ok(exif_vec) => {
-                                    if let MediaWithAlbum::Image(updated_img) = db.media {
+                                    if let AbstractData::Image(updated_img) = db.media {
                                         let mut ops = vec![FlushOperation::InsertAbstractData(
                                             AbstractData::Image(updated_img),
                                         )];
@@ -94,7 +94,7 @@ pub async fn reindex(
                         Some(AbstractData::Video(vid)) => {
                             // [FIX] Implement Video logic similar to Image/Database
                             let mut db = Database {
-                                media: MediaWithAlbum::Video(vid),
+                                media: AbstractData::Video(vid),
                                 album: HashSet::new(),
                             };
                             let mut index_task =
@@ -105,7 +105,7 @@ pub async fn reindex(
                                     let duration =
                                         video_duration(&db.imported_path_string()).unwrap_or(0.0);
 
-                                    if let MediaWithAlbum::Video(ref mut vid) = db.media {
+                                    if let AbstractData::Video(ref mut vid) = db.media {
                                         vid.metadata.width = index_task.width;
                                         vid.metadata.height = index_task.height;
                                         vid.metadata.size = index_task.size;

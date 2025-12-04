@@ -8,7 +8,7 @@
 //! - Perceptual hash (thumbhash, phash) computation
 
 use crate::{
-    public::structure::abstract_data::{Database, MediaWithAlbum},
+    public::structure::abstract_data::{AbstractData, Database},
     public::structure::database::generate_timestamp::compute_timestamp_ms_by_exif,
     workflow::tasks::actor::index::IndexTask,
 };
@@ -62,7 +62,7 @@ pub fn regenerate_metadata_for_image(database: &mut Database) -> Result<BTreeMap
         .len();
 
     // Update the size in the ImageCombined
-    if let MediaWithAlbum::Image(ref mut img) = database.media {
+    if let AbstractData::Image(ref mut img) = database.media {
         img.metadata.size = new_size;
     }
 

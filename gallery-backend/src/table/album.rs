@@ -1,7 +1,7 @@
+use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use arrayvec::ArrayString;
 
 use crate::table::meta_album::AlbumMetadataSchema;
 use crate::table::object::ObjectSchema;
