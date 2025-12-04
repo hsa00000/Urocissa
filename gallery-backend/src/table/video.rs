@@ -1,7 +1,7 @@
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 
 use crate::table::meta_video::VideoMetadataSchema;
@@ -15,12 +15,12 @@ pub struct VideoCombined {
     pub metadata: VideoMetadataSchema,
     #[serde(default)]
     pub albums: HashSet<ArrayString<64>>,
-    #[serde(default)]
-    pub tags: HashSet<String>,
+    #[serde(default, rename = "exifVec")]
+    pub exif_vec: BTreeMap<String, String>,
 }
 
 impl VideoCombined {
-    /// 根據 Hash (ID) 讀取單一影片資料（包含所屬相簿與標籤）
+    /// 根據 Hash (ID) 讀取單一影片資料（包含所屬相簿、標籤與 EXIF）
     pub fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
         // 1. 讀取本體資料
         let sql = r#"
@@ -44,21 +44,34 @@ impl VideoCombined {
             }
         }
 
-        // 3. 讀取關聯標籤
+        // 3. 讀取關聯標籤 (填入 object.tags)
         let sql_tags = "SELECT tag FROM tag_database WHERE hash = ?";
         let mut stmt_tags = conn.prepare(sql_tags)?;
         let tag_rows = stmt_tags.query_map([id], |row| row.get::<_, String>(0))?;
 
         for tag in tag_rows {
             if let Ok(t) = tag {
-                video.tags.insert(t);
+                video.object.tags.insert(t);
+            }
+        }
+
+        // 4. 讀取 EXIF (影片亦可能有部分 metadata 存於 exif 表)
+        let sql_exif = "SELECT tag, value FROM database_exif WHERE hash = ?";
+        let mut stmt_exif = conn.prepare(sql_exif)?;
+        let exif_rows = stmt_exif.query_map([id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        for row in exif_rows {
+            if let Ok((k, v)) = row {
+                video.exif_vec.insert(k, v);
             }
         }
 
         Ok(video)
     }
 
-    /// 讀取所有影片資料（高效能批次填入相簿與標籤關聯）
+    /// 讀取所有影片資料（高效能批次填入相簿、標籤與 EXIF 關聯）
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
         // 1. 讀取所有影片本體
         let sql = r#"
@@ -121,13 +134,42 @@ impl VideoCombined {
             }
         }
 
-        // 4. 將資料填回影片 Struct
+        // 4. 批次讀取所有「影片」類型的 EXIF
+        let sql_exif_relations = r#"
+            SELECT de.hash, de.tag, de.value
+            FROM database_exif de
+            INNER JOIN object o ON de.hash = o.id
+            WHERE o.obj_type = 'video'
+        "#;
+
+        let mut stmt_exif_rel = conn.prepare(sql_exif_relations)?;
+        let exif_rel_rows = stmt_exif_rel.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        let mut exif_map: HashMap<ArrayString<64>, BTreeMap<String, String>> = HashMap::new();
+
+        for rel in exif_rel_rows {
+            let (hash, k, v) = rel?;
+            if let Ok(hash_as) = ArrayString::from(&hash) {
+                exif_map.entry(hash_as).or_default().insert(k, v);
+            }
+        }
+
+        // 5. 將資料填回影片 Struct
         for video in &mut videos {
             if let Some(albums) = album_map.remove(&video.object.id) {
                 video.albums = albums;
             }
             if let Some(tags) = tag_map.remove(&video.object.id) {
-                video.tags = tags;
+                video.object.tags = tags;
+            }
+            if let Some(exif) = exif_map.remove(&video.object.id) {
+                video.exif_vec = exif;
             }
         }
 
@@ -139,7 +181,7 @@ impl VideoCombined {
             object: ObjectSchema::from_row(row)?,
             metadata: VideoMetadataSchema::from_row(row)?,
             albums: HashSet::new(),
-            tags: HashSet::new(),
+            exif_vec: BTreeMap::new(),
         })
     }
 

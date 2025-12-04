@@ -1,8 +1,5 @@
-use std::collections::HashSet;
-
 use arrayvec::ArrayString;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::public::db::tree::TREE;
@@ -16,10 +13,8 @@ use super::database::file_modify::FileModify;
 #[serde(rename_all = "camelCase")]
 pub struct AbstractDataWithTag {
     pub data: AbstractData,
-    pub tag: Option<HashSet<String>>,
     pub alias: Vec<FileModify>,
     pub token: String,
-    pub exif_vec: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,13 +66,6 @@ impl AbstractData {
             AbstractData::Album(_) => 300,
         }
     }
-    pub fn tag(&self) -> Option<&HashSet<String>> {
-        match self {
-            AbstractData::Image(i) => Some(&i.tags),
-            AbstractData::Video(v) => Some(&v.tags),
-            AbstractData::Album(a) => Some(&a.tags),
-        }
-    }
     pub fn alias(self: &Self) -> Vec<FileModify> {
         match self {
             AbstractData::Image(i) => {
@@ -117,51 +105,6 @@ impl AbstractData {
             AbstractData::Album(_) => vec![],
         }
     }
-    pub fn exif_vec(self: &Self) -> Option<BTreeMap<String, String>> {
-        match self {
-            AbstractData::Image(i) => {
-                let conn = TREE.get_connection().unwrap();
-                let mut stmt = conn
-                    .prepare("SELECT tag, value FROM database_exif WHERE hash = ?")
-                    .unwrap();
-                let exif_iter = stmt
-                    .query_map([i.object.id.as_str()], |row| {
-                        let tag: String = row.get(0)?;
-                        let value: String = row.get(1)?;
-                        Ok((tag, value))
-                    })
-                    .unwrap();
-                let mut exif_map = BTreeMap::new();
-                for exif_result in exif_iter {
-                    if let Ok((tag, value)) = exif_result {
-                        exif_map.insert(tag, value);
-                    }
-                }
-                Some(exif_map)
-            }
-            AbstractData::Video(v) => {
-                let conn = TREE.get_connection().unwrap();
-                let mut stmt = conn
-                    .prepare("SELECT tag, value FROM database_exif WHERE hash = ?")
-                    .unwrap();
-                let exif_iter = stmt
-                    .query_map([v.object.id.as_str()], |row| {
-                        let tag: String = row.get(0)?;
-                        let value: String = row.get(1)?;
-                        Ok((tag, value))
-                    })
-                    .unwrap();
-                let mut exif_map = BTreeMap::new();
-                for exif_result in exif_iter {
-                    if let Ok((tag, value)) = exif_result {
-                        exif_map.insert(tag, value);
-                    }
-                }
-                Some(exif_map)
-            }
-            AbstractData::Album(_) => None,
-        }
-    }
 
     pub fn generate_token(&self, timestamp: u128, allow_original: bool) -> String {
         match self {
@@ -185,17 +128,12 @@ impl AbstractData {
     }
 
     pub fn with_tag(self, timestamp: u128, allow_original: bool) -> AbstractDataWithTag {
-        // 優化：這裡不再查詢 DB，而是直接複製內存中的 tags
-        let tag = self.tag().cloned();
-        let exif_vec = self.exif_vec().unwrap_or_default();
         let alias = self.alias();
         let token = self.generate_token(timestamp, allow_original);
         AbstractDataWithTag {
             data: self,
-            tag,
             alias,
             token,
-            exif_vec,
         }
     }
 }

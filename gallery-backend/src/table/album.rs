@@ -13,8 +13,6 @@ pub struct AlbumCombined {
     pub object: ObjectSchema,
     #[serde(flatten)]
     pub metadata: AlbumMetadataSchema,
-    #[serde(default)]
-    pub tags: HashSet<String>,
 }
 
 impl AlbumCombined {
@@ -78,7 +76,7 @@ impl AlbumCombined {
         // 3. 將資料填回相簿 Struct
         for album in &mut albums {
             if let Some(tags) = tag_map.remove(&album.object.id) {
-                album.tags = tags;
+                album.object.tags = tags;
             }
         }
 
@@ -89,7 +87,6 @@ impl AlbumCombined {
         Ok(AlbumCombined {
             object: ObjectSchema::from_row(row)?,
             metadata: AlbumMetadataSchema::from_row(row)?,
-            tags: HashSet::new(),
         })
     }
 }

@@ -27,10 +27,12 @@ impl Expression {
                 Box::new(move |abstract_data: &AbstractData| !inner_filter(abstract_data))
             }
             Expression::Tag(tag) => Box::new(move |abstract_data: &AbstractData| {
-                abstract_data
-                    .tag()
-                    .as_ref()
-                    .map_or(false, |tags| tags.contains(&tag))
+                let tags = match abstract_data {
+                    AbstractData::Image(i) => &i.object.tags,
+                    AbstractData::Video(v) => &v.object.tags,
+                    AbstractData::Album(a) => &a.object.tags,
+                };
+                tags.contains(&tag)
             }),
             Expression::ExtType(ext_type) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {

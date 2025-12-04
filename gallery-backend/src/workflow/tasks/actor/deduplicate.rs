@@ -29,7 +29,7 @@ use crate::{
 use anyhow::Result;
 use arrayvec::ArrayString;
 use mini_executor::Task;
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::{BTreeMap, HashSet}, path::PathBuf};
 
 pub struct DeduplicateTask {
     pub path: PathBuf,
@@ -130,6 +130,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                         obj_type: "image".to_string(),
                         thumbhash: None,
                         pending: false,
+                        tags: HashSet::new(),
                     };
                     let metadata = ImageMetadataSchema {
                         id: task.hash,
@@ -143,7 +144,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                         object,
                         metadata,
                         albums: HashSet::new(),
-                        tags: HashSet::new(),
+                        exif_vec: BTreeMap::new(),
                     })
                 }
                 ObjectType::Video => {
@@ -153,6 +154,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                         obj_type: "video".to_string(),
                         thumbhash: None,
                         pending: true, // Video starts as pending
+                        tags: HashSet::new(),
                     };
                     let metadata = VideoMetadataSchema {
                         id: task.hash,
@@ -166,7 +168,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                         object,
                         metadata,
                         albums: HashSet::new(),
-                        tags: HashSet::new(),
+                        exif_vec: BTreeMap::new(),
                     })
                 }
                 ObjectType::Album => unreachable!("Unexpected album type in deduplicate task"),

@@ -8,7 +8,6 @@ use arrayvec::ArrayString;
 use rand::{Rng, distr::Alphanumeric};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::post;
-use std::collections::HashSet;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -69,7 +68,7 @@ async fn create_album_internal(title: Option<String>) -> Result<ArrayString<64>>
     let album_id = generate_random_hash();
     let object = ObjectSchema::new(album_id, "album");
     let metadata = AlbumMetadataSchema::new(album_id, title);
-    let album = AbstractData::Album(AlbumCombined { object, metadata, tags: HashSet::new() });
+    let album = AbstractData::Album(AlbumCombined { object, metadata });
     BATCH_COORDINATOR
         .execute_batch_waiting(FlushTreeTask::insert(vec![album]))
         .await?;
@@ -115,13 +114,17 @@ pub fn index_edit_album_insert(
     let hash = index_to_hash(tree_snapshot, database_index)?;
     let data_opt = TREE.load_data_from_hash(&hash)?;
     let mut data = data_opt.ok_or_else(|| anyhow::anyhow!("Data not found for hash: {}", hash))?;
-    
+
     match &mut data {
-        AbstractData::Image(i) => { i.albums.insert(album_id); },
-        AbstractData::Video(v) => { v.albums.insert(album_id); },
+        AbstractData::Image(i) => {
+            i.albums.insert(album_id);
+        }
+        AbstractData::Video(v) => {
+            v.albums.insert(album_id);
+        }
         _ => {}
     }
-    
+
     Ok(data)
 }
 

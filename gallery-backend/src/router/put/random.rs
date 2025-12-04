@@ -11,7 +11,7 @@ use crate::table::meta_image::ImageMetadataSchema;
 use arrayvec::ArrayString;
 use anyhow::Result;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 fn create_random_data() -> AbstractData {
     // 簡單的隨機數據生成 - 創建一個假的 ImageCombined
@@ -22,6 +22,7 @@ fn create_random_data() -> AbstractData {
             created_time: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64,
             pending: false,
             thumbhash: None,
+            tags: HashSet::new(),
         },
         metadata: ImageMetadataSchema {
             id: ArrayString::from(&format!("random_{}", rand::random::<u64>())).unwrap(),
@@ -32,7 +33,7 @@ fn create_random_data() -> AbstractData {
             phash: None,
         },
         albums: HashSet::new(),
-        tags: HashSet::new(),
+        exif_vec: BTreeMap::new(),
     };
     
     AbstractData::Image(image)

@@ -1,8 +1,8 @@
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
-// [新增]: 引入常量定義
 use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,6 +35,7 @@ pub struct ObjectSchema {
     pub created_time: i64,
     pub pending: bool,
     pub thumbhash: Option<Vec<u8>>,
+    pub tags: HashSet<String>,
 }
 
 impl ObjectSchema {
@@ -62,6 +63,7 @@ impl ObjectSchema {
             created_time: row.get("created_time")?,
             pending: row.get("pending")?,
             thumbhash: row.get("thumbhash")?,
+            tags: HashSet::new(),
         })
     }
 
@@ -77,6 +79,7 @@ impl ObjectSchema {
             created_time: timestamp,
             pending: false,
             thumbhash: None,
+            tags: HashSet::new(),
         }
     }
 }

@@ -25,6 +25,7 @@ use log::info;
 use regex::Regex;
 use std::{
     cmp,
+    collections::BTreeMap,
     error::Error,
     io::{BufRead, BufReader},
     process::{Command, Stdio},
@@ -46,24 +47,24 @@ pub enum VideoProcessResult {
 fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
     // 暫存需要轉移的資料，避免 borrow checker 衝突
     let (video_combined, albums, tags) = match data {
-        AbstractData::Video(v) => (v.clone(), v.albums.clone(), v.tags.clone()),
+        AbstractData::Video(v) => (v.clone(), v.albums.clone(), v.object.tags.clone()),
         _ => return Err(anyhow!("Data is not a video")),
     };
 
-    let phash = if let Ok(dyn_img) =
-        generate_dynamic_image_from_path(&video_combined.imported_path())
-    {
-        Some(generate_phash(&dyn_img))
-    } else {
-        None
-    };
+    let phash =
+        if let Ok(dyn_img) = generate_dynamic_image_from_path(&video_combined.imported_path()) {
+            Some(generate_phash(&dyn_img))
+        } else {
+            None
+        };
 
     let object = ObjectSchema {
         id: video_combined.object.id,
         obj_type: "image".to_string(), // 修改類型
         created_time: video_combined.object.created_time,
-        pending: false, // 圖片通常不需要 pending 狀態
+        pending: false,
         thumbhash: video_combined.object.thumbhash,
+        tags,
     };
 
     let metadata = ImageMetadataSchema {
@@ -79,7 +80,7 @@ fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
         object,
         metadata,
         albums,
-        tags,
+        exif_vec: BTreeMap::new(),
     };
 
     // 將修改後的資料寫回 data

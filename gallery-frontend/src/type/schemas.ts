@@ -120,7 +120,8 @@ const FlatObjectBase = z.object({
   objType: ObjTypeEnum,
   createdTime: z.number(),
   pending: z.boolean(),
-  thumbhash: z.array(z.number()).nullable().optional()
+  thumbhash: z.array(z.number()).nullable().optional(),
+  tags: z.array(z.string()).default([]) // [Modified]: Tags moved to ObjectSchema in backend
 })
 
 export const FlatImageSchema = FlatObjectBase.extend({
@@ -130,7 +131,8 @@ export const FlatImageSchema = FlatObjectBase.extend({
   width: z.number(),
   height: z.number(),
   ext: z.string(),
-  phash: z.array(z.number()).nullable().optional()
+  phash: z.array(z.number()).nullable().optional(),
+  exifVec: z.record(z.string(), z.string()).default({}) // [Modified]: Exif moved to ImageCombined
 })
 
 export const FlatVideoSchema = FlatObjectBase.extend({
@@ -140,7 +142,8 @@ export const FlatVideoSchema = FlatObjectBase.extend({
   width: z.number(),
   height: z.number(),
   ext: z.string(),
-  duration: z.number().default(0)
+  duration: z.number().default(0),
+  exifVec: z.record(z.string(), z.string()).default({}) // [Modified]: Exif moved to VideoCombined
 })
 
 export const FlatAlbumSchema = FlatObjectBase.extend({
@@ -151,24 +154,20 @@ export const FlatAlbumSchema = FlatObjectBase.extend({
   lastModifiedTime: z.number(),
   cover: z.string().nullable(),
   userDefinedMetadata: z.record(z.string(), z.array(z.string())),
-  tag: z.array(z.string()).optional().default([]),
+  // tag: z.array(z.string()).optional().default([]), // [Removed]: Now using 'tags' from FlatObjectBase, but keeping legacy mapping in mind
   itemCount: z.number(),
   itemSize: z.number()
 })
 
 // REPLACED: Now uses the flat schemas union
-export const AbstractDataParseSchema = z.union([
-  FlatImageSchema,
-  FlatVideoSchema,
-  FlatAlbumSchema
-])
+export const AbstractDataParseSchema = z.union([FlatImageSchema, FlatVideoSchema, FlatAlbumSchema])
 
 export const AbstractDataWithTagSchema = z.object({
   data: AbstractDataParseSchema,
-  tag: z.array(z.string()).optional(),
+  // tag: z.array(z.string()).optional(), // [Removed]: Backend removed this
   alias: z.array(AliasSchema),
-  token: z.string(),
-  exifVec: z.record(z.string(), z.string())
+  token: z.string()
+  // exifVec: z.record(z.string(), z.string()) // [Removed]: Backend removed this
 })
 
 export const AbstractDataSchema = z.object({

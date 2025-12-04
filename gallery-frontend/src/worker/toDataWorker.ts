@@ -169,17 +169,16 @@ async function fetchData(
         cover: dataObj.cover,
         thumbhash: dataObj.thumbhash || null,
         userDefinedMetadata: dataObj.userDefinedMetadata,
-        tag: dataObj.tag,
+        tag: dataObj.tags, // [Modified]: Get tags from dataObj
         itemCount: dataObj.itemCount,
         itemSize: dataObj.itemSize,
         pending: dataObj.pending,
         shareList: new Map() // Backend 'get-data' does not return share list currently
       }
 
-      const albumInstance = createAlbum(legacyAlbumData, legacyAlbumData.createdTime, item.tag || [])
+      const albumInstance = createAlbum(legacyAlbumData, legacyAlbumData.createdTime, dataObj.tags)
       const abstractData = createAbstractData(albumInstance)
       data.set(key, { abstractData, hashToken: item.token })
-
     } else {
       // It is 'image' or 'video' -> Database
       const legacyDbData = {
@@ -195,13 +194,13 @@ async function fetchData(
         width: dataObj.width,
         timestampMs: dataObj.createdTime
       }
-      
+
       const databaseInstance = createDataBase(
         legacyDbData,
         legacyDbData.timestampMs,
-        item.tag || [],
+        dataObj.tags, // [Modified]: Get tags from dataObj
         item.alias,
-        item.exifVec
+        dataObj.exifVec // [Modified]: Get exifVec from dataObj
       )
       const abstractData = createAbstractData(databaseInstance)
       data.set(key, { abstractData, hashToken: item.token })
