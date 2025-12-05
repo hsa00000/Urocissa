@@ -66,14 +66,12 @@ pub async fn regenerate_thumbnail_with_frame(
         let mut data =
             database_opt.ok_or_else(|| anyhow::anyhow!("Database not found for hash: {}", hash))?;
 
-        let (imported_path, is_image) = match &data {
-            AbstractData::Image(i) => (i.imported_path(), true),
-            AbstractData::Video(v) => (v.imported_path(), false),
+        let imported_path = match &data {
+            AbstractData::Image(i) => i.imported_path(),
+            AbstractData::Video(v) => v.imported_path(),
             _ => return Err(anyhow!("Unsupported type")),
         };
 
-        // Create a temporary IndexTask for image processing
-        // 這裡需要注意 IndexTask 的定義，假設它現在接受 AbstractData
         let index_task =
             crate::workflow::tasks::actor::index::IndexTask::new(imported_path, data.clone());
 
