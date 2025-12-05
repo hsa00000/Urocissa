@@ -181,18 +181,15 @@ async function fetchData(
       data.set(key, { abstractData, hashToken: item.token })
     } else {
       // It is 'image' or 'video' -> Database
+      // Cleaned up construction using object spread and explicit mapping for differing keys
       const legacyDbData = {
-        album: [], // Backend 'get-data' does not return album list currently
-        ext: dataObj.ext,
-        extType: dataObj.objType === 'video' ? 'video' : 'image',
+        ...dataObj,
+        album: dataObj.albums, // Correctly mapping albums from backend
+        extType: dataObj.objType,
         hash: dataObj.id,
-        height: dataObj.height,
-        pending: dataObj.pending,
-        phash: (dataObj.objType === 'image' ? dataObj.phash : []) || [],
-        size: dataObj.size,
-        thumbhash: dataObj.thumbhash || [],
-        width: dataObj.width,
-        timestampMs: dataObj.createdTime
+        timestampMs: dataObj.createdTime,
+        phash: (dataObj.objType === 'image' ? dataObj.phash : []) ?? [],
+        thumbhash: dataObj.thumbhash ?? []
       }
 
       const databaseInstance = createDataBase(

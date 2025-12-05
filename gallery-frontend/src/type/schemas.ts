@@ -132,7 +132,8 @@ export const FlatImageSchema = FlatObjectBase.extend({
   height: z.number(),
   ext: z.string(),
   phash: z.array(z.number()).nullable().optional(),
-  exifVec: z.record(z.string(), z.string()).default({}) // [Modified]: Exif moved to ImageCombined
+  exifVec: z.record(z.string(), z.string()).default({}), // [Modified]: Exif moved to ImageCombined
+  albums: z.array(z.string()).default([]) // [Added]: Backend returns albums list
 })
 
 export const FlatVideoSchema = FlatObjectBase.extend({
@@ -143,7 +144,8 @@ export const FlatVideoSchema = FlatObjectBase.extend({
   height: z.number(),
   ext: z.string(),
   duration: z.number().default(0),
-  exifVec: z.record(z.string(), z.string()).default({}) // [Modified]: Exif moved to VideoCombined
+  exifVec: z.record(z.string(), z.string()).default({}), // [Modified]: Exif moved to VideoCombined
+  albums: z.array(z.string()).default([]) // [Added]: Backend returns albums list
 })
 
 export const FlatAlbumSchema = FlatObjectBase.extend({

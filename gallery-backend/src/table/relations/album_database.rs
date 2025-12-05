@@ -4,8 +4,8 @@ use crate::table::meta_video::MetaVideo;
 use crate::table::object::Object;
 use rusqlite::Connection;
 use sea_query::{
-    Asterisk, ColumnDef, Expr, ExprTrait, ForeignKey, Func, FunctionCall, Iden, Index, JoinType, Order, Query, SimpleExpr,
-    SqliteQueryBuilder, Table,
+    Asterisk, ColumnDef, Expr, ExprTrait, ForeignKey, Func, FunctionCall, Iden, Index, JoinType,
+    Order, Query, SimpleExpr, SqliteQueryBuilder, Table,
 };
 
 #[derive(Iden)]
@@ -78,7 +78,8 @@ impl AlbumDatabasesTable {
                                 Expr::val(0).into(),
                             ];
                             inner
-                        })).into(),
+                        }))
+                        .into(),
                         Expr::val(0).into(),
                     ];
                     values
@@ -87,19 +88,25 @@ impl AlbumDatabasesTable {
                 .join(
                     JoinType::Join,
                     Object::Table,
-                    Expr::col((AlbumDatabase::Table, AlbumDatabase::Hash)).eq(Expr::col((Object::Table, Object::Id))),
+                    Expr::col((AlbumDatabase::Table, AlbumDatabase::Hash))
+                        .eq(Expr::col((Object::Table, Object::Id))),
                 )
                 .join(
                     JoinType::LeftJoin,
                     MetaImage::Table,
-                    Expr::col((Object::Table, Object::Id)).eq(Expr::col((MetaImage::Table, MetaImage::Id))),
+                    Expr::col((Object::Table, Object::Id))
+                        .eq(Expr::col((MetaImage::Table, MetaImage::Id))),
                 )
                 .join(
                     JoinType::LeftJoin,
                     MetaVideo::Table,
-                    Expr::col((Object::Table, Object::Id)).eq(Expr::col((MetaVideo::Table, MetaVideo::Id))),
+                    Expr::col((Object::Table, Object::Id))
+                        .eq(Expr::col((MetaVideo::Table, MetaVideo::Id))),
                 )
-                .and_where(Expr::col((AlbumDatabase::Table, AlbumDatabase::AlbumId)).eq(target_album_id.clone()))
+                .and_where(
+                    Expr::col((AlbumDatabase::Table, AlbumDatabase::AlbumId))
+                        .eq(target_album_id.clone()),
+                )
                 .to_owned();
 
             // 3.3 子查詢: Start Time / End Time
@@ -110,9 +117,13 @@ impl AlbumDatabasesTable {
                     .join(
                         JoinType::Join,
                         Object::Table,
-                        Expr::col((AlbumDatabase::Table, AlbumDatabase::Hash)).eq(Expr::col((Object::Table, Object::Id))),
+                        Expr::col((AlbumDatabase::Table, AlbumDatabase::Hash))
+                            .eq(Expr::col((Object::Table, Object::Id))),
                     )
-                    .and_where(Expr::col((AlbumDatabase::Table, AlbumDatabase::AlbumId)).eq(target_album_id.clone()))
+                    .and_where(
+                        Expr::col((AlbumDatabase::Table, AlbumDatabase::AlbumId))
+                            .eq(target_album_id.clone()),
+                    )
                     .to_owned()
             };
 
@@ -123,9 +134,13 @@ impl AlbumDatabasesTable {
                 .join(
                     JoinType::Join,
                     Object::Table,
-                    Expr::col((AlbumDatabase::Table, AlbumDatabase::Hash)).eq(Expr::col((Object::Table, Object::Id))),
+                    Expr::col((AlbumDatabase::Table, AlbumDatabase::Hash))
+                        .eq(Expr::col((Object::Table, Object::Id))),
                 )
-                .and_where(Expr::col((AlbumDatabase::Table, AlbumDatabase::AlbumId)).eq(target_album_id.clone()))
+                .and_where(
+                    Expr::col((AlbumDatabase::Table, AlbumDatabase::AlbumId))
+                        .eq(target_album_id.clone()),
+                )
                 .order_by((Object::Table, Object::CreatedTime), Order::Asc)
                 .limit(1)
                 .to_owned();
@@ -136,7 +151,7 @@ impl AlbumDatabasesTable {
                 .and_where(Expr::col(AlbumDatabase::AlbumId).eq(target_album_id.clone()))
                 .and_where(Expr::col(AlbumDatabase::Hash).eq(Expr::col(MetaAlbum::Cover)))
                 .to_owned();
-            
+
             // 建構 UPDATE 語句
             Query::update()
                 .table(MetaAlbum::Table)
@@ -147,15 +162,16 @@ impl AlbumDatabasesTable {
                 .value(
                     MetaAlbum::Cover,
                     Expr::case(
-                        Expr::col(MetaAlbum::Cover).is_not_null()
-                        .and(Expr::exists(cover_exists_check)),
                         Expr::col(MetaAlbum::Cover)
+                            .is_not_null()
+                            .and(Expr::exists(cover_exists_check)),
+                        Expr::col(MetaAlbum::Cover),
                     )
-                    .finally(sub_cover_fallback)
+                    .finally(sub_cover_fallback),
                 )
                 .value(
-                    MetaAlbum::LastModifiedTime, 
-                    Expr::cust("strftime('%s', 'now') * 1000")
+                    MetaAlbum::LastModifiedTime,
+                    Expr::cust("strftime('%s', 'now') * 1000"),
                 )
                 .and_where(Expr::col(MetaAlbum::Id).eq(target_album_id.clone()))
                 .to_string(SqliteQueryBuilder)
@@ -164,10 +180,11 @@ impl AlbumDatabasesTable {
         // 4. 組合 Raw SQL Trigger
         let update_sql_insert = build_update_sql(new_album_id);
         let update_sql_delete = build_update_sql(old_album_id);
-        
+
         let table_name = AlbumDatabase::Table.to_string();
 
-        let trigger_sql = format!(r#"
+        let trigger_sql = format!(
+            r#"
             CREATE TRIGGER IF NOT EXISTS update_album_stats_after_insert AFTER INSERT ON "{table_name}"
             BEGIN
                 {update_sql_insert};
@@ -177,7 +194,8 @@ impl AlbumDatabasesTable {
             BEGIN
                 {update_sql_delete};
             END;
-        "#);
+        "#
+        );
 
         conn.execute_batch(&trigger_sql)?;
         Ok(())
