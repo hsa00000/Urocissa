@@ -1,7 +1,23 @@
+use crate::table::object::Object;
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
+use sea_query::{ColumnDef, ForeignKey, Iden, SqliteQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+#[derive(Iden)]
+pub enum MetaAlbum {
+    Table,
+    Id,
+    Title,
+    StartTime,
+    EndTime,
+    LastModifiedTime,
+    Cover,
+    UserDefinedMetadata,
+    ItemCount,
+    ItemSize,
+}
 
 /// AlbumMetadataSchema: 相簿專用屬性
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,39 +36,55 @@ pub struct AlbumMetadataSchema {
 
 impl AlbumMetadataSchema {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
-        let sql = r#"
-            CREATE TABLE IF NOT EXISTS meta_album (
-                id TEXT PRIMARY KEY,
-                title TEXT,
-                start_time INTEGER,
-                end_time INTEGER,
-                last_modified_time INTEGER,
-                cover TEXT,
-                user_defined_metadata TEXT,
-                item_count INTEGER DEFAULT 0,
-                item_size INTEGER DEFAULT 0,
-                FOREIGN KEY(id) REFERENCES object(id) ON DELETE CASCADE
-            );
-        "#;
-        conn.execute(sql, [])?;
+        let sql = Table::create()
+            .table(MetaAlbum::Table)
+            .if_not_exists()
+            .col(ColumnDef::new(MetaAlbum::Id).text().primary_key())
+            .col(ColumnDef::new(MetaAlbum::Title).text())
+            .col(ColumnDef::new(MetaAlbum::StartTime).integer())
+            .col(ColumnDef::new(MetaAlbum::EndTime).integer())
+            .col(ColumnDef::new(MetaAlbum::LastModifiedTime).integer())
+            .col(ColumnDef::new(MetaAlbum::Cover).text())
+            .col(ColumnDef::new(MetaAlbum::UserDefinedMetadata).text())
+            .col(
+                ColumnDef::new(MetaAlbum::ItemCount)
+                    .integer()
+                    .default(0),
+            )
+            .col(
+                ColumnDef::new(MetaAlbum::ItemSize)
+                    .integer()
+                    .default(0),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .from(MetaAlbum::Table, MetaAlbum::Id)
+                    .to(Object::Table, Object::Id)
+                    .on_delete(sea_query::ForeignKeyAction::Cascade),
+            )
+            .build(SqliteQueryBuilder);
+
+        conn.execute(&sql, [])?;
         Ok(())
     }
 
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
-        let id_str: String = row.get("id")?;
-        let title: Option<String> = row.get("title")?;
-        let start_time: Option<i64> = row.get("start_time")?;
-        let end_time: Option<i64> = row.get("end_time")?;
-        let last_modified_time: i64 = row.get("last_modified_time")?;
+        let id_str: String = row.get(MetaAlbum::Id.to_string().as_str())?;
+        let title: Option<String> = row.get(MetaAlbum::Title.to_string().as_str())?;
+        let start_time: Option<i64> = row.get(MetaAlbum::StartTime.to_string().as_str())?;
+        let end_time: Option<i64> = row.get(MetaAlbum::EndTime.to_string().as_str())?;
+        let last_modified_time: i64 = row.get(MetaAlbum::LastModifiedTime.to_string().as_str())?;
 
-        let cover_str: Option<String> = row.get("cover")?;
+        let cover_str: Option<String> = row.get(MetaAlbum::Cover.to_string().as_str())?;
         let cover: Option<ArrayString<64>> = cover_str.and_then(|s| ArrayString::from(&s).ok());
 
-        let user_defined_metadata_str: String = row.get("user_defined_metadata")?;
+        let user_defined_metadata_str: String =
+            row.get(MetaAlbum::UserDefinedMetadata.to_string().as_str())?;
         let user_defined_metadata: HashMap<String, Vec<String>> =
             serde_json::from_str(&user_defined_metadata_str).unwrap_or_default();
-        let item_count: usize = row.get::<_, i64>("item_count")? as usize;
-        let item_size: u64 = row.get("item_size")?;
+        let item_count: usize =
+            row.get::<_, i64>(MetaAlbum::ItemCount.to_string().as_str())? as usize;
+        let item_size: u64 = row.get(MetaAlbum::ItemSize.to_string().as_str())?;
 
         Ok(Self {
             id: ArrayString::from(&id_str).unwrap(),

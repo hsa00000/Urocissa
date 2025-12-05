@@ -1,21 +1,56 @@
+use crate::table::object::Object;
 use rusqlite::Connection;
+use sea_query::{ColumnDef, ForeignKey, Iden, Index, SqliteQueryBuilder, Table};
+
+#[derive(Iden)]
+pub enum AlbumDatabase {
+    Table, // "album_database"
+    AlbumId,
+    Hash,
+}
 
 pub struct AlbumDatabasesTable;
 
 impl AlbumDatabasesTable {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
-        let sql = r##"
-            CREATE TABLE IF NOT EXISTS album_database (
-                album_id TEXT NOT NULL,
-                hash     TEXT NOT NULL,
-                PRIMARY KEY (album_id, hash),
-                FOREIGN KEY (album_id) REFERENCES object(id) ON DELETE CASCADE,
-                FOREIGN KEY (hash)     REFERENCES object(id) ON DELETE CASCADE
-            );
+        // 1. 使用 SeaQuery 建立 Table
+        let table_sql = Table::create()
+            .table(AlbumDatabase::Table)
+            .if_not_exists()
+            .col(ColumnDef::new(AlbumDatabase::AlbumId).text().not_null())
+            .col(ColumnDef::new(AlbumDatabase::Hash).text().not_null())
+            .primary_key(
+                Index::create()
+                    .col(AlbumDatabase::AlbumId)
+                    .col(AlbumDatabase::Hash),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .from(AlbumDatabase::Table, AlbumDatabase::AlbumId)
+                    .to(Object::Table, Object::Id)
+                    .on_delete(sea_query::ForeignKeyAction::Cascade),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .from(AlbumDatabase::Table, AlbumDatabase::Hash)
+                    .to(Object::Table, Object::Id)
+                    .on_delete(sea_query::ForeignKeyAction::Cascade),
+            )
+            .build(SqliteQueryBuilder);
+        conn.execute(&table_sql, [])?;
 
-            CREATE INDEX IF NOT EXISTS idx_album_databases_hash
-            ON album_database(hash);
+        // 2. 使用 SeaQuery 建立 Index
+        let idx_sql = Index::create()
+            .if_not_exists()
+            .name("idx_album_databases_hash")
+            .table(AlbumDatabase::Table)
+            .col(AlbumDatabase::Hash)
+            .to_string(SqliteQueryBuilder);
+        conn.execute(&idx_sql, [])?;
 
+        // 3. 保留 Raw SQL Trigger
+        // 注意：Trigger 名稱、欄位名稱必須與上方 Enum 定義的字串一致 (SeaQuery 預設 Snake Case)
+        let trigger_sql = r##"
             -- Trigger: Insert
             CREATE TRIGGER IF NOT EXISTS update_album_stats_after_insert AFTER INSERT ON album_database
             BEGIN
@@ -96,7 +131,7 @@ impl AlbumDatabasesTable {
                 WHERE id = OLD.album_id;
             END;
         "##;
-        conn.execute_batch(sql)?;
+        conn.execute_batch(trigger_sql)?;
         Ok(())
     }
 }

@@ -1,9 +1,26 @@
+use crate::public::db::tree::TREE;
+use crate::table::meta_album::MetaAlbum;
 use arrayvec::ArrayString;
 use rusqlite::Connection;
+use sea_query::{
+    ColumnDef, Expr, ExprTrait, ForeignKey, Iden, Index, JoinType, Query, SqliteQueryBuilder, Table,
+};
+use sea_query_rusqlite::RusqliteBinder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::public::db::tree::TREE;
+#[derive(Iden)]
+pub enum AlbumShare {
+    Table, // "album_share"
+    AlbumId,
+    Url,
+    Description,
+    Password,
+    ShowMetadata,
+    ShowDownload,
+    ShowUpload,
+    Exp,
+}
 
 /// Share: 用於前端傳輸的分享結構
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
@@ -42,39 +59,73 @@ pub struct AlbumShareTable;
 
 impl AlbumShareTable {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
-        let sql = r#"
-            CREATE TABLE IF NOT EXISTS album_share (
-                album_id TEXT NOT NULL,
-                url TEXT NOT NULL,
-                description TEXT NOT NULL,
-                password TEXT,
-                show_metadata INTEGER NOT NULL,
-                show_download INTEGER NOT NULL,
-                show_upload INTEGER NOT NULL,
-                exp INTEGER NOT NULL,
-                PRIMARY KEY (album_id, url),
-                FOREIGN KEY (album_id) REFERENCES meta_album(id) ON DELETE CASCADE
-            );
-            
-            CREATE INDEX IF NOT EXISTS idx_album_share_url
-                ON album_share(url);
-        "#;
-        conn.execute_batch(sql)?;
+        let sql = Table::create()
+            .table(AlbumShare::Table)
+            .if_not_exists()
+            .col(ColumnDef::new(AlbumShare::AlbumId).text().not_null())
+            .col(ColumnDef::new(AlbumShare::Url).text().not_null())
+            .col(ColumnDef::new(AlbumShare::Description).text().not_null())
+            .col(ColumnDef::new(AlbumShare::Password).text())
+            .col(
+                ColumnDef::new(AlbumShare::ShowMetadata)
+                    .integer()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(AlbumShare::ShowDownload)
+                    .integer()
+                    .not_null(),
+            )
+            .col(ColumnDef::new(AlbumShare::ShowUpload).integer().not_null())
+            .col(ColumnDef::new(AlbumShare::Exp).integer().not_null())
+            .primary_key(
+                Index::create()
+                    .col(AlbumShare::AlbumId)
+                    .col(AlbumShare::Url),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .from(AlbumShare::Table, AlbumShare::AlbumId)
+                    .to(MetaAlbum::Table, MetaAlbum::Id)
+                    .on_delete(sea_query::ForeignKeyAction::Cascade),
+            )
+            .build(SqliteQueryBuilder);
+        conn.execute(&sql, [])?;
+
+        let idx = Index::create()
+            .if_not_exists()
+            .name("idx_album_share_url")
+            .table(AlbumShare::Table)
+            .col(AlbumShare::Url)
+            .to_string(SqliteQueryBuilder);
+        conn.execute(&idx, [])?;
+
         Ok(())
     }
 
-    /// Retrieves all album shares from the database, grouped by album ID.
-    ///
-    /// Returns a `HashMap` where the key is the album ID as a `String`, and the value is another
-    /// `HashMap` with the share URL as the key (`ArrayString<64>`) and the `Share` struct as the value.
     pub fn get_all_shares_grouped()
     -> rusqlite::Result<HashMap<String, HashMap<ArrayString<64>, Share>>> {
         let conn = TREE.get_connection().unwrap();
-        let mut stmt = conn.prepare("SELECT album_id, url, description, password, show_metadata, show_download, show_upload, exp FROM album_share")?;
 
-        let share_iter = stmt.query_map([], |row| {
-            let album_id: String = row.get(0)?;
-            let url_str: String = row.get(1)?;
+        // SELECT * FROM album_share
+        let (sql, values) = Query::select()
+            .columns([
+                AlbumShare::AlbumId,
+                AlbumShare::Url,
+                AlbumShare::Description,
+                AlbumShare::Password,
+                AlbumShare::ShowMetadata,
+                AlbumShare::ShowDownload,
+                AlbumShare::ShowUpload,
+                AlbumShare::Exp,
+            ])
+            .from(AlbumShare::Table)
+            .build_rusqlite(SqliteQueryBuilder);
+
+        let mut stmt = conn.prepare(&sql)?;
+        let share_iter = stmt.query_map(&*values.as_params(), |row| {
+            let album_id: String = row.get(AlbumShare::AlbumId.to_string().as_str())?;
+            let url_str: String = row.get(AlbumShare::Url.to_string().as_str())?;
             let url = ArrayString::from(&url_str).unwrap();
 
             Ok((
@@ -82,12 +133,12 @@ impl AlbumShareTable {
                 url,
                 Share {
                     url,
-                    description: row.get(2)?,
-                    password: row.get(3)?,
-                    show_metadata: row.get(4)?,
-                    show_download: row.get(5)?,
-                    show_upload: row.get(6)?,
-                    exp: row.get(7)?,
+                    description: row.get(AlbumShare::Description.to_string().as_str())?,
+                    password: row.get(AlbumShare::Password.to_string().as_str())?,
+                    show_metadata: row.get(AlbumShare::ShowMetadata.to_string().as_str())?,
+                    show_download: row.get(AlbumShare::ShowDownload.to_string().as_str())?,
+                    show_upload: row.get(AlbumShare::ShowUpload.to_string().as_str())?,
+                    exp: row.get(AlbumShare::Exp.to_string().as_str())?,
                 },
             ))
         })?;
@@ -105,35 +156,49 @@ impl AlbumShareTable {
 
     pub fn get_all_resolved() -> rusqlite::Result<Vec<ResolvedShare>> {
         let conn = TREE.get_connection().unwrap();
-        let sql = r#"
-            SELECT 
-                album_share.url, album_share.description, album_share.password, album_share.show_metadata, 
-                album_share.show_download, album_share.show_upload, album_share.exp,
-                album_share.album_id, meta_album.title
-            FROM album_share
-            LEFT JOIN meta_album ON album_share.album_id = meta_album.id
-        "#;
 
-        let mut stmt = conn.prepare(sql)?;
-        let share_iter = stmt.query_map([], |row| {
-            let url_str: String = row.get(0)?;
+        // SELECT ... FROM album_share LEFT JOIN meta_album ...
+        let (sql, values) = Query::select()
+            .columns([
+                (AlbumShare::Table, AlbumShare::Url),
+                (AlbumShare::Table, AlbumShare::Description),
+                (AlbumShare::Table, AlbumShare::Password),
+                (AlbumShare::Table, AlbumShare::ShowMetadata),
+                (AlbumShare::Table, AlbumShare::ShowDownload),
+                (AlbumShare::Table, AlbumShare::ShowUpload),
+                (AlbumShare::Table, AlbumShare::Exp),
+                (AlbumShare::Table, AlbumShare::AlbumId),
+            ])
+            .column((MetaAlbum::Table, MetaAlbum::Title))
+            .from(AlbumShare::Table)
+            .join(
+                JoinType::LeftJoin,
+                MetaAlbum::Table,
+                Expr::col((AlbumShare::Table, AlbumShare::AlbumId))
+                    .equals((MetaAlbum::Table, MetaAlbum::Id)),
+            )
+            .build_rusqlite(SqliteQueryBuilder);
+
+        let mut stmt = conn.prepare(&sql)?;
+        let share_iter = stmt.query_map(&*values.as_params(), |row| {
+            let url_str: String = row.get(AlbumShare::Url.to_string().as_str())?;
             let url = ArrayString::from(&url_str).unwrap();
 
-            let album_id_str: String = row.get(7)?;
+            let album_id_str: String = row.get(AlbumShare::AlbumId.to_string().as_str())?;
             let album_id = ArrayString::from(&album_id_str).unwrap();
 
             Ok(ResolvedShare {
                 share: Share {
                     url,
-                    description: row.get(1)?,
-                    password: row.get(2)?,
-                    show_metadata: row.get(3)?,
-                    show_download: row.get(4)?,
-                    show_upload: row.get(5)?,
-                    exp: row.get(6)?,
+                    description: row.get(AlbumShare::Description.to_string().as_str())?,
+                    password: row.get(AlbumShare::Password.to_string().as_str())?,
+                    show_metadata: row.get(AlbumShare::ShowMetadata.to_string().as_str())?,
+                    show_download: row.get(AlbumShare::ShowDownload.to_string().as_str())?,
+                    show_upload: row.get(AlbumShare::ShowUpload.to_string().as_str())?,
+                    exp: row.get(AlbumShare::Exp.to_string().as_str())?,
                 },
                 album_id,
-                album_title: row.get(8)?,
+                album_title: row.get(MetaAlbum::Title.to_string().as_str())?,
             })
         })?;
 

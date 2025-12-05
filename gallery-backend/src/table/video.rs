@@ -1,5 +1,12 @@
+use crate::table::meta_video::MetaVideo;
+use crate::table::object::Object;
+use crate::table::relations::album_database::AlbumDatabase;
+use crate::table::relations::database_exif::DatabaseExif;
+use crate::table::relations::tag_database::TagDatabase;
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
+use sea_query::{Expr, ExprTrait, JoinType, Query, SqliteQueryBuilder};
+use sea_query_rusqlite::RusqliteBinder;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
@@ -20,21 +27,44 @@ pub struct VideoCombined {
 }
 
 impl VideoCombined {
-    /// 根據 Hash (ID) 讀取單一影片資料（包含所屬相簿、標籤與 EXIF）
+    /// 根據 Hash (ID) 讀取單一影片資料
     pub fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
-        // 1. 讀取本體資料
-        let sql = r#"
-            SELECT object.*, meta_video.* FROM object
-            INNER JOIN meta_video ON object.id = meta_video.id
-            WHERE object.id = ?
-        "#;
+        let (sql, values) = Query::select()
+            .columns([
+                (Object::Table, Object::Id),
+                (Object::Table, Object::ObjType),
+                (Object::Table, Object::CreatedTime),
+                (Object::Table, Object::Pending),
+                (Object::Table, Object::Thumbhash),
+            ])
+            .columns([
+                (MetaVideo::Table, MetaVideo::Size),
+                (MetaVideo::Table, MetaVideo::Width),
+                (MetaVideo::Table, MetaVideo::Height),
+                (MetaVideo::Table, MetaVideo::Ext),
+                (MetaVideo::Table, MetaVideo::Duration),
+            ])
+            .from(Object::Table)
+            .join(
+                JoinType::InnerJoin,
+                MetaVideo::Table,
+                Expr::col((Object::Table, Object::Id)).equals((MetaVideo::Table, MetaVideo::Id)),
+            )
+            .and_where(Expr::col((Object::Table, Object::Id)).eq(id).into())
+            .build_rusqlite(SqliteQueryBuilder);
 
-        let mut video = conn.query_row(sql, [id], Self::from_row)?;
+        let mut video = conn.query_row(&sql, &*values.as_params(), Self::from_row)?;
 
         // 2. 讀取關聯相簿
-        let sql_albums = "SELECT album_id FROM album_database WHERE hash = ?";
-        let mut stmt_albums = conn.prepare(sql_albums)?;
-        let album_rows = stmt_albums.query_map([id], |row| row.get::<_, String>(0))?;
+        let (sql_albums, values_albums) = Query::select()
+            .column(AlbumDatabase::AlbumId)
+            .from(AlbumDatabase::Table)
+            .and_where(Expr::col(AlbumDatabase::Hash).eq(id).into())
+            .build_rusqlite(SqliteQueryBuilder);
+
+        let mut stmt_albums = conn.prepare(&sql_albums)?;
+        let album_rows =
+            stmt_albums.query_map(&*values_albums.as_params(), |row| row.get::<_, String>(0))?;
 
         for album_id in album_rows {
             if let Ok(id_str) = album_id {
@@ -44,10 +74,16 @@ impl VideoCombined {
             }
         }
 
-        // 3. 讀取關聯標籤 (填入 object.tags)
-        let sql_tags = "SELECT tag FROM tag_database WHERE hash = ?";
-        let mut stmt_tags = conn.prepare(sql_tags)?;
-        let tag_rows = stmt_tags.query_map([id], |row| row.get::<_, String>(0))?;
+        // 3. 讀取關聯標籤
+        let (sql_tags, values_tags) = Query::select()
+            .column(TagDatabase::Tag)
+            .from(TagDatabase::Table)
+            .and_where(Expr::col(TagDatabase::Hash).eq(id).into())
+            .build_rusqlite(SqliteQueryBuilder);
+
+        let mut stmt_tags = conn.prepare(&sql_tags)?;
+        let tag_rows =
+            stmt_tags.query_map(&*values_tags.as_params(), |row| row.get::<_, String>(0))?;
 
         for tag in tag_rows {
             if let Ok(t) = tag {
@@ -55,10 +91,15 @@ impl VideoCombined {
             }
         }
 
-        // 4. 讀取 EXIF (影片亦可能有部分 metadata 存於 exif 表)
-        let sql_exif = "SELECT tag, value FROM database_exif WHERE hash = ?";
-        let mut stmt_exif = conn.prepare(sql_exif)?;
-        let exif_rows = stmt_exif.query_map([id], |row| {
+        // 4. 讀取 EXIF
+        let (sql_exif, values_exif) = Query::select()
+            .columns([DatabaseExif::Tag, DatabaseExif::Value])
+            .from(DatabaseExif::Table)
+            .and_where(Expr::col(DatabaseExif::Hash).eq(id).into())
+            .build_rusqlite(SqliteQueryBuilder);
+
+        let mut stmt_exif = conn.prepare(&sql_exif)?;
+        let exif_rows = stmt_exif.query_map(&*values_exif.as_params(), |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
 
@@ -71,16 +112,39 @@ impl VideoCombined {
         Ok(video)
     }
 
-    /// 讀取所有影片資料（高效能批次填入相簿、標籤與 EXIF 關聯）
+    /// 讀取所有影片資料
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
         // 1. 讀取所有影片本體
-        let sql = r#"
-            SELECT object.*, meta_video.* FROM object
-            INNER JOIN meta_video ON object.id = meta_video.id
-            WHERE object.obj_type = 'video'
-        "#;
-        let mut stmt = conn.prepare(sql)?;
-        let rows = stmt.query_map([], Self::from_row)?;
+        let (sql, values) = Query::select()
+            .columns([
+                (Object::Table, Object::Id),
+                (Object::Table, Object::ObjType),
+                (Object::Table, Object::CreatedTime),
+                (Object::Table, Object::Pending),
+                (Object::Table, Object::Thumbhash),
+            ])
+            .columns([
+                (MetaVideo::Table, MetaVideo::Size),
+                (MetaVideo::Table, MetaVideo::Width),
+                (MetaVideo::Table, MetaVideo::Height),
+                (MetaVideo::Table, MetaVideo::Ext),
+                (MetaVideo::Table, MetaVideo::Duration),
+            ])
+            .from(Object::Table)
+            .join(
+                JoinType::InnerJoin,
+                MetaVideo::Table,
+                Expr::col((Object::Table, Object::Id)).equals((MetaVideo::Table, MetaVideo::Id)),
+            )
+            .and_where(
+                Expr::col((Object::Table, Object::ObjType))
+                    .eq("video")
+                    .into(),
+            )
+            .build_rusqlite(SqliteQueryBuilder);
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(&*values.as_params(), Self::from_row)?;
 
         let mut videos: Vec<Self> = rows.collect::<Result<_, _>>()?;
 
@@ -89,15 +153,27 @@ impl VideoCombined {
         }
 
         // 2. 批次讀取所有「影片」類型的相簿關聯
-        let sql_album_relations = r#"
-            SELECT ad.hash, ad.album_id 
-            FROM album_database ad
-            INNER JOIN object o ON ad.hash = o.id
-            WHERE o.obj_type = 'video'
-        "#;
+        let (sql_album_relations, values_album_rel) = Query::select()
+            .columns([
+                (AlbumDatabase::Table, AlbumDatabase::Hash),
+                (AlbumDatabase::Table, AlbumDatabase::AlbumId),
+            ])
+            .from(AlbumDatabase::Table)
+            .join(
+                JoinType::InnerJoin,
+                Object::Table,
+                Expr::col((AlbumDatabase::Table, AlbumDatabase::Hash))
+                    .equals((Object::Table, Object::Id)),
+            )
+            .and_where(
+                Expr::col((Object::Table, Object::ObjType))
+                    .eq("video")
+                    .into(),
+            )
+            .build_rusqlite(SqliteQueryBuilder);
 
-        let mut stmt_album_rel = conn.prepare(sql_album_relations)?;
-        let album_rel_rows = stmt_album_rel.query_map([], |row| {
+        let mut stmt_album_rel = conn.prepare(&sql_album_relations)?;
+        let album_rel_rows = stmt_album_rel.query_map(&*values_album_rel.as_params(), |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
 
@@ -113,15 +189,27 @@ impl VideoCombined {
         }
 
         // 3. 批次讀取所有「影片」類型的標籤關聯
-        let sql_tag_relations = r#"
-            SELECT td.hash, td.tag
-            FROM tag_database td
-            INNER JOIN object o ON td.hash = o.id
-            WHERE o.obj_type = 'video'
-        "#;
+        let (sql_tag_relations, values_tag_rel) = Query::select()
+            .columns([
+                (TagDatabase::Table, TagDatabase::Hash),
+                (TagDatabase::Table, TagDatabase::Tag),
+            ])
+            .from(TagDatabase::Table)
+            .join(
+                JoinType::InnerJoin,
+                Object::Table,
+                Expr::col((TagDatabase::Table, TagDatabase::Hash))
+                    .equals((Object::Table, Object::Id)),
+            )
+            .and_where(
+                Expr::col((Object::Table, Object::ObjType))
+                    .eq("video")
+                    .into(),
+            )
+            .build_rusqlite(SqliteQueryBuilder);
 
-        let mut stmt_tag_rel = conn.prepare(sql_tag_relations)?;
-        let tag_rel_rows = stmt_tag_rel.query_map([], |row| {
+        let mut stmt_tag_rel = conn.prepare(&sql_tag_relations)?;
+        let tag_rel_rows = stmt_tag_rel.query_map(&*values_tag_rel.as_params(), |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
 
@@ -135,15 +223,28 @@ impl VideoCombined {
         }
 
         // 4. 批次讀取所有「影片」類型的 EXIF
-        let sql_exif_relations = r#"
-            SELECT de.hash, de.tag, de.value
-            FROM database_exif de
-            INNER JOIN object o ON de.hash = o.id
-            WHERE o.obj_type = 'video'
-        "#;
+        let (sql_exif_relations, values_exif_rel) = Query::select()
+            .columns([
+                (DatabaseExif::Table, DatabaseExif::Hash),
+                (DatabaseExif::Table, DatabaseExif::Tag),
+                (DatabaseExif::Table, DatabaseExif::Value),
+            ])
+            .from(DatabaseExif::Table)
+            .join(
+                JoinType::InnerJoin,
+                Object::Table,
+                Expr::col((DatabaseExif::Table, DatabaseExif::Hash))
+                    .equals((Object::Table, Object::Id)),
+            )
+            .and_where(
+                Expr::col((Object::Table, Object::ObjType))
+                    .eq("video")
+                    .into(),
+            )
+            .build_rusqlite(SqliteQueryBuilder);
 
-        let mut stmt_exif_rel = conn.prepare(sql_exif_relations)?;
-        let exif_rel_rows = stmt_exif_rel.query_map([], |row| {
+        let mut stmt_exif_rel = conn.prepare(&sql_exif_relations)?;
+        let exif_rel_rows = stmt_exif_rel.query_map(&*values_exif_rel.as_params(), |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,

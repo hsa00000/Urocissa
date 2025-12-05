@@ -1,5 +1,14 @@
+use crate::table::object::Object;
 use rusqlite::Connection;
+use sea_query::{ColumnDef, ForeignKey, Iden, Index, SqliteQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
+
+#[derive(Iden)]
+pub enum TagDatabase {
+    Table, // "tag_database"
+    Hash,
+    Tag,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct TagDatabaseSchema {
@@ -11,17 +20,36 @@ pub struct TagDatabasesTable;
 
 impl TagDatabasesTable {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
-        let sql = r#"
-            CREATE TABLE IF NOT EXISTS tag_database (
-                hash TEXT NOT NULL,
-                tag  TEXT NOT NULL,
-                PRIMARY KEY (hash, tag),
-                FOREIGN KEY (hash) REFERENCES object(id) ON DELETE CASCADE
-            );
+        // 1. Create Table
+        let sql = Table::create()
+            .table(TagDatabase::Table)
+            .if_not_exists()
+            .col(ColumnDef::new(TagDatabase::Hash).text().not_null())
+            .col(ColumnDef::new(TagDatabase::Tag).text().not_null())
+            .primary_key(
+                Index::create()
+                    .col(TagDatabase::Hash)
+                    .col(TagDatabase::Tag),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .from(TagDatabase::Table, TagDatabase::Hash)
+                    .to(Object::Table, Object::Id)
+                    .on_delete(sea_query::ForeignKeyAction::Cascade),
+            )
+            .build(SqliteQueryBuilder);
 
-            CREATE INDEX IF NOT EXISTS idx_tag_databases_tag ON tag_database(tag);
-        "#;
-        conn.execute_batch(sql)?;
+        conn.execute(&sql, [])?;
+
+        // 2. Create Index
+        let idx = Index::create()
+            .if_not_exists()
+            .name("idx_tag_databases_tag")
+            .table(TagDatabase::Table)
+            .col(TagDatabase::Tag)
+            .to_string(SqliteQueryBuilder);
+        
+        conn.execute(&idx, [])?;
         Ok(())
     }
 }

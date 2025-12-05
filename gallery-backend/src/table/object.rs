@@ -1,5 +1,6 @@
 use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
+use sea_query::{ColumnDef, Expr, ExprTrait, Iden, Index, SqliteQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -26,6 +27,17 @@ impl ObjectType {
     }
 }
 
+// SeaQuery Table Definition
+#[derive(Iden)]
+pub enum Object {
+    Table,
+    Id,
+    ObjType,
+    CreatedTime,
+    Pending,
+    Thumbhash,
+}
+
 /// ObjectSchema: 系統中所有實體的共同基類
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,29 +52,53 @@ pub struct ObjectSchema {
 
 impl ObjectSchema {
     pub fn create_table(conn: &Connection) -> rusqlite::Result<()> {
-        let sql = r#"
-            CREATE TABLE IF NOT EXISTS object (
-                id TEXT PRIMARY KEY,
-                obj_type TEXT NOT NULL CHECK(obj_type IN ('image', 'video', 'album')),
-                created_time INTEGER NOT NULL,
-                pending INTEGER DEFAULT 0,
-                thumbhash BLOB
-            );
-            CREATE INDEX IF NOT EXISTS idx_object_created_time ON object(created_time);
-            CREATE INDEX IF NOT EXISTS idx_object_type ON object(obj_type);
-        "#;
-        conn.execute_batch(sql)?;
+        // 1. Create Table
+        let sql = Table::create()
+            .table(Object::Table)
+            .if_not_exists()
+            .col(ColumnDef::new(Object::Id).text().primary_key())
+            .col(
+                ColumnDef::new(Object::ObjType)
+                    .text()
+                    .not_null()
+                    .check(Expr::col(Object::ObjType).is_in(["image", "video", "album"])),
+            )
+            .col(ColumnDef::new(Object::CreatedTime).integer().not_null())
+            .col(ColumnDef::new(Object::Pending).integer().default(0))
+            .col(ColumnDef::new(Object::Thumbhash).blob())
+            .build(SqliteQueryBuilder);
+
+        conn.execute(&sql, [])?;
+
+        // 2. Create Indexes
+        let idx_time = Index::create()
+            .if_not_exists()
+            .name("idx_object_created_time")
+            .table(Object::Table)
+            .col(Object::CreatedTime)
+            .to_string(SqliteQueryBuilder);
+        conn.execute(&idx_time, [])?;
+
+        let idx_type = Index::create()
+            .if_not_exists()
+            .name("idx_object_type")
+            .table(Object::Table)
+            .col(Object::ObjType)
+            .to_string(SqliteQueryBuilder);
+        conn.execute(&idx_type, [])?;
+
         Ok(())
     }
 
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
-        let id_str: String = row.get("id")?;
+        // 使用 Enum.to_string() 確保欄位名稱一致，雖然有點冗長但這保證了重構安全性
+        let id_str: String = row.get(Object::Id.to_string().as_str())?;
         Ok(Self {
             id: ArrayString::from(&id_str).unwrap(),
-            obj_type: row.get("obj_type")?,
-            created_time: row.get("created_time")?,
-            pending: row.get("pending")?,
-            thumbhash: row.get("thumbhash")?,
+            obj_type: row.get(Object::ObjType.to_string().as_str())?,
+            created_time: row.get(Object::CreatedTime.to_string().as_str())?,
+            pending: row.get(Object::Pending.to_string().as_str())?,
+            thumbhash: row.get(Object::Thumbhash.to_string().as_str())?,
             tags: HashSet::new(),
         })
     }
