@@ -5,6 +5,7 @@ use serde_json;
 use crate::{
     public::db::tree::TREE,
     public::structure::abstract_data::AbstractData,
+    table::relations::album_database::AlbumDatabaseSchema,
     table::relations::database_alias::DatabaseAliasSchema,
     table::relations::database_exif::ExifSchema,
     table::relations::tag_database::TagDatabaseSchema,
@@ -30,6 +31,8 @@ pub enum FlushOperation {
     RemoveAbstractData(AbstractData),
     InsertTag(TagDatabaseSchema),
     RemoveTag(TagDatabaseSchema),
+    InsertAlbum(AlbumDatabaseSchema),
+    RemoveAlbum(AlbumDatabaseSchema),
     InsertDatabaseAlias(DatabaseAliasSchema),
     InsertExif(ExifSchema),
 }
@@ -259,6 +262,18 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 tx.execute(
                     "DELETE FROM tag_database WHERE hash = ?1 AND tag = ?2",
                     rusqlite::params![schema.hash, schema.tag],
+                )?;
+            }
+            FlushOperation::InsertAlbum(schema) => {
+                tx.execute(
+                    "INSERT OR IGNORE INTO album_database (album_id, hash) VALUES (?1, ?2)",
+                    rusqlite::params![schema.album_id, schema.hash],
+                )?;
+            }
+            FlushOperation::RemoveAlbum(schema) => {
+                tx.execute(
+                    "DELETE FROM album_database WHERE album_id = ?1 AND hash = ?2",
+                    rusqlite::params![schema.album_id, schema.hash],
                 )?;
             }
             FlushOperation::InsertDatabaseAlias(schema) => {

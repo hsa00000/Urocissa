@@ -5,9 +5,10 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
+use crate::table::relations::album_database::AlbumDatabaseSchema;
 use crate::workflow::processors::transitor::index_to_hash;
 use crate::workflow::tasks::BATCH_COORDINATOR;
-use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
+use crate::workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask};
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -33,39 +34,38 @@ pub async fn edit_album(
     let _ = read_only_mode?;
 
     // 在 blocking 執行緒產生所有要寫入的 payload 與受影響相簿
-    let to_flush = tokio::task::spawn_blocking(move || -> Result<Vec<_>> {
+    let flush_ops = tokio::task::spawn_blocking(move || -> Result<Vec<FlushOperation>> {
         let tree_snapshot = TREE_SNAPSHOT
             .read_tree_snapshot(&json_data.timestamp)
             .unwrap();
 
-        let mut to_flush = Vec::with_capacity(json_data.index_array.len());
+        let mut flush_ops = Vec::new();
         for &index in &json_data.index_array {
             let hash = index_to_hash(&tree_snapshot, index)?;
-            let data_opt = TREE.load_data_from_hash(&hash)?;
-            if let Some(mut data) = data_opt {
-                match &mut data {
-                    AbstractData::Image(i) => {
-                        for album_id in &json_data.add_albums_array { i.albums.insert(album_id.clone()); }
-                        for album_id in &json_data.remove_albums_array { i.albums.remove(album_id); }
-                    }
-                    AbstractData::Video(v) => {
-                        for album_id in &json_data.add_albums_array { v.albums.insert(album_id.clone()); }
-                        for album_id in &json_data.remove_albums_array { v.albums.remove(album_id); }
-                    }
-                    _ => {}
-                }
-                to_flush.push(data);
+            for album_id in &json_data.add_albums_array {
+                flush_ops.push(FlushOperation::InsertAlbum(AlbumDatabaseSchema {
+                    album_id: album_id.to_string(),
+                    hash: hash.to_string(),
+                }));
+            }
+            for album_id in &json_data.remove_albums_array {
+                flush_ops.push(FlushOperation::RemoveAlbum(AlbumDatabaseSchema {
+                    album_id: album_id.to_string(),
+                    hash: hash.to_string(),
+                }));
             }
         }
 
-        Ok(to_flush)
+        Ok(flush_ops)
     })
     .await
     .map_err(|e| anyhow::anyhow!("join error: {e}"))??;
 
     // 單次等待版本
     BATCH_COORDINATOR
-        .execute_batch_waiting(FlushTreeTask::insert(to_flush))
+        .execute_batch_waiting(FlushTreeTask {
+            operations: flush_ops,
+        })
         .await?;
 
     BATCH_COORDINATOR

@@ -1,12 +1,12 @@
-use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::GuardResult;
+use crate::table::relations::album_database::AlbumDatabaseSchema;
 use crate::workflow::processors::transitor::index_to_hash;
+use crate::workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rand::{Rng, distr::Alphanumeric};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::post;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,6 @@ use crate::table::album::AlbumCombined;
 use crate::table::meta_album::AlbumMetadataSchema;
 use crate::table::object::ObjectSchema;
 use crate::workflow::tasks::BATCH_COORDINATOR;
-use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
@@ -86,17 +85,24 @@ async fn create_album_elements(
     elements_index: Vec<usize>,
     timestamp: u128,
 ) -> Result<()> {
-    let element_batch = tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>> {
+    let flush_ops = tokio::task::spawn_blocking(move || -> Result<Vec<FlushOperation>> {
         let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
-        elements_index
-            .into_par_iter()
-            .map(|idx| index_edit_album_insert(&tree_snapshot, idx, album_id))
-            .collect()
+        let mut flush_ops = Vec::new();
+        for idx in elements_index {
+            let hash = index_to_hash(&tree_snapshot, idx)?;
+            flush_ops.push(FlushOperation::InsertAlbum(AlbumDatabaseSchema {
+                album_id: album_id.to_string(),
+                hash: hash.to_string(),
+            }));
+        }
+        Ok(flush_ops)
     })
     .await??;
 
     BATCH_COORDINATOR
-        .execute_batch_waiting(FlushTreeTask::insert(element_batch))
+        .execute_batch_waiting(FlushTreeTask {
+            operations: flush_ops,
+        })
         .await?;
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
@@ -104,28 +110,6 @@ async fn create_album_elements(
     // Album stats are now updated by database triggers
 
     Ok(())
-}
-
-pub fn index_edit_album_insert(
-    tree_snapshot: &crate::public::db::tree_snapshot::read_tree_snapshot::MyCow,
-    database_index: usize,
-    album_id: ArrayString<64>,
-) -> Result<AbstractData> {
-    let hash = index_to_hash(tree_snapshot, database_index)?;
-    let data_opt = TREE.load_data_from_hash(&hash)?;
-    let mut data = data_opt.ok_or_else(|| anyhow::anyhow!("Data not found for hash: {}", hash))?;
-
-    match &mut data {
-        AbstractData::Image(i) => {
-            i.albums.insert(album_id);
-        }
-        AbstractData::Video(v) => {
-            v.albums.insert(album_id);
-        }
-        _ => {}
-    }
-
-    Ok(data)
 }
 
 /// Generate a random 64-character lowercase alphanumeric hash

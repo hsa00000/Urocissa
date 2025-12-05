@@ -7,12 +7,19 @@ use sea_query::{
     Asterisk, ColumnDef, Expr, ExprTrait, ForeignKey, Func, FunctionCall, Iden, Index, JoinType,
     Order, Query, SimpleExpr, SqliteQueryBuilder, Table,
 };
+use serde::{Deserialize, Serialize};
 
 #[derive(Iden)]
 pub enum AlbumDatabase {
     Table, // "album_database"
     AlbumId,
     Hash,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct AlbumDatabaseSchema {
+    pub album_id: String,
+    pub hash: String,
 }
 
 pub struct AlbumDatabasesTable;

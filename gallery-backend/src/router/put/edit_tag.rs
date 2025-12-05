@@ -1,12 +1,12 @@
-use crate::workflow::processors::transitor::index_to_hash;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
+use crate::workflow::processors::transitor::index_to_hash;
 
 use crate::public::structure::abstract_data::AbstractData;
-use crate::table::relations::tag_database::TagDatabaseSchema;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
+use crate::table::relations::tag_database::TagDatabaseSchema;
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask};
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
@@ -47,7 +47,12 @@ pub async fn edit_tag(
                             tag: tag.clone(),
                         }));
                     }
-                    // 移除 tag 需要額外的處理，這裡簡化
+                    for tag in &json_data.remove_tags_array {
+                        flush_ops.push(FlushOperation::RemoveTag(TagDatabaseSchema {
+                            hash: i.object.id.to_string(),
+                            tag: tag.clone(),
+                        }));
+                    }
                 }
                 AbstractData::Video(v) => {
                     // 影片的 tag 通過關聯表處理
@@ -57,7 +62,12 @@ pub async fn edit_tag(
                             tag: tag.clone(),
                         }));
                     }
-                    // 移除 tag 需要額外的處理，這裡簡化
+                    for tag in &json_data.remove_tags_array {
+                        flush_ops.push(FlushOperation::RemoveTag(TagDatabaseSchema {
+                            hash: v.object.id.to_string(),
+                            tag: tag.clone(),
+                        }));
+                    }
                 }
                 AbstractData::Album(album) => {
                     // 相簿現在也使用關聯表，行為與其他類型一致
