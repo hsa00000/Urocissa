@@ -1,12 +1,10 @@
 use crate::table::meta_album::MetaAlbum;
 use crate::table::object::Object;
 use crate::table::relations::tag_database::TagDatabase;
-use arrayvec::ArrayString;
 use rusqlite::{Connection, Row};
 use sea_query::{Expr, ExprTrait, JoinType, Query, SqliteQueryBuilder};
 use sea_query_rusqlite::RusqliteBinder;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 
 use crate::table::meta_album::AlbumMetadataSchema;
 use crate::table::object::ObjectSchema;
@@ -22,8 +20,19 @@ pub struct AlbumCombined {
 
 impl AlbumCombined {
     /// 根據 Hash (ID) 讀取單一相簿資料
-    pub fn _get_by_id(conn: &Connection, id: impl AsRef<str>) -> rusqlite::Result<Self> {
+    pub fn get_by_id(conn: &Connection, id: impl AsRef<str>) -> rusqlite::Result<Self> {
         let id = id.as_ref();
+
+        // 1. 讀取本體
+        let mut album = Self::fetch_basic_info(conn, id)?;
+
+        // 2. 呼叫共用邏輯 (Album 只需要 Tags)
+        album.object.tags = TagDatabase::fetch_tags(conn, id)?;
+
+        Ok(album)
+    }
+
+    fn fetch_basic_info(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
         let (sql, values) = Query::select()
             .columns([
                 (Object::Table, Object::Id),
@@ -48,7 +57,7 @@ impl AlbumCombined {
                 MetaAlbum::Table,
                 Expr::col((Object::Table, Object::Id)).equals((MetaAlbum::Table, MetaAlbum::Id)),
             )
-            .and_where(Expr::col((Object::Table, Object::Id)).eq(id).into())
+            .and_where(Expr::col((Object::Table, Object::Id)).eq(id))
             .build_rusqlite(SqliteQueryBuilder);
 
         conn.query_row(&sql, &*values.as_params(), Self::from_row)
@@ -81,11 +90,7 @@ impl AlbumCombined {
                 MetaAlbum::Table,
                 Expr::col((Object::Table, Object::Id)).equals((MetaAlbum::Table, MetaAlbum::Id)),
             )
-            .and_where(
-                Expr::col((Object::Table, Object::ObjType))
-                    .eq("album")
-                    .into(),
-            )
+            .and_where(Expr::col((Object::Table, Object::ObjType)).eq("album"))
             .build_rusqlite(SqliteQueryBuilder);
 
         let mut stmt = conn.prepare(&sql)?;
@@ -96,39 +101,8 @@ impl AlbumCombined {
             return Ok(albums);
         }
 
-        // 2. 批次讀取所有「相簿」類型的標籤關聯
-        let (sql_tag_relations, values_tag_rel) = Query::select()
-            .columns([
-                (TagDatabase::Table, TagDatabase::Hash),
-                (TagDatabase::Table, TagDatabase::Tag),
-            ])
-            .from(TagDatabase::Table)
-            .join(
-                JoinType::InnerJoin,
-                Object::Table,
-                Expr::col((TagDatabase::Table, TagDatabase::Hash))
-                    .equals((Object::Table, Object::Id)),
-            )
-            .and_where(
-                Expr::col((Object::Table, Object::ObjType))
-                    .eq("album")
-                    .into(),
-            )
-            .build_rusqlite(SqliteQueryBuilder);
-
-        let mut stmt_tag_rel = conn.prepare(&sql_tag_relations)?;
-        let tag_rel_rows = stmt_tag_rel.query_map(&*values_tag_rel.as_params(), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
-
-        let mut tag_map: HashMap<ArrayString<64>, HashSet<String>> = HashMap::new();
-
-        for rel in tag_rel_rows {
-            let (hash, tag) = rel?;
-            if let Ok(hash_as) = ArrayString::from(&hash) {
-                tag_map.entry(hash_as).or_default().insert(tag);
-            }
-        }
+        // 2. 批次讀取相簿的標籤
+        let mut tag_map = TagDatabase::fetch_all_tags(conn, "album")?;
 
         // 3. 將資料填回相簿 Struct
         for album in &mut albums {

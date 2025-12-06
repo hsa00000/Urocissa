@@ -2,12 +2,15 @@ use crate::table::meta_album::MetaAlbum;
 use crate::table::meta_image::MetaImage;
 use crate::table::meta_video::MetaVideo;
 use crate::table::object::Object;
+use arrayvec::ArrayString;
 use rusqlite::Connection;
 use sea_query::{
     Asterisk, ColumnDef, Expr, ExprTrait, ForeignKey, Func, FunctionCall, Iden, Index, JoinType,
     Order, Query, SimpleExpr, SqliteQueryBuilder, Table,
 };
+use sea_query_rusqlite::RusqliteBinder;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Iden)]
 pub enum AlbumDatabase {
@@ -76,21 +79,14 @@ impl AlbumDatabasesTable {
 
             // 3.2 子查詢: Item Size
             let sub_size = Query::select()
-                .expr(Func::coalesce({
-                    let values: Vec<sea_query::SimpleExpr> = vec![
-                        Func::sum(Func::coalesce({
-                            let inner: Vec<sea_query::SimpleExpr> = vec![
-                                Expr::col((MetaImage::Table, MetaImage::Size)).into(),
-                                Expr::col((MetaVideo::Table, MetaVideo::Size)).into(),
-                                Expr::val(0).into(),
-                            ];
-                            inner
-                        }))
-                        .into(),
-                        Expr::val(0).into(),
-                    ];
-                    values
-                }))
+                .expr(Func::coalesce(vec![
+                    Expr::from(Func::sum(Func::coalesce(vec![
+                        Expr::col((MetaImage::Table, MetaImage::Size)),
+                        Expr::col((MetaVideo::Table, MetaVideo::Size)),
+                        Expr::val(0),
+                    ]))),
+                    Expr::val(0),
+                ]))
                 .from(AlbumDatabase::Table)
                 .join(
                     JoinType::Join,
@@ -206,5 +202,67 @@ impl AlbumDatabasesTable {
 
         conn.execute_batch(&trigger_sql)?;
         Ok(())
+    }
+}
+
+impl AlbumDatabase {
+    /// 通用方法：根據 Hash (ID) 取得所有關聯相簿 ID
+    pub fn fetch_albums(conn: &Connection, id: &str) -> rusqlite::Result<HashSet<ArrayString<64>>> {
+        let (sql, values) = Query::select()
+            .column(AlbumDatabase::AlbumId)
+            .from(AlbumDatabase::Table)
+            .and_where(Expr::col(AlbumDatabase::Hash).eq(id))
+            .build_rusqlite(SqliteQueryBuilder);
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(&*values.as_params(), |row| row.get::<_, String>(0))?;
+
+        let mut albums = HashSet::new();
+        for album_id in rows {
+            if let Ok(id_str) = album_id {
+                if let Ok(as_str) = ArrayString::from(&id_str) {
+                    albums.insert(as_str);
+                }
+            }
+        }
+        Ok(albums)
+    }
+
+    /// 通用方法：批次取得某種類型物件的所有關聯相簿
+    pub fn fetch_all_albums(
+        conn: &Connection,
+        obj_type: &str,
+    ) -> rusqlite::Result<HashMap<ArrayString<64>, HashSet<ArrayString<64>>>> {
+        let (sql, values) = Query::select()
+            .columns([
+                (AlbumDatabase::Table, AlbumDatabase::Hash),
+                (AlbumDatabase::Table, AlbumDatabase::AlbumId),
+            ])
+            .from(AlbumDatabase::Table)
+            .join(
+                JoinType::InnerJoin,
+                Object::Table,
+                Expr::col((AlbumDatabase::Table, AlbumDatabase::Hash))
+                    .equals((Object::Table, Object::Id)),
+            )
+            .and_where(Expr::col((Object::Table, Object::ObjType)).eq(obj_type))
+            .build_rusqlite(SqliteQueryBuilder);
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(&*values.as_params(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        let mut map: HashMap<ArrayString<64>, HashSet<ArrayString<64>>> = HashMap::new();
+
+        for row in rows {
+            let (hash, album_id) = row?;
+            if let (Ok(hash_as), Ok(album_as)) =
+                (ArrayString::from(&hash), ArrayString::from(&album_id))
+            {
+                map.entry(hash_as).or_default().insert(album_as);
+            }
+        }
+        Ok(map)
     }
 }
