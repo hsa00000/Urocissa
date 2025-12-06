@@ -27,7 +27,8 @@ impl Tree {
         Ok(conn)
     }
 
-    pub fn load_from_db(&self, id: &str) -> Result<AbstractData> {
+    pub fn load_from_db(&self, id: impl AsRef<str>) -> Result<AbstractData> {
+        let id = id.as_ref();
         let conn = self.get_connection()?;
 
         // 嘗試從 object 表查詢類型
@@ -79,7 +80,8 @@ impl Tree {
         Ok(result)
     }
 
-    pub fn load_data_from_hash(&self, hash: &str) -> Result<Option<AbstractData>> {
+    pub fn load_data_from_hash(&self, hash: impl AsRef<str>) -> Result<Option<AbstractData>> {
+        let hash = hash.as_ref();
         let conn = self.get_connection()?;
 
         let type_sql = "SELECT obj_type FROM object WHERE id = ?";
@@ -110,6 +112,4 @@ impl Tree {
             Ok(None)
         }
     }
-
-
 }

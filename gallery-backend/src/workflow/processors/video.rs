@@ -11,7 +11,12 @@ use crate::{
         constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION, structure::abstract_data::AbstractData,
         tui::DASHBOARD,
     },
-    table::{image::ImageCombined, meta_image::ImageMetadataSchema, object::ObjectSchema},
+    table::{
+        image::ImageCombined,
+        meta_image::ImageMetadataSchema,
+        object::{ObjectSchema, ObjectType},
+    },
+    utils::{compressed_path, imported_path, thumbnail_path},
     workflow::{
         processors::image::{
             generate_dynamic_image, generate_dynamic_image_from_path, generate_phash,
@@ -51,12 +56,14 @@ fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
         _ => return Err(anyhow!("Data is not a video")),
     };
 
-    let phash =
-        if let Ok(dyn_img) = generate_dynamic_image_from_path(&video_combined.imported_path()) {
-            Some(generate_phash(&dyn_img))
-        } else {
-            None
-        };
+    let phash = if let Ok(dyn_img) = generate_dynamic_image_from_path(&imported_path(
+        &video_combined.object.id,
+        &video_combined.metadata.ext,
+    )) {
+        Some(generate_phash(&dyn_img))
+    } else {
+        None
+    };
 
     let object = ObjectSchema {
         id: video_combined.object.id,
@@ -120,7 +127,7 @@ pub fn process_video_info(index_task: &mut IndexTask) -> Result<()> {
 /// Rebuild all metadata for an existing video file
 pub fn regenerate_metadata_for_video(index_task: &mut IndexTask) -> Result<()> {
     // Refresh size from filesystem metadata
-    index_task.size = std::fs::metadata(index_task.imported_path())
+    index_task.size = std::fs::metadata(&index_task.imported_path)
         .context("failed to read metadata for imported video file")?
         .len();
 
@@ -135,7 +142,7 @@ pub fn regenerate_metadata_for_video(index_task: &mut IndexTask) -> Result<()> {
 
 /// Probe a video file using ffprobe to obtain `(width, height)`
 pub fn generate_video_width_height(index_task: &IndexTask) -> Result<(u32, u32)> {
-    let imported = index_task.imported_path().to_string_lossy().to_string();
+    let imported = index_task.imported_path.to_string_lossy().to_string();
 
     let width = video_width_height("width", &imported)
         .context(format!("failed to obtain video width for {:?}", imported))?;
@@ -158,7 +165,9 @@ pub fn fix_video_width_height(index_task: &mut IndexTask) {
     }
 }
 
-fn video_width_height(info: &str, file_path: &str) -> Result<u32> {
+fn video_width_height(info: impl AsRef<str>, file_path: impl AsRef<str>) -> Result<u32> {
+    let info = info.as_ref();
+    let file_path = file_path.as_ref();
     let command_text = match info {
         "width" => Ok("stream=width"),
         "height" => Ok("stream=height"),
@@ -200,7 +209,7 @@ fn video_width_height(info: &str, file_path: &str) -> Result<u32> {
 pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
     let (width, height) = (index_task.width, index_task.height);
     let (thumb_width, thumb_height) = small_width_height(width, height, 1280);
-    let thumbnail_path = index_task.thumbnail_path();
+    let thumbnail_path = thumbnail_path(index_task.hash());
 
     // Create target directory tree if missing
     if let Some(parent) = std::path::Path::new(&thumbnail_path).parent() {
@@ -213,14 +222,14 @@ pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
     cmd.args([
         "-y",
         "-i",
-        &index_task.imported_path().to_string_lossy(),
+        &index_task.imported_path.to_string_lossy(),
         "-ss",
         "0",
         "-vframes",
         "1",
         "-vf",
         &format!("scale={}:{}", thumb_width, thumb_height),
-        &thumbnail_path,
+        &thumbnail_path.to_string_lossy(),
     ]);
 
     // Execute and wait; we discard both stdout/stderr
@@ -249,13 +258,8 @@ pub fn generate_compressed_video(data: &mut AbstractData) -> Result<VideoProcess
     // 確保是 Video 類型，並取得必要資訊
     let (imported_path, compressed_path, height, ext, hash) = match data {
         AbstractData::Video(v) => (
-            v.imported_path_string(),
-            // 這裡我們需要重新構建 compressed path 邏輯，或從 IndexTask 取得，但這裡簡單重寫：
-            format!(
-                "./object/compressed/{}/{}.mp4",
-                &v.object.id[0..2],
-                v.object.id
-            ),
+            imported_path(&v.object.id, &v.metadata.ext),
+            compressed_path(&v.object.id, ObjectType::Video),
             v.metadata.height,
             v.metadata.ext.clone(),
             v.object.id,
@@ -263,7 +267,7 @@ pub fn generate_compressed_video(data: &mut AbstractData) -> Result<VideoProcess
         _ => return Err(anyhow!("Cannot compress non-video data")),
     };
 
-    let duration_result = video_duration(&imported_path);
+    let duration_result = video_duration(&imported_path.to_string_lossy());
 
     // 處理 duration 結果與類型轉換 (例如 GIF 處理)
     let duration = match duration_result {
@@ -303,13 +307,13 @@ pub fn generate_compressed_video(data: &mut AbstractData) -> Result<VideoProcess
     cmd.args([
         "-y", // Overwrite output file if it exists
         "-i",
-        &imported_path,
+        &imported_path.to_string_lossy(),
         "-vf",
         // Scale video to a max height of 720p, ensuring dimensions are even.
         &format!("scale=trunc(oh*a/2)*2:{}", (cmp::min(height, 720) / 2) * 2),
         "-movflags",
         "faststart", // Optimize for web streaming
-        &compressed_path,
+        &compressed_path.to_string_lossy(),
         "-progress",
         "pipe:2", // Send machine-readable progress to stderr (pipe 2)
     ]);
@@ -358,7 +362,8 @@ pub fn create_silent_ffmpeg_command() -> Command {
     cmd
 }
 
-pub fn video_duration(file_path: &str) -> Result<f64, Box<dyn Error>> {
+pub fn video_duration(file_path: impl AsRef<str> + std::fmt::Debug) -> Result<f64, Box<dyn Error>> {
+    let file_path = file_path.as_ref();
     let output = Command::new("ffprobe")
         .args(&[
             "-v",

@@ -9,7 +9,7 @@
 use crate::public::tui::LOGGER_TX;
 use env_logger::{Builder, WriteStyle};
 use log::kv::Key;
-use std::{fs, io::Write, path::PathBuf, process::Command};
+use std::{fs, io::Write, process::Command};
 use superconsole::style::Stylize;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -54,10 +54,10 @@ pub fn check_ffmpeg_and_ffprobe() {
 
 /// Create required folder structure for the application
 pub fn initialize_folder() {
-    std::fs::create_dir_all(PathBuf::from("./db")).unwrap();
-    std::fs::create_dir_all(PathBuf::from("./object/imported")).unwrap();
-    std::fs::create_dir_all(PathBuf::from("./object/compressed")).unwrap();
-    std::fs::create_dir_all(PathBuf::from("./upload")).unwrap();
+    std::fs::create_dir_all("./db").unwrap();
+    std::fs::create_dir_all("./object/imported").unwrap();
+    std::fs::create_dir_all("./object/compressed").unwrap();
+    std::fs::create_dir_all("./upload").unwrap();
 }
 
 // ────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ use tokio::task::spawn_blocking;
 
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::tui::DASHBOARD;
+use crate::utils::imported_path;
 use crate::workflow::tasks::{
     BATCH_COORDINATOR,
     INDEX_COORDINATOR,
@@ -21,10 +22,10 @@ use crate::workflow::tasks::{
 use crate::table::relations::database_exif::ExifSchema;
 
 pub async fn index_workflow(
-    path: PathBuf,
+    path: impl Into<PathBuf>,
     presigned_album_id_opt: Option<ArrayString<64>>,
 ) -> Result<()> {
-    let path = path.clean();
+    let path = path.into().clean();
 
     // Step 1: Open file
     let file = INDEX_COORDINATOR
@@ -75,8 +76,8 @@ pub async fn index_workflow(
     // Step 5: Process metadata (in blocking thread)
     let data_clone = data.clone();
     let imported_path = match &data {
-        AbstractData::Image(i) => i.imported_path(),
-        AbstractData::Video(v) => v.imported_path(),
+        AbstractData::Image(i) => imported_path(i.object.id, &i.metadata.ext),
+        AbstractData::Video(v) => imported_path(v.object.id, &v.metadata.ext),
         _ => return Err(anyhow!("Unsupported data type")),
     };
 
@@ -142,7 +143,7 @@ pub async fn index_workflow(
     });
 
     // Step 7: Cleanup source file
-    INDEX_COORDINATOR.execute_detached(DeleteTask::new(PathBuf::from(&path)));
+    INDEX_COORDINATOR.execute_detached(DeleteTask::new(&path));
 
     // Step 8: Compress video if needed
     if let AbstractData::Video(_) = &data {

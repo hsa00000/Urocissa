@@ -1,7 +1,7 @@
 use crate::public::db::tree::TREE;
-use crate::table::relations::album_share::{ResolvedShare, Share};
 use crate::router::claims::claims::Claims;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
+use crate::table::relations::album_share::{ResolvedShare, Share};
 use anyhow::Error;
 use anyhow::Result;
 use anyhow::anyhow;
@@ -32,7 +32,11 @@ pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {
 }
 
 /// Decode JWT token with given claims type and validation
-pub fn my_decode_token<T: DeserializeOwned>(token: &str, validation: &Validation) -> Result<T> {
+pub fn my_decode_token<T: DeserializeOwned>(
+    token: impl AsRef<str>,
+    validation: &Validation,
+) -> Result<T> {
+    let token = token.as_ref();
     match decode::<T>(
         token,
         &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
@@ -75,9 +79,13 @@ pub fn extract_hash_from_path(req: &Request<'_>) -> Result<String> {
     }
 }
 
-fn resolve_share_from_db(album_id: &str, share_id: &str) -> Result<Claims> {
-    let conn = TREE.get_connection().map_err(|e| anyhow!("DB connection error: {}", e))?;
-    
+fn resolve_share_from_db(album_id: impl AsRef<str>, share_id: impl AsRef<str>) -> Result<Claims> {
+    let album_id = album_id.as_ref();
+    let share_id = share_id.as_ref();
+    let conn = TREE
+        .get_connection()
+        .map_err(|e| anyhow!("DB connection error: {}", e))?;
+
     // Query both share details and album title in one go
     // 修正：將 JOIN album 改為 JOIN meta_album
     let sql = r#"
@@ -89,10 +97,8 @@ fn resolve_share_from_db(album_id: &str, share_id: &str) -> Result<Claims> {
         WHERE s.album_id = ? AND s.url = ?
     "#;
 
-    let (share, album_title): (Share, Option<String>) = conn.query_row(
-        sql,
-        [album_id, share_id],
-        |row| {
+    let (share, album_title): (Share, Option<String>) = conn
+        .query_row(sql, [album_id, share_id], |row| {
             let url: String = row.get(0)?;
             let share = Share {
                 url: ArrayString::from(&url).unwrap(),
@@ -105,16 +111,15 @@ fn resolve_share_from_db(album_id: &str, share_id: &str) -> Result<Claims> {
             };
             let title: Option<String> = row.get(7)?;
             Ok((share, title))
-        }
-    ).map_err(|_| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?;
+        })
+        .map_err(|_| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?;
 
     let resolved_share = ResolvedShare::new(
-        ArrayString::<64>::from(album_id)
-            .map_err(|_| anyhow!("Failed to parse album_id"))?,
+        ArrayString::<64>::from(album_id).map_err(|_| anyhow!("Failed to parse album_id"))?,
         album_title,
         share,
     );
-    
+
     Ok(Claims::new_share(resolved_share))
 }
 
@@ -159,15 +164,16 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
 
     if let (Some(album_id), Some(share_id)) = (album_id, share_id) {
         if let Ok(conn) = TREE.get_connection() {
-            let show_upload: bool = conn.query_row(
-                "SELECT show_upload FROM album_share WHERE album_id = ? AND url = ?",
-                [album_id, share_id],
-                |row| row.get(0)
-            ).unwrap_or(false);
+            let show_upload: bool = conn
+                .query_row(
+                    "SELECT show_upload FROM album_share WHERE album_id = ? AND url = ?",
+                    [album_id, share_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
 
             if show_upload {
-                if let Some(Ok(album_id_parsed)) =
-                    req.query_value::<&str>("presigned_album_id_opt")
+                if let Some(Ok(album_id_parsed)) = req.query_value::<&str>("presigned_album_id_opt")
                 {
                     return album_id == album_id_parsed;
                 }

@@ -3,7 +3,7 @@ use log::info;
 use rand::Rng;
 use regex::Regex;
 
-use std::{path::PathBuf, sync::LazyLock};
+use std::{path::Path, sync::LazyLock};
 
 use crate::{
     public::structure::abstract_data::AbstractData,
@@ -46,7 +46,7 @@ pub fn compute_timestamp_ms_by_file_modify(
     for &field in priority_list {
         match field {
             "filename" => {
-                let path = PathBuf::from(&file_modify.file);
+                let path = Path::new(&file_modify.file);
 
                 if let Some(file_name) = path.file_name()
                     && let Some(caps) = FILE_NAME_TIME_REGEX.captures(file_name.to_str().unwrap())

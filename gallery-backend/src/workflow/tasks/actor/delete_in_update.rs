@@ -20,8 +20,8 @@ pub struct DeleteTask {
 }
 
 impl DeleteTask {
-    pub fn new(path: PathBuf) -> Self {
-        Self { path }
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
     }
 }
 
@@ -37,16 +37,17 @@ impl Task for DeleteTask {
         }
     }
 }
-fn delete_in_upload_task(path: PathBuf) -> Result<()> {
+fn delete_in_upload_task<P: AsRef<Path>>(path: P) -> Result<()> {
+    let path = path.as_ref();
     // Skip if path is not under ./upload
-    if !path_starts_with_upload(&path) {
+    if !path_starts_with_upload(path) {
         return Ok(());
     }
 
     let mut attempts = 0;
     loop {
         attempts += 1;
-        match fs::remove_file(&path) {
+        match fs::remove_file(path) {
             Ok(_) => {
                 log::info!("Deleted file: {:?}", path);
                 return Ok(());
@@ -71,8 +72,8 @@ fn delete_in_upload_task(path: PathBuf) -> Result<()> {
     }
 }
 
-pub fn path_starts_with_upload(path: &Path) -> bool {
-    match fs::canonicalize(path) {
+pub fn path_starts_with_upload<P: AsRef<Path>>(path: P) -> bool {
+    match fs::canonicalize(path.as_ref()) {
         Ok(abs_path) => abs_path.starts_with(&*UPLOAD_PATH),
         Err(_) => false,
     }

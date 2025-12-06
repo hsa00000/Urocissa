@@ -29,7 +29,10 @@ use crate::{
 use anyhow::Result;
 use arrayvec::ArrayString;
 use mini_executor::Task;
-use std::{collections::{BTreeMap, HashSet}, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::PathBuf,
+};
 
 pub struct DeduplicateTask {
     pub path: PathBuf,
@@ -39,12 +42,12 @@ pub struct DeduplicateTask {
 
 impl DeduplicateTask {
     pub fn new(
-        path: PathBuf,
+        path: impl Into<PathBuf>,
         hash: ArrayString<64>,
         presigned_album_id_opt: Option<ArrayString<64>>,
     ) -> Self {
         Self {
-            path,
+            path: path.into(),
             hash,
             presigned_album_id_opt,
         }

@@ -7,6 +7,7 @@ use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::table::relations::database_exif::ExifSchema; // [FIX] Import ExifSchema
+use crate::utils::imported_path;
 use crate::workflow::processors::image::regenerate_metadata_for_image;
 use crate::workflow::processors::video::{regenerate_metadata_for_video, video_duration};
 use crate::workflow::tasks::BATCH_COORDINATOR;
@@ -19,6 +20,7 @@ use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterato
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use serde::Deserialize;
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,16 +85,18 @@ pub async fn reindex(
                         }
                         Some(AbstractData::Video(vid)) => {
                             let mut abstract_data = AbstractData::Video(vid);
-                            let mut index_task = IndexTask::new(
-                                abstract_data.imported_path(),
-                                abstract_data.clone(),
-                            );
+                            let imported_path = if let AbstractData::Video(ref v) = abstract_data {
+                                imported_path(&v.object.id, &v.metadata.ext)
+                            } else {
+                                PathBuf::new()
+                            };
+                            let mut index_task =
+                                IndexTask::new(imported_path.clone(), abstract_data.clone());
 
                             match regenerate_metadata_for_video(&mut index_task) {
                                 Ok(_) => {
-                                    let duration =
-                                        video_duration(&abstract_data.imported_path_string())
-                                            .unwrap_or(0.0);
+                                    let duration = video_duration(&imported_path.to_string_lossy())
+                                        .unwrap_or(0.0);
 
                                     if let AbstractData::Video(ref mut vid) = abstract_data {
                                         vid.metadata.width = index_task.width;

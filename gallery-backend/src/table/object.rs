@@ -16,7 +16,8 @@ pub enum ObjectType {
 
 impl ObjectType {
     /// 根據副檔名判斷類型
-    pub fn from_ext(ext: &str) -> Option<Self> {
+    pub fn from_ext(ext: impl AsRef<str>) -> Option<Self> {
+        let ext = ext.as_ref();
         if VALID_IMAGE_EXTENSIONS.contains(&ext) {
             Some(ObjectType::Image)
         } else if VALID_VIDEO_EXTENSIONS.contains(&ext) {
@@ -103,7 +104,8 @@ impl ObjectSchema {
         })
     }
 
-    pub fn new(id: ArrayString<64>, obj_type: &str) -> Self {
+    pub fn new(id: ArrayString<64>, obj_type: impl AsRef<str>) -> Self {
+        let obj_type = obj_type.as_ref();
         use std::time::{SystemTime, UNIX_EPOCH};
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)

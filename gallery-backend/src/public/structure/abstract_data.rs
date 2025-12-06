@@ -1,6 +1,5 @@
 use arrayvec::ArrayString;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 use crate::public::db::tree::TREE;
 use crate::table::album::AlbumCombined;
@@ -26,18 +25,6 @@ pub enum AbstractData {
 }
 
 impl AbstractData {
-    pub fn imported_path(&self) -> PathBuf {
-        match self {
-            AbstractData::Image(img) => img.imported_path(),
-            AbstractData::Video(vid) => vid.imported_path(),
-            AbstractData::Album(_) => PathBuf::new(), // or handle appropriately
-        }
-    }
-
-    pub fn imported_path_string(&self) -> String {
-        self.imported_path().to_string_lossy().to_string()
-    }
-
     pub fn compute_timestamp(self: &Self) -> i64 {
         match self {
             AbstractData::Image(i) => i.object.created_time,

@@ -1,4 +1,6 @@
 use crate::public::structure::abstract_data::AbstractData;
+use crate::table::object::ObjectType;
+use crate::utils::compressed_path;
 use arrayvec::ArrayString;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -17,7 +19,7 @@ pub struct IndexTask {
 }
 
 impl IndexTask {
-    pub fn new(imported_path: PathBuf, data: AbstractData) -> Self {
+    pub fn new(imported_path: impl Into<PathBuf>, data: AbstractData) -> Self {
         let (width, height, size, thumbhash, phash, ext_type) = match &data {
             AbstractData::Image(i) => (
                 i.metadata.width,
@@ -39,7 +41,7 @@ impl IndexTask {
         };
 
         Self {
-            imported_path,
+            imported_path: imported_path.into(),
             data,
             width,
             height,
@@ -52,23 +54,13 @@ impl IndexTask {
     }
 
     // Helper methods...
-    pub fn imported_path(&self) -> PathBuf {
-        self.imported_path.clone()
-    }
-
     pub fn compressed_path(&self) -> PathBuf {
-        // Logic to generate compressed path based on hash
-        let hash = self.hash();
-        if self.ext_type == "image" {
-             PathBuf::from(format!("./object/compressed/{}/{}.jpg", &hash[0..2], hash))
-        } else {
-             PathBuf::from(format!("./object/compressed/{}/{}.mp4", &hash[0..2], hash))
-        }
-    }
-    
-    pub fn thumbnail_path(&self) -> String {
-         let hash = self.hash();
-         format!("./object/compressed/{}/{}.jpg", &hash[0..2], hash)
+        let obj_type = match self.ext_type.as_str() {
+            "image" => ObjectType::Image,
+            "video" => ObjectType::Video,
+            _ => panic!("Unknown ext_type: {}", self.ext_type),
+        };
+        compressed_path(self.hash(), obj_type)
     }
 
     pub fn hash(&self) -> ArrayString<64> {

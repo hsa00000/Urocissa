@@ -10,12 +10,13 @@
 use crate::{
     public::structure::abstract_data::AbstractData,
     public::structure::database::generate_timestamp::compute_timestamp_ms_by_exif,
+    utils::{imported_path, thumbnail_path},
     workflow::tasks::actor::index::IndexTask,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use image::{DynamicImage, ImageFormat};
 use image_hasher::HasherConfig;
-use std::{collections::BTreeMap, fs::read, path::PathBuf};
+use std::{collections::BTreeMap, fs::read};
 
 use super::metadata::generate_exif_for_image;
 
@@ -54,12 +55,16 @@ pub fn process_image_info(index_task: &mut IndexTask) -> Result<()> {
 }
 
 /// Rebuild all metadata for an existing image (e.g. after replace/fix)
-/// [FIX] Now returns the EXIF data collected during processing
 pub fn regenerate_metadata_for_image(
     abstract_data: &mut AbstractData,
 ) -> Result<BTreeMap<String, String>> {
     // Refresh size from filesystem - we need to update the underlying ImageCombined
-    let new_size = std::fs::metadata(abstract_data.imported_path())
+    let imported_path = match abstract_data {
+        AbstractData::Image(img) => imported_path(img.object.id, &img.metadata.ext),
+        AbstractData::Video(vid) => imported_path(vid.object.id, &vid.metadata.ext),
+        AbstractData::Album(_) => return Err(anyhow!("Album has no imported path")),
+    };
+    let new_size = std::fs::metadata(&imported_path)
         .context("failed to read metadata for imported image file")?
         .len();
 
@@ -69,12 +74,11 @@ pub fn regenerate_metadata_for_image(
     }
 
     // Re-run the full processing pipeline
-    let mut index_task = IndexTask::new(abstract_data.imported_path(), abstract_data.clone());
+    let mut index_task = IndexTask::new(imported_path, abstract_data.clone());
     process_image_info(&mut index_task).context("failed to process image info")?;
     let exif_vec = index_task.exif_vec.clone();
     *abstract_data = index_task.into();
 
-    // [FIX] Return the EXIF data
     Ok(exif_vec)
 } // ────────────────────────────────────────────────────────────────
 // DynamicImage Generation
@@ -82,10 +86,10 @@ pub fn regenerate_metadata_for_image(
 
 /// Generate a `DynamicImage` from either the original image or its thumbnail
 pub fn generate_dynamic_image(index_task: &IndexTask) -> Result<DynamicImage> {
-    let img_path = if index_task.ext_type == "image" {
-        index_task.imported_path()
-    } else {
-        PathBuf::from(index_task.thumbnail_path())
+    let img_path = match &index_task.data {
+        AbstractData::Image(img) => imported_path(index_task.hash(), &img.metadata.ext),
+        AbstractData::Video(_) => thumbnail_path(index_task.hash()),
+        AbstractData::Album(_) => return Err(anyhow!("Album not supported")),
     };
 
     let dynamic_image = generate_dynamic_image_from_path(&img_path)
@@ -94,9 +98,12 @@ pub fn generate_dynamic_image(index_task: &IndexTask) -> Result<DynamicImage> {
     Ok(dynamic_image)
 }
 
-pub fn generate_dynamic_image_from_path(file_path: &PathBuf) -> Result<DynamicImage> {
+pub fn generate_dynamic_image_from_path<P: AsRef<std::path::Path> + std::fmt::Debug>(
+    file_path: P,
+) -> Result<DynamicImage> {
+    let path = file_path.as_ref();
     let file_in_memory =
-        read(file_path).context(format!("failed to read file into memory: {:?}", file_path))?;
+        read(path).context(format!("failed to read file into memory: {:?}", file_path))?;
 
     let decoders: Vec<fn(&Vec<u8>) -> Result<DynamicImage>> = vec![image_crate_decoder];
 

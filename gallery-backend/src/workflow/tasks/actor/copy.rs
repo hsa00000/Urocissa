@@ -7,9 +7,10 @@ use std::sync::LazyLock;
 use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 
-use crate::public::io::copy_with_retry;
 use crate::public::error_data::handle_error;
+use crate::public::io::copy_with_retry;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::utils::imported_path;
 
 static COPY_LIMIT: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::const_new(1));
 
@@ -19,8 +20,11 @@ pub struct CopyTask {
 }
 
 impl CopyTask {
-    pub fn new(path: PathBuf, data: AbstractData) -> Self {
-        Self { path, data }
+    pub fn new(path: impl Into<PathBuf>, data: AbstractData) -> Self {
+        Self {
+            path: path.into(),
+            data,
+        }
     }
 }
 
@@ -41,8 +45,8 @@ impl Task for CopyTask {
 fn copy_task(task: CopyTask) -> Result<AbstractData> {
     let source_path = task.path;
     let dest_path = match &task.data {
-        AbstractData::Image(i) => i.imported_path(),
-        AbstractData::Video(v) => v.imported_path(),
+        AbstractData::Image(i) => imported_path(i.object.id, &i.metadata.ext),
+        AbstractData::Video(v) => imported_path(v.object.id, &v.metadata.ext),
         _ => return Err(anyhow::anyhow!("Unsupported type")),
     };
 

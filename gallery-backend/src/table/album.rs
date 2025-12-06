@@ -22,7 +22,8 @@ pub struct AlbumCombined {
 
 impl AlbumCombined {
     /// 根據 Hash (ID) 讀取單一相簿資料
-    pub fn _get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
+    pub fn _get_by_id(conn: &Connection, id: impl AsRef<str>) -> rusqlite::Result<Self> {
+        let id = id.as_ref();
         let (sql, values) = Query::select()
             .columns([
                 (Object::Table, Object::Id),

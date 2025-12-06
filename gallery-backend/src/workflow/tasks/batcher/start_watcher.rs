@@ -67,7 +67,8 @@ fn is_valid_media_file(path: &Path) -> bool {
 }
 
 /// Push the path into the debounce pool: if there is no later event for the same path within 1 second, trigger indexing
-fn submit_to_debounce_pool(path: PathBuf) {
+fn submit_to_debounce_pool(path: impl Into<PathBuf>) {
+    let path = path.into();
     let now = Instant::now();
 
     {

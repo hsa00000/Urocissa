@@ -19,7 +19,6 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::public::constant::runtime::CURRENT_NUM_THREADS;
-// [修改]: 引入 ObjectType
 use crate::table::object::ObjectType;
 
 /// ---------- async driver ----------
@@ -57,7 +56,6 @@ pub enum TaskState {
 pub struct TaskRow {
     pub hash: ArrayString<64>,
     pub path: String,
-    // [修改]: 使用 ObjectType
     pub obj_type: ObjectType,
     pub state: TaskState,
     pub progress: Option<f64>,

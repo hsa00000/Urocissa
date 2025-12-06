@@ -96,7 +96,6 @@ fn main() -> Result<()> {
                 // 3. 判斷是誰觸發了關閉
                 let is_ctrl_c = tokio::select! {
                     _ = tokio::signal::ctrl_c() => {
-                        // 【測試點 1】確認真的有收到信號（直接用 println!）
                         println!("\n[DEBUG] Ctrl-C signal detected in worker!"); 
                         true
                     },
@@ -112,7 +111,6 @@ fn main() -> Result<()> {
                     let _ = handle.await; // 等待任務結束
                 }
 
-                // 【修正方案】移除 sleep，改用 flush
                 // 這會強制將 SuperConsole 留下的 "還原終端機" 指令立刻送出
                 let _ = std::io::stdout().flush();
 

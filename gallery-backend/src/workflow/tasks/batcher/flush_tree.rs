@@ -12,19 +12,6 @@ use crate::{
     workflow::tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
 
-fn get_file_from_hash(hash: &str) -> Option<String> {
-    let conn = TREE.get_connection().unwrap();
-    let mut stmt = conn
-        .prepare("SELECT file FROM database_alias WHERE hash = ?")
-        .ok()?;
-    let mut rows = stmt.query(rusqlite::params![hash]).ok()?;
-    if let Some(row) = rows.next().ok()? {
-        Some(row.get::<_, String>(0).ok()?)
-    } else {
-        None
-    }
-}
-
 #[derive(Debug)]
 pub enum FlushOperation {
     InsertAbstractData(AbstractData),

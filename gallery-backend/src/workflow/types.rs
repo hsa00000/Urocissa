@@ -16,7 +16,8 @@ impl Drop for ProcessingGuard {
     }
 }
 
-pub fn try_acquire(hash: ArrayString<64>) -> Option<ProcessingGuard> {
+pub fn try_acquire(hash: impl AsRef<str>) -> Option<ProcessingGuard> {
+    let hash = ArrayString::from(hash.as_ref()).ok()?;
     if IN_PROGRESS.insert(hash) {
         Some(ProcessingGuard(hash))
     } else {

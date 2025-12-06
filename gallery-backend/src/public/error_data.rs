@@ -12,7 +12,8 @@ pub fn handle_error(error: Error) -> Error {
     }
     error
 }
-fn send_discord_webhook(webhook_url: &str, error: &Error) -> () {
+fn send_discord_webhook(webhook_url: impl AsRef<str>, error: &Error) -> () {
+    let webhook_url = webhook_url.as_ref();
     let client = Client::new();
     let debug_string = format!("```rust\n{:?}\n```", error);
     let params = json!({ "content": debug_string });

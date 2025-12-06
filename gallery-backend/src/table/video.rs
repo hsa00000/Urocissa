@@ -9,7 +9,6 @@ use sea_query::{Expr, ExprTrait, JoinType, Query, SqliteQueryBuilder};
 use sea_query_rusqlite::RusqliteBinder;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::PathBuf;
 
 use crate::table::meta_video::VideoMetadataSchema;
 use crate::table::object::ObjectSchema;
@@ -28,7 +27,8 @@ pub struct VideoCombined {
 
 impl VideoCombined {
     /// 根據 Hash (ID) 讀取單一影片資料
-    pub fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
+    pub fn get_by_id(conn: &Connection, id: impl AsRef<str>) -> rusqlite::Result<Self> {
+        let id = id.as_ref();
         let (sql, values) = Query::select()
             .columns([
                 (Object::Table, Object::Id),
@@ -284,18 +284,5 @@ impl VideoCombined {
             albums: HashSet::new(),
             exif_vec: BTreeMap::new(),
         })
-    }
-
-    pub fn imported_path(&self) -> PathBuf {
-        PathBuf::from(self.imported_path_string())
-    }
-
-    pub fn imported_path_string(&self) -> String {
-        format!(
-            "./object/imported/{}/{}.{}",
-            &self.object.id[0..2],
-            self.object.id,
-            self.metadata.ext
-        )
     }
 }

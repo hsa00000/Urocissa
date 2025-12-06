@@ -16,7 +16,7 @@ pub fn create_all_tables(conn: &Connection) -> rusqlite::Result<()> {
     // 2. 建專用元數據表
     ImageMetadataSchema::create_table(conn)?;
     VideoMetadataSchema::create_table(conn)?;
-    AlbumMetadataSchema::create_table(conn)?; // 注意：這裡使用了新的 meta_album
+    AlbumMetadataSchema::create_table(conn)?;
 
     // 3. 建關聯表
     // 這些表通常透過 id 關聯，現在它們應該參照 object(id)

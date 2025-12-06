@@ -2,7 +2,12 @@ use crate::public::error_data::handle_error;
 use anyhow::{Error, Result};
 use log::warn;
 use mini_executor::Task;
-use std::{fs::File, path::PathBuf, thread::sleep, time::Duration};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+    thread::sleep,
+    time::Duration,
+};
 use tokio::task::spawn_blocking;
 
 const OPEN_FAIL_RETRY: usize = 3;
@@ -13,8 +18,8 @@ pub struct OpenFileTask {
 }
 
 impl OpenFileTask {
-    pub fn new(path: PathBuf) -> Self {
-        Self { path }
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
     }
 }
 
@@ -31,7 +36,7 @@ impl Task for OpenFileTask {
     }
 }
 
-pub fn open_file_with_retry(path: PathBuf) -> Result<File> {
+pub fn open_file_with_retry<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<File> {
     let mut delay = Duration::from_millis(OPEN_RETRY_DELAY_MS);
 
     for attempt in 0..=OPEN_FAIL_RETRY {

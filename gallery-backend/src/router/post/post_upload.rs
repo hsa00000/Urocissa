@@ -9,7 +9,6 @@ use arrayvec::ArrayString;
 use rocket::form::{Errors, Form};
 use rocket::fs::TempFile;
 use std::path::Path;
-use std::path::PathBuf;
 use std::time::Instant;
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
@@ -81,7 +80,7 @@ pub async fn upload(
             || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str())
         {
             let final_path = save_file(file, filename, extension, last_modified_time).await?;
-            index_workflow(PathBuf::from(final_path), presigned_album_id_opt).await?;
+            index_workflow(final_path, presigned_album_id_opt).await?;
         } else {
             error!("Invalid file type");
             return Err(anyhow::anyhow!("Invalid file type: {}", extension).into());
@@ -114,7 +113,7 @@ async fn save_file(
 
     Ok(path_final)
 }
-fn set_last_modified_time(path: &str, last_modified_time: u64) -> Result<()> {
+fn set_last_modified_time(path: impl AsRef<Path>, last_modified_time: u64) -> Result<()> {
     let mtime = filetime::FileTime::from_unix_time((last_modified_time / 1000) as i64, 0);
     filetime::set_file_mtime(path, mtime)?;
     Ok(())

@@ -54,8 +54,7 @@ pub static PRIVATE_CONFIG: LazyLock<PrivateConfig> = LazyLock::new(|| {
         }
     }
 
-    let upload_path =
-        fs::canonicalize(PathBuf::from("./upload")).expect("canonicalize(\"./upload\") failed");
+    let upload_path = fs::canonicalize("./upload").expect("canonicalize(\"./upload\") failed");
 
     result.sync_path.retain(|p| match fs::canonicalize(p) {
         Ok(c) => c != upload_path,

@@ -7,6 +7,7 @@ use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
 
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::utils::{imported_path, thumbnail_path};
 use crate::workflow::tasks::INDEX_COORDINATOR;
 use anyhow::Context;
 use anyhow::Result;
@@ -53,7 +54,7 @@ pub async fn regenerate_thumbnail_with_frame(
     let hash = ArrayString::<64>::from(&inner_form.hash)
         .map_err(|_| anyhow!("Invalid hash length or format"))?;
 
-    let file_path = format!("./object/compressed/{}/{}.jpg", &hash[0..2], hash.as_str());
+    let file_path = thumbnail_path(hash);
 
     inner_form
         .frame
@@ -67,8 +68,8 @@ pub async fn regenerate_thumbnail_with_frame(
             database_opt.ok_or_else(|| anyhow::anyhow!("Database not found for hash: {}", hash))?;
 
         let imported_path = match &data {
-            AbstractData::Image(i) => i.imported_path(),
-            AbstractData::Video(v) => v.imported_path(),
+            AbstractData::Image(i) => imported_path(&i.object.id, &i.metadata.ext),
+            AbstractData::Video(v) => imported_path(&v.object.id, &v.metadata.ext),
             _ => return Err(anyhow!("Unsupported type")),
         };
 
