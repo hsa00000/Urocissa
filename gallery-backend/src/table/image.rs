@@ -8,7 +8,7 @@ use rusqlite::{Connection, Row};
 use sea_query::{Expr, ExprTrait, JoinType, Query, SqliteQueryBuilder};
 use sea_query_rusqlite::RusqliteBinder;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use crate::table::meta_image::ImageMetadataSchema;
 use crate::table::object::ObjectSchema;

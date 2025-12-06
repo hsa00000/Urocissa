@@ -39,10 +39,7 @@ impl Tree {
         {
             match obj_type.as_str() {
                 "album" => {
-                    let album = AlbumCombined::get_all(&conn)?
-                        .into_iter()
-                        .find(|a| a.object.id.as_str() == id)
-                        .ok_or_else(|| anyhow::anyhow!("Album not found"))?;
+                    let album = AlbumCombined::get_by_id(&conn, id)?;
                     Ok(AbstractData::Album(album))
                 }
                 "image" => {
@@ -100,10 +97,7 @@ impl Tree {
                     Ok(Some(AbstractData::Video(video)))
                 }
                 "album" => {
-                    let album = AlbumCombined::get_all(&conn)?
-                        .into_iter()
-                        .find(|a| a.object.id.as_str() == hash)
-                        .ok_or_else(|| anyhow::anyhow!("Album not found"))?;
+                    let album = AlbumCombined::get_by_id(&conn, hash)?;
                     Ok(Some(AbstractData::Album(album)))
                 }
                 _ => Err(anyhow::anyhow!("Unknown object type for hash: {}", hash)),
