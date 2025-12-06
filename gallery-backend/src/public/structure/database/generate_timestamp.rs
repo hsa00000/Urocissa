@@ -1,5 +1,4 @@
 use chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
-use log::info;
 use rand::Rng;
 use regex::Regex;
 

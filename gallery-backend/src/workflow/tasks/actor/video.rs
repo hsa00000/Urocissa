@@ -64,10 +64,15 @@ pub fn video_task(mut data: AbstractData) -> Result<()> {
             info!("Video task: Converted {} to image", hash);
             DASHBOARD.advance_task_state(&hash);
         }
-        Err(err) => Err(err).context(format!(
-            "video_task: video compression failed for hash: {}",
-            hash
-        ))?,
+        Err(err) => {
+            // 通知 Dashboard 任務失敗
+            DASHBOARD.mark_failed(&hash);
+
+            Err(err).context(format!(
+                "video_task: video compression failed for hash: {}",
+                hash
+            ))?
+        }
     }
     Ok(())
 }

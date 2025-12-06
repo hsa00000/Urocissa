@@ -28,14 +28,21 @@ pub async fn index_workflow(
     let path = path.into().clean();
 
     // Step 1: Open file
-    let file = INDEX_COORDINATOR
+    let file = match INDEX_COORDINATOR
         .execute_waiting(OpenFileTask::new(path.clone()))
-        .await??;
+        .await
+    {
+        Ok(Ok(f)) => f,
+        Ok(Err(e)) => return Err(e),
+        Err(e) => return Err(anyhow!("Join error: {}", e)),
+    };
 
     // Step 2: Calculate Hash
-    let hash = INDEX_COORDINATOR
-        .execute_waiting(HashTask::new(file))
-        .await??;
+    let hash = match INDEX_COORDINATOR.execute_waiting(HashTask::new(file)).await {
+        Ok(Ok(h)) => h,
+        Ok(Err(e)) => return Err(e),
+        Err(e) => return Err(anyhow!("Join error: {}", e)),
+    };
 
     // Step 2: Acquire processing guard
     let _guard = match try_acquire(hash) {
@@ -50,13 +57,24 @@ pub async fn index_workflow(
     };
 
     // Step 3: Deduplicate Check
-    let result = INDEX_COORDINATOR
+    let result = match INDEX_COORDINATOR
         .execute_waiting(DeduplicateTask::new(
             path.clone(),
             hash,
             presigned_album_id_opt,
         ))
-        .await??;
+        .await
+    {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => {
+            DASHBOARD.mark_failed(&hash);
+            return Err(e);
+        }
+        Err(e) => {
+            DASHBOARD.mark_failed(&hash);
+            return Err(anyhow!("Join error: {}", e));
+        }
+    };
 
     let (mut data, dedup_ops) = match result {
         Some((d, ops)) => (d, ops),
@@ -68,9 +86,20 @@ pub async fn index_workflow(
     };
 
     // Step 4: Copy file to imported directory
-    let copied_data = INDEX_COORDINATOR
+    let copied_data = match INDEX_COORDINATOR
         .execute_waiting(CopyTask::new(path.clone(), data.clone()))
-        .await??;
+        .await
+    {
+        Ok(Ok(d)) => d,
+        Ok(Err(e)) => {
+            DASHBOARD.mark_failed(&hash);
+            return Err(e);
+        }
+        Err(e) => {
+            DASHBOARD.mark_failed(&hash);
+            return Err(anyhow!("Join error: {}", e));
+        }
+    };
     data = copied_data;
 
     // Step 5: Process metadata (in blocking thread)
@@ -78,12 +107,15 @@ pub async fn index_workflow(
     let imported_path = match &data {
         AbstractData::Image(i) => imported_path(i.object.id, &i.metadata.ext),
         AbstractData::Video(v) => imported_path(v.object.id, &v.metadata.ext),
-        _ => return Err(anyhow!("Unsupported data type")),
+        _ => {
+            DASHBOARD.mark_failed(&hash);
+            return Err(anyhow!("Unsupported data type"));
+        }
     };
 
     // 這裡我們會拿回更新後的 index_task，它包含了 process_image_info 解析出的 EXIF 資料
     let (updated_index_task, duration_opt) =
-        spawn_blocking(move || -> Result<(IndexTask, Option<f64>)> {
+        match spawn_blocking(move || -> Result<(IndexTask, Option<f64>)> {
             let mut index_task = IndexTask::new(imported_path.clone(), data_clone.clone());
             let mut duration = None;
 
@@ -105,7 +137,18 @@ pub async fn index_workflow(
             }
             Ok((index_task, duration))
         })
-        .await??;
+        .await
+        {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => {
+                DASHBOARD.mark_failed(&hash);
+                return Err(e);
+            }
+            Err(e) => {
+                DASHBOARD.mark_failed(&hash);
+                return Err(anyhow!("Spawn blocking error: {}", e));
+            }
+        };
 
     // Update data with processed results (width, height, etc.)
     data = updated_index_task.clone().into();
@@ -147,9 +190,20 @@ pub async fn index_workflow(
 
     // Step 8: Compress video if needed
     if let AbstractData::Video(_) = &data {
-        INDEX_COORDINATOR
+        match INDEX_COORDINATOR
             .execute_waiting(VideoTask::new(data.clone()))
-            .await??;
+            .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                DASHBOARD.mark_failed(&hash);
+                return Err(e);
+            }
+            Err(e) => {
+                DASHBOARD.mark_failed(&hash);
+                return Err(anyhow!("Join error: {}", e));
+            }
+        };
     }
 
     Ok(())

@@ -216,9 +216,6 @@ impl Dashboard {
             }
         }
     }
-
-    /// Failure: mark the current row as Failed(elapsed) and move to `completed`
-    /// (does not update `handled` / `total_duration`)
     pub fn mark_failed(&self, hash: &ArrayString<64>) {
         if let Some(mut view) = self.tasks.get_mut(hash) {
             let elapsed = match view.state {
