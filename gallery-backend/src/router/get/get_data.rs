@@ -1,8 +1,10 @@
-use crate::workflow::processors::transitor::{index_to_hash, process_abstract_data_for_response, resolve_show_download_and_metadata};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractDataWithTag;
 use crate::public::structure::row::{Row, ScrollBarData};
+use crate::workflow::processors::transitor::{
+    index_to_hash, process_abstract_data_for_response, resolve_show_download_and_metadata,
+};
 
 use crate::router::fairing::guard_timestamp::GuardTimestamp;
 use crate::router::{AppResult, GuardResult};
@@ -24,8 +26,7 @@ pub async fn get_data(
         let start_time = Instant::now();
 
         let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
-        let (show_download, show_metadata) =
-            resolve_show_download_and_metadata(resolved_share_opt);
+        let (show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
 
         let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
         end = end.min(tree_snapshot.len());

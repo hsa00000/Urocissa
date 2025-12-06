@@ -32,8 +32,11 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
 // Metadata Clearing
 // ────────────────────────────────────────────────────────────────
 
-/// Clear metadata from abstract data based on permissions
-pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metadata: bool) {
+/// Process abstract data for API response
+pub fn process_abstract_data_for_response(
+    mut abstract_data: AbstractData,
+    show_metadata: bool,
+) -> AbstractData {
     match abstract_data {
         AbstractData::Image(_) | AbstractData::Video(_) => {
             // 媒體的 metadata 清除，暫時保持
@@ -42,14 +45,6 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
             // Album 的 tag 現在從關聯表讀取，不需要清除
         }
     }
-}
-
-/// Process abstract data for API response
-pub fn process_abstract_data_for_response(
-    mut abstract_data: AbstractData,
-    show_metadata: bool,
-) -> AbstractData {
-    clear_abstract_data_metadata(&mut abstract_data, show_metadata);
     abstract_data
 }
 
