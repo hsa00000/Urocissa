@@ -67,7 +67,7 @@ fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
 
     let object = ObjectSchema {
         id: video_combined.object.id,
-        obj_type: "image".to_string(), // 修改類型
+        obj_type: ObjectType::Image,
         created_time: video_combined.object.created_time,
         pending: false,
         thumbhash: video_combined.object.thumbhash,

@@ -17,7 +17,7 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::table::album::AlbumCombined;
 use crate::table::meta_album::AlbumMetadataSchema;
-use crate::table::object::ObjectSchema;
+use crate::table::object::{ObjectSchema, ObjectType};
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 
@@ -65,7 +65,7 @@ async fn create_album_internal(title: Option<String>) -> Result<ArrayString<64>>
     let start_time = Instant::now();
 
     let album_id = generate_random_hash();
-    let object = ObjectSchema::new(album_id, "album");
+    let object = ObjectSchema::new(album_id, ObjectType::Album);
     let metadata = AlbumMetadataSchema::new(album_id, title);
     let album = AbstractData::Album(AlbumCombined { object, metadata });
     BATCH_COORDINATOR

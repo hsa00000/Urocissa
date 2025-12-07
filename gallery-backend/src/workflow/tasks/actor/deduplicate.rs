@@ -130,7 +130,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                     let object = ObjectSchema {
                         id: task.hash,
                         created_time,
-                        obj_type: "image".to_string(),
+                        obj_type: ObjectType::Image,
                         thumbhash: None,
                         pending: false,
                         tags: HashSet::new(),
@@ -154,7 +154,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                     let object = ObjectSchema {
                         id: task.hash,
                         created_time,
-                        obj_type: "video".to_string(),
+                        obj_type: ObjectType::Video,
                         thumbhash: None,
                         pending: true, // Video starts as pending
                         tags: HashSet::new(),
