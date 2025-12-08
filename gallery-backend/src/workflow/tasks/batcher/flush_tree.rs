@@ -72,18 +72,20 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                     // 1. Object 表：無腦 Upsert
                     // 無論是新插入，還是影片轉圖片更新，或是 Reindex，都用這招
                     tx.execute(
-                        "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) 
-                         VALUES (?1, 'image', ?2, ?3, ?4)
+                        "INSERT INTO object (id, obj_type, created_time, pending, thumbhash, description) 
+                         VALUES (?1, 'image', ?2, ?3, ?4, ?5)
                          ON CONFLICT(id) DO UPDATE SET 
                          obj_type=excluded.obj_type,
                          created_time=excluded.created_time,
                          pending=excluded.pending,
-                         thumbhash=excluded.thumbhash",
+                         thumbhash=excluded.thumbhash,
+                         description=excluded.description",
                         rusqlite::params![
                             img.object.id.as_str(),
                             img.object.created_time,
                             img.object.pending as i32,
-                            img.object.thumbhash
+                            img.object.thumbhash,
+                            img.object.description
                         ],
                     )?;
 
@@ -122,18 +124,20 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 AbstractData::Video(vid) => {
                     // 1. Object 表：無腦 Upsert (解決 pending=true 變 false 的衝突)
                     tx.execute(
-                        "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) 
-                         VALUES (?1, 'video', ?2, ?3, ?4)
+                        "INSERT INTO object (id, obj_type, created_time, pending, thumbhash, description) 
+                         VALUES (?1, 'video', ?2, ?3, ?4, ?5)
                          ON CONFLICT(id) DO UPDATE SET 
                          obj_type=excluded.obj_type,
                          created_time=excluded.created_time,
                          pending=excluded.pending,
-                         thumbhash=excluded.thumbhash",
+                         thumbhash=excluded.thumbhash,
+                         description=excluded.description",
                         rusqlite::params![
                             vid.object.id.as_str(),
                             vid.object.created_time,
                             vid.object.pending as i32,
-                            vid.object.thumbhash
+                            vid.object.thumbhash,
+                            vid.object.description
                         ],
                     )?;
 
@@ -173,18 +177,20 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> rusqlite::Result<()> {
                 AbstractData::Album(album) => {
                     // Album Object: Upsert
                     tx.execute(
-                        "INSERT INTO object (id, obj_type, created_time, pending, thumbhash) \
-                         VALUES (?1, 'album', ?2, ?3, ?4) \
+                        "INSERT INTO object (id, obj_type, created_time, pending, thumbhash, description) \
+                         VALUES (?1, 'album', ?2, ?3, ?4, ?5) \
                          ON CONFLICT(id) DO UPDATE SET \
                          obj_type=excluded.obj_type, \
                          created_time=excluded.created_time, \
                          pending=excluded.pending, \
-                         thumbhash=excluded.thumbhash",
+                         thumbhash=excluded.thumbhash, \
+                         description=excluded.description",
                         rusqlite::params![
                             album.object.id.as_str(),
                             album.object.created_time,
                             album.object.pending as i32,
                             album.object.thumbhash,
+                            album.object.description,
                         ],
                     )?;
 

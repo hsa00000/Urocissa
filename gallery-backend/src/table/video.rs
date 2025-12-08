@@ -48,6 +48,7 @@ impl VideoCombined {
                 (Object::Table, Object::CreatedTime),
                 (Object::Table, Object::Pending),
                 (Object::Table, Object::Thumbhash),
+                (Object::Table, Object::Description),
             ])
             .columns([
                 (MetaVideo::Table, MetaVideo::Size),
@@ -78,6 +79,7 @@ impl VideoCombined {
                 (Object::Table, Object::CreatedTime),
                 (Object::Table, Object::Pending),
                 (Object::Table, Object::Thumbhash),
+                (Object::Table, Object::Description),
             ])
             .columns([
                 (MetaVideo::Table, MetaVideo::Size),

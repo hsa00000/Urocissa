@@ -13,9 +13,9 @@ export async function editUserDefinedDescription(
 
   function getCurrentDescription(): string {
     if (abstractData.database) {
-      return abstractData.database.exifVec._user_defined_description ?? ''
+      return abstractData.database.object.description ?? ''
     } else if (abstractData.album) {
-      return abstractData.album.userDefinedMetadata._user_defined_description?.[0] ?? ''
+      return abstractData.album.object.description ?? ''
     }
     return ''
   }
@@ -35,11 +35,11 @@ export async function editUserDefinedDescription(
     // Update local data store
     const item = dataStore.data.get(index)
     if (item) {
-      if (abstractData.database && item.database) {
-        item.database.exifVec._user_defined_description = descriptionModelValue
-      } else if (abstractData.album && item.album) {
-        item.album.userDefinedMetadata._user_defined_description =
-          descriptionModelValue == '' ? [] : [descriptionModelValue]
+      // [Modify] Update the object description
+      if (item.database) {
+        item.database.object.description = description
+      } else if (item.album) {
+        item.album.object.description = description
       }
     }
   }

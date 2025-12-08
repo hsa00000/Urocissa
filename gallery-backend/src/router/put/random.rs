@@ -2,14 +2,14 @@ use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
-use crate::workflow::tasks::BATCH_COORDINATOR;
-use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::table::image::ImageCombined;
-use crate::table::object::{ObjectSchema, ObjectType};
 use crate::table::meta_image::ImageMetadataSchema;
-use arrayvec::ArrayString;
+use crate::table::object::{ObjectSchema, ObjectType};
+use crate::workflow::tasks::BATCH_COORDINATOR;
+use crate::workflow::tasks::batcher::flush_tree::FlushTreeTask;
+use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
+use arrayvec::ArrayString;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::{BTreeMap, HashSet};
 
@@ -19,9 +19,13 @@ fn create_random_data() -> AbstractData {
         object: ObjectSchema {
             id: ArrayString::from(&format!("random_{}", rand::random::<u64>())).unwrap(),
             obj_type: ObjectType::Image,
-            created_time: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64,
+            created_time: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64,
             pending: false,
             thumbhash: None,
+            description: None,
             tags: HashSet::new(),
         },
         metadata: ImageMetadataSchema {
@@ -35,7 +39,7 @@ fn create_random_data() -> AbstractData {
         albums: HashSet::new(),
         exif_vec: BTreeMap::new(),
     };
-    
+
     AbstractData::Image(image)
 }
 #[get("/put/generate_random_data?<number>")]

@@ -1,5 +1,4 @@
 use crate::workflow::processors::transitor::index_to_hash;
-use crate::public::constant::USER_DEFINED_DESCRIPTION;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 
@@ -7,7 +6,6 @@ use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
-use crate::table::relations::database_exif::ExifSchema;
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask};
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
@@ -42,33 +40,19 @@ pub async fn set_user_defined_description(
         let abstract_data = TREE.load_from_db(&hash)?;
 
         let mut operations = Vec::new();
+        let new_desc = set_user_defined_description.description.clone();
 
         match abstract_data {
-            AbstractData::Image(i) => {
-                // 圖片的 exif 處理
-                operations.push(FlushOperation::InsertExif(ExifSchema {
-                    hash: i.object.id.to_string(),
-                    tag: USER_DEFINED_DESCRIPTION.to_string(),
-                    value: set_user_defined_description.description.clone().unwrap_or_default(),
-                }));
+            AbstractData::Image(mut i) => {
+                i.object.description = new_desc;
+                operations.push(FlushOperation::InsertAbstractData(AbstractData::Image(i)));
             }
-            AbstractData::Video(v) => {
-                // 影片的 exif 處理
-                operations.push(FlushOperation::InsertExif(ExifSchema {
-                    hash: v.object.id.to_string(),
-                    tag: USER_DEFINED_DESCRIPTION.to_string(),
-                    value: set_user_defined_description.description.clone().unwrap_or_default(),
-                }));
+            AbstractData::Video(mut v) => {
+                v.object.description = new_desc;
+                operations.push(FlushOperation::InsertAbstractData(AbstractData::Video(v)));
             }
             AbstractData::Album(mut alb) => {
-                alb.metadata.user_defined_metadata.insert(
-                    USER_DEFINED_DESCRIPTION.to_string(),
-                    if let Some(desc) = &set_user_defined_description.description {
-                        vec![desc.clone()]
-                    } else {
-                        vec![]
-                    },
-                );
+                alb.object.description = new_desc;
                 operations.push(FlushOperation::InsertAbstractData(AbstractData::Album(alb)));
             }
         }

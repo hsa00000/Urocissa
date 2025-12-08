@@ -73,7 +73,22 @@ export const DataBaseParse = z.object({
   size: z.number(),
   thumbhash: z.array(z.number()),
   width: z.number(),
-  timestampMs: z.number()
+  timestampMs: z.number(),
+  description: z.string().nullable().optional()
+})
+
+// --- New Flat Schemas (Matching Backend Response) ---
+
+const ObjTypeEnum = z.enum(['image', 'video', 'album'])
+
+const FlatObjectBase = z.object({
+  id: z.string(),
+  objType: ObjTypeEnum,
+  createdTime: z.number(),
+  pending: z.boolean(),
+  thumbhash: z.array(z.number()).nullable().optional(),
+  description: z.string().nullable().optional(),
+  tags: z.array(z.string()).default([]) // [Modified]: Tags moved to ObjectSchema in backend
 })
 
 export const DataBaseSchema = DataBaseParse.extend({
@@ -81,7 +96,8 @@ export const DataBaseSchema = DataBaseParse.extend({
   thumbhashUrl: z.string(), // need initialize
   filename: z.string(), // need initialize
   tags: z.array(z.string()),
-  exifVec: z.record(z.string(), z.string())
+  exifVec: z.record(z.string(), z.string()),
+  object: FlatObjectBase
 })
 
 export const AlbumParse = z.object({
@@ -102,27 +118,18 @@ export const AlbumParse = z.object({
   tag: z.array(z.string()),
   itemCount: z.number(),
   itemSize: z.number(),
-  pending: z.boolean()
+  pending: z.boolean(),
+  description: z.string().nullable().optional()
 })
 
 export const AlbumSchema = AlbumParse.extend({
   timestamp: z.number(),
   thumbhashUrl: z.string().nullable(), // need initialize
-  tags: z.array(z.string())
+  tags: z.array(z.string()),
+  object: FlatObjectBase
 })
 
 // --- New Flat Schemas (Matching Backend Response) ---
-
-const ObjTypeEnum = z.enum(['image', 'video', 'album'])
-
-const FlatObjectBase = z.object({
-  id: z.string(),
-  objType: ObjTypeEnum,
-  createdTime: z.number(),
-  pending: z.boolean(),
-  thumbhash: z.array(z.number()).nullable().optional(),
-  tags: z.array(z.string()).default([]) // [Modified]: Tags moved to ObjectSchema in backend
-})
 
 export const FlatImageSchema = FlatObjectBase.extend({
   objType: z.literal('image'),

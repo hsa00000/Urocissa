@@ -63,6 +63,7 @@ pub enum Object {
     CreatedTime,
     Pending,
     Thumbhash,
+    Description,
 }
 
 /// ObjectSchema: 系統中所有實體的共同基類
@@ -74,6 +75,7 @@ pub struct ObjectSchema {
     pub created_time: i64,
     pub pending: bool,
     pub thumbhash: Option<Vec<u8>>,
+    pub description: Option<String>,
     pub tags: HashSet<String>,
 }
 
@@ -93,6 +95,7 @@ impl ObjectSchema {
             .col(ColumnDef::new(Object::CreatedTime).integer().not_null())
             .col(ColumnDef::new(Object::Pending).integer().default(0))
             .col(ColumnDef::new(Object::Thumbhash).blob())
+            .col(ColumnDef::new(Object::Description).text())
             .build(SqliteQueryBuilder);
 
         conn.execute(&sql, [])?;
@@ -136,6 +139,7 @@ impl ObjectSchema {
             created_time: row.get(Object::CreatedTime.to_string().as_str())?,
             pending: row.get(Object::Pending.to_string().as_str())?,
             thumbhash: row.get(Object::Thumbhash.to_string().as_str())?,
+            description: row.get(Object::Description.to_string().as_str())?,
             tags: HashSet::new(),
         })
     }
@@ -152,6 +156,7 @@ impl ObjectSchema {
             created_time: timestamp,
             pending: false,
             thumbhash: None,
+            description: None,
             tags: HashSet::new(),
         }
     }

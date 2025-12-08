@@ -118,9 +118,9 @@ function toggleInfo() {
 
 function getUserDefinedDescription(abstractData: AbstractData): string {
   if (abstractData.database) {
-    return abstractData.database.exifVec._user_defined_description ?? ''
+    return abstractData.database.object.description ?? ''
   } else if (abstractData.album) {
-    return abstractData.album.userDefinedMetadata._user_defined_description?.[0] ?? ''
+    return abstractData.album.object.description ?? ''
   }
   return ''
 }

@@ -10,13 +10,23 @@ export function createDataBase(
   alias: z.infer<typeof AliasSchema>[],
   exifVec: Record<string, string>
 ): Database {
+  const objType = databaseParse.ext === 'mp4' ? 'video' : 'image'
   const database: Database = {
     ...databaseParse,
     timestamp: timestamp,
     thumbhashUrl: thumbHashToDataURL(databaseParse.thumbhash),
     filename: alias[0]?.file.split('/').pop() ?? '',
     tags: tags,
-    exifVec: exifVec
+    exifVec: exifVec,
+    object: {
+      id: databaseParse.hash,
+      objType: objType as 'image' | 'video',
+      createdTime: databaseParse.timestampMs,
+      pending: databaseParse.pending,
+      thumbhash: databaseParse.thumbhash,
+      description: databaseParse.description ?? null,
+      tags: tags
+    }
   }
   return database
 }
@@ -30,7 +40,16 @@ export function createAlbum(
     ...albumParse,
     timestamp: timestamp,
     thumbhashUrl: albumParse.thumbhash ? thumbHashToDataURL(albumParse.thumbhash) : null,
-    tags: tags
+    tags: tags,
+    object: {
+      id: albumParse.id,
+      objType: 'album',
+      createdTime: albumParse.createdTime,
+      pending: albumParse.pending,
+      thumbhash: albumParse.thumbhash,
+      description: albumParse.description ?? null,
+      tags: tags
+    }
   }
   return album
 }

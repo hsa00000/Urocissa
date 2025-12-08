@@ -133,6 +133,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                         obj_type: ObjectType::Image,
                         thumbhash: None,
                         pending: false,
+                        description: None,
                         tags: HashSet::new(),
                     };
                     let metadata = ImageMetadataSchema {
@@ -157,6 +158,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                         obj_type: ObjectType::Video,
                         thumbhash: None,
                         pending: true, // Video starts as pending
+                        description: None,
                         tags: HashSet::new(),
                     };
                     let metadata = VideoMetadataSchema {

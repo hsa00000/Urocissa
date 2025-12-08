@@ -40,6 +40,7 @@ impl AlbumCombined {
                 (Object::Table, Object::CreatedTime),
                 (Object::Table, Object::Pending),
                 (Object::Table, Object::Thumbhash),
+                (Object::Table, Object::Description),
             ])
             .columns([
                 (MetaAlbum::Table, MetaAlbum::Title),
@@ -73,6 +74,7 @@ impl AlbumCombined {
                 (Object::Table, Object::CreatedTime),
                 (Object::Table, Object::Pending),
                 (Object::Table, Object::Thumbhash),
+                (Object::Table, Object::Description),
             ])
             .columns([
                 (MetaAlbum::Table, MetaAlbum::Title),

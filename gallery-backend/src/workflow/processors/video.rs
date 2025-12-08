@@ -71,6 +71,7 @@ fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
         created_time: video_combined.object.created_time,
         pending: false,
         thumbhash: video_combined.object.thumbhash,
+        description: video_combined.object.description,
         tags,
     };
 
