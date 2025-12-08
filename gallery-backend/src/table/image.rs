@@ -123,17 +123,6 @@ impl ImageCombined {
                 image.exif_vec = exif;
             }
         }
-        for image in &mut images {
-            if let Some(albums) = album_map.remove(&image.object.id) {
-                image.albums = albums;
-            }
-            if let Some(tags) = tag_map.remove(&image.object.id) {
-                image.object.tags = tags;
-            }
-            if let Some(exif) = exif_map.remove(&image.object.id) {
-                image.exif_vec = exif;
-            }
-        }
 
         Ok(images)
     }

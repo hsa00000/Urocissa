@@ -55,42 +55,27 @@ impl AbstractData {
     }
     pub fn alias(self: &Self) -> Vec<FileModify> {
         match self {
-            AbstractData::Image(i) => {
-                let conn = TREE.get_connection().unwrap();
-                let mut stmt = conn
-                    .prepare("SELECT file, modified, scan_time FROM database_alias WHERE hash = ? ORDER BY scan_time DESC")
-                    .unwrap();
-                let alias_iter = stmt
-                    .query_map([i.object.id.as_str()], |row| {
-                        Ok(FileModify {
-                            file: row.get(0)?,
-                            modified: row.get::<_, i64>(1)? as u128,
-                            scan_time: row.get::<_, i64>(2)? as u128,
-                        })
-                    })
-                    .unwrap();
-                let aliases: Vec<FileModify> = alias_iter.filter_map(|r| r.ok()).collect();
-                aliases
-            }
-            AbstractData::Video(v) => {
-                let conn = TREE.get_connection().unwrap();
-                let mut stmt = conn
-                    .prepare("SELECT file, modified, scan_time FROM database_alias WHERE hash = ? ORDER BY scan_time DESC")
-                    .unwrap();
-                let alias_iter = stmt
-                    .query_map([v.object.id.as_str()], |row| {
-                        Ok(FileModify {
-                            file: row.get(0)?,
-                            modified: row.get::<_, i64>(1)? as u128,
-                            scan_time: row.get::<_, i64>(2)? as u128,
-                        })
-                    })
-                    .unwrap();
-                let aliases: Vec<FileModify> = alias_iter.filter_map(|r| r.ok()).collect();
-                aliases
-            }
+            AbstractData::Image(i) => Self::fetch_alias(&i.object.id),
+            AbstractData::Video(v) => Self::fetch_alias(&v.object.id),
             AbstractData::Album(_) => vec![],
         }
+    }
+
+    fn fetch_alias(hash: &ArrayString<64>) -> Vec<FileModify> {
+        let conn = TREE.get_connection().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT file, modified, scan_time FROM database_alias WHERE hash = ? ORDER BY scan_time DESC")
+            .unwrap();
+        let alias_iter = stmt
+            .query_map([hash.as_str()], |row| {
+                Ok(FileModify {
+                    file: row.get(0)?,
+                    modified: row.get::<_, i64>(1)? as u128,
+                    scan_time: row.get::<_, i64>(2)? as u128,
+                })
+            })
+            .unwrap();
+        alias_iter.filter_map(|r| r.ok()).collect()
     }
 
     pub fn generate_token(&self, timestamp: u128, allow_original: bool) -> String {
