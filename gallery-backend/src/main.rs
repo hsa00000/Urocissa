@@ -30,8 +30,7 @@ use tokio::sync::broadcast;
 
 async fn build_rocket() -> rocket::Rocket<rocket::Build> {
     // 1. 建立設定：禁用 Rocket 內建的 Ctrl-C 監聽
-    let figment = rocket::Config::figment()
-        .merge(("shutdown.ctrlc", false));
+    let figment = rocket::Config::figment().merge(("shutdown.ctrlc", false));
 
     // 2. 使用 custom(figment) 取代 build()
     rocket::custom(figment)
@@ -60,14 +59,14 @@ fn main() -> Result<()> {
                 let start_time = Instant::now();
                 let conn = crate::public::db::tree::TREE.get_connection().expect("Failed to get DB connection");
                 let data_count: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM object WHERE obj_type IN ('image', 'video')", 
-                    [], 
+                    "SELECT COUNT(*) FROM object WHERE obj_type IN ('image', 'video')",
+                    [],
                     |row| row.get(0)
                 ).expect("Failed to count data");
                 info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", data_count);
                 let album_count: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM object WHERE obj_type = 'album'", 
-                    [], 
+                    "SELECT COUNT(*) FROM object WHERE obj_type = 'album'",
+                    [],
                     |row| row.get(0)
                 ).expect("Failed to count albums");
                 info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", album_count);
@@ -92,11 +91,11 @@ fn main() -> Result<()> {
                 }
 
                 let mut shutdown_rx = shutdown_tx.subscribe();
-                
+
                 // 3. 判斷是誰觸發了關閉
                 let is_ctrl_c = tokio::select! {
                     _ = tokio::signal::ctrl_c() => {
-                        println!("\n[DEBUG] Ctrl-C signal detected in worker!"); 
+                        println!("\n[DEBUG] Ctrl-C signal detected in worker!");
                         true
                     },
                     _ = shutdown_rx.recv() => {
@@ -139,7 +138,7 @@ fn main() -> Result<()> {
                 let shutdown_tx_clone = shutdown_tx.clone();
                 ROCKET_RUNTIME.spawn(async move {
                     let mut shutdown_rx = shutdown_tx_clone.subscribe();
-                    
+
                     // 6. Rocket 執行緒不再自己聽 Ctrl-C，只等待 worker 發出的廣播
                     if shutdown_rx.recv().await.is_ok() {
                         info!("Shutdown signal received, shutting down Rocket server gracefully.");

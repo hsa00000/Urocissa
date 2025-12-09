@@ -1,7 +1,7 @@
 use crate::public::db::tree::TREE;
-use crate::router::{AppResult, GuardResult};
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::{AppResult, GuardResult};
 use rocket::get;
 use rocket::response::stream::ByteStream;
 use serde::Serialize;

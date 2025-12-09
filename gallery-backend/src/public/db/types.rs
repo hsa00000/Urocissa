@@ -1,5 +1,5 @@
-use rusqlite::types::{FromSql, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use rusqlite::Result;
+use rusqlite::types::{FromSql, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 
 /// 用來讓 u64 可以無損存入 SQLite 的 i64 欄位
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -22,5 +22,7 @@ impl FromSql for SqliteU64 {
 
 // 方便轉換
 impl From<u64> for SqliteU64 {
-    fn from(v: u64) -> Self { Self(v) }
+    fn from(v: u64) -> Self {
+        Self(v)
+    }
 }

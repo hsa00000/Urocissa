@@ -2,8 +2,8 @@ use jsonwebtoken::{EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::table::relations::album_share::ResolvedShare;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
+use crate::table::relations::album_share::ResolvedShare;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

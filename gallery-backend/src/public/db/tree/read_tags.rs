@@ -47,8 +47,9 @@ impl Tree {
             .collect();
         tag_infos
     }
+
     pub fn read_albums(&self) -> Result<Vec<AlbumCombined>> {
-        let conn = self.get_connection()?;
-        Ok(AlbumCombined::get_all(&conn)?)
+        let txn = self.in_disk.begin_read()?;
+        Ok(AlbumCombined::get_all(&txn)?)
     }
 }

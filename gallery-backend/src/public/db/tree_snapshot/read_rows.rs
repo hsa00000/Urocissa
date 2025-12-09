@@ -4,13 +4,14 @@ use crate::{
     public::structure::row::{DisplayElement, Row},
 };
 use anyhow::{Result, bail};
+use log::error;
 
 impl TreeSnapshot {
     pub fn read_row(&'static self, row_index: usize, timestamp: u128) -> Result<Row> {
         let tree_snapshot = self.read_tree_snapshot(&timestamp)?;
 
         let data_length = tree_snapshot.len();
-        let chunk_count = (data_length + ROW_BATCH_NUMBER - 1) / ROW_BATCH_NUMBER; // Calculate total chunks
+        let chunk_count = (data_length + ROW_BATCH_NUMBER - 1) / ROW_BATCH_NUMBER;
 
         if row_index > chunk_count {
             error!("read_rows out of bound");

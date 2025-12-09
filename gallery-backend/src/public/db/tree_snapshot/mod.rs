@@ -6,14 +6,13 @@ pub mod read_tree_snapshot;
 use std::sync::LazyLock;
 
 use dashmap::DashMap;
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
+use redb::Database;
 
 use crate::public::structure::reduced_data::ReducedData;
 
 #[derive(Debug)]
 pub struct TreeSnapshot {
-    pub in_disk: &'static Pool<SqliteConnectionManager>,
+    pub in_disk: &'static Database,
     pub in_memory: &'static DashMap<u128, Vec<ReducedData>>,
 }
 

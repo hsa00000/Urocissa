@@ -66,7 +66,7 @@ fn create_and_insert_share(conn: &Connection, create_share: CreateShare) -> AppR
         .take(64)
         .map(char::from)
         .collect();
-    
+
     let share_id = ArrayString::<64>::from(&link).unwrap();
     let exp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -33,7 +33,7 @@ fn flush_tree_snapshot_task() -> Result<()> {
             let timestamp_str = timestamp.to_string();
 
             let timer_start = Instant::now();
-            
+
             let mut conn = TREE_SNAPSHOT.in_disk.get()?;
             let tx = conn.transaction()?;
 

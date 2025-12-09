@@ -1,10 +1,10 @@
 use crate::public::config::{PUBLIC_CONFIG, PublicConfig};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::TagInfo;
-use crate::table::relations::album_share::{AlbumShareTable, ResolvedShare, Share};
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
+use crate::table::relations::album_share::{AlbumShareTable, ResolvedShare, Share};
 use anyhow::Context;
 use arrayvec::ArrayString;
 use rocket::serde::json::Json;
@@ -45,7 +45,9 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
         let album_info_list = album_list
             .into_iter()
             .map(|album| {
-                let share_list = all_shares_map.remove(album.object.id.as_str()).unwrap_or_default();
+                let share_list = all_shares_map
+                    .remove(album.object.id.as_str())
+                    .unwrap_or_default();
                 AlbumInfo {
                     album_id: album.object.id.to_string(),
                     album_name: album.metadata.title,

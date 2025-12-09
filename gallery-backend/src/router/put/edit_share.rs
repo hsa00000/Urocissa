@@ -1,9 +1,9 @@
 use crate::public::db::tree::TREE;
-use crate::table::relations::album_share::Share;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::table::relations::album_share::Share;
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
@@ -45,11 +45,12 @@ pub async fn edit_share(
                 json_data.album_id.as_str(),
                 json_data.share.url.as_str(),
             ),
-        ).unwrap();
+        )
+        .unwrap();
     })
     .await
     .unwrap();
-    // UpdateTreeTask might not be needed if shares are not in the tree anymore, 
+    // UpdateTreeTask might not be needed if shares are not in the tree anymore,
     // but keeping it doesn't hurt if other things changed
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
