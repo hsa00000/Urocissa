@@ -1,6 +1,6 @@
 use crate::public::db::tree::TREE;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
-use crate::public::structure::abstract_data::AbstractDataWithTag;
+use crate::public::structure::abstract_data::AbstractDataResponse;
 use crate::public::structure::row::{Row, ScrollBarData};
 use crate::workflow::processors::transitor::{
     index_to_hash, process_abstract_data_for_response, resolve_show_download_and_metadata,
@@ -20,7 +20,7 @@ pub async fn get_data(
     timestamp: u128,
     start: usize,
     mut end: usize,
-) -> AppResult<Json<Vec<AbstractDataWithTag>>> {
+) -> AppResult<Json<Vec<AbstractDataResponse>>> {
     let guard_timestamp = guard_timestamp?;
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
@@ -44,7 +44,7 @@ pub async fn get_data(
 
                 let processed_data =
                     process_abstract_data_for_response(abstract_data, show_metadata);
-                Ok(processed_data.with_tag(guard_timestamp.claims.timestamp, show_download))
+                Ok(processed_data.to_response(guard_timestamp.claims.timestamp, show_download))
             })
             .collect();
 

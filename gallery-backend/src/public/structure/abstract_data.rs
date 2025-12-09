@@ -10,7 +10,7 @@ use super::database::file_modify::FileModify;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AbstractDataWithTag {
+pub struct AbstractDataResponse {
     pub data: AbstractData,
     pub alias: Vec<FileModify>,
     pub token: String,
@@ -27,36 +27,36 @@ pub enum AbstractData {
 impl AbstractData {
     pub fn compute_timestamp(self: &Self) -> i64 {
         match self {
-            AbstractData::Image(i) => i.object.created_time,
-            AbstractData::Video(v) => v.object.created_time,
+            AbstractData::Image(image) => image.object.created_time,
+            AbstractData::Video(video) => video.object.created_time,
             AbstractData::Album(album) => album.object.created_time,
         }
     }
     pub fn hash(self: &Self) -> ArrayString<64> {
         match self {
-            AbstractData::Image(i) => i.object.id,
-            AbstractData::Video(v) => v.object.id,
+            AbstractData::Image(image) => image.object.id,
+            AbstractData::Video(video) => video.object.id,
             AbstractData::Album(album) => album.object.id,
         }
     }
     pub fn width(self: &Self) -> u32 {
         match self {
-            AbstractData::Image(i) => i.metadata.width,
-            AbstractData::Video(v) => v.metadata.width,
+            AbstractData::Image(image) => image.metadata.width,
+            AbstractData::Video(video) => video.metadata.width,
             AbstractData::Album(_) => 300,
         }
     }
     pub fn height(self: &Self) -> u32 {
         match self {
-            AbstractData::Image(i) => i.metadata.height,
-            AbstractData::Video(v) => v.metadata.height,
+            AbstractData::Image(image) => image.metadata.height,
+            AbstractData::Video(video) => video.metadata.height,
             AbstractData::Album(_) => 300,
         }
     }
     pub fn alias(self: &Self) -> Vec<FileModify> {
         match self {
-            AbstractData::Image(i) => Self::fetch_alias(&i.object.id),
-            AbstractData::Video(v) => Self::fetch_alias(&v.object.id),
+            AbstractData::Image(image) => Self::fetch_alias(&image.object.id),
+            AbstractData::Video(video) => Self::fetch_alias(&video.object.id),
             AbstractData::Album(_) => vec![],
         }
     }
@@ -85,13 +85,13 @@ impl AbstractData {
 
     pub fn generate_token(&self, timestamp: u128, allow_original: bool) -> String {
         match self {
-            AbstractData::Image(i) => {
+            AbstractData::Image(image) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
-                ClaimsHash::new(i.object.id, timestamp, allow_original).encode()
+                ClaimsHash::new(image.object.id, timestamp, allow_original).encode()
             }
-            AbstractData::Video(v) => {
+            AbstractData::Video(video) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
-                ClaimsHash::new(v.object.id, timestamp, allow_original).encode()
+                ClaimsHash::new(video.object.id, timestamp, allow_original).encode()
             }
             AbstractData::Album(album) => {
                 use crate::router::claims::claims_hash::ClaimsHash;
@@ -104,10 +104,10 @@ impl AbstractData {
         }
     }
 
-    pub fn with_tag(self, timestamp: u128, allow_original: bool) -> AbstractDataWithTag {
+    pub fn to_response(self, timestamp: u128, allow_original: bool) -> AbstractDataResponse {
         let alias = self.alias();
         let token = self.generate_token(timestamp, allow_original);
-        AbstractDataWithTag {
+        AbstractDataResponse {
             data: self,
             alias,
             token,

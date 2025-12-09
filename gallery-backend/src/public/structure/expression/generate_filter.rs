@@ -28,9 +28,9 @@ impl Expression {
             }
             Expression::Tag(tag) => Box::new(move |abstract_data: &AbstractData| {
                 let tags = match abstract_data {
-                    AbstractData::Image(i) => &i.object.tags,
-                    AbstractData::Video(v) => &v.object.tags,
-                    AbstractData::Album(a) => &a.object.tags,
+                    AbstractData::Image(image) => &image.object.tags,
+                    AbstractData::Video(video) => &video.object.tags,
+                    AbstractData::Album(album) => &album.object.tags,
                 };
                 tags.contains(&tag)
             }),
@@ -44,11 +44,11 @@ impl Expression {
             Expression::Ext(ext) => {
                 let ext_lower = ext.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Image(i) => {
-                        i.metadata.ext.to_ascii_lowercase().contains(&ext_lower)
+                    AbstractData::Image(image) => {
+                        image.metadata.ext.to_ascii_lowercase().contains(&ext_lower)
                     }
-                    AbstractData::Video(v) => {
-                        v.metadata.ext.to_ascii_lowercase().contains(&ext_lower)
+                    AbstractData::Video(video) => {
+                        video.metadata.ext.to_ascii_lowercase().contains(&ext_lower)
                     }
                     AbstractData::Album(_) => false,
                 })
@@ -82,8 +82,8 @@ impl Expression {
             }
             Expression::Album(album_id) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Image(i) => i.albums.contains(&album_id),
-                    AbstractData::Video(v) => v.albums.contains(&album_id),
+                    AbstractData::Image(image) => image.albums.contains(&album_id),
+                    AbstractData::Video(video) => video.albums.contains(&album_id),
                     AbstractData::Album(_) => false,
                 })
             }
