@@ -11,7 +11,7 @@ mod workflow;
 use crate::public::constant::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
 use crate::public::error_data::handle_error;
 use crate::public::tui::{DASHBOARD, tui_task};
-use crate::workflow::processors::setup::initialize;
+use crate::workflow::processors::setup::{initialize, initialize_folder};
 use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
@@ -49,10 +49,7 @@ async fn build_rocket() -> rocket::Rocket<rocket::Build> {
 }
 
 fn main() -> Result<()> {
-    // Database initialization is now lazy
-    
-    // [新增] 在啟動任何執行緒前，先初始化所有資料表
-    // 這樣可以確保後續的讀取交易不會因為找不到資料表而 Panic
+    initialize_folder();
     {
         info!("Initializing database tables...");
         let txn = crate::public::db::tree::TREE.begin_write()?;
