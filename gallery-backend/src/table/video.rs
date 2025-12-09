@@ -1,17 +1,13 @@
-use crate::table::meta_video::MetaVideo;
-use crate::table::object::Object;
+use crate::table::meta_video::{VideoMetadataSchema, META_VIDEO_TABLE};
+use crate::table::object::{ObjectSchema, ObjectType, OBJECT_TABLE};
 use crate::table::relations::album_database::AlbumDatabase;
 use crate::table::relations::database_exif::DatabaseExif;
 use crate::table::relations::tag_database::TagDatabase;
+use anyhow::Result;
 use arrayvec::ArrayString;
-use rusqlite::{Connection, Row};
-use sea_query::{Expr, ExprTrait, JoinType, Query, SqliteQueryBuilder};
-use sea_query_rusqlite::RusqliteBinder;
+use redb::ReadTransaction;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
-
-use crate::table::meta_video::VideoMetadataSchema;
-use crate::table::object::ObjectSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoCombined {
@@ -26,95 +22,65 @@ pub struct VideoCombined {
 }
 
 impl VideoCombined {
-    pub fn get_by_id(conn: &Connection, id: impl AsRef<str>) -> rusqlite::Result<Self> {
+    pub fn get_by_id(txn: &ReadTransaction, id: impl AsRef<str>) -> Result<Self> {
         let id = id.as_ref();
+        let obj_table = txn.open_table(OBJECT_TABLE)?;
+        let meta_table = txn.open_table(META_VIDEO_TABLE)?;
 
-        // 1. 讀取本體
-        let mut video = Self::fetch_basic_info(conn, id)?;
+        let obj_bytes = obj_table
+            .get(id)?
+            .ok_or_else(|| anyhow::anyhow!("Object not found"))?;
+        let mut object: ObjectSchema = bitcode::decode(obj_bytes.value())?;
 
-        // 2. 呼叫共用邏輯讀取關聯
-        video.albums = AlbumDatabase::fetch_albums(conn, id)?;
-        video.object.tags = TagDatabase::fetch_tags(conn, id)?;
-        video.exif_vec = DatabaseExif::fetch_exif(conn, id)?;
+        let meta_bytes = meta_table
+            .get(id)?
+            .ok_or_else(|| anyhow::anyhow!("Video Metadata not found"))?;
+        let metadata: VideoMetadataSchema = bitcode::decode(meta_bytes.value())?;
 
-        Ok(video)
+        let albums = AlbumDatabase::fetch_albums(txn, id)?;
+        object.tags = TagDatabase::fetch_tags(txn, id)?;
+        let exif_vec = DatabaseExif::fetch_exif(txn, id)?;
+
+        Ok(Self {
+            object,
+            metadata,
+            albums,
+            exif_vec,
+        })
     }
 
-    fn fetch_basic_info(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
-        let (sql, values) = Query::select()
-            .columns([
-                (Object::Table, Object::Id),
-                (Object::Table, Object::ObjType),
-                (Object::Table, Object::CreatedTime),
-                (Object::Table, Object::Pending),
-                (Object::Table, Object::Thumbhash),
-                (Object::Table, Object::Description),
-            ])
-            .columns([
-                (MetaVideo::Table, MetaVideo::Size),
-                (MetaVideo::Table, MetaVideo::Width),
-                (MetaVideo::Table, MetaVideo::Height),
-                (MetaVideo::Table, MetaVideo::Ext),
-                (MetaVideo::Table, MetaVideo::Duration),
-            ])
-            .from(Object::Table)
-            .join(
-                JoinType::InnerJoin,
-                MetaVideo::Table,
-                Expr::col((Object::Table, Object::Id)).equals((MetaVideo::Table, MetaVideo::Id)),
-            )
-            .and_where(Expr::col((Object::Table, Object::Id)).eq(id))
-            .build_rusqlite(SqliteQueryBuilder);
+    pub fn get_all(txn: &ReadTransaction) -> Result<Vec<Self>> {
+        let obj_table = txn.open_table(OBJECT_TABLE)?;
+        let meta_table = txn.open_table(META_VIDEO_TABLE)?;
+        let mut videos = Vec::new();
 
-        conn.query_row(&sql, &*values.as_params(), Self::from_row)
-    }
+        for entry in meta_table.range::<&str>(..)? {
+            let (id, meta_val) = entry?;
+            let id_str = id.value();
 
-    /// 讀取所有影片資料
-    pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
-        // 1. 讀取所有影片本體
-        let (sql, values) = Query::select()
-            .columns([
-                (Object::Table, Object::Id),
-                (Object::Table, Object::ObjType),
-                (Object::Table, Object::CreatedTime),
-                (Object::Table, Object::Pending),
-                (Object::Table, Object::Thumbhash),
-                (Object::Table, Object::Description),
-            ])
-            .columns([
-                (MetaVideo::Table, MetaVideo::Size),
-                (MetaVideo::Table, MetaVideo::Width),
-                (MetaVideo::Table, MetaVideo::Height),
-                (MetaVideo::Table, MetaVideo::Ext),
-                (MetaVideo::Table, MetaVideo::Duration),
-            ])
-            .from(Object::Table)
-            .join(
-                JoinType::InnerJoin,
-                MetaVideo::Table,
-                Expr::col((Object::Table, Object::Id)).equals((MetaVideo::Table, MetaVideo::Id)),
-            )
-            .and_where(
-                Expr::col((Object::Table, Object::ObjType))
-                    .eq("video")
-                    .into(),
-            )
-            .build_rusqlite(SqliteQueryBuilder);
+            if let Some(obj_val) = obj_table.get(id_str)? {
+                let object: ObjectSchema = bitcode::decode(obj_val.value())?;
+                let metadata: VideoMetadataSchema = bitcode::decode(meta_val.value())?;
 
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(&*values.as_params(), Self::from_row)?;
-        let mut videos: Vec<Self> = rows.collect::<Result<_, _>>()?;
+                if object.obj_type == ObjectType::Video {
+                    videos.push(Self {
+                        object,
+                        metadata,
+                        albums: HashSet::new(),
+                        exif_vec: BTreeMap::new(),
+                    });
+                }
+            }
+        }
 
         if videos.is_empty() {
             return Ok(videos);
         }
 
-        // 2. 批次讀取所有關聯資料
-        let mut album_map = AlbumDatabase::fetch_all_albums(conn, "video")?;
-        let mut tag_map = TagDatabase::fetch_all_tags(conn, "video")?;
-        let mut exif_map = DatabaseExif::fetch_all_exif(conn, "video")?;
+        let mut album_map = AlbumDatabase::fetch_all_albums(txn)?;
+        let mut tag_map = TagDatabase::fetch_all_tags(txn)?;
+        let mut exif_map = DatabaseExif::fetch_all_exif(txn)?;
 
-        // 3. 將資料填回影片 Struct
         for video in &mut videos {
             if let Some(albums) = album_map.remove(&video.object.id) {
                 video.albums = albums;
@@ -128,14 +94,5 @@ impl VideoCombined {
         }
 
         Ok(videos)
-    }
-
-    fn from_row(row: &Row) -> rusqlite::Result<Self> {
-        Ok(VideoCombined {
-            object: ObjectSchema::from_row(row)?,
-            metadata: VideoMetadataSchema::from_row(row)?,
-            albums: HashSet::new(),
-            exif_vec: BTreeMap::new(),
-        })
     }
 }

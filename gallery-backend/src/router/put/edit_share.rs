@@ -25,27 +25,19 @@ pub async fn edit_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
-        let conn = TREE.get_connection().unwrap();
-        conn.execute(
-            "UPDATE album_share SET 
-                description = ?, 
-                password = ?, 
-                show_metadata = ?, 
-                show_download = ?, 
-                show_upload = ?, 
-                exp = ?
-            WHERE album_id = ? AND url = ?",
-            (
-                &json_data.share.description,
-                &json_data.share.password,
-                json_data.share.show_metadata,
-                json_data.share.show_download,
-                json_data.share.show_upload,
-                json_data.share.exp,
-                json_data.album_id.as_str(),
-                json_data.share.url.as_str(),
-            ),
-        ).unwrap();
+        let txn = TREE.begin_write().unwrap();
+        let mut share_table = txn.open_table(crate::table::relations::album_share::ALBUM_SHARE_TABLE).unwrap();
+        let share = crate::table::relations::album_share::Share {
+            url: json_data.share.url.clone(),
+            description: json_data.share.description.clone(),
+            password: json_data.share.password.clone(),
+            show_metadata: json_data.share.show_metadata,
+            show_download: json_data.share.show_download,
+            show_upload: json_data.share.show_upload,
+            exp: json_data.share.exp,
+        };
+        let encoded = bitcode::encode(&share);
+        share_table.insert((json_data.album_id.as_str(), json_data.share.url.as_str()), encoded.as_slice()).unwrap();
     })
     .await
     .unwrap();
@@ -74,12 +66,12 @@ pub async fn delete_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
-        let conn = TREE.get_connection().unwrap();
-        conn.execute(
-            "DELETE FROM album_share WHERE album_id = ? AND url = ?",
-            [&*json_data.album_id, &*json_data.share_id],
-        )
-        .unwrap();
+        let txn = TREE.begin_write().unwrap();
+        {
+            let mut share_table = txn.open_table(crate::table::relations::album_share::ALBUM_SHARE_TABLE).unwrap();
+            share_table.remove((json_data.album_id.as_str(), json_data.share_id.as_str())).unwrap();
+        }
+        txn.commit().unwrap();
     })
     .await
     .unwrap();

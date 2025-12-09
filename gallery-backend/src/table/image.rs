@@ -1,17 +1,13 @@
-use crate::table::meta_image::MetaImage;
-use crate::table::object::Object;
+use crate::table::meta_image::{ImageMetadataSchema, META_IMAGE_TABLE};
+use crate::table::object::{ObjectSchema, ObjectType, OBJECT_TABLE};
 use crate::table::relations::album_database::AlbumDatabase;
 use crate::table::relations::database_exif::DatabaseExif;
 use crate::table::relations::tag_database::TagDatabase;
+use anyhow::Result;
 use arrayvec::ArrayString;
-use rusqlite::{Connection, Row};
-use sea_query::{Expr, ExprTrait, JoinType, Query, SqliteQueryBuilder};
-use sea_query_rusqlite::RusqliteBinder;
+use redb::ReadTransaction;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
-
-use crate::table::meta_image::ImageMetadataSchema;
-use crate::table::object::ObjectSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,93 +21,65 @@ pub struct ImageCombined {
 }
 
 impl ImageCombined {
-    /// 根據 Hash (ID) 讀取單一圖片資料（包含所屬相簿、標籤與 EXIF）
-    pub fn get_by_id(conn: &Connection, id: impl AsRef<str>) -> rusqlite::Result<Self> {
+    pub fn get_by_id(txn: &ReadTransaction, id: impl AsRef<str>) -> Result<Self> {
         let id = id.as_ref();
+        let obj_table = txn.open_table(OBJECT_TABLE)?;
+        let meta_table = txn.open_table(META_IMAGE_TABLE)?;
 
-        // 1. 讀取本體
-        let mut image = Self::fetch_basic_info(conn, id)?;
+        let obj_bytes = obj_table
+            .get(id)?
+            .ok_or_else(|| anyhow::anyhow!("Object not found"))?;
+        let mut object: ObjectSchema = bitcode::decode(obj_bytes.value())?;
 
-        // 2. 呼叫共用邏輯讀取關聯
-        image.albums = AlbumDatabase::fetch_albums(conn, id)?;
-        image.object.tags = TagDatabase::fetch_tags(conn, id)?;
-        image.exif_vec = DatabaseExif::fetch_exif(conn, id)?;
+        let meta_bytes = meta_table
+            .get(id)?
+            .ok_or_else(|| anyhow::anyhow!("Image Metadata not found"))?;
+        let metadata: ImageMetadataSchema = bitcode::decode(meta_bytes.value())?;
 
-        Ok(image)
+        let albums = AlbumDatabase::fetch_albums(txn, id)?;
+        object.tags = TagDatabase::fetch_tags(txn, id)?;
+        let exif_vec = DatabaseExif::fetch_exif(txn, id)?;
+
+        Ok(Self {
+            object,
+            metadata,
+            albums,
+            exif_vec,
+        })
     }
 
-    fn fetch_basic_info(conn: &Connection, id: &str) -> rusqlite::Result<Self> {
-        let (sql, values) = Query::select()
-            .columns([
-                (Object::Table, Object::Id),
-                (Object::Table, Object::ObjType),
-                (Object::Table, Object::CreatedTime),
-                (Object::Table, Object::Pending),
-                (Object::Table, Object::Thumbhash),
-                (Object::Table, Object::Description),
-            ])
-            .columns([
-                (MetaImage::Table, MetaImage::Size),
-                (MetaImage::Table, MetaImage::Width),
-                (MetaImage::Table, MetaImage::Height),
-                (MetaImage::Table, MetaImage::Ext),
-                (MetaImage::Table, MetaImage::Phash),
-            ])
-            .from(Object::Table)
-            .join(
-                JoinType::InnerJoin,
-                MetaImage::Table,
-                Expr::col((Object::Table, Object::Id)).equals((MetaImage::Table, MetaImage::Id)),
-            )
-            .and_where(Expr::col((Object::Table, Object::Id)).eq(id))
-            .build_rusqlite(SqliteQueryBuilder);
+    pub fn get_all(txn: &ReadTransaction) -> Result<Vec<Self>> {
+        let obj_table = txn.open_table(OBJECT_TABLE)?;
+        let meta_table = txn.open_table(META_IMAGE_TABLE)?;
+        let mut images = Vec::new();
 
-        conn.query_row(&sql, &*values.as_params(), Self::from_row)
-    }
+        for entry in meta_table.range::<&str>(..)? {
+            let (id, meta_val) = entry?;
+            let id_str = id.value();
 
-    /// 讀取所有圖片資料（高效能批次填入相簿、標籤與 EXIF 關聯）
-    pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
-        // 1. 讀取所有圖片本體
-        let (sql, values) = Query::select()
-            .columns([
-                (Object::Table, Object::Id),
-                (Object::Table, Object::ObjType),
-                (Object::Table, Object::CreatedTime),
-                (Object::Table, Object::Pending),
-                (Object::Table, Object::Thumbhash),
-                (Object::Table, Object::Description),
-            ])
-            .columns([
-                (MetaImage::Table, MetaImage::Size),
-                (MetaImage::Table, MetaImage::Width),
-                (MetaImage::Table, MetaImage::Height),
-                (MetaImage::Table, MetaImage::Ext),
-                (MetaImage::Table, MetaImage::Phash),
-            ])
-            .from(Object::Table)
-            .join(
-                JoinType::InnerJoin,
-                MetaImage::Table,
-                Expr::col((Object::Table, Object::Id)).equals((MetaImage::Table, MetaImage::Id)),
-            )
-            .and_where(Expr::col((Object::Table, Object::ObjType)).eq("image"))
-            .build_rusqlite(SqliteQueryBuilder);
+            if let Some(obj_val) = obj_table.get(id_str)? {
+                let object: ObjectSchema = bitcode::decode(obj_val.value())?;
+                let metadata: ImageMetadataSchema = bitcode::decode(meta_val.value())?;
 
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(&*values.as_params(), Self::from_row)?;
-
-        let mut images: Vec<Self> = rows.collect::<Result<_, _>>()?;
+                if object.obj_type == ObjectType::Image {
+                    images.push(Self {
+                        object,
+                        metadata,
+                        albums: HashSet::new(),
+                        exif_vec: BTreeMap::new(),
+                    });
+                }
+            }
+        }
 
         if images.is_empty() {
             return Ok(images);
         }
 
-        // 2. 批次讀取所有關聯資料 (只用 3 個 SQL)
-        let mut album_map = AlbumDatabase::fetch_all_albums(conn, "image")?;
-        let mut tag_map = TagDatabase::fetch_all_tags(conn, "image")?;
-        let mut exif_map = DatabaseExif::fetch_all_exif(conn, "image")?;
+        let mut album_map = AlbumDatabase::fetch_all_albums(txn)?;
+        let mut tag_map = TagDatabase::fetch_all_tags(txn)?;
+        let mut exif_map = DatabaseExif::fetch_all_exif(txn)?;
 
-        // 3. 將資料填回圖片 Struct (記憶體操作，速度快)
         for image in &mut images {
             if let Some(albums) = album_map.remove(&image.object.id) {
                 image.albums = albums;
@@ -125,14 +93,5 @@ impl ImageCombined {
         }
 
         Ok(images)
-    }
-
-    fn from_row(row: &Row) -> rusqlite::Result<Self> {
-        Ok(ImageCombined {
-            object: ObjectSchema::from_row(row)?,
-            metadata: ImageMetadataSchema::from_row(row)?,
-            albums: HashSet::new(),
-            exif_vec: BTreeMap::new(),
-        })
     }
 }

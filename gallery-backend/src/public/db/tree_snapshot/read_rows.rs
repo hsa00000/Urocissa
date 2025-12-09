@@ -4,6 +4,7 @@ use crate::{
     public::structure::row::{DisplayElement, Row},
 };
 use anyhow::{Result, bail};
+use log::error;
 
 impl TreeSnapshot {
     pub fn read_row(&'static self, row_index: usize, timestamp: u128) -> Result<Row> {

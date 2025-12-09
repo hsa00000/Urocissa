@@ -1,63 +1,71 @@
 pub mod read_query_snapshots;
 use dashmap::DashMap;
 use log::error;
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
+use redb::{Database, ReadableTable, TableDefinition};
 use std::sync::LazyLock;
 
-use crate::public::db::types::SqliteU64;
 use crate::router::get::get_prefetch::Prefetch;
+
+// Key: QueryHash, Value: Serialized StoredSnapshot
+pub const QUERY_SNAPSHOT_TABLE: TableDefinition<u64, &[u8]> =
+    TableDefinition::new("query_snapshot");
+
+// Key: (ExpiresAt, QueryHash), Value: ()
+pub const QUERY_EXPIRY_TABLE: TableDefinition<(u64, u64), ()> =
+    TableDefinition::new("query_expiry");
 
 #[derive(Debug)]
 pub struct QuerySnapshot {
-    pub in_disk: Pool<SqliteConnectionManager>,
+    pub in_disk: Database,
     pub in_memory: DashMap<u64, Prefetch>,
 }
 
 impl QuerySnapshot {
     pub fn new() -> Self {
-        // 建立 SQLite 連線池
-        let manager = SqliteConnectionManager::file("./db/query_snapshot.db");
-        let pool = Pool::new(manager).expect("Failed to create SQLite pool");
+        let db = Database::create("./db/query_snapshot.redb")
+            .expect("Failed to create query_snapshot.redb");
 
-        let conn = pool.get().expect("Failed to get SQLite connection");
+        // 初始化表格
+        let write_txn = db.begin_write().unwrap();
+        {
+            let _ = write_txn.open_table(QUERY_SNAPSHOT_TABLE).unwrap();
+            let _ = write_txn.open_table(QUERY_EXPIRY_TABLE).unwrap();
+        }
+        write_txn.commit().unwrap();
 
-        // 建立資料表
-        // query_hash: 查詢雜湊 (PK)
-        // data: 序列化後的 Prefetch 資料
-        // expires_at: 過期時間戳 (NULL 代表最新版本，尚未過期)
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS query_snapshot (
-                query_hash INTEGER PRIMARY KEY,
-                data BLOB NOT NULL,
-                expires_at INTEGER
-            )",
-            [],
-        )
-        .expect("Failed to create query_snapshot table");
-
-        // 建立索引加速過期檢查
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_expires_at ON query_snapshot(expires_at)",
-            [],
-        )
-        .expect("Failed to create index on expires_at");
-
-        // 【啟動時清理】: 刪除上次關機遺留的過期資料
+        // 啟動時清理過期資料
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as u64;
 
-        if let Err(e) = conn.execute(
-            "DELETE FROM query_snapshot WHERE expires_at IS NOT NULL AND expires_at < ?",
-            [SqliteU64(now)],
-        ) {
-            error!("Startup cleanup failed: {}", e);
+        let write_txn = db.begin_write().unwrap();
+        {
+            let mut data_table = write_txn.open_table(QUERY_SNAPSHOT_TABLE).unwrap();
+            let mut expiry_table = write_txn.open_table(QUERY_EXPIRY_TABLE).unwrap();
+
+            let to_delete: Vec<(u64, u64)> = expiry_table
+                .range(..=(now, u64::MAX))
+                .unwrap()
+                .map(|r| {
+                    let (key_guard, _) = r.unwrap();
+                    let key = key_guard.value();
+                    let (exp, hash) = key;
+                    (exp, hash)
+                })
+                .collect();
+
+            if !to_delete.is_empty() {
+                for (exp, hash) in to_delete {
+                    expiry_table.remove((exp, hash)).unwrap();
+                    data_table.remove(hash).unwrap();
+                }
+            }
         }
+        write_txn.commit().unwrap();
 
         Self {
-            in_disk: pool,
+            in_disk: db,
             in_memory: DashMap::new(),
         }
     }

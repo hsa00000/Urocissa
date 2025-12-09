@@ -7,6 +7,8 @@ use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
+use redb::ReadableDatabase;
+
 use super::Tree;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
@@ -48,7 +50,7 @@ impl Tree {
         tag_infos
     }
     pub fn read_albums(&self) -> Result<Vec<AlbumCombined>> {
-        let conn = self.get_connection()?;
-        Ok(AlbumCombined::get_all(&conn)?)
+        let txn = self.in_disk.begin_read()?;
+        Ok(AlbumCombined::get_all(&txn)?)
     }
 }

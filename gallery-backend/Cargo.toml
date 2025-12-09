@@ -40,6 +40,7 @@ num_cpus = "1.17.0"
 path-clean = "1.0.1"
 rand = "0.9.2"
 rayon = "1.11.0"
+redb = "3.1"
 regex = "1.12.2"
 reqwest = { version = "0.12.24", features = ["json", "blocking"] }
 rocket = { version = "0.5.1", features = ["json"] }
@@ -54,8 +55,3 @@ tokio-rayon = "2.1.0"
 unicode-width = "0.2.2"
 uuid = { version = "1.18.1", features = ["v4"] }
 walkdir = "2.5.0"
-rusqlite = { version = "0.37.0", features = ["bundled"] }
-r2d2 = "0.8.10"
-r2d2_sqlite = "0.31.0"
-sea-query = "1.0.0-rc.22"
-sea-query-rusqlite = "0.8.0-rc.9"

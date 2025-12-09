@@ -1,5 +1,4 @@
 use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
-use crate::public::db::types::SqliteU64;
 use anyhow::Result;
 use log::{error, info};
 use mini_executor::BatchTask;
@@ -33,17 +32,18 @@ fn flush_query_snapshot_task() -> Result<()> {
             let ref_data = entry_ref.value();
 
             let timer_start = Instant::now();
-            let conn = QUERY_SNAPSHOT.in_disk.get()?;
+            let txn = QUERY_SNAPSHOT.in_disk.begin_write()?;
 
             // 序列化資料
             let data = bitcode::encode(ref_data);
 
-            // 寫入 SQLite
+            // 寫入 Redb
             // 預設 expires_at 為 NULL，代表這是當前版本的有效快照
-            conn.execute(
-                "INSERT OR REPLACE INTO query_snapshot (query_hash, data, expires_at) VALUES (?, ?, NULL)",
-                (SqliteU64(expression_hashed), data),
-            )?;
+            {
+                let mut data_table = txn.open_table(crate::public::db::query_snapshot::QUERY_SNAPSHOT_TABLE)?;
+                data_table.insert(expression_hashed, data.as_slice())?;
+            }
+            txn.commit()?;
 
             info!(
                 duration = &*format!("{:?}", timer_start.elapsed());

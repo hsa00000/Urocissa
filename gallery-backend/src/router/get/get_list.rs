@@ -39,9 +39,10 @@ pub struct AlbumInfo {
 pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<AlbumInfo>>> {
     let _ = auth?;
     tokio::task::spawn_blocking(move || {
+        let txn = TREE.begin_read()?;
         let album_list = TREE.read_albums().context("Failed to read albums")?;
         let mut all_shares_map =
-            AlbumShareTable::get_all_shares_grouped().context("Failed to fetch shares")?;
+            AlbumShareTable::get_all_shares_grouped(&txn).context("Failed to fetch shares")?;
         let album_info_list = album_list
             .into_iter()
             .map(|album| {
@@ -62,7 +63,8 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
 pub async fn get_all_shares(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<ResolvedShare>>> {
     let _ = auth?;
     tokio::task::spawn_blocking(move || {
-        let shares = AlbumShareTable::get_all_resolved().context("Failed to read all shares")?;
+        let txn = TREE.begin_read()?;
+        let shares = AlbumShareTable::get_all_resolved(&txn).context("Failed to read all shares")?;
         Ok(Json(shares))
     })
     .await?

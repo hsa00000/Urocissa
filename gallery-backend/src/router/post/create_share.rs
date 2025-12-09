@@ -7,9 +7,9 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use rand::Rng;
 use rand::distr::Alphanumeric;
+use redb::ReadableTable;
 use rocket::post;
 use rocket::serde::json::Json;
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -35,8 +35,8 @@ pub async fn create_share(
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let create_share = create_share.into_inner();
-        let conn = TREE.get_connection().unwrap();
-        match create_and_insert_share(&conn, create_share) {
+        let mut txn = TREE.begin_write().unwrap();
+        match create_and_insert_share(&mut txn, create_share) {
             Ok(link) => Ok(link),
             Err(err) => Err(err),
         }
@@ -45,16 +45,10 @@ pub async fn create_share(
     .unwrap()
 }
 
-fn create_and_insert_share(conn: &Connection, create_share: CreateShare) -> AppResult<String> {
+fn create_and_insert_share(txn: &mut redb::WriteTransaction, create_share: CreateShare) -> AppResult<String> {
     // Check if album exists
-    // 修正：查詢 meta_album 表確認相簿存在
-    let album_exists: bool = conn
-        .query_row(
-            "SELECT 1 FROM meta_album WHERE id = ?",
-            [&*create_share.album_id],
-            |_| Ok(true),
-        )
-        .unwrap_or(false);
+    let album_table = txn.open_table(crate::table::meta_album::META_ALBUM_TABLE)?;
+    let album_exists = album_table.get(&*create_share.album_id)?.is_some();
 
     if !album_exists {
         return Err(anyhow::anyhow!("Album not found").into());
@@ -73,21 +67,18 @@ fn create_and_insert_share(conn: &Connection, create_share: CreateShare) -> AppR
         .unwrap()
         .as_secs();
 
-    conn.execute(
-        "INSERT INTO album_share (
-            album_id, url, description, password, show_metadata, show_download, show_upload, exp
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            create_share.album_id.as_str(),
-            share_id.as_str(),
-            &create_share.description,
-            &create_share.password,
-            create_share.show_metadata,
-            create_share.show_download,
-            create_share.show_upload,
-            exp,
-        ),
-    )?;
+    let mut share_table = txn.open_table(crate::table::relations::album_share::ALBUM_SHARE_TABLE)?;
+    let share = crate::table::relations::album_share::Share {
+        url: share_id,
+        description: create_share.description,
+        password: create_share.password,
+        show_metadata: create_share.show_metadata,
+        show_download: create_share.show_download,
+        show_upload: create_share.show_upload,
+        exp,
+    };
+    let encoded = bitcode::encode(&share);
+    share_table.insert((create_share.album_id.as_str(), share_id.as_str()), encoded.as_slice())?;
 
     Ok(link)
 }

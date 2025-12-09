@@ -62,20 +62,25 @@ impl AbstractData {
     }
 
     fn fetch_alias(hash: &ArrayString<64>) -> Vec<FileModify> {
-        let conn = TREE.get_connection().unwrap();
-        let mut stmt = conn
-            .prepare("SELECT file, modified, scan_time FROM database_alias WHERE hash = ? ORDER BY scan_time DESC")
-            .unwrap();
-        let alias_iter = stmt
-            .query_map([hash.as_str()], |row| {
-                Ok(FileModify {
-                    file: row.get(0)?,
-                    modified: row.get::<_, i64>(1)? as u128,
-                    scan_time: row.get::<_, i64>(2)? as u128,
-                })
-            })
-            .unwrap();
-        alias_iter.filter_map(|r| r.ok()).collect()
+        let txn = TREE.begin_read().unwrap();
+        let table = txn.open_table(crate::table::relations::database_alias::DATABASE_ALIAS_TABLE).unwrap();
+        let mut aliases = Vec::new();
+        
+        // Iterate through all entries with the given hash prefix
+        let range_start = (hash.as_str(), i64::MIN);
+        let range_end = (hash.as_str(), i64::MAX);
+        let mut iter = table.range(range_start..=range_end).unwrap().rev(); // rev() for DESC order
+        
+        while let Some(Ok((_, value))) = iter.next() {
+            let alias: crate::table::relations::database_alias::DatabaseAliasSchema = bitcode::decode(value.value()).unwrap();
+            aliases.push(FileModify {
+                file: alias.file,
+                modified: alias.modified as u128,
+                scan_time: alias.scan_time as u128,
+            });
+        }
+        
+        aliases
     }
 
     pub fn generate_token(&self, timestamp: u128, allow_original: bool) -> String {

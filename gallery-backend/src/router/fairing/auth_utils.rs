@@ -82,43 +82,25 @@ pub fn extract_hash_from_path(req: &Request<'_>) -> Result<String> {
 fn resolve_share_from_db(album_id: impl AsRef<str>, share_id: impl AsRef<str>) -> Result<Claims> {
     let album_id = album_id.as_ref();
     let share_id = share_id.as_ref();
-    let conn = TREE
-        .get_connection()
-        .map_err(|e| anyhow!("DB connection error: {}", e))?;
+    let txn = TREE.begin_read().map_err(|e| anyhow!("DB read error: {}", e))?;
 
-    // Query both share details and album title in one go
-    // 修正：將 JOIN album 改為 JOIN meta_album
-    let sql = r#"
-        SELECT 
-            s.url, s.description, s.password, s.show_metadata, s.show_download, s.show_upload, s.exp,
-            a.title
-        FROM album_share s
-        JOIN meta_album a ON s.album_id = a.id
-        WHERE s.album_id = ? AND s.url = ?
-    "#;
+    // Get share from album_share table
+    let share_table = txn.open_table(crate::table::relations::album_share::ALBUM_SHARE_TABLE)?;
+    let share_key = (album_id, share_id);
+    let share_bytes = share_table.get(share_key)?.ok_or_else(|| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?;
+    let share: Share = bitcode::decode(share_bytes.value())?;
 
-    let (share, album_title): (Share, Option<String>) = conn
-        .query_row(sql, [album_id, share_id], |row| {
-            let url: String = row.get(0)?;
-            let share = Share {
-                url: ArrayString::from(&url).unwrap(),
-                description: row.get(1)?,
-                password: row.get(2)?,
-                show_metadata: row.get(3)?,
-                show_download: row.get(4)?,
-                show_upload: row.get(5)?,
-                exp: row.get(6)?,
-            };
-            let title: Option<String> = row.get(7)?;
-            Ok((share, title))
-        })
-        .map_err(|_| anyhow!("Share '{}' not found in album '{}'", share_id, album_id))?;
+    // Get album title from meta_album table
+    let meta_table = txn.open_table(crate::table::meta_album::META_ALBUM_TABLE)?;
+    let album_bytes = meta_table.get(album_id)?.ok_or_else(|| anyhow!("Album '{}' not found", album_id))?;
+    let album: crate::table::meta_album::AlbumMetadataSchema = bitcode::decode(album_bytes.value())?;
+    let album_title = album.title;
 
-    let resolved_share = ResolvedShare::new(
-        ArrayString::<64>::from(album_id).map_err(|_| anyhow!("Failed to parse album_id"))?,
+    let resolved_share = ResolvedShare {
+        album_id: ArrayString::<64>::from(album_id).map_err(|_| anyhow!("Failed to parse album_id"))?,
         album_title,
         share,
-    );
+    };
 
     Ok(Claims::new_share(resolved_share))
 }
@@ -163,19 +145,16 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
     let share_id = req.headers().get_one("x-share-id");
 
     if let (Some(album_id), Some(share_id)) = (album_id, share_id) {
-        if let Ok(conn) = TREE.get_connection() {
-            let show_upload: bool = conn
-                .query_row(
-                    "SELECT show_upload FROM album_share WHERE album_id = ? AND url = ?",
-                    [album_id, share_id],
-                    |row| row.get(0),
-                )
-                .unwrap_or(false);
-
-            if show_upload {
-                if let Some(Ok(album_id_parsed)) = req.query_value::<&str>("presigned_album_id_opt")
-                {
-                    return album_id == album_id_parsed;
+        if let Ok(txn) = TREE.begin_read() {
+            if let Ok(share_table) = txn.open_table(crate::table::relations::album_share::ALBUM_SHARE_TABLE) {
+                if let Ok(Some(share_bytes)) = share_table.get((album_id, share_id)) {
+                    if let Ok(share) = bitcode::decode::<Share>(share_bytes.value()) {
+                        if share.show_upload {
+                            if let Some(Ok(album_id_parsed)) = req.query_value::<&str>("presigned_album_id_opt") {
+                                return album_id == album_id_parsed;
+                            }
+                        }
+                    }
                 }
             }
         }

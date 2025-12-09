@@ -34,8 +34,8 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
 
 /// Process abstract data for API response
 pub fn process_abstract_data_for_response(
-    mut abstract_data: AbstractData,
-    show_metadata: bool,
+    abstract_data: AbstractData,
+    _show_metadata: bool,
 ) -> AbstractData {
     match abstract_data {
         AbstractData::Image(_) | AbstractData::Video(_) => {

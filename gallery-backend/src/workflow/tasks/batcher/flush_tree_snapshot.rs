@@ -30,26 +30,20 @@ fn flush_tree_snapshot_task() -> Result<()> {
             };
 
             let timestamp = *entry_ref.key();
-            let timestamp_str = timestamp.to_string();
 
             let timer_start = Instant::now();
             
-            let mut conn = TREE_SNAPSHOT.in_disk.get()?;
-            let tx = conn.transaction()?;
-
+            let txn = TREE_SNAPSHOT.in_disk.begin_write()?;
             {
-                let mut stmt = tx.prepare(
-                    "INSERT OR REPLACE INTO snapshots (timestamp, row_index, data) VALUES (?, ?, ?)"
-                )?;
+                let mut table = txn.open_table(crate::public::db::tree_snapshot::new::SNAPSHOTS_TABLE)?;
 
                 for (index, data) in entry_ref.iter().enumerate() {
                     // 使用 bitcode 序列化資料
                     let encoded_data = bitcode::encode(data);
-                    stmt.execute(rusqlite::params![timestamp_str, index, encoded_data])?;
+                    table.insert((timestamp, index as u64), encoded_data.as_slice())?;
                 }
             }
-
-            tx.commit()?;
+            txn.commit()?;
 
             info!(
                 duration = &*format!("{:?}", timer_start.elapsed());

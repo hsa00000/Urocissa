@@ -16,6 +16,7 @@ use crate::workflow::tasks::BATCH_COORDINATOR;
 use crate::workflow::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
 
+use redb::ReadableTable;
 use rocket::fs::FileServer;
 use router::fairing::cache_control_fairing::cache_control_fairing;
 use router::fairing::generate_fairing_routes;
@@ -48,28 +49,55 @@ async fn build_rocket() -> rocket::Rocket<rocket::Build> {
 }
 
 fn main() -> Result<()> {
-    crate::public::db::sqlite::init_db_file_once()?;
-
-    let (shutdown_tx, _) = broadcast::channel::<()>(1);
-
-    let worker_handle = thread::spawn({
+    // Database initialization is now lazy
+    
+    // [新增] 在啟動任何執行緒前，先初始化所有資料表
+    // 這樣可以確保後續的讀取交易不會因為找不到資料表而 Panic
+    {
+        info!("Initializing database tables...");
+        let txn = crate::public::db::tree::TREE.begin_write()?;
+        
+        // 1. 主要物件與 Metadata 表
+        let _ = txn.open_table(crate::table::object::OBJECT_TABLE)?;
+        let _ = txn.open_table(crate::table::meta_album::META_ALBUM_TABLE)?;
+        let _ = txn.open_table(crate::table::meta_image::META_IMAGE_TABLE)?;
+        let _ = txn.open_table(crate::table::meta_video::META_VIDEO_TABLE)?;
+        
+        // 2. 關聯表 (Relations)
+        let _ = txn.open_table(crate::table::relations::album_database::ALBUM_ITEMS_TABLE)?;
+        let _ = txn.open_table(crate::table::relations::album_database::ITEM_ALBUMS_TABLE)?;
+        let _ = txn.open_table(crate::table::relations::album_share::ALBUM_SHARE_TABLE)?;
+        let _ = txn.open_table(crate::table::relations::database_alias::DATABASE_ALIAS_TABLE)?;
+        let _ = txn.open_table(crate::table::relations::database_exif::DATABASE_EXIF_TABLE)?;
+        let _ = txn.open_table(crate::table::relations::tag_database::TAG_DATABASE_TABLE)?;
+        let _ = txn.open_table(crate::table::relations::tag_database::IDX_TAG_HASH_TABLE)?;
+        
+        txn.commit()?;
+        info!("Database tables initialized successfully.");
+    }
+    
+    let (shutdown_tx, _) = broadcast::channel::<()>(1);    let worker_handle = thread::spawn({
         let shutdown_tx = shutdown_tx.clone();
         move || {
             INDEX_RUNTIME.block_on(async {
                 let rx = initialize();
                 let start_time = Instant::now();
-                let conn = crate::public::db::tree::TREE.get_connection().expect("Failed to get DB connection");
-                let data_count: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM object WHERE obj_type IN ('image', 'video')", 
-                    [], 
-                    |row| row.get(0)
-                ).expect("Failed to count data");
+                let txn = crate::public::db::tree::TREE.begin_read().expect("Failed to begin read transaction");
+                let object_table = txn.open_table(crate::table::object::OBJECT_TABLE).expect("Failed to open object table");
+                
+                let mut data_count = 0i64;
+                let mut album_count = 0i64;
+                
+                for item in object_table.iter().unwrap() {
+                    let (_, value) = item.unwrap();
+                    let object: crate::table::object::ObjectSchema = bitcode::decode(value.value()).unwrap();
+                    match object.obj_type {
+                        crate::table::object::ObjectType::Image | crate::table::object::ObjectType::Video => data_count += 1,
+                        crate::table::object::ObjectType::Album => album_count += 1,
+                    }
+                }
+                
                 info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", data_count);
-                let album_count: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM object WHERE obj_type = 'album'", 
-                    [], 
-                    |row| row.get(0)
-                ).expect("Failed to count albums");
                 info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", album_count);
                 BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
                 BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
@@ -158,7 +186,7 @@ fn main() -> Result<()> {
     });
 
     worker_handle.join().expect("Worker thread panicked");
-    rocket_handle.join().expect("Rocket thread panicked");
+    let _ = rocket_handle.join().expect("Rocket thread panicked");
 
     Ok(())
 }

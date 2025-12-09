@@ -1,7 +1,7 @@
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::GuardResult;
-use crate::table::relations::album_database::AlbumDatabaseSchema;
+use crate::table::relations::album_database::AlbumItemSchema;
 use crate::workflow::processors::transitor::index_to_hash;
 use crate::workflow::tasks::batcher::flush_tree::{FlushOperation, FlushTreeTask};
 use anyhow::Result;
@@ -90,7 +90,7 @@ async fn create_album_elements(
         let mut flush_ops = Vec::new();
         for idx in elements_index {
             let hash = index_to_hash(&tree_snapshot, idx)?;
-            flush_ops.push(FlushOperation::InsertAlbum(AlbumDatabaseSchema {
+            flush_ops.push(FlushOperation::InsertAlbum(AlbumItemSchema {
                 album_id: album_id.to_string(),
                 hash: hash.to_string(),
             }));
