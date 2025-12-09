@@ -1,6 +1,5 @@
 pub mod read_query_snapshots;
 use dashmap::DashMap;
-use log::error;
 use redb::{Database, ReadableTable, TableDefinition};
 use std::sync::LazyLock;
 

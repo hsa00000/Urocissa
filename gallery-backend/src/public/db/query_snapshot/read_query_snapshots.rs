@@ -1,7 +1,7 @@
-use super::{QuerySnapshot, QUERY_SNAPSHOT_TABLE};
+use super::{QUERY_SNAPSHOT_TABLE, QuerySnapshot};
 use crate::router::get::get_prefetch::Prefetch;
 use crate::workflow::processors::transitor::get_current_timestamp_u64;
-use redb::{ReadableDatabase, ReadableTable};
+use redb::ReadableDatabase;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 
@@ -25,7 +25,7 @@ impl QuerySnapshot {
 
         if let Some(access) = table.get(query_hash)? {
             let stored: StoredSnapshot = bitcode::decode(access.value())?;
-            
+
             let current_time = get_current_timestamp_u64();
             if let Some(expires_at) = stored.expires_at {
                 if expires_at <= current_time {

@@ -1,12 +1,11 @@
-use std::time::Instant;
-use super::{new::SNAPSHOTS_TABLE, TreeSnapshot};
+use super::{TreeSnapshot, new::SNAPSHOTS_TABLE};
 use crate::{
     public::db::tree_snapshot::read_tree_snapshot::MyCow,
     public::structure::reduced_data::ReducedData, public::structure::row::ScrollBarData,
 };
 use chrono::{Datelike, TimeZone, Utc};
 use log::info;
-use redb::ReadableTable;
+use std::time::Instant;
 
 impl TreeSnapshot {
     pub fn read_scrollbar(&'static self, timestamp: u128) -> Vec<ScrollBarData> {

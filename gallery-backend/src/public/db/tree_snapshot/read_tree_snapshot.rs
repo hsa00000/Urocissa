@@ -1,9 +1,9 @@
-use super::{new::SNAPSHOTS_TABLE, TreeSnapshot};
+use super::{TreeSnapshot, new::SNAPSHOTS_TABLE};
 use crate::public::structure::reduced_data::ReducedData;
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use dashmap::mapref::one::Ref;
-use redb::{ReadTransaction, ReadableDatabase, ReadableTable};
+use redb::{ReadTransaction, ReadableDatabase};
 
 impl TreeSnapshot {
     pub fn read_tree_snapshot(&'static self, timestamp: &u128) -> Result<MyCow> {

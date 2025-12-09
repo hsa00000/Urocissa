@@ -12,5 +12,3 @@ pub struct DatabaseAliasSchema {
     pub modified: i64,
     pub scan_time: i64,
 }
-
-pub struct DatabaseAliasTable;
