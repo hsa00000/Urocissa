@@ -21,8 +21,10 @@ pub struct TagDatabase;
 
 impl TagDatabase {
     pub fn add_tag(txn: &mut WriteTransaction, hash: &str, tag: &str) -> Result<()> {
-        txn.open_table(TAG_DATABASE_TABLE)?.insert((hash, tag), &())?;
-        txn.open_table(IDX_TAG_HASH_TABLE)?.insert((tag, hash), &())?;
+        txn.open_table(TAG_DATABASE_TABLE)?
+            .insert((hash, tag), &())?;
+        txn.open_table(IDX_TAG_HASH_TABLE)?
+            .insert((tag, hash), &())?;
         Ok(())
     }
 
@@ -35,13 +37,17 @@ impl TagDatabase {
     pub fn fetch_tags(txn: &ReadTransaction, hash: &str) -> Result<HashSet<String>> {
         let table = txn.open_table(TAG_DATABASE_TABLE)?;
         let start = (hash, "");
-        let end = (hash, "\u{ffff}");
 
         let mut tags = HashSet::new();
-        for entry in table.range(start..=end)? {
+        // 使用 start.. 進行範圍掃描，並在遇到不同的 Hash 時中斷
+        for entry in table.range(start..)? {
             let (key_guard, _) = entry?;
-            let key = key_guard.value();
-            let (_, tag) = key;
+            let (key_hash, tag) = key_guard.value();
+
+            if key_hash != hash {
+                break;
+            }
+
             tags.insert(tag.to_string());
         }
         Ok(tags)

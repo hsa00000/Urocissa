@@ -1,7 +1,7 @@
 use crate::table::meta_album::{AlbumMetadataSchema, META_ALBUM_TABLE};
 use crate::table::meta_image::{ImageMetadataSchema, META_IMAGE_TABLE};
-use crate::table::meta_video::{VideoMetadataSchema, META_VIDEO_TABLE};
-use crate::table::object::{ObjectSchema, OBJECT_TABLE};
+use crate::table::meta_video::{META_VIDEO_TABLE, VideoMetadataSchema};
+use crate::table::object::{OBJECT_TABLE, ObjectSchema};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use redb::{ReadTransaction, ReadableTable, TableDefinition, WriteTransaction};
@@ -78,8 +78,7 @@ impl AlbumDatabase {
 
         // C. 掃描該相簿下的所有 Item
         let start = (album_id, "");
-        let end = (album_id, "\u{ffff}");
-        let iter = album_items.range(start..=end)?;
+        let iter = album_items.range(start..)?;
 
         let mut count: usize = 0;
         let mut total_size: u64 = 0;
@@ -89,8 +88,13 @@ impl AlbumDatabase {
 
         for entry in iter {
             let (key_guard, _) = entry?;
-            let key = key_guard.value();
-            let (_, hash) = key;
+            let (key_album_id, hash) = key_guard.value();
+
+            // 檢查前綴是否符合
+            if key_album_id != album_id {
+                break;
+            }
+
             let hash_str = hash;
 
             // 讀取 Object 基本資訊 (CreatedTime)
@@ -154,20 +158,20 @@ impl AlbumDatabase {
     }
 
     /// 讀取：某個項目屬於哪些相簿 (反向索引)
-    pub fn fetch_albums(
-        txn: &ReadTransaction,
-        hash: &str,
-    ) -> Result<HashSet<ArrayString<64>>> {
+    pub fn fetch_albums(txn: &ReadTransaction, hash: &str) -> Result<HashSet<ArrayString<64>>> {
         let table = txn.open_table(ITEM_ALBUMS_TABLE)?;
         let start = (hash, "");
-        let end = (hash, "\u{ffff}");
-        let iter = table.range(start..=end)?;
+        let iter = table.range(start..)?;
 
         let mut albums = HashSet::new();
         for entry in iter {
             let (key_guard, _) = entry?;
-            let key = key_guard.value();
-            let (_, album_id) = key;
+            let (key_hash, album_id) = key_guard.value();
+
+            if key_hash != hash {
+                break;
+            }
+
             if let Ok(aid) = ArrayString::from(album_id) {
                 albums.insert(aid);
             }

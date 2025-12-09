@@ -23,13 +23,17 @@ impl DatabaseExif {
     ) -> Result<BTreeMap<String, String>> {
         let table = txn.open_table(DATABASE_EXIF_TABLE)?;
         let start = (hash, "");
-        let end = (hash, "\u{ffff}");
 
         let mut exif_map = BTreeMap::new();
-        for entry in table.range(start..=end)? {
+        // 使用 start.. 並手動檢查前綴
+        for entry in table.range(start..)? {
             let (key_guard, value) = entry?;
-            let key = key_guard.value();
-            let (_, tag) = key;
+            let (key_hash, tag) = key_guard.value();
+            
+            if key_hash != hash {
+                break;
+            }
+            
             exif_map.insert(tag.to_string(), value.value().to_string());
         }
         Ok(exif_map)
