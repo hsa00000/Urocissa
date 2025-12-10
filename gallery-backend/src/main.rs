@@ -2,28 +2,36 @@
 extern crate rocket;
 use anyhow::Result;
 
-mod public;
-mod router;
-mod table;
+mod api;
+mod background;
+mod cli;
+mod common;
+mod config;
+mod database;
+mod models;
 mod utils;
-mod workflow;
 
-use crate::public::constant::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
-use crate::public::error_data::handle_error;
-use crate::public::tui::{DASHBOARD, tui_task};
-use crate::workflow::processors::setup::{initialize, initialize_folder};
-use crate::workflow::tasks::BATCH_COORDINATOR;
-use crate::workflow::tasks::batcher::start_watcher::StartWatcherTask;
-use crate::workflow::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::common::consts::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
+use crate::common::errors::handle_error;
+use crate::cli::tui::{DASHBOARD, tui_task};
+use crate::background::processors::setup::{initialize, initialize_folder};
+use crate::background::actors::BATCH_COORDINATOR;
+use crate::background::batchers::watcher::StartWatcherTask;
+use crate::background::batchers::update_tree::UpdateTreeTask;
 
 use redb::ReadableTable;
 use rocket::fs::FileServer;
-use router::fairing::cache_control_fairing::cache_control_fairing;
-use router::fairing::generate_fairing_routes;
-use router::{
-    delete::generate_delete_routes, get::generate_get_routes, post::generate_post_routes,
-    put::generate_put_routes,
-};
+use api::fairings::cache::cache_control_fairing;
+use api::fairings::generate_fairing_routes;
+
+// Handlers
+use api::handlers::album::generate_album_routes;
+use api::handlers::media::generate_media_routes;
+use api::handlers::share::generate_share_routes;
+use api::handlers::system::generate_system_routes;
+use api::handlers::auth::generate_auth_routes;
+use api::handlers::deletion::generate_delete_routes;
+
 use std::io::Write;
 use std::thread;
 use std::time::Instant;
@@ -41,9 +49,11 @@ async fn build_rocket() -> rocket::Rocket<rocket::Build> {
             "/assets",
             FileServer::from("../gallery-frontend/dist/assets"),
         )
-        .mount("/", generate_get_routes())
-        .mount("/", generate_post_routes())
-        .mount("/", generate_put_routes())
+        .mount("/", generate_album_routes())
+        .mount("/", generate_media_routes())
+        .mount("/", generate_share_routes())
+        .mount("/", generate_system_routes())
+        .mount("/", generate_auth_routes())
         .mount("/", generate_delete_routes())
         .mount("/", generate_fairing_routes())
 }
@@ -52,45 +62,46 @@ fn main() -> Result<()> {
     initialize_folder();
     {
         info!("Initializing database tables...");
-        let txn = crate::public::db::tree::TREE.begin_write()?;
+        let txn = crate::database::ops::tree::TREE.begin_write()?;
         
         // 1. 主要物件與 Metadata 表
-        let _ = txn.open_table(crate::table::object::OBJECT_TABLE)?;
-        let _ = txn.open_table(crate::table::meta_album::META_ALBUM_TABLE)?;
-        let _ = txn.open_table(crate::table::meta_image::META_IMAGE_TABLE)?;
-        let _ = txn.open_table(crate::table::meta_video::META_VIDEO_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::object::OBJECT_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::meta_album::META_ALBUM_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::meta_image::META_IMAGE_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::meta_video::META_VIDEO_TABLE)?;
         
         // 2. 關聯表 (Relations)
-        let _ = txn.open_table(crate::table::relations::album_database::ALBUM_ITEMS_TABLE)?;
-        let _ = txn.open_table(crate::table::relations::album_database::ITEM_ALBUMS_TABLE)?;
-        let _ = txn.open_table(crate::table::relations::album_share::ALBUM_SHARE_TABLE)?;
-        let _ = txn.open_table(crate::table::relations::database_alias::DATABASE_ALIAS_TABLE)?;
-        let _ = txn.open_table(crate::table::relations::database_exif::DATABASE_EXIF_TABLE)?;
-        let _ = txn.open_table(crate::table::relations::tag_database::TAG_DATABASE_TABLE)?;
-        let _ = txn.open_table(crate::table::relations::tag_database::IDX_TAG_HASH_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::relations::album_data::ALBUM_ITEMS_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::relations::album_data::ITEM_ALBUMS_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::relations::album_share::ALBUM_SHARE_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::relations::alias::DATABASE_ALIAS_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::relations::exif::DATABASE_EXIF_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::relations::tag::TAG_DATABASE_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::relations::tag::IDX_TAG_HASH_TABLE)?;
         
         txn.commit()?;
         info!("Database tables initialized successfully.");
     }
     
-    let (shutdown_tx, _) = broadcast::channel::<()>(1);    let worker_handle = thread::spawn({
+    let (shutdown_tx, _) = broadcast::channel::<()>(1);
+    let worker_handle = thread::spawn({
         let shutdown_tx = shutdown_tx.clone();
         move || {
             INDEX_RUNTIME.block_on(async {
                 let rx = initialize();
                 let start_time = Instant::now();
-                let txn = crate::public::db::tree::TREE.begin_read().expect("Failed to begin read transaction");
-                let object_table = txn.open_table(crate::table::object::OBJECT_TABLE).expect("Failed to open object table");
+                let txn = crate::database::ops::tree::TREE.begin_read().expect("Failed to begin read transaction");
+                let object_table = txn.open_table(crate::database::schema::object::OBJECT_TABLE).expect("Failed to open object table");
                 
                 let mut data_count = 0i64;
                 let mut album_count = 0i64;
                 
                 for item in object_table.iter().unwrap() {
                     let (_, value) = item.unwrap();
-                    let object: crate::table::object::ObjectSchema = bitcode::decode(value.value()).unwrap();
+                    let object: crate::database::schema::object::ObjectSchema = bitcode::decode(value.value()).unwrap();
                     match object.obj_type {
-                        crate::table::object::ObjectType::Image | crate::table::object::ObjectType::Video => data_count += 1,
-                        crate::table::object::ObjectType::Album => album_count += 1,
+                        crate::database::schema::object::ObjectType::Image | crate::database::schema::object::ObjectType::Video => data_count += 1,
+                        crate::database::schema::object::ObjectType::Album => album_count += 1,
                     }
                 }
                 
