@@ -30,7 +30,7 @@ use api::handlers::media::generate_media_routes;
 use api::handlers::share::generate_share_routes;
 use api::handlers::system::generate_system_routes;
 use api::handlers::auth::generate_auth_routes;
-use api::handlers::deletion::generate_delete_routes;
+use api::handlers::generate_delete_routes;
 
 use std::io::Write;
 use std::thread;
