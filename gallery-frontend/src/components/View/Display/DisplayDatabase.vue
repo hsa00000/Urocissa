@@ -1,27 +1,23 @@
 <template>
-  <div
-    v-if="abstractData && abstractData.database"
-    id="col-ref"
-    class="h-100 d-flex align-center justify-center"
-  >
-    <DisplayDatabaseImage
+  <div v-if="abstractData" id="col-ref" class="h-100 d-flex align-center justify-center">
+    <DisplayImage
+      v-if="abstractData.data.type === 'image'"
       :key="index"
-      v-if="abstractData.database.extType === 'image'"
       :isolation-id="isolationId"
       :index="index"
-      :abstract-data="abstractData"
+      :data="abstractData.data"
     />
 
-    <DisplayDatabaseVideo
+    <DisplayVideo
+      v-else-if="abstractData.data.type === 'video' && !abstractData.data.pending"
       :key="index"
-      v-if="abstractData.database.extType === 'video' && !abstractData.database.pending"
-      :database="abstractData.database"
-      :hash="abstractData.database.hash"
+      :data="abstractData.data"
       :isolation-id="isolationId"
       :enable-watch="enableWatch"
     />
+
     <v-card
-      v-if="abstractData.database.extType === 'video' && abstractData.database.pending"
+      v-else-if="abstractData.data.type === 'video' && abstractData.data.pending"
       class="d-flex align-center justify-start"
       outlined
       style="padding: 16px"
@@ -38,10 +34,9 @@
 </template>
 
 <script setup lang="ts">
-import { AbstractData, IsolationId } from '@type/types'
-
-import DisplayDatabaseVideo from './DisplayDatabaseVideo.vue'
-import DisplayDatabaseImage from './DisplayDatabaseImage.vue'
+import type { AbstractData, IsolationId } from '@type/types'
+import DisplayVideo from './DisplayVideo.vue'
+import DisplayImage from './DisplayImage.vue'
 
 defineProps<{
   isolationId: IsolationId

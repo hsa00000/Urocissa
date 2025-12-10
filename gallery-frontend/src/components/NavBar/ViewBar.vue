@@ -10,45 +10,45 @@
     <ShowInfo />
     <template v-if="route.meta.baseName !== 'share'">
       <v-btn
-        v-if="abstractData && abstractData.database"
-        :icon="abstractData.database.tags.includes('_favorite') ? 'mdi-star' : 'mdi-star-outline'"
+        v-if="abstractData && abstractData.data.type !== 'album'"
+        :icon="abstractData.data.tags.includes('_favorite') ? 'mdi-star' : 'mdi-star-outline'"
         @click="
-          abstractData.database.tags.includes('_favorite')
+          abstractData.data.tags.includes('_favorite')
             ? quickRemoveTags('_favorite', [index], isolationId)
             : quickAddTags('_favorite', [index], isolationId)
         "
       ></v-btn>
       <v-btn
-        v-if="abstractData && abstractData.database"
+        v-if="abstractData && abstractData.data.type !== 'album'"
         :icon="
-          abstractData.database.tags.includes('_archived')
+          abstractData.data.tags.includes('_archived')
             ? 'mdi-archive-arrow-up-outline'
             : 'mdi-archive-arrow-down-outline'
         "
         @click="
-          abstractData.database.tags.includes('_archived')
+          abstractData.data.tags.includes('_archived')
             ? quickRemoveTags('_archived', [index], isolationId)
             : quickAddTags('_archived', [index], isolationId)
         "
       ></v-btn>
     </template>
     <DatabaseMenu
-      v-if="abstractData && abstractData.database && share === null"
-      :database="abstractData.database"
+      v-if="abstractData && abstractData.data.type !== 'album' && share === null"
+      :data="abstractData"
       :index="index"
       :hash="hash"
       :isolation-id="isolationId"
     />
     <ShareMenu
-      v-if="abstractData && abstractData.database && share !== null"
-      :database="abstractData.database"
+      v-if="abstractData && abstractData.data.type !== 'album' && share !== null"
+      :data="abstractData"
       :index="index"
       :hash="hash"
       :isolation-id="isolationId"
     />
     <AlbumMenu
-      v-if="abstractData && abstractData.album"
-      :album="abstractData.album"
+      v-if="abstractData && abstractData.data.type === 'album'"
+      :album="abstractData.data"
       :index="index"
       :hash="hash"
       :isolation-id="isolationId"

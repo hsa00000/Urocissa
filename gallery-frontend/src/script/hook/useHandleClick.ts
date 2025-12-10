@@ -47,25 +47,14 @@ export function useHandleClick(
       const dataStore = useDataStore(isolationId)
       const abstractData = dataStore.data.get(currentIndex)
       if (abstractData) {
-        const hashOrId = abstractData.database
-          ? abstractData.database.hash
-          : abstractData.album
-          ? abstractData.album.id
-          : undefined
-        if (hashOrId !== undefined) {
-          const page = route.meta.getChildPage(route, hashOrId)
-          router
-            .push(page)
-            .then(() => ({}))
-            .catch((error: unknown) => {
-              console.error('Navigation Error:', error)
-            })
-        } else {
-          console.error('Abstract Data Details:', abstractData)
-          throw new Error(
-            'Navigation failed: Neither "abstractData.database.hash" nor "abstractData.album.id" is defined.'
-          )
-        }
+        const hashOrId = abstractData.data.id
+        const page = route.meta.getChildPage(route, hashOrId)
+        router
+          .push(page)
+          .then(() => ({}))
+          .catch((error: unknown) => {
+            console.error('Navigation Error:', error)
+          })
       } else {
         console.warn(`abstractData with index ${currentIndex} is not fetched.`)
       }

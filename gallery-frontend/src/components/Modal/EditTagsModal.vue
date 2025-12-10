@@ -80,15 +80,7 @@ onMounted(() => {
       return undefined
     }
     const { index, data } = initializeResult
-    let defaultTags: string[]
-    if (data.database) {
-      defaultTags = data.database.tags
-    } else if (data.album) {
-      defaultTags = data.album.tags
-    } else {
-      console.error("useSubmit Error: 'data.database' is undefined.")
-      return undefined
-    }
+    const defaultTags: string[] = data.data.tags
     changedTagsArray.value = defaultTags.filter((tag) => !specialTag(tag))
 
     const innerSubmit = async () => {

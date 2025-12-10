@@ -7,14 +7,14 @@
       <ItemViewOriginalFile
         :src="
           getSrcOriginal(
-            database.hash,
+            media.id,
             true,
-            database.ext,
+            media.ext,
             { albumId: shareStore.albumId || null, shareId: shareStore.shareId || null },
-            tokenStore.hashTokenMap.get(database.hash)
+            tokenStore.hashTokenMap.get(media.id)
           )
         "
-        :hash="database.hash"
+        :hash="media.id"
         :isolation-id="props.isolationId"
       />
       <ItemDownload :index-list="[props.index]" />
@@ -22,7 +22,8 @@
   </v-menu>
 </template>
 <script setup lang="ts">
-import { Database, IsolationId } from '@type/types'
+import { computed } from 'vue'
+import { AbstractData, GalleryImage, GalleryVideo, IsolationId } from '@type/types'
 import { getSrcOriginal } from '@utils/getter'
 import { useTokenStore } from '@/store/tokenStore'
 import { useShareStore } from '@/store/shareStore'
@@ -32,8 +33,14 @@ const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  database: Database
+  data: AbstractData
 }>()
 const tokenStore = useTokenStore(props.isolationId)
 const shareStore = useShareStore('mainId')
+const media = computed<GalleryImage | GalleryVideo>(() => {
+  if (props.data.data.type === 'album') {
+    throw new Error('ShareMenu requires a media item')
+  }
+  return props.data.data
+})
 </script>

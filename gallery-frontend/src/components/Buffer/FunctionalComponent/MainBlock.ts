@@ -6,6 +6,7 @@ import ChipsContainer from './ChipsContainer'
 import SmallImageContainer from './SmallImageContainer'
 import ThumbhashImage from './ThumbhashImage'
 import { useConfigStore } from '@/store/configStore'
+import { thumbHashToDataURL } from 'thumbhash'
 
 interface MainBlockProps {
   index: number
@@ -36,7 +37,10 @@ const MainBlock: FunctionalComponent<MainBlockProps> = (props) => {
   )
 
   if (!configStore.disableImg) {
-    const thumbhashUrl = abstractData.database?.thumbhashUrl ?? abstractData.album?.thumbhashUrl
+    const unified = abstractData.data
+    const thumbhashUrl = Array.isArray(unified.thumbhash)
+      ? thumbHashToDataURL(new Uint8Array(unified.thumbhash))
+      : undefined
 
     if (typeof thumbhashUrl === 'string') {
       chips.push(

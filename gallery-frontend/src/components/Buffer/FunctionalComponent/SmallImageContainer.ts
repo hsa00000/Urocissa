@@ -46,7 +46,7 @@ const SmallImageContainer: FunctionalComponent<SmallImageContainerProps> = (prop
 
   const chips = []
 
-  const hasBorder = props.abstractData.album !== undefined
+  const hasBorder = props.abstractData.data.type === 'album'
 
   if (props.mobile) {
     chips.push(
@@ -133,8 +133,8 @@ async function checkAndFetch(
     return
   }
 
-  if (abstractData.database) {
-    const hash = abstractData.database.hash
+  if (abstractData.data.type === 'image' || abstractData.data.type === 'video') {
+    const hash = abstractData.data.id
     await tokenStore.refreshHashTokenIfExpired(hash)
     const hashToken = tokenStore.hashTokenMap.get(hash)
     if (hashToken === undefined) {
@@ -152,8 +152,8 @@ async function checkAndFetch(
       timestampToken,
       hashToken
     })
-  } else if (abstractData.album?.cover != null) {
-    const hash = abstractData.album.cover
+  } else if (abstractData.data.type === 'album' && abstractData.data.cover != null) {
+    const hash = abstractData.data.cover
     await tokenStore.refreshHashTokenIfExpired(hash)
     const hashToken = tokenStore.hashTokenMap.get(hash)
     if (hashToken === undefined) {

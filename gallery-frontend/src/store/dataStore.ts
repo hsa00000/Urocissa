@@ -20,92 +20,47 @@ export const useDataStore = (isolationId: IsolationId) =>
         this.batchFetched.clear()
       },
       addTags(index: number, tags: string[]): boolean {
-        const data = this.data.get(index)
-        if (!data) {
-          // Index does not exist
-          return false
-        }
+        const wrapped = this.data.get(index)
+        if (!wrapped) return false
 
-        // Determine the target object: database or album
-        const target = data.database ?? data.album
-
-        if (target) {
-          tags.forEach((tag) => {
-            if (!target.tags.includes(tag)) {
-              target.tags.push(tag)
-            }
-          })
-          return true
-        }
-
-        // Neither database nor album exists for this index
-        throw new Error(`No database or album found for index ${index}`)
+        const target = wrapped.data
+        tags.forEach((tag) => {
+          if (!target.tags.includes(tag)) {
+            target.tags.push(tag)
+          }
+        })
+        return true
       },
       removeTags(index: number, tags: string[]): boolean {
-        const data = this.data.get(index)
-        if (!data) {
-          // Index does not exist
-          return false
-        }
+        const wrapped = this.data.get(index)
+        if (!wrapped) return false
 
-        // Determine the target object: database or album
-        const target = data.database ?? data.album
-
-        if (target) {
-          target.tags = target.tags.filter((tag) => !tags.includes(tag))
-          return true
-        }
-
-        // Neither database nor album exists for this index
-        throw new Error(`No database or album found for index ${index}`)
+        wrapped.data.tags = wrapped.data.tags.filter((tag) => !tags.includes(tag))
+        return true
       },
       addAlbums(index: number, albums: string[]): boolean {
-        const data = this.data.get(index)
-        if (!data) {
-          // Index does not exist
-          return false
-        }
+        const wrapped = this.data.get(index)
+        if (!wrapped) return false
 
-        // Determine the target object: database or album
-        const target = data.database
+        const target = wrapped.data
+        if (target.type === 'album') return false
 
-        if (target) {
-          albums.forEach((album) => {
-            if (!target.album.includes(album)) {
-              target.album.push(album)
-            }
-          })
-          return true
-        }
-
-        if (data.album) {
-          return false
-        }
-
-        // Neither database nor album exists for this index
-        throw new Error(`No database found for index ${index}`)
+        albums.forEach((album) => {
+          if (!target.albums.includes(album)) {
+            target.albums.push(album)
+          }
+        })
+        return true
       },
       removeAlbums(index: number, albums: string[]): boolean {
-        const data = this.data.get(index)
-        if (!data) {
-          // Index does not exist
-          return false
-        }
+        const wrapped = this.data.get(index)
+        if (!wrapped) return false
 
-        // Determine the target object: database or album
-        const target = data.database
+        const target = wrapped.data
+        if (target.type === 'album') return false
 
-        if (target) {
-          target.album = target.album.filter((album) => !albums.includes(album))
-          return true
-        }
-
-        if (data.album) {
-          return false
-        }
-
-        // Neither database nor album exists for this index
-        throw new Error(`No database found for index ${index}`)
+        target.albums = target.albums.filter((album) => !albums.includes(album))
+        return true
       }
     }
   })()

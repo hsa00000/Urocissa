@@ -2,6 +2,7 @@ import { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { inject } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import { escapeAndWrap } from '@utils/escape'
+import type { UnifiedData } from '@/type/types'
 
 export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded) {
   const isolationId = route.meta.level === 3 || route.meta.level === 4 ? 'subId' : 'mainId'
@@ -174,4 +175,31 @@ export function getSrcOriginal(
 
   const queryString = params.toString()
   return queryString ? `${basePath}?${queryString}` : basePath
+}
+
+// ---- UnifiedData helpers ----
+
+export function getThumbnailSrc(data: UnifiedData, token: string): string {
+  if (data.type === 'album') {
+    if (data.cover) {
+      return `/media/image/${data.cover}?token=${token}&type=cover`
+    }
+    return ''
+  }
+  return `/media/thumbnail/${data.id}?token=${token}`
+}
+
+export function getOriginalSrc(data: UnifiedData, token: string): string {
+  if (data.type === 'image') return `/media/image/${data.id}?token=${token}`
+  if (data.type === 'video') return `/media/video/${data.id}?token=${token}`
+  return ''
+}
+
+export function getDataTitle(data: UnifiedData): string {
+  if (data.type === 'album') return data.title ?? 'Untitled Album'
+  return data.description ?? data.id
+}
+
+export function isVideo(data: UnifiedData): boolean {
+  return data.type === 'video'
 }

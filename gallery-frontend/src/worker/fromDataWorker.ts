@@ -35,14 +35,12 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       const slicedDataArray: SlicedData[] = payload.slicedDataArray
       slicedDataArray.forEach(({ index, data, hashToken }) => {
         dataStore.data.set(index, data)
-        if (data.database) {
-          dataStore.hashMapData.set(data.database.hash, index)
-          tokenStore.hashTokenMap.set(data.database.hash, hashToken)
-        } else if (data.album) {
-          dataStore.hashMapData.set(data.album.id, index)
-          if (data.album.cover !== null) {
-            tokenStore.hashTokenMap.set(data.album.cover, hashToken)
-          }
+        const unified = data.data
+        dataStore.hashMapData.set(unified.id, index)
+        tokenStore.hashTokenMap.set(unified.id, hashToken)
+
+        if (unified.type === 'album' && unified.cover) {
+          tokenStore.hashTokenMap.set(unified.cover, hashToken)
         }
       })
       dataStore.batchFetched.set(payload.batch, true)

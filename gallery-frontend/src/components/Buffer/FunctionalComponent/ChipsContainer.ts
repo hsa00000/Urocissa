@@ -15,34 +15,32 @@ interface ChipsContainerProps {
 
 const ChipsContainer: FunctionalComponent<ChipsContainerProps> = (props) => {
   const chips = []
-  const database = props.abstractData.database
+  const data = props.abstractData.data
   const maxWidth = `${(props.displayElement.displayWidth - 16) * 0.75}px`
   const constStore = useConstStore('mainId')
-  if (database) {
-    const pending = database.pending
-
-    if (pending) {
+  if (data.type === 'image' || data.type === 'video') {
+    if (data.pending) {
       chips.push(h(ProcessingChip))
     }
-    const duration = database.exifVec.duration
 
-    if (duration !== undefined) {
-      const formattedDuration = formatDuration(duration)
+    if (data.type === 'video' && data.duration !== undefined) {
+      const formattedDuration = formatDuration(String(data.duration))
       chips.push(h(DurationChip, { label: formattedDuration }))
     }
 
-    const file = database.filename
-
     if (constStore.showFilenameChip) {
-      const base = basename(file)
-      const filename = basename(base, extname(base))
-      chips.push(h(FilenameChip, { label: filename, maxWidth: maxWidth }))
+      const file = props.abstractData.alias[0]?.file
+      if (file) {
+        const base = basename(file)
+        const filename = basename(base, extname(base))
+        chips.push(h(FilenameChip, { label: filename, maxWidth: maxWidth }))
+      }
     }
 
     return h(Fragment, null, chips)
   }
 
-  const albumTitle = props.abstractData.album?.title
+  const albumTitle = data.title
 
   chips.push(
     h(AlbumChip, {

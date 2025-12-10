@@ -75,12 +75,12 @@ onMounted(() => {
     }
 
     const { index, data } = parsed
-    if (!data.database) {
-      console.error("initSubmit: 'data.database' is undefined.")
+    if (data.data.type === 'album') {
+      console.error('initSubmit: current item is an album, cannot edit album list.')
       return
     }
 
-    const defaultAlbumIds = [...data.database.album]
+    const defaultAlbumIds = [...data.data.albums]
 
     const initialAlbums = defaultAlbumIds
       .map((id) => albumStore.albums.get(id))

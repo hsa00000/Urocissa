@@ -21,19 +21,19 @@
           <v-text-field
             v-model="titleModel"
             variant="underlined"
-            @blur="editTitle(props.album, titleModel)"
+            @blur="editTitle(props.data, titleModel)"
             :placeholder="titleModel === '' ? 'Add Title' : undefined"
           />
         </v-card-item>
 
         <v-list>
           <v-list-item>
-            <v-list-item-title v-if="album.startTime">
-              {{ `${dater(album.startTime)} ~ ${dater(album.endTime!)}` }}
+            <v-list-item-title v-if="data.startTime">
+              {{ `${dater(data.startTime)} ~ ${dater(data.endTime!)}` }}
             </v-list-item-title>
             <v-list-item-subtitle>
-              {{ `${album.itemCount} item${album.itemCount === 1 ? '' : 's'}` }} •
-              {{ filesize(album.itemSize) }}
+              {{ `${data.itemCount} item${data.itemCount === 1 ? '' : 's'}` }} •
+              {{ filesize(data.itemSize) }}
             </v-list-item-subtitle>
           </v-list-item>
         </v-list>
@@ -66,7 +66,7 @@ import { useAlbumStore } from '@/store/albumStore'
 import { filesize } from 'filesize'
 import { useRoute } from 'vue-router'
 import { dater } from '@utils/dater'
-import { Album } from '@type/types'
+import { GalleryAlbum } from '@type/types'
 import { ref, watch } from 'vue'
 import { editTitle } from '@utils/createAlbums'
 
@@ -77,13 +77,13 @@ const imgStore = useImgStore('mainId')
 
 const props = defineProps<{
   index: number
-  album: Album
+  data: GalleryAlbum
 }>()
 
 watch(
-  () => props.album.title,
+  () => props.data.title,
   () => {
-    titleModel.value = props.album.title ?? ''
+    titleModel.value = props.data.title ?? ''
   },
   { immediate: true }
 )

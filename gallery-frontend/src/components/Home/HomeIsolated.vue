@@ -59,7 +59,10 @@ onBeforeMount(() => {
   if (typeof hash === 'string') {
     const index = dataStore.hashMapData.get(hash)
     if (index !== undefined) {
-      album.value = dataStore.data.get(index)?.album
+      const data = dataStore.data.get(index)?.data
+      if (data?.type === 'album') {
+        album.value = data
+      }
     }
   }
   const album_id = route.params.hash

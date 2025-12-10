@@ -73,17 +73,15 @@ export async function editTitle(album: Album, titleModelValue: string) {
 
     const index = dataStore.hashMapData.get(album.id)
     if (index !== undefined) {
-      const album = dataStore.data.get(index)?.album
+      const existing = dataStore.data.get(index)?.data
 
-      if (albumInfo && album) {
+      if (albumInfo && existing?.type === 'album') {
         albumInfo.albumName = title
         albumInfo.displayName = albumInfo.albumName ?? 'Untitled'
-        album.title = title
+        existing.title = title
       } else {
         console.error(`Cannot find album with id ${id}`)
       }
     }
   }
 }
-
-

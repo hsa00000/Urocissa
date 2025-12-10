@@ -81,16 +81,12 @@ const router = useRouter()
 
 const nextHash = computed(() => {
   const nextData = dataStore.data.get(props.index + 1)
-  if (nextData?.database) return nextData.database.hash
-  if (nextData?.album) return nextData.album.id
-  return undefined
+  return nextData?.data.id
 })
 
 const previousHash = computed(() => {
   const previousData = dataStore.data.get(props.index - 1)
-  if (previousData?.database) return previousData.database.hash
-  if (previousData?.album) return previousData.album.id
-  return undefined
+  return previousData?.data.id
 })
 
 const nextPage = computed(() => {
@@ -137,7 +133,8 @@ async function checkAndFetch(index: number): Promise<boolean> {
 
   queueStore.original.add(index)
 
-  const hash = abstractData.database?.hash ?? abstractData.album?.cover
+  const hash =
+    abstractData.data.type === 'album' ? abstractData.data.cover ?? null : abstractData.data.id
   if (hash == null) return false
 
   await tokenStore.refreshTimestampTokenIfExpired()

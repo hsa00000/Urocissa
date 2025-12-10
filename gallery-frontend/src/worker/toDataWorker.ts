@@ -1,4 +1,4 @@
-import { rowSchema, rowWithOffsetSchema, AbstractDataWithTagSchema } from '@type/schemas'
+import { rowSchema, rowWithOffsetSchema, AbstractDataResponseSchema } from '@type/schemas'
 import {
   AbstractData,
   DisplayElement,
@@ -10,7 +10,6 @@ import {
 } from '@type/types'
 import { batchNumber, fixedBigRowHeight, paddingPixel } from '@/type/constants'
 import { getArrayValue } from '@utils/getter'
-import { createAbstractData, createAlbum, createDataBase } from '@utils/createData'
 
 import axios from 'axios'
 
@@ -48,16 +47,15 @@ self.addEventListener('message', (e) => {
 
       if (result.size > 0) {
         const indices = Array.from({ length: endIndex - startIndex }, (_, i) => startIndex + i)
-
-        //Push the result Map into a SlicedData[]
         const slicedDataArray: SlicedData[] = []
+
         for (const index of indices) {
           const getData = result.get(index)
           if (getData !== undefined) {
             slicedDataArray.push({
               index,
-              data: getData.abstractData,
-              hashToken: getData.hashToken
+              data: getData,
+              hashToken: getData.token
             })
           }
         }
@@ -103,7 +101,7 @@ async function fetchData(
   timestamp: number,
   timestampToken: string
 ): Promise<{
-  result: Map<number, { abstractData: AbstractData; hashToken: string }>
+  result: Map<number, AbstractData>
   startIndex: number
   endIndex: number
 }> {
@@ -130,81 +128,45 @@ async function fetchData(
       Authorization: `Bearer ${timestampToken}`
     }
   })
-  const abstractDataWithTagArray = z.array(AbstractDataWithTagSchema).parse(response.data)
 
-  const data = new Map<number, { abstractData: AbstractData; hashToken: string }>()
+  const parsed = z.array(AbstractDataResponseSchema).safeParse(response.data)
+  const data = new Map<number, AbstractData>()
 
-  for (let i = 0; i < abstractDataWithTagArray.length; i++) {
-    // Determine the current batch index based on the fetch method
+  if (!parsed.success) {
+    console.error('Data Parse Error:', parsed.error)
+    return { result: data, startIndex: start, endIndex: end }
+  }
+
+  const abstractDataArray = parsed.data
+
+  for (let i = 0; i < abstractDataArray.length; i++) {
     const currentBatchIndex = fetchMethod === 'batch' ? Math.floor(start / batchNumber) : index
 
     if (fetchMethod === 'batch' && !shouldProcessBatch.includes(currentBatchIndex)) {
-      break // Stop processing further if the batch should no longer be processed
+      break
     }
 
-    const item = abstractDataWithTagArray[i]
+    const item = abstractDataArray[i]
     const key = start + i
 
-    if (item === undefined) {
+    if (!item) {
       console.error(
         `Error processing item at ${fetchMethod === 'batch' ? 'batchIndex' : 'index'}: ${
           fetchMethod === 'batch' ? index : index
-        }, ` + `batchNumber: ${batchNumber}, index: ${i}. Item is undefined.`
+        }, batchNumber: ${batchNumber}, index: ${i}. Item is undefined.`
       )
       continue
     }
 
-    // Adapt Flat JSON (Backend) to Legacy Structure (Frontend)
-    const dataObj = item.data
-
-    if (dataObj.objType === 'album') {
-      // Construct Legacy Album Object
-      const legacyAlbumData = {
-        id: dataObj.id,
-        title: dataObj.title,
-        createdTime: dataObj.createdTime,
-        startTime: dataObj.startTime,
-        endTime: dataObj.endTime,
-        lastModifiedTime: dataObj.lastModifiedTime,
-        cover: dataObj.cover,
-        thumbhash: dataObj.thumbhash || null,
-        userDefinedMetadata: dataObj.userDefinedMetadata,
-        tag: dataObj.tags, // [Modified]: Get tags from dataObj
-        itemCount: dataObj.itemCount,
-        itemSize: dataObj.itemSize,
-        pending: dataObj.pending,
-        shareList: new Map() // Backend 'get-data' does not return share list currently
-      }
-
-      const albumInstance = createAlbum(legacyAlbumData, legacyAlbumData.createdTime, dataObj.tags)
-      const abstractData = createAbstractData(albumInstance)
-      data.set(key, { abstractData, hashToken: item.token })
-    } else {
-      // It is 'image' or 'video' -> Database
-      // Cleaned up construction using object spread and explicit mapping for differing keys
-      const legacyDbData = {
-        ...dataObj,
-        album: dataObj.albums, // Correctly mapping albums from backend
-        extType: dataObj.objType,
-        hash: dataObj.id,
-        timestampMs: dataObj.createdTime,
-        phash: (dataObj.objType === 'image' ? dataObj.phash : []) ?? [],
-        thumbhash: dataObj.thumbhash ?? []
-      }
-
-      const databaseInstance = createDataBase(
-        legacyDbData,
-        legacyDbData.timestampMs,
-        dataObj.tags, // [Modified]: Get tags from dataObj
-        item.alias,
-        dataObj.exifVec // [Modified]: Get exifVec from dataObj
-      )
-      const abstractData = createAbstractData(databaseInstance)
-      data.set(key, { abstractData, hashToken: item.token })
+    const abstractData: AbstractData = {
+      data: item.data,
+      alias: item.alias ?? [],
+      token: item.token
     }
 
+    data.set(key, abstractData)
+
     if (i % 100 === 0) {
-      // Yield after every 100 items
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
   }

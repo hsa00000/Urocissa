@@ -34,42 +34,45 @@
           :placeholder="userDefinedDescriptionModel === '' ? 'Add description' : undefined"
         />
       </v-card-item>
-      <div v-if="abstractData.database" class="h-100 w-100">
+      <div
+        v-if="abstractData.data.type === 'image' || abstractData.data.type === 'video'"
+        class="h-100 w-100"
+      >
         <v-list class="pa-0" height="100%" lines="two">
-          <ItemSize :database="abstractData.database" />
-          <ItemPath v-if="showMetadata" :database="abstractData.database" />
-          <ItemDate :database="abstractData.database" />
+          <ItemSize :data="abstractData.data" />
+          <ItemPath v-if="showMetadata" :alias="abstractData.alias" />
+          <ItemDate :data="abstractData.data" />
           <ItemExif
             v-if="
-              abstractData.database.exifVec.Make !== undefined ||
-              abstractData.database.exifVec.Model !== undefined
+              abstractData.data.exif.Make !== undefined ||
+              abstractData.data.exif.Model !== undefined
             "
-            :database="abstractData.database"
+            :data="abstractData.data"
           />
           <v-divider></v-divider>
           <ItemTag
             v-if="showMetadata"
             :isolation-id="props.isolationId"
             :index="props.index"
-            :tags="abstractData.database.tags"
+            :tags="abstractData.data.tags"
           />
           <ItemAlbum
             v-if="route.meta.baseName !== 'share'"
             :isolation-id="props.isolationId"
             :index="props.index"
-            :albums="abstractData.database.album"
+            :albums="abstractData.data.albums"
           />
         </v-list>
       </div>
-      <div v-if="abstractData.album" class="h-100 w-100">
+      <div v-else-if="abstractData.data.type === 'album'" class="h-100 w-100">
         <v-list class="pa-0" height="100%" lines="two">
-          <ItemTitle :title="abstractData.album.title" />
-          <ItemCount :album="abstractData.album" />
+          <ItemTitle :title="abstractData.data.title" />
+          <ItemCount :album="abstractData.data" />
           <v-divider></v-divider>
           <ItemTag
             :isolation-id="props.isolationId"
             :index="props.index"
-            :tags="abstractData.album.tags"
+            :tags="abstractData.data.tags"
           />
         </v-list>
       </div>
@@ -117,12 +120,7 @@ function toggleInfo() {
 }
 
 function getUserDefinedDescription(abstractData: AbstractData): string {
-  if (abstractData.database) {
-    return abstractData.database.object.description ?? ''
-  } else if (abstractData.album) {
-    return abstractData.album.object.description ?? ''
-  }
-  return ''
+  return abstractData.data.description ?? ''
 }
 
 watch(

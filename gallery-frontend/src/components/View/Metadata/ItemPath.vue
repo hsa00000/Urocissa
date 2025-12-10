@@ -11,20 +11,17 @@
 </template>
 
 <script setup lang="ts">
-import { Database } from '@type/types'
+import type { Alias } from '@type/types'
 import { computed } from 'vue'
 
-
 const props = defineProps<{
-  database: Database
+  alias: Alias[]
 }>()
 
-const filePathComplete = computed(() => {
-  return props.database.filename
-})
+const filePathComplete = computed(() => props.alias[0]?.file ?? '')
 
 const filePath = computed(() => {
-  if (filePathComplete.value != null) {
+  if (filePathComplete.value) {
     return filePathComplete.value.replace(/\.[^/.]+$/, '')
   }
   return ''

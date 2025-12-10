@@ -1,7 +1,7 @@
 <template>
   <div class="swiper-container h-100 w-100">
     <swiper
-      v-if="abstractData && abstractData.database && abstractData.database.extType === 'image'"
+      v-if="abstractData && abstractData.data.type === 'image'"
       :modules="modules"
       :slides-per-view="1"
       :space-between="10"
@@ -24,18 +24,24 @@
           <div class="slide-content">
             <ViewPageDisplayDatabase
               v-if="
-                previousAbstractData && previousAbstractData.database && !configStore.disableImg
+                previousAbstractData &&
+                previousAbstractData.data.type === 'image' &&
+                !configStore.disableImg
               "
               :index="index - 1"
-              :hash="previousAbstractData.database.hash"
+              :hash="previousAbstractData.data.id"
               :abstract-data="previousAbstractData"
               :isolation-id="isolationId"
               :enable-watch="false"
             />
             <ViewPageDisplayAlbum
-              v-if="previousAbstractData && previousAbstractData.album && !configStore.disableImg"
+              v-if="
+                previousAbstractData &&
+                previousAbstractData.data.type === 'album' &&
+                !configStore.disableImg
+              "
               :index="index - 1"
-              :album="previousAbstractData.album"
+              :data="previousAbstractData.data"
             />
           </div>
         </div>
@@ -45,17 +51,12 @@
         <div class="swiper-zoom-container">
           <div class="slide-content">
             <ViewPageDisplayDatabase
-              v-if="abstractData && abstractData.database && !configStore.disableImg"
+              v-if="abstractData && abstractData.data.type === 'image' && !configStore.disableImg"
               :index="index"
               :hash="hash"
               :abstract-data="abstractData"
               :isolation-id="isolationId"
               :enable-watch="false"
-            />
-            <ViewPageDisplayAlbum
-              v-if="abstractData && abstractData.album && !configStore.disableImg"
-              :index="index"
-              :album="abstractData.album"
             />
           </div>
         </div>
@@ -65,17 +66,25 @@
         <div class="swiper-zoom-container">
           <div class="slide-content">
             <ViewPageDisplayDatabase
-              v-if="nextAbstractData && nextAbstractData.database && !configStore.disableImg"
+              v-if="
+                nextAbstractData &&
+                nextAbstractData.data.type === 'image' &&
+                !configStore.disableImg
+              "
               :index="index + 1"
-              :hash="nextAbstractData.database.hash"
+              :hash="nextAbstractData.data.id"
               :abstract-data="nextAbstractData"
               :isolation-id="isolationId"
               :enable-watch="false"
             />
             <ViewPageDisplayAlbum
-              v-if="nextAbstractData && nextAbstractData.album && !configStore.disableImg"
+              v-if="
+                nextAbstractData &&
+                nextAbstractData.data.type === 'album' &&
+                !configStore.disableImg
+              "
               :index="index + 1"
-              :album="nextAbstractData.album"
+              :data="nextAbstractData.data"
             />
           </div>
         </div>
@@ -99,17 +108,25 @@
       <swiper-slide v-if="previousHash !== undefined">
         <div class="slide-content">
           <ViewPageDisplayDatabase
-            v-if="previousAbstractData && previousAbstractData.database && !configStore.disableImg"
+            v-if="
+              previousAbstractData &&
+              previousAbstractData.data.type !== 'album' &&
+              !configStore.disableImg
+            "
             :index="index - 1"
-            :hash="previousAbstractData.database.hash"
+            :hash="previousAbstractData.data.id"
             :abstract-data="previousAbstractData"
             :isolation-id="isolationId"
             :enable-watch="false"
           />
           <ViewPageDisplayAlbum
-            v-if="previousAbstractData && previousAbstractData.album && !configStore.disableImg"
+            v-if="
+              previousAbstractData &&
+              previousAbstractData.data.type === 'album' &&
+              !configStore.disableImg
+            "
             :index="index - 1"
-            :album="previousAbstractData.album"
+            :data="previousAbstractData.data"
           />
         </div>
       </swiper-slide>
@@ -118,7 +135,7 @@
       <swiper-slide>
         <div class="slide-content">
           <ViewPageDisplayDatabase
-            v-if="abstractData && abstractData.database && !configStore.disableImg"
+            v-if="abstractData && abstractData.data.type !== 'album' && !configStore.disableImg"
             :index="index"
             :hash="hash"
             :abstract-data="abstractData"
@@ -126,9 +143,9 @@
             :enable-watch="true"
           />
           <ViewPageDisplayAlbum
-            v-if="abstractData && abstractData.album && !configStore.disableImg"
+            v-if="abstractData && abstractData.data.type === 'album' && !configStore.disableImg"
             :index="index"
-            :album="abstractData.album"
+            :data="abstractData.data"
           />
         </div>
       </swiper-slide>
@@ -137,17 +154,21 @@
       <swiper-slide v-if="nextHash !== undefined">
         <div class="slide-content">
           <ViewPageDisplayDatabase
-            v-if="nextAbstractData && nextAbstractData.database && !configStore.disableImg"
+            v-if="
+              nextAbstractData && nextAbstractData.data.type !== 'album' && !configStore.disableImg
+            "
             :index="index + 1"
-            :hash="nextAbstractData.database.hash"
+            :hash="nextAbstractData.data.id"
             :abstract-data="nextAbstractData"
             :isolation-id="isolationId"
             :enable-watch="false"
           />
           <ViewPageDisplayAlbum
-            v-if="nextAbstractData && nextAbstractData.album && !configStore.disableImg"
+            v-if="
+              nextAbstractData && nextAbstractData.data.type === 'album' && !configStore.disableImg
+            "
             :index="index + 1"
-            :album="nextAbstractData.album"
+            :data="nextAbstractData.data"
           />
         </div>
       </swiper-slide>

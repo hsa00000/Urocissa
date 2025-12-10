@@ -7,27 +7,24 @@
       <ItemViewOriginalFile
         :src="
           getSrc(
-            database.hash,
+            media.id,
             true,
-            database.ext,
+            media.ext,
             { albumId: shareStore.albumId || null, shareId: shareStore.shareId || null },
-            tokenStore.hashTokenMap.get(database.hash)
+            tokenStore.hashTokenMap.get(media.id)
           )
         "
         :isolation-id="props.isolationId"
-        :hash="database.hash"
+        :hash="media.id"
       />
       <ItemDownload :index-list="[props.index]" />
       <ItemFindInTimeline :hash="props.hash" />
       <v-divider></v-divider>
       <ItemEditTags />
       <ItemEditAlbums />
-      <ItemDelete v-if="!database.tags.includes('_trashed')" :index-list="[props.index]" />
-      <ItemRestore v-if="database.tags.includes('_trashed')" :index-list="[props.index]" />
-      <ItemPermanentlyDelete
-        v-if="database.tags.includes('_trashed')"
-        :index-list="[props.index]"
-      />
+      <ItemDelete v-if="!media.tags.includes('_trashed')" :index-list="[props.index]" />
+      <ItemRestore v-if="media.tags.includes('_trashed')" :index-list="[props.index]" />
+      <ItemPermanentlyDelete v-if="media.tags.includes('_trashed')" :index-list="[props.index]" />
       <v-divider></v-divider>
       <ItemRegenerateMetadata :index-list="[props.index]" />
       <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
@@ -35,7 +32,8 @@
   </v-menu>
 </template>
 <script setup lang="ts">
-import { Database, IsolationId } from '@type/types'
+import { computed } from 'vue'
+import { AbstractData, GalleryImage, GalleryVideo, IsolationId } from '@type/types'
 import { getSrc } from '@utils/getter'
 import { useTokenStore } from '@/store/tokenStore'
 import { useShareStore } from '@/store/shareStore'
@@ -54,9 +52,16 @@ const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  database: Database
+  data: AbstractData
 }>()
 const currentFrameStore = useCurrentFrameStore(props.isolationId)
 const tokenStore = useTokenStore(props.isolationId)
 const shareStore = useShareStore('mainId')
+
+const media = computed<GalleryImage | GalleryVideo>(() => {
+  if (props.data.data.type === 'album') {
+    throw new Error('SingleMenu requires a media item')
+  }
+  return props.data.data
+})
 </script>

@@ -12,12 +12,7 @@ export async function editUserDefinedDescription(
   const dataStore = useDataStore('mainId')
 
   function getCurrentDescription(): string {
-    if (abstractData.database) {
-      return abstractData.database.object.description ?? ''
-    } else if (abstractData.album) {
-      return abstractData.album.object.description ?? ''
-    }
-    return ''
+    return abstractData.data.description ?? ''
   }
 
   const prefetchStore = usePrefetchStore(isolationId)
@@ -35,12 +30,7 @@ export async function editUserDefinedDescription(
     // Update local data store
     const item = dataStore.data.get(index)
     if (item) {
-      // [Modify] Update the object description
-      if (item.database) {
-        item.database.object.description = description
-      } else if (item.album) {
-        item.album.object.description = description
-      }
+      item.data.description = description ?? undefined
     }
   }
 }

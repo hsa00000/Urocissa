@@ -72,10 +72,11 @@ const downloadAllFiles = async () => {
           }
         }
 
-        if (abstractData.database) {
-          const hash = abstractData.database.hash
+        if (abstractData.data.type === 'image' || abstractData.data.type === 'video') {
+          const media = abstractData.data
+          const hash = media.id
 
-          const url = getSrcOriginal(hash, true, abstractData.database.ext)
+          const url = getSrcOriginal(hash, true, media.ext)
           await tokenStore.tryRefreshAndStoreTokenToDb(hash)
           const hashToken = tokenStore.hashTokenMap.get(hash)
           if (hashToken === undefined) {
@@ -91,10 +92,8 @@ const downloadAllFiles = async () => {
               }
             })
 
-            if (abstractData.database) {
-              const fileName = `${hash}.${abstractData.database.ext}`
-              saveAs(response.data, fileName)
-            }
+            const fileName = `${hash}.${media.ext}`
+            saveAs(response.data, fileName)
             return true
           })
 

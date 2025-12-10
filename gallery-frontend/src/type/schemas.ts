@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { fixedBigRowHeight } from '@/type/constants'
 
+// --- 基礎組件 ---
 export const AliasSchema = z.object({
   file: z.string(),
   modified: z.number(),
@@ -29,6 +30,117 @@ export const rowWithOffsetSchema = z.object({
   windowWidth: z.number()
 })
 
+// 定義後端回傳的 Common 欄位
+const BaseObjectRaw = z.object({
+  id: z.string(),
+  createdTime: z.number(),
+  pending: z.boolean(),
+  thumbhash: z.array(z.number()).nullable().optional().default(null),
+  description: z.string().nullable().optional(),
+  tags: z.array(z.string()).default([]),
+  exifVec: z.record(z.string(), z.string()).default({})
+})
+
+// 1. Image Schema
+const ImageSchema = BaseObjectRaw.extend({
+  objType: z.literal('image'),
+  width: z.number(),
+  height: z.number(),
+  ext: z.string(),
+  size: z.number(),
+  phash: z.array(z.number()).nullable().optional().default([]),
+  albums: z.array(z.string()).default([])
+}).transform((data) => ({
+  type: 'image' as const,
+  id: data.id,
+  timestamp: data.createdTime,
+  width: data.width,
+  height: data.height,
+  ext: data.ext,
+  size: data.size,
+  tags: data.tags,
+  exif: data.exifVec,
+  phash: data.phash,
+  thumbhash: data.thumbhash,
+  pending: data.pending,
+  albums: data.albums,
+  description: data.description
+}))
+
+// 2. Video Schema
+const VideoSchema = BaseObjectRaw.extend({
+  objType: z.literal('video'),
+  width: z.number(),
+  height: z.number(),
+  ext: z.string(),
+  size: z.number(),
+  duration: z.number().default(0),
+  albums: z.array(z.string()).default([])
+}).transform((data) => ({
+  type: 'video' as const,
+  id: data.id,
+  timestamp: data.createdTime,
+  width: data.width,
+  height: data.height,
+  ext: data.ext,
+  size: data.size,
+  duration: data.duration,
+  tags: data.tags,
+  exif: data.exifVec,
+  thumbhash: data.thumbhash,
+  pending: data.pending,
+  albums: data.albums,
+  description: data.description
+}))
+
+// 3. Album Schema
+const AlbumSchema = BaseObjectRaw.extend({
+  objType: z.literal('album'),
+  title: z.string().nullable(),
+  startTime: z.number().nullable(),
+  endTime: z.number().nullable(),
+  lastModifiedTime: z.number(),
+  cover: z.string().nullable(),
+  userDefinedMetadata: z.record(z.string(), z.array(z.string())),
+  itemCount: z.number(),
+  itemSize: z.number()
+}).transform((data) => ({
+  type: 'album' as const,
+  id: data.id,
+  title: data.title,
+  timestamp: data.createdTime,
+  startTime: data.startTime,
+  endTime: data.endTime,
+  lastModifiedTime: data.lastModifiedTime,
+  cover: data.cover,
+  thumbhash: data.thumbhash,
+  tags: data.tags,
+  userDefinedMetadata: data.userDefinedMetadata,
+  itemCount: data.itemCount,
+  itemSize: data.itemSize,
+  pending: data.pending,
+  description: data.description
+}))
+
+// 這是 Worker 解析後端資料時使用的 Schema
+export const BackendDataParser = z.union([ImageSchema, VideoSchema, AlbumSchema])
+
+// 這是前端 App 內部使用的最終資料結構 (包含 token/alias)
+export const UnifiedDataSchema = z.object({
+  data: z.discriminatedUnion('type', [ImageSchema, VideoSchema, AlbumSchema]),
+  alias: z.array(AliasSchema).default([]),
+  token: z.string(),
+  hashToken: z.string()
+})
+
+// 用於 Response 的 Parser
+export const AbstractDataResponseSchema = z.object({
+  data: BackendDataParser,
+  alias: z.array(AliasSchema).default([]),
+  token: z.string()
+})
+
+// 其他需要的 Schemas
 export const prefetchSchema = z.object({
   timestamp: z.number(),
   dataLength: z.number(),
@@ -62,128 +174,6 @@ export const prefetchReturnSchema = z
     resolvedShare: data.resolvedShareOpt
   }))
 
-export const DataBaseParse = z.object({
-  album: z.array(z.string()),
-  ext: z.string(),
-  extType: z.string(),
-  hash: z.string(),
-  height: z.number(),
-  pending: z.boolean(),
-  phash: z.array(z.number()),
-  size: z.number(),
-  thumbhash: z.array(z.number()),
-  width: z.number(),
-  timestampMs: z.number(),
-  description: z.string().nullable().optional()
-})
-
-// --- New Flat Schemas (Matching Backend Response) ---
-
-const ObjTypeEnum = z.enum(['image', 'video', 'album'])
-
-const FlatObjectBase = z.object({
-  id: z.string(),
-  objType: ObjTypeEnum,
-  createdTime: z.number(),
-  pending: z.boolean(),
-  thumbhash: z.array(z.number()).nullable().optional(),
-  description: z.string().nullable().optional(),
-  tags: z.array(z.string()).default([]) // [Modified]: Tags moved to ObjectSchema in backend
-})
-
-export const DataBaseSchema = DataBaseParse.extend({
-  timestamp: z.number(),
-  thumbhashUrl: z.string(), // need initialize
-  filename: z.string(), // need initialize
-  tags: z.array(z.string()),
-  exifVec: z.record(z.string(), z.string()),
-  object: FlatObjectBase
-})
-
-export const AlbumParse = z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  createdTime: z.number(),
-  startTime: z.number().nullable(),
-  endTime: z.number().nullable(),
-  lastModifiedTime: z.number(),
-  cover: z.string().nullable(),
-  thumbhash: z.array(z.number()).nullable(),
-  userDefinedMetadata: z.record(z.string(), z.array(z.string())),
-  shareList: z
-    .record(z.string(), ShareSchema)
-    .optional()
-    .default({})
-    .transform((obj) => new Map(Object.entries(obj))),
-  tag: z.array(z.string()),
-  itemCount: z.number(),
-  itemSize: z.number(),
-  pending: z.boolean(),
-  description: z.string().nullable().optional()
-})
-
-export const AlbumSchema = AlbumParse.extend({
-  timestamp: z.number(),
-  thumbhashUrl: z.string().nullable(), // need initialize
-  tags: z.array(z.string()),
-  object: FlatObjectBase
-})
-
-// --- New Flat Schemas (Matching Backend Response) ---
-
-export const FlatImageSchema = FlatObjectBase.extend({
-  objType: z.literal('image'),
-  type: z.literal('image').optional(), // Backend's MediaCombined tag
-  size: z.number(),
-  width: z.number(),
-  height: z.number(),
-  ext: z.string(),
-  phash: z.array(z.number()).nullable().optional(),
-  exifVec: z.record(z.string(), z.string()).default({}), // [Modified]: Exif moved to ImageCombined
-  albums: z.array(z.string()).default([]) // [Added]: Backend returns albums list
-})
-
-export const FlatVideoSchema = FlatObjectBase.extend({
-  objType: z.literal('video'),
-  type: z.literal('video').optional(), // Backend's MediaCombined tag
-  size: z.number(),
-  width: z.number(),
-  height: z.number(),
-  ext: z.string(),
-  duration: z.number().default(0),
-  exifVec: z.record(z.string(), z.string()).default({}), // [Modified]: Exif moved to VideoCombined
-  albums: z.array(z.string()).default([]) // [Added]: Backend returns albums list
-})
-
-export const FlatAlbumSchema = FlatObjectBase.extend({
-  objType: z.literal('album'),
-  title: z.string().nullable(),
-  startTime: z.number().nullable(),
-  endTime: z.number().nullable(),
-  lastModifiedTime: z.number(),
-  cover: z.string().nullable(),
-  userDefinedMetadata: z.record(z.string(), z.array(z.string())),
-  // tag: z.array(z.string()).optional().default([]), // [Removed]: Now using 'tags' from FlatObjectBase, but keeping legacy mapping in mind
-  itemCount: z.number(),
-  itemSize: z.number()
-})
-
-// REPLACED: Now uses the flat schemas union
-export const AbstractDataParseSchema = z.union([FlatImageSchema, FlatVideoSchema, FlatAlbumSchema])
-
-export const AbstractDataWithTagSchema = z.object({
-  data: AbstractDataParseSchema,
-  // tag: z.array(z.string()).optional(), // [Removed]: Backend removed this
-  alias: z.array(AliasSchema),
-  token: z.string()
-  // exifVec: z.record(z.string(), z.string()) // [Removed]: Backend removed this
-})
-
-export const AbstractDataSchema = z.object({
-  database: DataBaseSchema.optional(),
-  album: AlbumSchema.optional()
-})
-
 export const scrollbarDataSchema = z.object({
   index: z.number(),
   year: z.number(),
@@ -208,12 +198,6 @@ export const albumInfoSchema = z
     displayName: albumData.albumName ?? 'Untitled'
   }))
 
-export const databaseTimestampSchema = z.object({
-  abstractData: AbstractDataParseSchema,
-  timestamp: z.number(),
-  token: z.string()
-})
-
 export const SubRowSchema = z.object({
   displayElements: z.array(displayElementSchema)
 })
@@ -223,13 +207,9 @@ export const PublicConfigSchema = z.object({
   disableImg: z.boolean()
 })
 
-export const tokenReturnSchema = z.object({
-  token: z.string()
-})
+export const tokenReturnSchema = z.object({ token: z.string() })
 
-export const TokenResponseSchema = z.object({
-  token: z.string()
-})
+export const TokenResponseSchema = z.object({ token: z.string() })
 
 export const serverErrorSchema = z.object({
   error: z.string(),

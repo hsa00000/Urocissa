@@ -9,7 +9,7 @@
     />
     <div class="h-100 w-100">
       <ViewPageDisplayDatabase
-        v-if="abstractData && abstractData.database && !configStore.disableImg"
+        v-if="abstractData && abstractData.data.type !== 'album' && !configStore.disableImg"
         :index="index"
         :hash="hash"
         :abstract-data="abstractData"
@@ -17,9 +17,9 @@
         :enable-watch="true"
       />
       <ViewPageDisplayAlbum
-        v-if="abstractData && abstractData.album && !configStore.disableImg"
+        v-if="abstractData && abstractData.data.type === 'album' && !configStore.disableImg"
         :index="index"
-        :album="abstractData.album"
+        :data="abstractData.data"
       />
     </div>
   </div>
