@@ -1,10 +1,10 @@
 <template>
   <v-toolbar
     :class="[
-      { 'position-absolute': configStore.viewBarOverlay },
-      { 'my-toolbar': configStore.viewBarOverlay },
-      { 'push-mode': !configStore.viewBarOverlay },
-      { 'bg-surface-light': !configStore.viewBarOverlay }
+      { 'position-absolute': constStore.viewBarOverlay },
+      { 'my-toolbar': constStore.viewBarOverlay },
+      { 'push-mode': !constStore.viewBarOverlay },
+      { 'bg-surface': !constStore.viewBarOverlay }
     ]"
     :style="{
       paddingTop: '2px'
@@ -61,6 +61,7 @@
   </v-toolbar>
 </template>
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { quickRemoveTags, quickAddTags } from '@utils/quickEditTags'
 import { AbstractData, IsolationId } from '@type/types'
 import DatabaseMenu from '@Menu/SingleMenu.vue'
@@ -70,7 +71,7 @@ import LeaveView from '@Menu/MenuButton/BtnLeaveView.vue'
 import ShowInfo from '@Menu/MenuButton/BtnShowInfo.vue'
 import { useRoute } from 'vue-router'
 import { useShareStore } from '@/store/shareStore'
-import { useConfigStore } from '@/store/configStore'
+import { useConstStore } from '@/store/constStore'
 
 const route = useRoute()
 const props = defineProps<{
@@ -81,9 +82,14 @@ const props = defineProps<{
 }>()
 
 const shareStore = useShareStore('mainId')
-const configStore = useConfigStore(props.isolationId)
+const constStore = useConstStore(props.isolationId)
 
 const share = shareStore.resolvedShare ?? null
+
+// 確保組件掛載時讀取設定
+onMounted(() => {
+  constStore.loadViewBarOverlay()
+})
 </script>
 <style scoped>
 .my-toolbar {

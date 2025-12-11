@@ -62,7 +62,8 @@ const vuetify = createVuetify({
   directives,
   theme: {
     // 'light' | 'dark' | 'system'
-    defaultTheme: constStore.theme === 'light' ? 'light' : 'dark'
+    defaultTheme: constStore.theme === 'light' ? 'light' : 'dark',
+    themes: {}
   }
 })
 

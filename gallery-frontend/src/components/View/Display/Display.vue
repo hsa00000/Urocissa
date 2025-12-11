@@ -3,8 +3,8 @@
     id="image-display-col"
     class="h-100 position-relative flex-grow-1 min-w-0 image-col d-flex flex-column"
     :class="{
-      'is-overlay-mode': configStore.viewBarOverlay,
-      'is-push-mode': !configStore.viewBarOverlay
+      'is-overlay-mode': constStore.viewBarOverlay,
+      'is-push-mode': !constStore.viewBarOverlay
     }"
   >
     <!-- Overlay toolbar positioned absolutely within the column scope -->

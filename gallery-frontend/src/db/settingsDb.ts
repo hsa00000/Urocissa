@@ -467,3 +467,51 @@ export async function deleteShowFilenameChip(): Promise<void> {
     }
   })
 }
+
+export async function storeViewBarOverlay(value: boolean): Promise<void> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for storing viewBarOverlay')
+    return
+  }
+
+  return new Promise<void>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.put(value, 'viewBarOverlay')
+
+    request.onsuccess = () => resolve()
+    request.onerror = () => {
+      console.error('Error storing viewBarOverlay')
+      resolve()
+    }
+  })
+}
+
+export async function getViewBarOverlay(): Promise<boolean | null> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for retrieving viewBarOverlay')
+    return null
+  }
+
+  return new Promise<boolean | null>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readonly')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.get('viewBarOverlay')
+
+    request.onsuccess = () => {
+      const rawResult: unknown = request.result
+      if (typeof rawResult === 'boolean') {
+        resolve(rawResult)
+      } else {
+        resolve(null)
+      }
+    }
+
+    request.onerror = () => {
+      console.error('Error retrieving viewBarOverlay')
+      resolve(null)
+    }
+  })
+}

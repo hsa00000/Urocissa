@@ -68,12 +68,10 @@ import { computed } from 'vue'
 import { useModalStore } from '@/store/modalStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useConstStore } from '@/store/constStore'
-import { useConfigStore } from '@/store/configStore'
 
 const modalStore = useModalStore('mainId')
 const initializedStore = useInitializedStore('mainId')
 const constStore = useConstStore('mainId')
-const configStore = useConfigStore('mainId')
 
 // Read/write computed for subRowHeightScale (source of truth is constStore)
 const subRowHeightScaleValue = computed<number>({
@@ -114,16 +112,17 @@ const onShowFilenameChipUpdate = (newValue: boolean | null) => {
 
 // ViewBar overlay toggle
 const viewBarOverlayValue = computed<boolean>({
-  get: () => configStore.viewBarOverlay,
+  get: () => constStore.viewBarOverlay,
   set: (newVal: boolean | null) => {
-    // prefer a simple setter; we use the toggle action if needed
-    // @ts-ignore
-    configStore.viewBarOverlay = newVal ?? configStore.viewBarOverlay
+    if (newVal !== null) {
+      constStore.updateViewBarOverlay(newVal)
+    }
   }
 })
 
 const onViewBarOverlayUpdate = (newValue: boolean | null) => {
-  // @ts-ignore
-  configStore.viewBarOverlay = newValue ?? configStore.viewBarOverlay
+  if (newValue !== null) {
+    constStore.updateViewBarOverlay(newValue)
+  }
 }
 </script>
