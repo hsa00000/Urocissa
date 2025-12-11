@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::str::FromStr;
 
-use crate::common::consts::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
+use crate::common::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 
 // Key: ID, Value: Serialized ObjectSchema
 pub const OBJECT_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("object");

@@ -1,4 +1,4 @@
-use crate::common::consts::MAX_DELETE_ATTEMPTS;
+use crate::common::MAX_DELETE_ATTEMPTS;
 use crate::common::errors::handle_error;
 use anyhow::Context;
 use anyhow::Result;

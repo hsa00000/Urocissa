@@ -1,7 +1,7 @@
 use crate::database::schema::relations::alias::DatabaseAliasSchema;
 use crate::{
     common::{
-        consts::DEFAULT_PRIORITY_LIST,
+        DEFAULT_PRIORITY_LIST,
         errors::handle_error,
     },
     database::{

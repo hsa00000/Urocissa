@@ -1,6 +1,6 @@
 use crate::{
     common::{
-        consts::runtime::WORKER_RAYON_POOL,
+        WORKER_RAYON_POOL,
         errors::handle_error,
     },
     models::{

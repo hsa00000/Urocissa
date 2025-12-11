@@ -1,5 +1,5 @@
-use crate::common::consts::runtime::INDEX_RUNTIME;
-use crate::common::consts::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
+use crate::common::INDEX_RUNTIME;
+use crate::common::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::utils::PathExt;
 use crate::{
     config::PRIVATE_CONFIG, common::errors::handle_error, background::flows::index_workflow,

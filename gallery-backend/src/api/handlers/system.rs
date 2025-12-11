@@ -19,7 +19,7 @@ use crate::background::batchers::update_tree::UpdateTreeTask;
 use crate::background::processors::image::regenerate_metadata_for_image;
 use crate::background::processors::transitor::index_to_hash;
 use crate::background::processors::video::{regenerate_metadata_for_video, video_duration};
-use crate::common::consts::PROCESS_BATCH_NUMBER;
+use crate::common::PROCESS_BATCH_NUMBER;
 use crate::database::ops::snapshot::tree::TREE_SNAPSHOT;
 use crate::database::ops::tree::TREE;
 use crate::database::schema::image::ImageCombined;

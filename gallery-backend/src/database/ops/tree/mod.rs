@@ -16,7 +16,7 @@ use std::sync::{atomic::AtomicU64, Arc, LazyLock, RwLock};
 
 use mini_executor::TaskExecutor;
 // 引入 runtime 常數
-use crate::common::consts::runtime::{BATCH_RUNTIME, INDEX_RUNTIME};
+use crate::common::{BATCH_RUNTIME, INDEX_RUNTIME};
 
 pub static BATCH_COORDINATOR: LazyLock<TaskExecutor> = LazyLock::new(|| TaskExecutor::new(&BATCH_RUNTIME));
 pub static INDEX_COORDINATOR: LazyLock<TaskExecutor> = LazyLock::new(|| TaskExecutor::new(&INDEX_RUNTIME));

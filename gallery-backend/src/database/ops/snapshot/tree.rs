@@ -5,7 +5,7 @@ use crate::models::dto::reduced_data::ReducedData;
 use arrayvec::ArrayString;
 use crate::database::ops::snapshot::create_tree;
 use crate::database::ops::snapshot::create_tree::SNAPSHOTS_TABLE;
-use crate::common::consts::ROW_BATCH_NUMBER;
+use crate::common::ROW_BATCH_NUMBER;
 use crate::models::entity::row::{DisplayElement, Row, ScrollBarData};
 use anyhow::{Result, bail, Context};
 use log::{error, info};

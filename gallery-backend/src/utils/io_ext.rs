@@ -5,7 +5,7 @@ use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
-use crate::common::consts::MAX_COPY_RETRIES;
+use crate::common::MAX_COPY_RETRIES;
 
 pub fn copy_with_retry(src: &Path, dst: &Path) -> Result<u64> {
     for attempt in 1..=MAX_COPY_RETRIES + 1 {

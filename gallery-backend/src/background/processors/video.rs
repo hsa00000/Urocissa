@@ -8,7 +8,7 @@
 
 use crate::{
     common::{
-        consts::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION,
+        SHOULD_SWAP_WIDTH_HEIGHT_ROTATION,
     },
     models::entity::abstract_data::AbstractData,
     cli::tui::DASHBOARD,

@@ -18,7 +18,7 @@ use terminal_size::{Width, terminal_size};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::common::consts::runtime::CURRENT_NUM_THREADS;
+use crate::common::CURRENT_NUM_THREADS;
 use crate::database::schema::object::ObjectType;
 
 /// ---------- async driver ----------

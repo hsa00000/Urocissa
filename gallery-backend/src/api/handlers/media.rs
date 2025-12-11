@@ -39,7 +39,7 @@ use crate::background::processors::image::{generate_dynamic_image, generate_phas
 use crate::background::processors::transitor::{
     index_to_hash, process_abstract_data_for_response, resolve_show_download_and_metadata,
 };
-use crate::common::consts::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
+use crate::common::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::config::{PUBLIC_CONFIG, PublicConfig};
 use crate::database::ops::snapshot::query::QUERY_SNAPSHOT;
 use crate::database::ops::snapshot::tree::TREE_SNAPSHOT;

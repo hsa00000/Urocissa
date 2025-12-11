@@ -11,7 +11,7 @@ mod database;
 mod models;
 mod utils;
 
-use crate::common::consts::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
+use crate::common::{INDEX_RUNTIME, ROCKET_RUNTIME};
 use crate::common::errors::handle_error;
 use crate::cli::tui::{DASHBOARD, tui_task};
 use crate::background::processors::setup::{initialize, initialize_folder};
