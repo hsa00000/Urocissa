@@ -1,6 +1,4 @@
 pub mod fs_utils;
-pub mod io_ext;
-
 use std::path::{Path, PathBuf};
 
 use crate::database::schema::object::ObjectType;

@@ -14,15 +14,6 @@ use crate::database::schema::video::VideoCombined;
 use crate::models::entity::abstract_data::AbstractData;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
 
-use mini_executor::TaskExecutor;
-// 引入 runtime 常數
-use crate::common::{BATCH_RUNTIME, INDEX_RUNTIME};
-
-pub static BATCH_COORDINATOR: LazyLock<TaskExecutor> =
-    LazyLock::new(|| TaskExecutor::new(&BATCH_RUNTIME));
-pub static INDEX_COORDINATOR: LazyLock<TaskExecutor> =
-    LazyLock::new(|| TaskExecutor::new(&INDEX_RUNTIME));
-
 pub struct Tree {
     pub in_disk: Database,
     pub in_memory: &'static Arc<RwLock<Vec<AbstractData>>>,

@@ -1,15 +1,15 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use arrayvec::ArrayString;
 use rand::{Rng, distr::Alphanumeric};
 use redb::ReadableTable;
-use rocket::{post, put};
 use rocket::serde::json::Json;
+use rocket::{post, put};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::api::{AppResult, GuardResult};
 use crate::api::fairings::guards::auth::GuardAuth;
 use crate::api::fairings::guards::readonly::GuardReadOnlyMode;
+use crate::api::{AppResult, GuardResult};
 use crate::background::actors::BATCH_COORDINATOR;
 use crate::background::batchers::update_tree::UpdateTreeTask;
 use crate::database::ops::tree::TREE;
@@ -43,7 +43,7 @@ pub async fn create_share(
             Ok(link) => {
                 txn.commit().unwrap();
                 Ok(link)
-            },
+            }
             Err(err) => Err(err),
         }
     })
@@ -51,7 +51,10 @@ pub async fn create_share(
     .unwrap()
 }
 
-fn create_and_insert_share(txn: &mut redb::WriteTransaction, create_share: CreateShare) -> AppResult<String> {
+fn create_and_insert_share(
+    txn: &mut redb::WriteTransaction,
+    create_share: CreateShare,
+) -> AppResult<String> {
     // Check if album exists
     let album_table = txn.open_table(META_ALBUM_TABLE)?;
     let album_exists = album_table.get(&*create_share.album_id)?.is_some();
@@ -66,7 +69,7 @@ fn create_and_insert_share(txn: &mut redb::WriteTransaction, create_share: Creat
         .take(64)
         .map(char::from)
         .collect();
-    
+
     let share_id = ArrayString::<64>::from(&link).unwrap();
     let exp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -84,7 +87,10 @@ fn create_and_insert_share(txn: &mut redb::WriteTransaction, create_share: Creat
         exp,
     };
     let encoded = bitcode::encode(&share);
-    share_table.insert((create_share.album_id.as_str(), share_id.as_str()), encoded.as_slice())?;
+    share_table.insert(
+        (create_share.album_id.as_str(), share_id.as_str()),
+        encoded.as_slice(),
+    )?;
 
     Ok(link)
 }
@@ -118,13 +124,18 @@ pub async fn edit_share(
                 exp: json_data.share.exp,
             };
             let encoded = bitcode::encode(&share);
-            share_table.insert((json_data.album_id.as_str(), json_data.share.url.as_str()), encoded.as_slice()).unwrap();
+            share_table
+                .insert(
+                    (json_data.album_id.as_str(), json_data.share.url.as_str()),
+                    encoded.as_slice(),
+                )
+                .unwrap();
         }
         txn.commit().unwrap();
     })
     .await
     .unwrap();
-    // UpdateTreeTask might not be needed if shares are not in the tree anymore, 
+    // UpdateTreeTask might not be needed if shares are not in the tree anymore,
     // but keeping it doesn't hurt if other things changed
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
@@ -152,7 +163,9 @@ pub async fn delete_share(
         let txn = TREE.begin_write().unwrap();
         {
             let mut share_table = txn.open_table(ALBUM_SHARE_TABLE).unwrap();
-            share_table.remove((json_data.album_id.as_str(), json_data.share_id.as_str())).unwrap();
+            share_table
+                .remove((json_data.album_id.as_str(), json_data.share_id.as_str()))
+                .unwrap();
         }
         txn.commit().unwrap();
     })
@@ -166,9 +179,5 @@ pub async fn delete_share(
 }
 
 pub fn generate_share_routes() -> Vec<rocket::Route> {
-    routes![
-        create_share,
-        edit_share,
-        delete_share
-    ]
+    routes![create_share, edit_share, delete_share]
 }

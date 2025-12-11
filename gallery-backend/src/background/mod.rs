@@ -6,11 +6,8 @@
 //! - `tasks`: Task executors organized by stage (actor, batcher)
 //! - `flows`: High-level business flows (index_workflow)
 
-pub mod flows;
-pub mod processors;
 pub mod actors;
 pub mod batchers;
+pub mod flows;
+pub mod processors;
 pub mod types;
-
-// Re-exports for public API
-pub use flows::index_workflow;
