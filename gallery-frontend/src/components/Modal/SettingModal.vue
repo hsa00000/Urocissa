@@ -41,8 +41,29 @@
             </tr>
             <tr>
               <td>
-                <v-chip variant="text"> ViewBar Overlay </v-chip>
+                <div class="d-flex align-center">
+                  <v-chip variant="text" class="pr-2"> ViewBar Overlay </v-chip>
+
+                  <v-tooltip location="top" max-width="300">
+                    <template v-slot:activator="{ props }">
+                      <v-icon
+                        v-bind="props"
+                        icon="mdi-alert-circle-outline"
+                        size="small"
+                        color="medium-emphasis"
+                        style="cursor: help"
+                      ></v-icon>
+                    </template>
+
+                    <span>
+                      <b>When viewing photos:</b><br />
+                      <b>On:</b> The navigation bar overlays the image.<br />
+                      <b>Off:</b> The image is pushed down to prevent obstruction.
+                    </span>
+                  </v-tooltip>
+                </div>
               </td>
+
               <td style="width: 250px">
                 <v-switch
                   :model-value="viewBarOverlayValue"
