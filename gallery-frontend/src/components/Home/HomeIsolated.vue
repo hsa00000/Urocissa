@@ -12,7 +12,8 @@
       v-if="album !== undefined && basicString !== null"
       isolation-id="subId"
       :basic-string="basicString"
-      :search-string="null"
+      :search-string="searchString"
+      :key="searchString?.toString() ?? 'no-search'"
     >
       <template #home-toolbar>
         <HomeIsolatedBar :album="album" />
@@ -26,14 +27,19 @@ import HomeIsolatedBar from '@/components/NavBar/HomeBars/HomeIsolatedBar.vue'
 import { Album } from '@type/types'
 import { computed, onBeforeMount, Ref, ref } from 'vue'
 import { useCollectionStore } from '@/store/collectionStore'
-import { useRoute, useRouter } from 'vue-router'
+import { LocationQueryValue, useRoute, useRouter } from 'vue-router'
 import { useDataStore } from '@/store/dataStore'
+
 const route = useRoute()
 const router = useRouter()
 const dataStore = useDataStore('mainId')
 const album: Ref<Album | undefined> = ref(undefined)
 const basicString: Ref<string | null> = ref(null)
 const collectionStore = useCollectionStore('subId')
+
+const searchString = computed<LocationQueryValue | LocationQueryValue[] | undefined>(
+  () => route.query.asearch
+)
 
 const overlayVisible = computed<boolean>({
   get() {

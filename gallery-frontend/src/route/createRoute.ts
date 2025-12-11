@@ -89,10 +89,12 @@ export function createRoute(baseName: BaseName, component: Component): RouteReco
               level: 3,
               baseName: baseName,
               getParentPage: (route) => {
+                const query = { ...route.query }
+                delete query.asearch
                 return {
                   name: `${baseName}ViewPage`,
                   params: { hash: route.params.hash, subhash: undefined },
-                  query: route.query
+                  query: query
                 }
               },
               getChildPage: (route, subhash) => {
