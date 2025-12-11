@@ -1,6 +1,11 @@
 <template>
   <v-toolbar
-    class="position-absolute my-toolbar"
+    :class="[
+      { 'position-absolute': configStore.viewBarOverlay },
+      { 'my-toolbar': configStore.viewBarOverlay },
+      { 'push-mode': !configStore.viewBarOverlay },
+      { 'bg-surface-light': !configStore.viewBarOverlay }
+    ]"
     :style="{
       paddingTop: '2px'
     }"
@@ -65,18 +70,20 @@ import LeaveView from '@Menu/MenuButton/BtnLeaveView.vue'
 import ShowInfo from '@Menu/MenuButton/BtnShowInfo.vue'
 import { useRoute } from 'vue-router'
 import { useShareStore } from '@/store/shareStore'
+import { useConfigStore } from '@/store/configStore'
 
 const route = useRoute()
-const shareStore = useShareStore('mainId')
-
-const share = shareStore.resolvedShare ?? null
-
-defineProps<{
+const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
   abstractData: AbstractData | undefined
 }>()
+
+const shareStore = useShareStore('mainId')
+const configStore = useConfigStore(props.isolationId)
+
+const share = shareStore.resolvedShare ?? null
 </script>
 <style scoped>
 .my-toolbar {
@@ -87,5 +94,9 @@ defineProps<{
     rgba(0, 0, 0, 0.25) 50%,
     rgba(0, 0, 0, 0) 100%
   );
+}
+
+.my-toolbar.push-mode {
+  position: relative; /* 讓 toolbar 參與排版，會佔據空間 */
 }
 </style>

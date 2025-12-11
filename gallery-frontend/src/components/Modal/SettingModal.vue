@@ -3,13 +3,13 @@
     <v-card class="mx-auto w-100" max-width="400" variant="elevated" retain-focus>
       <v-card-title>Settings</v-card-title>
       <v-card-text class="pa-0">
-        <v-table >
+        <v-table>
           <tbody>
             <tr>
               <td>
                 <v-chip variant="text"> Thumbnail size </v-chip>
               </td>
-              <td style="width: 250px;">
+              <td style="width: 250px">
                 <v-slider
                   show-ticks="always"
                   v-model="subRowHeightScaleValue"
@@ -30,10 +30,23 @@
               <td>
                 <v-chip variant="text"> Show Filename Chip </v-chip>
               </td>
-              <td style="width: 250px;">
+              <td style="width: 250px">
                 <v-switch
                   :model-value="showFilenameChipValue"
                   @update:model-value="onShowFilenameChipUpdate"
+                  :disabled="!initializedStore.initialized"
+                  hide-details
+                ></v-switch>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <v-chip variant="text"> ViewBar Overlay </v-chip>
+              </td>
+              <td style="width: 250px">
+                <v-switch
+                  :model-value="viewBarOverlayValue"
+                  @update:model-value="onViewBarOverlayUpdate"
                   :disabled="!initializedStore.initialized"
                   hide-details
                 ></v-switch>
@@ -55,10 +68,12 @@ import { computed } from 'vue'
 import { useModalStore } from '@/store/modalStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useConstStore } from '@/store/constStore'
+import { useConfigStore } from '@/store/configStore'
 
 const modalStore = useModalStore('mainId')
 const initializedStore = useInitializedStore('mainId')
 const constStore = useConstStore('mainId')
+const configStore = useConfigStore('mainId')
 
 // Read/write computed for subRowHeightScale (source of truth is constStore)
 const subRowHeightScaleValue = computed<number>({
@@ -97,4 +112,18 @@ const onShowFilenameChipUpdate = (newValue: boolean | null) => {
   })
 }
 
+// ViewBar overlay toggle
+const viewBarOverlayValue = computed<boolean>({
+  get: () => configStore.viewBarOverlay,
+  set: (newVal: boolean | null) => {
+    // prefer a simple setter; we use the toggle action if needed
+    // @ts-ignore
+    configStore.viewBarOverlay = newVal ?? configStore.viewBarOverlay
+  }
+})
+
+const onViewBarOverlayUpdate = (newValue: boolean | null) => {
+  // @ts-ignore
+  configStore.viewBarOverlay = newValue ?? configStore.viewBarOverlay
+}
 </script>

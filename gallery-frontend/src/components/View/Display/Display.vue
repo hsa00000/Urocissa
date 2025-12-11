@@ -1,5 +1,12 @@
 <template>
-  <div id="image-display-col" class="h-100 position-relative flex-grow-1 min-w-0 image-col">
+  <div
+    id="image-display-col"
+    class="h-100 position-relative flex-grow-1 min-w-0 image-col d-flex flex-column"
+    :class="{
+      'is-overlay-mode': configStore.viewBarOverlay,
+      'is-push-mode': !configStore.viewBarOverlay
+    }"
+  >
     <!-- Overlay toolbar positioned absolutely within the column scope -->
     <ViewBar
       :abstract-data="abstractData"
@@ -9,6 +16,7 @@
     />
 
     <DisplayMobile
+      class="flex-grow-1 position-relative view-content"
       v-if="configStore.isMobile"
       :isolation-id="isolationId"
       :hash="hash"
@@ -21,6 +29,7 @@
     />
 
     <DisplayDesktop
+      class="flex-grow-1 position-relative view-content"
       v-if="!configStore.isMobile"
       :isolation-id="isolationId"
       :hash="hash"
@@ -232,5 +241,22 @@ onUnmounted(() => {
 #image-display-col {
   container-type: size;
   container-name: image-col;
+}
+
+/* 推擠模式：ViewBar 會佔據空間，內容為相對定位並填滿剩餘空間 */
+.is-push-mode .view-content {
+  position: relative;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+/* 覆蓋模式：ViewBar 為絕對定位，不佔空間，內容則鋪滿容器 */
+.is-overlay-mode .view-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
 }
 </style>
