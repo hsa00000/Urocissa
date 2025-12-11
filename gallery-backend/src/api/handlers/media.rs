@@ -2,13 +2,15 @@ use anyhow::{Context, Result, anyhow};
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use log::{error, info, warn};
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use rocket::{get, post, put};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
 use rocket::form::{Errors, Form, FromForm};
 use rocket::fs::{NamedFile, TempFile};
 use rocket::http::Status;
 use rocket::response::{Redirect, Responder, content};
 use rocket::serde::json::Json;
+use rocket::{get, post, put};
 use rocket_seek_stream::SeekStream;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -22,7 +24,6 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
-use crate::api::{AppResult, GuardResult};
 use crate::api::claims::timestamp::ClaimsTimestamp;
 use crate::api::fairings::guards::auth::GuardAuth;
 use crate::api::fairings::guards::hash::{GuardHash, GuardHashOriginal};
@@ -30,12 +31,15 @@ use crate::api::fairings::guards::readonly::GuardReadOnlyMode;
 use crate::api::fairings::guards::share::GuardShare;
 use crate::api::fairings::guards::timestamp::GuardTimestamp;
 use crate::api::fairings::guards::upload::GuardUpload;
+use crate::api::{AppResult, GuardResult};
 use crate::background::actors::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use crate::background::batchers::flush_query::FlushQuerySnapshotTask;
 use crate::background::batchers::flush_snapshot::FlushTreeSnapshotTask;
 use crate::background::batchers::flush_tree::FlushTreeTask;
 use crate::background::flows::index_workflow;
-use crate::background::processors::image::{generate_dynamic_image, generate_phash, generate_thumbhash};
+use crate::background::processors::image::{
+    generate_dynamic_image, generate_phash, generate_thumbhash,
+};
 use crate::background::processors::transitor::{
     index_to_hash, process_abstract_data_for_response, resolve_show_download_and_metadata,
 };
@@ -43,8 +47,8 @@ use crate::common::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::config::{PUBLIC_CONFIG, PublicConfig};
 use crate::database::ops::snapshot::query::QUERY_SNAPSHOT;
 use crate::database::ops::snapshot::tree::TREE_SNAPSHOT;
-use crate::database::ops::tree::{TREE, VERSION_COUNT_TIMESTAMP};
 use crate::database::ops::tree::tags::TagInfo;
+use crate::database::ops::tree::{TREE, VERSION_COUNT_TIMESTAMP};
 use crate::database::schema::relations::album_share::{AlbumShareTable, ResolvedShare, Share};
 use crate::models::dto::reduced_data::ReducedData;
 use crate::models::entity::abstract_data::{AbstractData, AbstractDataResponse};
@@ -153,7 +157,9 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
         let album_info_list = album_list
             .into_iter()
             .map(|album| {
-                let share_list = all_shares_map.remove(album.object.id.as_str()).unwrap_or_default();
+                let share_list = all_shares_map
+                    .remove(album.object.id.as_str())
+                    .unwrap_or_default();
                 AlbumInfo {
                     album_id: album.object.id.to_string(),
                     album_name: album.metadata.title,
@@ -171,7 +177,8 @@ pub async fn get_all_shares(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<
     let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let txn = TREE.begin_read()?;
-        let shares = AlbumShareTable::get_all_resolved(&txn).context("Failed to read all shares")?;
+        let shares =
+            AlbumShareTable::get_all_resolved(&txn).context("Failed to read all shares")?;
         Ok(Json(shares))
     })
     .await?
@@ -674,24 +681,26 @@ pub async fn prefetch(
     locate: Option<String>,
 ) -> AppResult<Json<PrefetchReturn>> {
     let auth_guard = auth_guard?;
-    // Combine album filter (if any) with the client‑supplied query.
-    let mut combined_expression_option = query_data.map(|wrapper| wrapper.into_inner());
+
+    let client_expr = query_data.map(|wrapper| wrapper.into_inner());
     let resolved_share_option = auth_guard.claims.get_share();
 
-    if let Some(resolved_share) = &resolved_share_option {
-        let album_filter_expression = Expression::Album(resolved_share.album_id);
-
-        combined_expression_option = Some(match combined_expression_option {
-            Some(client_expression) => {
-                Expression::And(vec![album_filter_expression, client_expression])
-            }
-            None => album_filter_expression,
-        });
-    }
+    // Determine the final expression based on user input and share constraints
+    let combined_expression = match (client_expr, &resolved_share_option) {
+        // Visitor with search query -> Enforce Album ID AND Search Query
+        (Some(expr), Some(share)) => Some(Expression::And(vec![
+            Expression::Album(share.album_id),
+            expr,
+        ])),
+        // Visitor without search query -> Enforce Album ID
+        (None, Some(share)) => Some(Expression::Album(share.album_id)),
+        // Owner/Admin -> Use original query (None or Some)
+        (expr, None) => expr,
+    };
 
     // Execute on blocking thread
     let job_handle = tokio::task::spawn_blocking(move || {
-        execute_prefetch_logic(combined_expression_option, locate, resolved_share_option)
+        execute_prefetch_logic(combined_expression, locate, resolved_share_option)
     })
     .await??;
 
