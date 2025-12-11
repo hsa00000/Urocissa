@@ -1,8 +1,8 @@
-use crate::database::ops::tree::TREE;
-use crate::models::entity::abstract_data::AbstractData;
-use crate::background::processors::transitor::get_current_timestamp_u64;
 use crate::background::actors::BATCH_COORDINATOR;
 use crate::background::batchers::expire::UpdateExpireTask;
+use crate::background::processors::transitor::get_current_timestamp_u64;
+use crate::database::ops::tree::TREE;
+use crate::models::entity::abstract_data::AbstractData;
 use anyhow::Result;
 use log::error;
 use mini_executor::BatchTask;
@@ -44,6 +44,25 @@ fn update_tree_task() -> Result<()> {
     let start_time = Instant::now();
 
     let mut abstract_data_vec: Vec<AbstractData> = TREE.load_all_data_from_db()?;
+
+    // Filter EXIF data to only keep allowed keys
+    abstract_data_vec.par_iter_mut().for_each(|data| {
+        match data {
+            AbstractData::Image(image) => {
+                image
+                    .exif_vec
+                    .retain(|k, _| ALLOWED_KEYS.contains(k.as_str()));
+            }
+            AbstractData::Video(video) => {
+                video
+                    .exif_vec
+                    .retain(|k, _| ALLOWED_KEYS.contains(k.as_str()));
+            }
+            AbstractData::Album(_) => {
+                // Albums don't have EXIF data
+            }
+        }
+    });
 
     let album_vec: Vec<AbstractData> = {
         let rows = TREE.read_albums()?;
