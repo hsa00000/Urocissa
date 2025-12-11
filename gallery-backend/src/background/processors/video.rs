@@ -7,24 +7,22 @@
 //! - Width/height calculation with rotation handling
 
 use crate::{
-    common::{
-        SHOULD_SWAP_WIDTH_HEIGHT_ROTATION,
+    background::{
+        actors::index::IndexTask,
+        processors::image::{
+            generate_dynamic_image, generate_dynamic_image_from_path, generate_phash,
+            generate_thumbhash, small_width_height,
+        },
     },
-    models::entity::abstract_data::AbstractData,
     cli::tui::DASHBOARD,
+    common::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION,
     database::schema::{
         image::ImageCombined,
         meta_image::ImageMetadataSchema,
         object::{ObjectSchema, ObjectType},
     },
+    models::entity::abstract_data::AbstractData,
     utils::{compressed_path, imported_path, thumbnail_path},
-    background::{
-        processors::image::{
-            generate_dynamic_image, generate_dynamic_image_from_path, generate_phash,
-            generate_thumbhash, small_width_height,
-        },
-        actors::index::IndexTask,
-    },
 };
 use anyhow::{Context, Result, anyhow};
 use log::info;

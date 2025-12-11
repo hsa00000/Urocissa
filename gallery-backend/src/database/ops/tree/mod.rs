@@ -7,19 +7,21 @@ pub mod tags;
 use anyhow::Result;
 use redb::{Database, ReadableDatabase};
 
-use crate::models::entity::abstract_data::AbstractData;
 use crate::database::schema::album::AlbumCombined;
 use crate::database::schema::image::ImageCombined;
-use crate::database::schema::object::{ObjectSchema, ObjectType, OBJECT_TABLE};
+use crate::database::schema::object::{OBJECT_TABLE, ObjectSchema, ObjectType};
 use crate::database::schema::video::VideoCombined;
-use std::sync::{atomic::AtomicU64, Arc, LazyLock, RwLock};
+use crate::models::entity::abstract_data::AbstractData;
+use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicU64};
 
 use mini_executor::TaskExecutor;
 // 引入 runtime 常數
 use crate::common::{BATCH_RUNTIME, INDEX_RUNTIME};
 
-pub static BATCH_COORDINATOR: LazyLock<TaskExecutor> = LazyLock::new(|| TaskExecutor::new(&BATCH_RUNTIME));
-pub static INDEX_COORDINATOR: LazyLock<TaskExecutor> = LazyLock::new(|| TaskExecutor::new(&INDEX_RUNTIME));
+pub static BATCH_COORDINATOR: LazyLock<TaskExecutor> =
+    LazyLock::new(|| TaskExecutor::new(&BATCH_RUNTIME));
+pub static INDEX_COORDINATOR: LazyLock<TaskExecutor> =
+    LazyLock::new(|| TaskExecutor::new(&INDEX_RUNTIME));
 
 pub struct Tree {
     pub in_disk: Database,
@@ -47,7 +49,7 @@ impl Tree {
         let obj_bytes = obj_table
             .get(id)?
             .ok_or_else(|| anyhow::anyhow!("No data found for id: {}", id))?;
-        
+
         let obj_schema: ObjectSchema = bitcode::decode(obj_bytes.value())?;
 
         match obj_schema.obj_type {

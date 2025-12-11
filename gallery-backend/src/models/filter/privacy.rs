@@ -68,48 +68,61 @@ impl Expression {
                     AbstractData::Album(_) => false,
                 })
             }
-            Expression::Model(_model) => {
-                /* let model_lower = model.to_ascii_lowercase();
+            Expression::Model(model) => {
+                let model_lower = model.to_ascii_lowercase();
                 Box::new(move |data| match data {
-                    AbstractData::DatabaseSchema(db) => db
+                    AbstractData::Image(i) => i
+                        .exif_vec
+                        .get("Model")
+                        .map_or(false, |v| v.to_ascii_lowercase().contains(&model_lower)),
+                    AbstractData::Video(v) => v
                         .exif_vec
                         .get("Model")
                         .map_or(false, |v| v.to_ascii_lowercase().contains(&model_lower)),
                     AbstractData::Album(_) => false,
-                }) */
-                todo!()
+                })
             }
-            Expression::Make(_make) => {
-                /*  let make_lower = make.to_ascii_lowercase();
+            Expression::Make(make) => {
+                let make_lower = make.to_ascii_lowercase();
                 Box::new(move |data| match data {
-                    AbstractData::DatabaseSchema(db) => db
+                    AbstractData::Image(i) => i
+                        .exif_vec
+                        .get("Make")
+                        .map_or(false, |v| v.to_ascii_lowercase().contains(&make_lower)),
+                    AbstractData::Video(v) => v
                         .exif_vec
                         .get("Make")
                         .map_or(false, |v| v.to_ascii_lowercase().contains(&make_lower)),
                     AbstractData::Album(_) => false,
-                }) */
-                todo!()
+                })
             }
 
             /* ---------- Any: removes tag / alias / album / path matching ---------- */
-            Expression::Any(_identifier) => {
-                /*  let any_lower = identifier.to_ascii_lowercase();
+            Expression::Any(identifier) => {
+                let any_lower = identifier.to_ascii_lowercase();
                 Box::new(move |data| match data {
-                    AbstractData::DatabaseSchema(db) => {
-                        db.ext_type.contains(&identifier)
-                            || db.ext.to_ascii_lowercase().contains(&any_lower)
-                            || db
-                                .exif_vec
+                    AbstractData::Image(i) => {
+                        "image".contains(&any_lower)
+                            || i.metadata.ext.to_ascii_lowercase().contains(&any_lower)
+                            || i.exif_vec
                                 .get("Make")
                                 .map_or(false, |v| v.to_ascii_lowercase().contains(&any_lower))
-                            || db
-                                .exif_vec
+                            || i.exif_vec
+                                .get("Model")
+                                .map_or(false, |v| v.to_ascii_lowercase().contains(&any_lower))
+                    }
+                    AbstractData::Video(v) => {
+                        "video".contains(&any_lower)
+                            || v.metadata.ext.to_ascii_lowercase().contains(&any_lower)
+                            || v.exif_vec
+                                .get("Make")
+                                .map_or(false, |v| v.to_ascii_lowercase().contains(&any_lower))
+                            || v.exif_vec
                                 .get("Model")
                                 .map_or(false, |v| v.to_ascii_lowercase().contains(&any_lower))
                     }
                     AbstractData::Album(_) => false,
-                }) */
-                todo!()
+                })
             }
         }
     }

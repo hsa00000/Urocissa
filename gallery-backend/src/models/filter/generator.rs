@@ -53,32 +53,42 @@ impl Expression {
                     AbstractData::Album(_) => false,
                 })
             }
-            Expression::Model(_model) => {
-                /*  let model_lower = model.to_ascii_lowercase();
+            Expression::Model(model) => {
+                let model_lower = model.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::DatabaseSchema(db) => {
-                        db.exif_vec.get("Model").map_or(false, |model_of_exif| {
-                            model_of_exif.to_ascii_lowercase().contains(&model_lower)
-                        })
-                    }
+                    AbstractData::Image(image) => image
+                        .exif_vec
+                        .get("Model")
+                        .map_or(false, |v| v.to_ascii_lowercase().contains(&model_lower)),
+                    AbstractData::Video(video) => video
+                        .exif_vec
+                        .get("Model")
+                        .map_or(false, |v| v.to_ascii_lowercase().contains(&model_lower)),
                     AbstractData::Album(_) => false,
-                }) */
-                todo!()
+                })
             }
-            Expression::Make(_make) => {
-                /*  let make_lower = make.to_ascii_lowercase();
+            Expression::Make(make) => {
+                let make_lower = make.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::DatabaseSchema(db) => {
-                        db.exif_vec.get("Make").map_or(false, |make_of_exif| {
-                            make_of_exif.to_ascii_lowercase().contains(&make_lower)
-                        })
-                    }
+                    AbstractData::Image(image) => image
+                        .exif_vec
+                        .get("Make")
+                        .map_or(false, |v| v.to_ascii_lowercase().contains(&make_lower)),
+                    AbstractData::Video(video) => video
+                        .exif_vec
+                        .get("Make")
+                        .map_or(false, |v| v.to_ascii_lowercase().contains(&make_lower)),
                     AbstractData::Album(_) => false,
-                }) */
-                todo!()
+                })
             }
-            Expression::Path(_path) => {
-                todo!()
+            Expression::Path(path) => {
+                let path_lower = path.to_ascii_lowercase();
+                Box::new(move |abstract_data: &AbstractData| {
+                    // alias() 會去查資料庫，可能較慢，但在 Path 搜尋中是必須的
+                    abstract_data.alias().iter().any(|file_modify| {
+                        file_modify.file.to_ascii_lowercase().contains(&path_lower)
+                    })
+                })
             }
             Expression::Album(album_id) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
@@ -87,27 +97,44 @@ impl Expression {
                     AbstractData::Album(_) => false,
                 })
             }
-            Expression::Any(_any_identifier) => {
-                /*  let any_lower = any_identifier.to_ascii_lowercase();
+            Expression::Any(any_identifier) => {
+                let any_lower = any_identifier.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::DatabaseSchema(db) => {
-                        false
-                            || db.ext_type.contains(&any_identifier)
-                            || db.ext.to_ascii_lowercase().contains(&any_lower)
-                            || db.exif_vec.get("Make").map_or(false, |make_of_exif| {
-                                make_of_exif.to_ascii_lowercase().contains(&any_lower)
+                    AbstractData::Image(image) => {
+                        image.object.tags.contains(&any_identifier)
+                            || "image".contains(&any_lower)
+                            || image.metadata.ext.to_ascii_lowercase().contains(&any_lower)
+                            || image.exif_vec.get("Make").map_or(false, |v| {
+                                v.to_ascii_lowercase().contains(&any_lower)
                             })
-                            || db.exif_vec.get("Model").map_or(false, |model_of_exif| {
-                                model_of_exif.to_ascii_lowercase().contains(&any_lower)
+                            || image.exif_vec.get("Model").map_or(false, |v| {
+                                v.to_ascii_lowercase().contains(&any_lower)
                             })
-                            || false
+                            // 將 alias 檢查放在最後，因為需要讀取資料庫
+                            || abstract_data.alias().iter().any(|file_modify| {
+                                file_modify.file.to_ascii_lowercase().contains(&any_lower)
+                            })
+                    }
+                    AbstractData::Video(video) => {
+                        video.object.tags.contains(&any_identifier)
+                            || "video".contains(&any_lower)
+                            || video.metadata.ext.to_ascii_lowercase().contains(&any_lower)
+                            || video
+                                .exif_vec
+                                .get("Make")
+                                .map_or(false, |v| v.to_ascii_lowercase().contains(&any_lower))
+                            || video
+                                .exif_vec
+                                .get("Model")
+                                .map_or(false, |v| v.to_ascii_lowercase().contains(&any_lower))
+                            || abstract_data.alias().iter().any(|file_modify| {
+                                file_modify.file.to_ascii_lowercase().contains(&any_lower)
+                            })
                     }
                     AbstractData::Album(album) => {
-                        album.tag.contains(&any_identifier)
-                            || "album".to_ascii_lowercase().contains(&any_lower)
+                        album.object.tags.contains(&any_identifier) || "album".contains(&any_lower)
                     }
-                }) */
-                todo!()
+                })
             }
         }
     }
