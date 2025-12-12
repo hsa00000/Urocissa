@@ -29,6 +29,11 @@ axios.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (typeof shareStore.albumId === 'string' && typeof shareStore.shareId === 'string') {
     config.headers.set('x-album-id', shareStore.albumId)
     config.headers.set('x-share-id', shareStore.shareId)
+
+    // Add password header if it exists
+    if (shareStore.password) {
+      config.headers.set('x-share-password', shareStore.password)
+    }
   }
 
   return config
@@ -39,6 +44,15 @@ axios.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     if (error.response?.status === 401) {
+      const shareStore = useShareStore('mainId')
+
+      // Check if this is a share context (albumId/shareId are present)
+      // This prevents redirecting to admin login when trying to access a locked share
+      if (shareStore.albumId && shareStore.shareId) {
+        shareStore.isAuthFailed = true
+        return Promise.reject(error)
+      }
+
       const redirectionStore = useRedirectionStore('mainId')
       await redirectionStore.redirectionToLogin()
     }

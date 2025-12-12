@@ -167,6 +167,7 @@ async function checkAndFetch(index: number): Promise<boolean> {
     devicePixelRatio: window.devicePixelRatio,
     albumId: shareStore.albumId,
     shareId: shareStore.shareId,
+    password: shareStore.password,
     timestampToken,
     hashToken
   })

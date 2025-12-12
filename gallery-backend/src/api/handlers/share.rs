@@ -5,7 +5,6 @@ use redb::ReadableTable;
 use rocket::serde::json::Json;
 use rocket::{post, put};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::api::fairings::guards::auth::GuardAuth;
 use crate::api::fairings::guards::readonly::GuardReadOnlyMode;
@@ -71,10 +70,8 @@ fn create_and_insert_share(
         .collect();
 
     let share_id = ArrayString::<64>::from(&link).unwrap();
-    let exp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+
+    let exp = create_share.exp;
 
     let mut share_table = txn.open_table(ALBUM_SHARE_TABLE)?;
     let share = Share {

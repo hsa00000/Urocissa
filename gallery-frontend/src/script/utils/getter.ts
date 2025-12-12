@@ -1,6 +1,7 @@
 import { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { inject } from 'vue'
 import { useDataStore } from '@/store/dataStore'
+import { useShareStore } from '@/store/shareStore'
 import { escapeAndWrap } from '@utils/escape'
 import type { UnifiedData } from '@/type/types'
 
@@ -143,6 +144,17 @@ export function getSrc(
   if (shareContext?.albumId && shareContext?.shareId) {
     params.append('albumId', shareContext.albumId)
     params.append('shareId', shareContext.shareId)
+
+    // Append password if it exists in the store for this share context
+
+    const shareStore = useShareStore('mainId')
+    if (
+      shareStore.password &&
+      shareStore.albumId === shareContext.albumId &&
+      shareStore.shareId === shareContext.shareId
+    ) {
+      params.append('password', shareStore.password)
+    }
   }
 
   if (token) {
@@ -167,6 +179,17 @@ export function getSrcOriginal(
   if (shareContext?.albumId && shareContext?.shareId) {
     params.append('albumId', shareContext.albumId)
     params.append('shareId', shareContext.shareId)
+
+    // Append password if it exists in the store for this share context
+
+    const shareStore = useShareStore('mainId')
+    if (
+      shareStore.password &&
+      shareStore.albumId === shareContext.albumId &&
+      shareStore.shareId === shareContext.shareId
+    ) {
+      params.append('password', shareStore.password)
+    }
   }
 
   if (token) {

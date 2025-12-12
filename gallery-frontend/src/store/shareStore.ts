@@ -8,12 +8,16 @@ export const useShareStore = (isolationId: IsolationId) =>
     state: (): {
       albumId: null | string
       shareId: null | string
+      password: null | string
+      isAuthFailed: boolean
       resolvedShare: null | ResolvedShare
       allShares: ResolvedShare[]
       fetched: boolean
     } => ({
       albumId: null,
       shareId: null,
+      password: null,
+      isAuthFailed: false,
       resolvedShare: null,
       allShares: [],
       fetched: false

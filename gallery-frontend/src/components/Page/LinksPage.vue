@@ -5,7 +5,6 @@
         v-if="modalStore.showEditShareModal && currentEditShareData"
         :edit-share-data="currentEditShareData"
       />
-
       <ShareDeleteConfirmModal
         v-if="modalStore.showDeleteShareModal && currentDeleteShareData"
         :delete-share-data="currentDeleteShareData"
@@ -24,16 +23,14 @@
                 :headers="headers"
                 :items="tableItems"
                 :group-by="[{ key: 'albumId' }]"
-                item-value="url"
+                item-value="share.url"
                 :items-per-page="-1"
                 :sort-by="[{ key: 'share.url', order: 'asc' }]"
               >
-                <!-- Link -->
                 <template #[`item.share.url`]="{ item }">
                   {{ item.share.url }}
                 </template>
 
-                <!-- Description with tooltip -->
                 <template #[`item.share.description`]="{ item }">
                   <v-tooltip location="top" :open-on-click="true">
                     <template #activator="{ props }">
@@ -45,17 +42,32 @@
                   </v-tooltip>
                 </template>
 
-                <!-- Allow Download -->
+                <template #[`item.share.password`]="{ item }">
+                  <v-chip
+                    size="x-small"
+                    :color="item.share.password ? 'red' : 'green'"
+                    variant="flat"
+                  >
+                    {{ item.share.password ? 'Locked' : 'Open' }}
+                  </v-chip>
+                </template>
+
+                <template #[`item.share.exp`]="{ item }">
+                  <span class="text-caption">
+                    {{ formatExpiry(item.share.exp) }}
+                  </span>
+                </template>
+
                 <template #[`item.share.showDownload`]="{ item }">
                   {{ item.share.showDownload }}
                 </template>
-
-                <!-- Allow Upload -->
                 <template #[`item.share.showUpload`]="{ item }">
                   {{ item.share.showUpload }}
                 </template>
+                <template #[`item.share.showMetadata`]="{ item }">
+                  {{ item.share.showMetadata }}
+                </template>
 
-                <!-- Actions -->
                 <template #[`item.actions`]="{ item }">
                   <div class="d-flex flex-row justify-center ga-1">
                     <v-btn
@@ -87,7 +99,6 @@
                   </div>
                 </template>
 
-                <!-- Group header -->
                 <template #group-header="{ item, columns, toggleGroup, isGroupOpen }">
                   <tr>
                     <td :colspan="columns.length">
@@ -101,7 +112,7 @@
                           @click="toggleGroup(item)"
                         />
                         <span class="ms-4 font-weight-bold">
-                          {{ item.items[0]?.displayName }}
+                          {{ getGroupDisplayName(item) }}
                         </span>
                         <v-btn
                           icon="mdi-open-in-new"
@@ -126,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import EditShareModal from '@/components/Modal/EditShareModal.vue'
 import ShareDeleteConfirmModal from '@/components/Modal/ShareDeleteConfirmModal.vue'
@@ -136,20 +147,23 @@ import { useShareStore } from '@/store/shareStore'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import type { EditShareData } from '@/type/types'
-// import { ShareSchema } from '@/type/schemas'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 
+// --- Stores ---
 const initializedStore = useInitializedStore('mainId')
 const shareStore = useShareStore('mainId')
 const modalStore = useModalStore('mainId')
 const messageStore = useMessageStore('mainId')
 
+// --- Utils ---
 const locationOrigin = window.location.origin
 const { copy } = useClipboard()
 
+// --- State ---
 const currentEditShareData = ref<EditShareData | null>(null)
 const currentDeleteShareData = ref<EditShareData | null>(null)
 
+// --- Constants ---
 const headers = [
   { title: 'Link', key: 'share.url' },
   {
@@ -159,21 +173,16 @@ const headers = [
     maxWidth: '200px',
     nowrap: true
   },
-  {
-    title: 'Allow Download',
-    key: 'share.showDownload'
-  },
-  {
-    title: 'Allow Upload',
-    key: 'share.showUpload'
-  },
-  {
-    title: 'Show Metadata',
-    key: 'share.showMetadata'
-  },
+  { title: 'Locked', key: 'share.password' },
+  { title: 'Expires', key: 'share.exp', width: '180px' },
+  { title: 'Allow Download', key: 'share.showDownload' },
+  { title: 'Allow Upload', key: 'share.showUpload' },
+  { title: 'Show Metadata', key: 'share.showMetadata' },
   { title: 'Actions', key: 'actions', sortable: false }
 ]
 
+// --- Computed ---
+// 這裡負責資料轉換，將 Store 資料轉為 UI 需要的形狀
 const tableItems = computed<EditShareData[]>(() => {
   return shareStore.allShares.map((s) => ({
     albumId: s.albumId,
@@ -181,6 +190,28 @@ const tableItems = computed<EditShareData[]>(() => {
     share: s
   }))
 })
+
+// --- Helper Functions (運算邏輯封裝) ---
+
+/**
+ * 從 Vuetify 的 Group Item 中提取顯示名稱。
+ * 封裝了 .raw 的存取邏輯，避免 Template 變得混亂。
+ */
+function getGroupDisplayName(groupItem: any): string {
+  // 嘗試從群組的第一個項目中獲取原始資料 (raw)
+  // 如果結構改變或取不到，則回傳 'Untitled'
+  return groupItem.items?.[0]?.raw?.displayName || 'Untitled'
+}
+
+/**
+ * 格式化過期時間
+ */
+function formatExpiry(exp: number): string {
+  if (exp === 0) return 'Never'
+  return new Date(exp * 1000).toLocaleString()
+}
+
+// --- Actions ---
 
 function clickEditShare(data: EditShareData) {
   currentEditShareData.value = data
@@ -197,27 +228,22 @@ async function performCopy(item: EditShareData) {
   messageStore.success('Share URL copied to clipboard.')
 }
 
-watch(
-  () => initializedStore.initialized,
-  () => {
-    if (initializedStore.initialized) {
-      /* layout hook */
-    }
-  }
-)
+// --- Lifecycle ---
 
 onMounted(async () => {
-  if (!shareStore.fetched) await shareStore.fetchAllShares()
+  // 如果尚未獲取，則執行獲取
+  if (!shareStore.fetched) {
+    await shareStore.fetchAllShares()
+  }
+
   initializedStore.initialized = true
   await nextTick()
 
-  /* auto-expand all groups */
+  // 自動展開所有群組
   const groupButtons = Array.from(document.querySelectorAll('button.v-btn')).filter((btn) =>
     btn.querySelector('.mdi-chevron-right')
   ) as HTMLButtonElement[]
-  groupButtons.forEach((btn) => {
-    btn.click()
-  })
+  groupButtons.forEach((btn) => btn.click())
 })
 
 onBeforeUnmount(() => {

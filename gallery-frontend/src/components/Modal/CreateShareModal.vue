@@ -25,7 +25,7 @@
           ></v-textarea>
         </v-list-item>
 
-        <v-list-item v-if="false" density="compact" slim>
+        <v-list-item density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
               <v-switch
@@ -38,7 +38,7 @@
           </template>
         </v-list-item>
 
-        <v-list-item v-if="false" density="compact" slim>
+        <v-list-item density="compact" slim>
           <v-text-field
             v-model="password"
             label="Password"
@@ -87,7 +87,7 @@
           </template>
         </v-list-item>
 
-        <v-list-item v-if="false" density="compact" slim>
+        <v-list-item density="compact" slim>
           <template #prepend>
             <v-list-item-action start>
               <v-switch
@@ -100,7 +100,7 @@
           </template>
         </v-list-item>
 
-        <v-list-item v-if="false" density="compact" slim>
+        <v-list-item density="compact" slim>
           <v-select
             v-model="exp"
             :items="DURATIONS"
@@ -175,6 +175,12 @@ watchEffect(() => {
 })
 
 const createLink = async () => {
+  // 計算過期時間戳 (Timestamp in seconds)
+  // 如果啟用過期且有選擇時間，則當前時間 + 分鐘數 * 60
+  // 否則為 0 (永不過期)
+  const expirationTimestamp =
+    expireEnabled.value && exp.value ? Math.floor(Date.now() / 1000) + exp.value * 60 : 0
+
   const result = await axios.post<string>('/post/create_share', {
     albumId: props.albumId,
     description: description.value,
@@ -182,7 +188,7 @@ const createLink = async () => {
     showMetadata: showMetadata.value,
     showDownload: showDownload.value,
     showUpload: showUpload.value,
-    exp: exp.value ?? 0
+    exp: expirationTimestamp
   })
   shareLink.value = `${window.location.origin}/share/${props.albumId}-${result.data}`
   console.log('shareLink is', shareLink)

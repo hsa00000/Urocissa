@@ -133,6 +133,8 @@ async function checkAndFetch(
     return
   }
 
+  const password = shareStore.password
+
   if (abstractData.data.type === 'image' || abstractData.data.type === 'video') {
     const hash = abstractData.data.id
     await tokenStore.refreshHashTokenIfExpired(hash)
@@ -149,6 +151,7 @@ async function checkAndFetch(
       devicePixelRatio: window.devicePixelRatio,
       albumId: shareStore.albumId,
       shareId: shareStore.shareId,
+      password,
       timestampToken,
       hashToken
     })
@@ -169,6 +172,7 @@ async function checkAndFetch(
       albumMode: true,
       albumId: shareStore.albumId,
       shareId: shareStore.shareId,
+      password,
       timestampToken,
       hashToken
     })
