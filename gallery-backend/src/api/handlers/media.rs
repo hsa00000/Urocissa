@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use log::{error, info, warn};
@@ -769,7 +769,12 @@ pub async fn upload(
         let filename = get_filename(file);
         let extension = get_extension(file)?;
 
-        warn!(duration = &*format!("{:?}", start_time.elapsed()); "Get filename and extension");
+        warn!(duration = &*format!("{:?}", start_time.elapsed());
+            "Get file '{}.{}'",
+            filename,
+            extension,
+        );
+
         if VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
             || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str())
         {
@@ -814,8 +819,19 @@ fn set_last_modified_time(path: impl AsRef<Path>, last_modified_time: u64) -> Re
 }
 
 fn get_extension(file: &TempFile<'_>) -> Result<String> {
-    let filename = get_filename(file);
-    Ok(Path::new(&filename).ext_lower())
+    match file.content_type() {
+        Some(ct) => match ct.extension() {
+            Some(ext) => Ok(ext.as_str().to_lowercase()),
+            None => {
+                error!("Failed to extract file extension.");
+                bail!("Failed to extract file extension.")
+            }
+        },
+        None => {
+            error!("Failed to get content type.");
+            bail!("Failed to get content type.")
+        }
+    }
 }
 
 #[derive(FromForm, Debug)]
