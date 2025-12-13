@@ -35,7 +35,7 @@
         multiple
         item-title="tag"
         item-value="tag"
-        :items="commonTags"
+        :items="allTags"
         variant="outlined"
         density="comfortable"
         hide-details="auto"
