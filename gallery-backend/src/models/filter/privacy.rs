@@ -50,6 +50,11 @@ impl Expression {
             /* ---------- Supplementary conditions that must be invalid ---------- */
             Expression::Tag(_) | Expression::Path(_) => Box::new(|_| false),
 
+            /* ---------- Favorite/Archived/Trashed conditions must be invalid in share mode ---------- */
+            Expression::Favorite(_) | Expression::Archived(_) | Expression::Trashed(_) => {
+                Box::new(|_| false)
+            }
+
             /* ---------- Still allowed embedded / file-related conditions ---------- */
             Expression::ExtType(ext_type) => Box::new(move |data| match data {
                 AbstractData::Image(_) => ext_type.contains("image"),

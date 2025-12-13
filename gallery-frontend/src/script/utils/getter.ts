@@ -85,32 +85,20 @@ export async function searchByTag(tag: string, router: Router) {
   const { meta, params } = router.currentRoute.value
   const searchQuery = { search: `tag:${escapeAndWrap(tag)}` }
 
-  switch (tag) {
-    case '_favorite':
-      await router.push({ name: 'favorite' })
-      return
-    case '_archived':
-      await router.push({ name: 'archived' })
-      return
-    case '_trashed':
-      await router.push({ name: 'trashed' })
-      return
-    default:
-      // if the current baseName is 'share', navigate back to the share root page ──
-      if (meta.baseName === 'share') {
-        const albumId = params.albumId as string
-        const shareId = params.shareId as string
-        await router.push({
-          name: 'share',
-          params: { albumId, shareId }, // Reconstruct /share/:albumId-:shareId
-          query: searchQuery
-        })
-      } else {
-        await router.push({
-          name: 'all',
-          query: searchQuery
-        })
-      }
+  // if the current baseName is 'share', navigate back to the share root page ──
+  if (meta.baseName === 'share') {
+    const albumId = params.albumId as string
+    const shareId = params.shareId as string
+    await router.push({
+      name: 'share',
+      params: { albumId, shareId }, // Reconstruct /share/:albumId-:shareId
+      query: searchQuery
+    })
+  } else {
+    await router.push({
+      name: 'all',
+      query: searchQuery
+    })
   }
 }
 

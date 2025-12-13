@@ -16,22 +16,33 @@ export interface EditAlbumsPayload {
   timestamp: number
 }
 
+export interface EditStatusPayload {
+  indexArray: number[]
+  timestamp: number
+  isFavorite?: boolean
+  isArchived?: boolean
+  isTrashed?: boolean
+}
+
 export const useOptimisticStore = (isolationId: IsolationId) =>
   defineStore('optimisticUpdateStore' + isolationId, {
     state: (): {
       backupData: Map<number, AbstractData> // dataIndex -> data
       queueTagsUpdate: EditTagsPayload[]
       queueAlbumsUpdate: EditAlbumsPayload[]
+      queueStatusUpdate: EditStatusPayload[]
     } => ({
       backupData: new Map(),
       queueTagsUpdate: [],
-      queueAlbumsUpdate: []
+      queueAlbumsUpdate: [],
+      queueStatusUpdate: []
     }),
     actions: {
       clearAll() {
         this.backupData.clear()
         this.queueTagsUpdate = []
         this.queueAlbumsUpdate = []
+        this.queueStatusUpdate = []
       },
       optimisticUpdateTags(payload: EditTagsPayload, pushIntoQueue: boolean) {
         const dataStore = useDataStore(isolationId)
@@ -82,6 +93,31 @@ export const useOptimisticStore = (isolationId: IsolationId) =>
         this.queueAlbumsUpdate.forEach((payload) => {
           this.optimisticUpdateAlbums(payload, false)
         })
+        this.queueStatusUpdate.forEach((payload) => {
+          this.optimisticUpdateStatus(payload, false)
+        })
+      },
+      optimisticUpdateStatus(payload: EditStatusPayload, pushIntoQueue: boolean = true) {
+        const dataStore = useDataStore(isolationId)
+        const pendingIndexes: number[] = []
+
+        for (const index of payload.indexArray) {
+          const result = dataStore.setStatus(index, {
+            isFavorite: payload.isFavorite,
+            isArchived: payload.isArchived,
+            isTrashed: payload.isTrashed
+          })
+          if (!result) {
+            pendingIndexes.push(index)
+          }
+        }
+
+        if (pushIntoQueue && pendingIndexes.length > 0) {
+          this.queueStatusUpdate.push({
+            ...payload,
+            indexArray: pendingIndexes
+          })
+        }
       }
     }
   })()

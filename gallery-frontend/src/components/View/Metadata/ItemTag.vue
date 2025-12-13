@@ -2,18 +2,18 @@
   <v-list-item>
     <template #prepend>
       <v-avatar>
-        <v-icon >mdi-tag</v-icon>
+        <v-icon>mdi-tag</v-icon>
       </v-avatar>
     </template>
     <v-list-item-title v-if="route.meta.baseName !== 'share'">
       <v-chip
-        v-if="tags.includes('_favorite')"
+        v-if="database?.data.isFavorite"
         prepend-icon="mdi-star"
         color="warning"
         variant="tonal"
         class="ma-1"
         link
-        @click="quickRemoveTags('_favorite', [index], isolationId)"
+        @click="setFavorite([index], false, isolationId)"
         >favorite</v-chip
       >
       <v-chip
@@ -23,17 +23,17 @@
         variant="tonal"
         class="ma-1"
         link
-        @click="quickAddTags('_favorite', [index], isolationId)"
+        @click="setFavorite([index], true, isolationId)"
         >favorite</v-chip
       >
       <v-chip
-        v-if="tags.includes('_archived')"
+        v-if="database?.data.isArchived"
         prepend-icon="mdi-archive-arrow-down"
         color="primary"
         variant="tonal"
         class="ma-1"
         link
-        @click="quickRemoveTags('_archived', [index], isolationId)"
+        @click="setArchived([index], false, isolationId)"
         >archived</v-chip
       >
       <v-chip
@@ -43,7 +43,7 @@
         variant="tonal"
         class="ma-1"
         link
-        @click="quickAddTags('_archived', [index], isolationId)"
+        @click="setArchived([index], true, isolationId)"
         >archived</v-chip
       >
     </v-list-item-title>
@@ -80,7 +80,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { IsolationId } from '@type/types'
 import { searchByTag } from '@utils/getter'
-import { quickRemoveTags, quickAddTags } from '@utils/quickEditTags'
+import { setFavorite, setArchived } from '@/api/editStatus'
+import { useDataStore } from '@/store/dataStore'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -91,14 +92,16 @@ const props = defineProps<{
 const modalStore = useModalStore('mainId')
 const route = useRoute()
 const router = useRouter()
+const dataStore = useDataStore(props.isolationId)
 
-// Computed Properties
+// Fix: 根據錯誤訊息，store 中的資料結構已經改變，直接獲取即可，不需要再存取 .database
+const database = computed(() => dataStore.data.get(props.index))
+
 const filteredTags = computed(() => {
-  return props.tags.filter(
-    (tag) => tag !== '_favorite' && tag !== '_archived' && tag !== '_trashed'
-  )
+  return props.tags
 })
 
+// Fix: 恢復被刪除的函數，供 Template 中的 @click 使用
 function openEditTagsModal() {
   modalStore.showEditTagsModal = true
 }

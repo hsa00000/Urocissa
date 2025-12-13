@@ -16,4 +16,7 @@ pub enum Expression {
     Path(String),
     Album(ArrayString<64>),
     Any(String),
+    Favorite(bool),
+    Archived(bool),
+    Trashed(bool),
 }

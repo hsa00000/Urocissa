@@ -72,6 +72,9 @@ fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
         thumbhash: video_combined.object.thumbhash,
         description: video_combined.object.description,
         tags,
+        is_favorite: video_combined.object.is_favorite,
+        is_archived: video_combined.object.is_archived,
+        is_trashed: video_combined.object.is_trashed,
     };
 
     let metadata = ImageMetadataSchema {

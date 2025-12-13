@@ -73,7 +73,7 @@ onBeforeMount(() => {
   }
   const album_id = route.params.hash
   if (typeof album_id === 'string') {
-    basicString.value = `and(album:"${album_id}", not(tag:"_trashed"))`
+    basicString.value = `and(album:"${album_id}", not(trashed:true))`
   }
 })
 </script>

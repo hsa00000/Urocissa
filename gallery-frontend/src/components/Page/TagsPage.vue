@@ -60,16 +60,7 @@ const updateDynamicWidth = () => {
 }
 
 function displayTagName(tagName: string): string {
-  switch (tagName) {
-    case '_archived':
-      return 'archived'
-    case '_favorite':
-      return 'favorite'
-    case '_trashed':
-      return 'trashed'
-    default:
-      return tagName
-  }
+  return tagName
 }
 
 watch(

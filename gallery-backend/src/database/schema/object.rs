@@ -10,7 +10,9 @@ use crate::common::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 // Key: ID, Value: Serialized ObjectSchema
 pub const OBJECT_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("object");
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bitcode::Encode, bitcode::Decode)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bitcode::Encode, bitcode::Decode,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum ObjectType {
     Image,
@@ -63,6 +65,12 @@ pub struct ObjectSchema {
     pub thumbhash: Option<Vec<u8>>,
     pub description: Option<String>,
     pub tags: HashSet<String>,
+    #[serde(default)]
+    pub is_favorite: bool,
+    #[serde(default)]
+    pub is_archived: bool,
+    #[serde(default)]
+    pub is_trashed: bool,
 }
 
 impl ObjectSchema {
@@ -80,6 +88,9 @@ impl ObjectSchema {
             thumbhash: None,
             description: None,
             tags: HashSet::new(),
+            is_favorite: false,
+            is_archived: false,
+            is_trashed: false,
         }
     }
 }

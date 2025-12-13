@@ -26,7 +26,7 @@ const props = defineProps<{
   album: Album
 }>()
 
-const basicString = `and(not(type:"album"), not(tag:"_trashed"), not(album:"${props.album.id}"))`
+const basicString = `and(not(type:"album"), not(trashed:true), not(album:"${props.album.id}"))`
 onBeforeRouteLeave(() => {
   // 如果 overlay 正在顯示，就先關掉並阻止這次導航
   if (modalStore.showHomeTempModal) {

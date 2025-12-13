@@ -2,16 +2,16 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use log::{error, info};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use rocket::{get, post, put};
 use rocket::http::Status;
 use rocket::serde::json::Json;
+use rocket::{get, post, put};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 
-use crate::api::{AppResult, GuardResult};
 use crate::api::fairings::guards::auth::GuardAuth;
 use crate::api::fairings::guards::readonly::GuardReadOnlyMode;
+use crate::api::{AppResult, GuardResult};
 use crate::background::actors::BATCH_COORDINATOR;
 use crate::background::actors::indexer::IndexTask;
 use crate::background::batchers::flush_tree::{FlushOperation, FlushTreeTask};
@@ -38,6 +38,89 @@ pub struct EditTagsData {
     remove_tags_array: Vec<String>,
     timestamp: u128,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditStatusData {
+    index_array: Vec<usize>,
+    timestamp: u128,
+    #[serde(default)]
+    is_favorite: Option<bool>,
+    #[serde(default)]
+    is_archived: Option<bool>,
+    #[serde(default)]
+    is_trashed: Option<bool>,
+}
+
+#[put("/put/edit_status", format = "json", data = "<json_data>")]
+pub async fn edit_status(
+    auth: GuardResult<GuardAuth>,
+    read_only_mode: Result<GuardReadOnlyMode>,
+    json_data: Json<EditStatusData>,
+) -> AppResult<()> {
+    let _ = auth?;
+    let _ = read_only_mode?;
+    let flush_ops = tokio::task::spawn_blocking(move || -> Result<Vec<FlushOperation>> {
+        let tree_snapshot = TREE_SNAPSHOT
+            .read_tree_snapshot(&json_data.timestamp)
+            .unwrap();
+
+        let mut flush_ops = Vec::new();
+        for &index in &json_data.index_array {
+            let hash = index_to_hash(&tree_snapshot, index)?;
+            let mut abstract_data = TREE.load_from_db(&hash)?;
+
+            let object = match &mut abstract_data {
+                AbstractData::Image(i) => &mut i.object,
+                AbstractData::Video(v) => &mut v.object,
+                AbstractData::Album(a) => &mut a.object,
+            };
+
+            let mut modified = false;
+            if let Some(value) = json_data.is_favorite {
+                if object.is_favorite != value {
+                    object.is_favorite = value;
+                    modified = true;
+                }
+            }
+            if let Some(value) = json_data.is_archived {
+                if object.is_archived != value {
+                    object.is_archived = value;
+                    modified = true;
+                }
+            }
+            if let Some(value) = json_data.is_trashed {
+                if object.is_trashed != value {
+                    object.is_trashed = value;
+                    modified = true;
+                }
+            }
+
+            if modified {
+                flush_ops.push(FlushOperation::InsertAbstractData(abstract_data));
+            }
+        }
+
+        Ok(flush_ops)
+    })
+    .await
+    .unwrap()?;
+
+    BATCH_COORDINATOR
+        .execute_batch_waiting(FlushTreeTask {
+            operations: flush_ops,
+        })
+        .await
+        .unwrap();
+
+    BATCH_COORDINATOR
+        .execute_batch_waiting(UpdateTreeTask)
+        .await
+        .unwrap();
+
+    Ok(())
+}
+
 #[put("/put/edit_tag", format = "json", data = "<json_data>")]
 pub async fn edit_tag(
     auth: GuardResult<GuardAuth>,
@@ -54,54 +137,25 @@ pub async fn edit_tag(
         let mut flush_ops = Vec::new();
         for &index in &json_data.index_array {
             let hash = index_to_hash(&tree_snapshot, index)?;
-            let mut abstract_data = TREE.load_from_db(&hash)?;
+            let abstract_data = TREE.load_from_db(&hash)?;
 
-            match &mut abstract_data {
-                AbstractData::Image(i) => {
-                    // 圖片的 tag 通過關聯表處理
-                    for tag in &json_data.add_tags_array {
-                        flush_ops.push(FlushOperation::InsertTag(TagDatabaseSchema {
-                            hash: i.object.id.to_string(),
-                            tag: tag.clone(),
-                        }));
-                    }
-                    for tag in &json_data.remove_tags_array {
-                        flush_ops.push(FlushOperation::RemoveTag(TagDatabaseSchema {
-                            hash: i.object.id.to_string(),
-                            tag: tag.clone(),
-                        }));
-                    }
-                }
-                AbstractData::Video(v) => {
-                    // 影片的 tag 通過關聯表處理
-                    for tag in &json_data.add_tags_array {
-                        flush_ops.push(FlushOperation::InsertTag(TagDatabaseSchema {
-                            hash: v.object.id.to_string(),
-                            tag: tag.clone(),
-                        }));
-                    }
-                    for tag in &json_data.remove_tags_array {
-                        flush_ops.push(FlushOperation::RemoveTag(TagDatabaseSchema {
-                            hash: v.object.id.to_string(),
-                            tag: tag.clone(),
-                        }));
-                    }
-                }
-                AbstractData::Album(album) => {
-                    // 相簿現在也使用關聯表，行為與其他類型一致
-                    for tag in &json_data.add_tags_array {
-                        flush_ops.push(FlushOperation::InsertTag(TagDatabaseSchema {
-                            hash: album.object.id.to_string(),
-                            tag: tag.clone(),
-                        }));
-                    }
-                    for tag in &json_data.remove_tags_array {
-                        flush_ops.push(FlushOperation::RemoveTag(TagDatabaseSchema {
-                            hash: album.object.id.to_string(),
-                            tag: tag.clone(),
-                        }));
-                    }
-                }
+            let object_id = match &abstract_data {
+                AbstractData::Image(i) => i.object.id.to_string(),
+                AbstractData::Video(v) => v.object.id.to_string(),
+                AbstractData::Album(a) => a.object.id.to_string(),
+            };
+
+            for tag in &json_data.add_tags_array {
+                flush_ops.push(FlushOperation::InsertTag(TagDatabaseSchema {
+                    hash: object_id.clone(),
+                    tag: tag.clone(),
+                }));
+            }
+            for tag in &json_data.remove_tags_array {
+                flush_ops.push(FlushOperation::RemoveTag(TagDatabaseSchema {
+                    hash: object_id.clone(),
+                    tag: tag.clone(),
+                }));
             }
         }
 
@@ -267,6 +321,9 @@ fn create_random_data() -> AbstractData {
             thumbhash: None,
             description: None,
             tags: HashSet::new(),
+            is_favorite: false,
+            is_archived: false,
+            is_trashed: false,
         },
         metadata: ImageMetadataSchema {
             id: ArrayString::from(&format!("random_{}", rand::random::<u64>())).unwrap(),
@@ -304,9 +361,5 @@ pub async fn generate_random_data(
 }
 
 pub fn generate_system_routes() -> Vec<rocket::Route> {
-    routes![
-        edit_tag,
-        reindex,
-        generate_random_data
-    ]
+    routes![edit_tag, edit_status, reindex, generate_random_data]
 }

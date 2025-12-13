@@ -38,7 +38,7 @@ onBeforeMount(() => {
   if (typeof albumIdOpt === 'string' && typeof shareIdOpt === 'string') {
     albumId.value = albumIdOpt
     shareId.value = shareIdOpt
-    basicString.value = `and(not(tag:"_trashed"), album:"${albumIdOpt}")`
+    basicString.value = `and(not(trashed:true), album:"${albumIdOpt}")`
 
     shareStore.albumId = albumIdOpt
     shareStore.shareId = shareIdOpt

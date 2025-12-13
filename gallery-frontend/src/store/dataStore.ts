@@ -61,6 +61,25 @@ export const useDataStore = (isolationId: IsolationId) =>
 
         target.albums = target.albums.filter((album) => !albums.includes(album))
         return true
+      },
+      setStatus(
+        index: number,
+        options: { isFavorite?: boolean; isArchived?: boolean; isTrashed?: boolean }
+      ): boolean {
+        const wrapped = this.data.get(index)
+        if (!wrapped) return false
+
+        const target = wrapped.data
+        if (options.isFavorite !== undefined) {
+          target.isFavorite = options.isFavorite
+        }
+        if (options.isArchived !== undefined) {
+          target.isArchived = options.isArchived
+        }
+        if (options.isTrashed !== undefined) {
+          target.isTrashed = options.isTrashed
+        }
+        return true
       }
     }
   })()

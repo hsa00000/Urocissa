@@ -10,5 +10,5 @@
 import HomeMain from '@/components/Home/HomeMain.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 
-const basicString = 'and(tag:"_favorite", not(tag:"_trashed"))'
+const basicString = 'and(favorite:true, not(trashed:true))'
 </script>

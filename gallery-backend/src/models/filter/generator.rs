@@ -34,6 +34,27 @@ impl Expression {
                 };
                 tags.contains(&tag)
             }),
+            Expression::Favorite(value) => {
+                Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                    AbstractData::Image(image) => image.object.is_favorite == value,
+                    AbstractData::Video(video) => video.object.is_favorite == value,
+                    AbstractData::Album(album) => album.object.is_favorite == value,
+                })
+            }
+            Expression::Archived(value) => {
+                Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                    AbstractData::Image(image) => image.object.is_archived == value,
+                    AbstractData::Video(video) => video.object.is_archived == value,
+                    AbstractData::Album(album) => album.object.is_archived == value,
+                })
+            }
+            Expression::Trashed(value) => {
+                Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                    AbstractData::Image(image) => image.object.is_trashed == value,
+                    AbstractData::Video(video) => video.object.is_trashed == value,
+                    AbstractData::Album(album) => album.object.is_trashed == value,
+                })
+            }
             Expression::ExtType(ext_type) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::Image(_) => ext_type.contains("image"),

@@ -1,7 +1,7 @@
 <template>
   <v-list-item
     prepend-icon="mdi-archive-arrow-down"
-    @click="quickAddTags('_archived', props.indexList, isolationId)"
+    @click="setArchived(props.indexList, true, isolationId)"
   >
     <v-list-item-title class="wrap">Archive</v-list-item-title>
   </v-list-item>
@@ -10,7 +10,7 @@
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
 import { getIsolationIdByRoute } from '@utils/getter'
-import { quickAddTags } from '@utils/quickEditTags'
+import { setArchived } from '@/api/editStatus'
 
 const props = defineProps<{
   indexList: number[]

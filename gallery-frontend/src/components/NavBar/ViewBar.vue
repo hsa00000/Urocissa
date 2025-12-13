@@ -16,24 +16,24 @@
     <template v-if="route.meta.baseName !== 'share'">
       <v-btn
         v-if="abstractData && abstractData.data.type !== 'album'"
-        :icon="abstractData.data.tags.includes('_favorite') ? 'mdi-star' : 'mdi-star-outline'"
+        :icon="abstractData.data.isFavorite ? 'mdi-star' : 'mdi-star-outline'"
         @click="
-          abstractData.data.tags.includes('_favorite')
-            ? quickRemoveTags('_favorite', [index], isolationId)
-            : quickAddTags('_favorite', [index], isolationId)
+          abstractData.data.isFavorite
+            ? setFavorite([index], false, isolationId)
+            : setFavorite([index], true, isolationId)
         "
       ></v-btn>
       <v-btn
         v-if="abstractData && abstractData.data.type !== 'album'"
         :icon="
-          abstractData.data.tags.includes('_archived')
+          abstractData.data.isArchived
             ? 'mdi-archive-arrow-up-outline'
             : 'mdi-archive-arrow-down-outline'
         "
         @click="
-          abstractData.data.tags.includes('_archived')
-            ? quickRemoveTags('_archived', [index], isolationId)
-            : quickAddTags('_archived', [index], isolationId)
+          abstractData.data.isArchived
+            ? setArchived([index], false, isolationId)
+            : setArchived([index], true, isolationId)
         "
       ></v-btn>
     </template>
@@ -62,7 +62,7 @@
 </template>
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { quickRemoveTags, quickAddTags } from '@utils/quickEditTags'
+import { setFavorite, setArchived } from '@/api/editStatus'
 import { AbstractData, IsolationId } from '@type/types'
 import DatabaseMenu from '@Menu/SingleMenu.vue'
 import AlbumMenu from '@Menu/AlbumMenu.vue'

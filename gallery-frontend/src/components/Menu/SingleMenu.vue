@@ -22,9 +22,9 @@
       <v-divider></v-divider>
       <ItemEditTags />
       <ItemEditAlbums />
-      <ItemDelete v-if="!media.tags.includes('_trashed')" :index-list="[props.index]" />
-      <ItemRestore v-if="media.tags.includes('_trashed')" :index-list="[props.index]" />
-      <ItemPermanentlyDelete v-if="media.tags.includes('_trashed')" :index-list="[props.index]" />
+      <ItemDelete v-if="!media.isTrashed" :index-list="[props.index]" />
+      <ItemRestore v-if="media.isTrashed" :index-list="[props.index]" />
+      <ItemPermanentlyDelete v-if="media.isTrashed" :index-list="[props.index]" />
       <v-divider></v-divider>
       <ItemRegenerateMetadata :index-list="[props.index]" />
       <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />

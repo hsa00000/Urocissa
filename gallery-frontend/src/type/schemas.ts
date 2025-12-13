@@ -38,7 +38,10 @@ const BaseObjectRaw = z.object({
   thumbhash: z.array(z.number()).nullable().optional().default(null),
   description: z.string().nullable().optional(),
   tags: z.array(z.string()).default([]),
-  exifVec: z.record(z.string(), z.string()).default({})
+  exifVec: z.record(z.string(), z.string()).default({}),
+  isFavorite: z.boolean().default(false),
+  isArchived: z.boolean().default(false),
+  isTrashed: z.boolean().default(false)
 })
 
 // 1. Image Schema
@@ -64,7 +67,10 @@ const ImageSchema = BaseObjectRaw.extend({
   thumbhash: data.thumbhash,
   pending: data.pending,
   albums: data.albums,
-  description: data.description
+  description: data.description,
+  isFavorite: data.isFavorite,
+  isArchived: data.isArchived,
+  isTrashed: data.isTrashed
 }))
 
 // 2. Video Schema
@@ -90,7 +96,10 @@ const VideoSchema = BaseObjectRaw.extend({
   thumbhash: data.thumbhash,
   pending: data.pending,
   albums: data.albums,
-  description: data.description
+  description: data.description,
+  isFavorite: data.isFavorite,
+  isArchived: data.isArchived,
+  isTrashed: data.isTrashed
 }))
 
 // 3. Album Schema
@@ -119,7 +128,10 @@ const AlbumSchema = BaseObjectRaw.extend({
   itemCount: data.itemCount,
   itemSize: data.itemSize,
   pending: data.pending,
-  description: data.description
+  description: data.description,
+  isFavorite: data.isFavorite,
+  isArchived: data.isArchived,
+  isTrashed: data.isTrashed
 }))
 
 // 這是 Worker 解析後端資料時使用的 Schema

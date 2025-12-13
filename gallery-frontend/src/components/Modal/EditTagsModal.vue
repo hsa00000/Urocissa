@@ -65,12 +65,8 @@ const modalStore = useModalStore('mainId')
 const tagStore = useTagStore('mainId')
 
 const tagList = computed(() => tagStore.tags)
-const specialTag = (tag: string): boolean =>
-  tag === '_archived' || tag === '_favorite' || tag === '_trashed'
 
-const filteredTagList = computed(() =>
-  tagList.value.filter((tag) => !specialTag(tag.tag)).map((tag) => tag.tag)
-)
+const filteredTagList = computed(() => tagList.value.map((tag) => tag.tag))
 
 // 將初始化邏輯提取為函數
 const initializeData = () => {
@@ -87,7 +83,7 @@ const initializeData = () => {
   const defaultTags: string[] = data.data.tags // 這是 DB 中的原始 tags
 
   // 初始化 changedTagsArray (視為當前 DB 狀態)
-  changedTagsArray.value = defaultTags.filter((tag) => !specialTag(tag))
+  changedTagsArray.value = [...defaultTags]
 
   // 初始化 UI 顯示的 editingTags (複製一份)
   editingTags.value = [...changedTagsArray.value]
@@ -97,13 +93,11 @@ const initializeData = () => {
     const hashArray: number[] = [index]
 
     // 計算新增的標籤：存在於 changedTagsArray 但不在 defaultTags 中
-    const addTagsArrayComputed = changedTagsArray.value.filter(
-      (tag) => !specialTag(tag) && !defaultTags.includes(tag)
-    )
+    const addTagsArrayComputed = changedTagsArray.value.filter((tag) => !defaultTags.includes(tag))
 
     // 計算移除的標籤：存在於 defaultTags 但不在 changedTagsArray 中
     const removeTagsArrayComputed = defaultTags.filter(
-      (tag) => !specialTag(tag) && !changedTagsArray.value.includes(tag)
+      (tag) => !changedTagsArray.value.includes(tag)
     )
 
     const isolationId = getIsolationIdByRoute(route)
