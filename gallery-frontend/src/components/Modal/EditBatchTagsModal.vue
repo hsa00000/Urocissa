@@ -147,9 +147,7 @@ const handleSave = async () => {
 
     messageStore.success('Batch update tags successful.')
     modalStore.showBatchEditTagsModal = false
-
-    // 清空選取狀態
-    collectionStore.editModeOn = false
+    collectionStore.leaveEdit()
   } catch (e) {
     console.error(e)
     messageStore.error('Batch update tags failed.')

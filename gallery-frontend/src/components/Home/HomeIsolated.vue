@@ -51,7 +51,7 @@ const overlayVisible = computed<boolean>({
       // Received a request from Vuetify via ESC to close the overlay.
       if (collectionStore.editModeOn) {
         // In edit mode, first turn off edit mode without closing the overlay.
-        collectionStore.editModeOn = false
+        collectionStore.leaveEdit()
       } else {
         // Really close the overlay -> navigate back via router.
         router.back()

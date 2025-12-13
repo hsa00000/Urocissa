@@ -134,7 +134,7 @@ const handleSave = async () => {
 
     messageStore.success('Batch update albums successful.')
     modalStore.showBatchEditAlbumsModal = false
-    collectionStore.editModeOn = false // 關閉編輯模式 (相當於 clearSelected)
+    collectionStore.leaveEdit()
   } catch (e) {
     console.error(e)
     messageStore.error('Batch update albums failed.')
