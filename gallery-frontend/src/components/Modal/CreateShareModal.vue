@@ -1,176 +1,150 @@
 <template>
-  <v-dialog
-    v-model="modalStore.showShareModal"
-    id="share-modal"
-    variant="flat"
-    persistent
-    max-width="450"
-    theme="dark"
-  >
-    <v-card rounded="xl" class="d-flex flex-column" color="#212121">
-      <v-toolbar color="transparent" density="compact" class="px-2 pt-1">
-        <v-toolbar-title class="text-h6 font-weight-bold ml-2">Share Settings</v-toolbar-title>
-        <template #append>
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            density="comfortable"
-            @click="modalStore.showShareModal = false"
-          ></v-btn>
-        </template>
-      </v-toolbar>
+  <BaseModal v-model="modalStore.showShareModal" title="Share Settings" width="450">
+    <v-textarea
+      v-model="description"
+      label="Link Description"
+      variant="outlined"
+      density="compact"
+      rows="1"
+      auto-grow
+      hide-details
+      class="mb-4"
+      color="primary"
+      bg-color="grey-darken-4"
+    ></v-textarea>
 
-      <v-divider class="border-opacity-25"></v-divider>
-
-      <v-card-text class="pa-4">
-        <v-textarea
-          v-model="description"
-          label="Link Description"
-          variant="outlined"
-          density="compact"
-          rows="1"
-          auto-grow
-          hide-details
-          class="mb-4"
+    <div class="text-caption text-medium-emphasis mb-2 text-uppercase font-weight-bold">
+      Permissions
+    </div>
+    <v-row dense class="mb-2">
+      <v-col cols="6">
+        <v-switch
+          v-model="showDownload"
+          label="Allow Download"
           color="primary"
+          density="compact"
+          hide-details
+          inset
+        ></v-switch>
+      </v-col>
+      <v-col cols="6">
+        <v-switch
+          v-model="showUpload"
+          label="Allow Upload"
+          color="primary"
+          density="compact"
+          hide-details
+          inset
+        ></v-switch>
+      </v-col>
+      <v-col cols="12">
+        <v-switch
+          v-model="showMetadata"
+          label="Show Metadata"
+          color="primary"
+          density="compact"
+          hide-details
+          inset
+        ></v-switch>
+      </v-col>
+    </v-row>
+
+    <v-divider class="mb-4 border-opacity-25"></v-divider>
+
+    <v-row dense align="center" class="mb-1">
+      <v-col cols="5">
+        <v-switch
+          v-model="passwordRequired"
+          label="Password"
+          color="primary"
+          density="compact"
+          hide-details
+          inset
+        ></v-switch>
+      </v-col>
+      <v-col cols="7">
+        <v-text-field
+          ref="passwordInputRef"
+          v-model="password"
+          :disabled="!passwordRequired"
+          type="password"
+          hide-details
+          density="compact"
+          variant="outlined"
           bg-color="grey-darken-4"
-        ></v-textarea>
+          prepend-inner-icon="mdi-lock-outline"
+        ></v-text-field>
+      </v-col>
+    </v-row>
 
-        <div class="text-caption text-medium-emphasis mb-2 text-uppercase font-weight-bold">
-          Permissions
-        </div>
-        <v-row dense class="mb-2">
-          <v-col cols="6">
-            <v-switch
-              v-model="showDownload"
-              label="Allow Download"
-              color="primary"
-              density="compact"
-              hide-details
-              inset
-            ></v-switch>
-          </v-col>
-          <v-col cols="6">
-            <v-switch
-              v-model="showUpload"
-              label="Allow Upload"
-              color="primary"
-              density="compact"
-              hide-details
-              inset
-            ></v-switch>
-          </v-col>
-          <v-col cols="12">
-            <v-switch
-              v-model="showMetadata"
-              label="Show Metadata"
-              color="primary"
-              density="compact"
-              hide-details
-              inset
-            ></v-switch>
-          </v-col>
-        </v-row>
+    <v-row dense align="center">
+      <v-col cols="5">
+        <v-switch
+          v-model="expireEnabled"
+          label="Expiration"
+          color="primary"
+          density="compact"
+          hide-details
+          inset
+        ></v-switch>
+      </v-col>
+      <v-col cols="7">
+        <v-select
+          v-model="exp"
+          :items="DURATIONS"
+          :disabled="!expireEnabled"
+          label="Duration"
+          density="compact"
+          variant="outlined"
+          hide-details
+          bg-color="grey-darken-4"
+          prepend-inner-icon="mdi-clock-outline"
+          item-title="label"
+          item-value="id"
+        ></v-select>
+      </v-col>
+    </v-row>
 
-        <v-divider class="mb-4 border-opacity-25"></v-divider>
-
-        <v-row dense align="center" class="mb-1">
-          <v-col cols="5">
-            <v-switch
-              v-model="passwordRequired"
-              label="Password"
-              color="primary"
-              density="compact"
-              hide-details
-              inset
-            ></v-switch>
-          </v-col>
-          <v-col cols="7">
-            <v-text-field
-              ref="passwordInputRef"
-              v-model="password"
-              :disabled="!passwordRequired"
-              :placeholder="passwordRequired && !password ? 'Required *' : 'Set password'"
-              :base-color="passwordRequired && !password ? 'red-accent-2' : undefined"
-              variant="outlined"
-              density="compact"
-              type="password"
-              hide-details
-              bg-color="grey-darken-4"
-              prepend-inner-icon="mdi-lock-outline"
-            ></v-text-field>
-          </v-col>
-        </v-row>
-
-        <v-row dense align="center">
-          <v-col cols="5">
-            <v-switch
-              v-model="expireEnabled"
-              label="Expiration"
-              color="primary"
-              density="compact"
-              hide-details
-              inset
-            ></v-switch>
-          </v-col>
-          <v-col cols="7">
-            <v-select
-              v-model="exp"
-              :items="DURATIONS"
-              :disabled="!expireEnabled"
-              label="Duration"
-              item-title="label"
-              item-value="id"
-              variant="outlined"
-              density="compact"
-              hide-details
-              bg-color="grey-darken-4"
-              prepend-inner-icon="mdi-clock-outline"
-            ></v-select>
-          </v-col>
-        </v-row>
-      </v-card-text>
-
-      <v-card-actions class="pa-4 pt-2">
-        <v-sheet
-          border
-          :color="shareLink ? 'grey-darken-4' : 'transparent'"
-          :style="{
-            borderColor: shareLink ? 'rgba(255,255,255,0.15)' : 'transparent !important',
-            transition: 'none !important'
-          }"
-          :class="['d-flex align-center w-100 pr-1', shareLink ? 'pl-4' : 'justify-end']"
-          height="54"
-          rounded="pill"
+    <template #actions>
+      <v-sheet
+        border
+        :color="shareLink ? 'grey-darken-4' : 'transparent'"
+        :style="{
+          borderColor: shareLink ? 'rgba(255,255,255,0.15)' : 'transparent !important',
+          transition: 'none !important'
+        }"
+        :class="['d-flex align-center w-100 pr-1', shareLink ? 'pl-4' : 'justify-end']"
+        height="54"
+        rounded="pill"
+      >
+        <div
+          v-if="shareLink"
+          class="text-body-2 text-grey-lighten-1 text-truncate flex-grow-1 mr-3"
+          style="user-select: all"
         >
-          <div
-            v-if="shareLink"
-            class="text-body-2 text-grey-lighten-1 text-truncate flex-grow-1 mr-3"
-            style="user-select: all"
-          >
-            {{ shareLink }}
-          </div>
+          {{ shareLink }}
+        </div>
 
-          <v-btn
-            color="primary"
-            variant="flat"
-            rounded="pill"
-            width="150"
-            height="44"
-            class="text-capitalize"
-            :loading="loading"
-            :disabled="!isFormValid"
-            @click="handleAction"
-          >
-            {{ buttonLabel }}
-          </v-btn>
-        </v-sheet>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+        <v-btn
+          color="primary"
+          variant="flat"
+          rounded="pill"
+          width="150"
+          height="44"
+          class="text-capitalize"
+          :loading="loading"
+          :disabled="!isFormValid"
+          @click="handleAction"
+        >
+          {{ buttonLabel }}
+        </v-btn>
+      </v-sheet>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
+import BaseModal from '@/components/Modal/BaseModal.vue'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
