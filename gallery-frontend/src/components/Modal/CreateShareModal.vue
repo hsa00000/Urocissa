@@ -1,145 +1,171 @@
 <template>
-  <v-dialog v-model="modalStore.showShareModal" id="share-modal" variant="flat" persistent rounded>
-    <v-card
-      class="h-100 mx-auto w-100"
-      max-width="400"
-      variant="elevated"
-      retain-focus
-      rounded="xl"
-    >
-      <v-toolbar color="transparent">
-        <v-toolbar-title class="text-h5" text=" Share"></v-toolbar-title>
+  <v-dialog
+    v-model="modalStore.showShareModal"
+    id="share-modal"
+    variant="flat"
+    persistent
+    max-width="450"
+    theme="dark"
+  >
+    <v-card rounded="xl" class="d-flex flex-column" color="#212121">
+      <v-toolbar color="transparent" density="compact" class="px-2 pt-1">
+        <v-toolbar-title class="text-h6 font-weight-bold ml-2">Share Settings</v-toolbar-title>
         <template #append>
-          <v-btn icon="mdi-close" @click="modalStore.showShareModal = false"></v-btn>
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            density="comfortable"
+            @click="modalStore.showShareModal = false"
+          ></v-btn>
         </template>
       </v-toolbar>
-      <v-divider></v-divider>
 
-      <v-list class="px-6" density="compact">
-        <v-list-item>
-          <v-textarea
-            v-model="description"
-            label="Description of this link"
-            hide-details="auto"
-            :style="{ paddingBottom: 0 }"
-          ></v-textarea>
-        </v-list-item>
+      <v-divider class="border-opacity-25"></v-divider>
 
-        <v-list-item density="compact" slim>
-          <template #prepend>
-            <v-list-item-action start>
-              <v-switch
-                v-model="passwordRequired"
-                color="primary"
-                :label="`Require password`"
-                hide-details
-              ></v-switch>
-            </v-list-item-action>
-          </template>
-        </v-list-item>
+      <v-card-text class="pa-4">
+        <v-textarea
+          v-model="description"
+          label="Link Description"
+          variant="outlined"
+          density="compact"
+          rows="1"
+          auto-grow
+          hide-details
+          class="mb-4"
+          color="primary"
+          bg-color="grey-darken-4"
+        ></v-textarea>
 
-        <v-list-item density="compact" slim>
-          <v-text-field
-            v-model="password"
-            label="Password"
-            hide-details="auto"
-            :disabled="!passwordRequired"
-            :style="{ paddingBottom: 0 }"
-          ></v-text-field>
-        </v-list-item>
-
-        <v-list-item density="compact" slim>
-          <template #prepend>
-            <v-list-item-action start>
-              <v-switch
-                v-model="showDownload"
-                color="primary"
-                :label="`Allow public user to download`"
-                hide-details
-              ></v-switch>
-            </v-list-item-action>
-          </template>
-        </v-list-item>
-
-        <v-list-item density="compact" slim>
-          <template #prepend>
-            <v-list-item-action start>
-              <v-switch
-                v-model="showUpload"
-                color="primary"
-                :label="`Allow public user to upload`"
-                hide-details
-              ></v-switch>
-            </v-list-item-action>
-          </template>
-        </v-list-item>
-
-        <v-list-item density="compact" slim>
-          <template #prepend>
-            <v-list-item-action start>
-              <v-switch
-                v-model="showMetadata"
-                color="primary"
-                :label="`Show metadata`"
-                hide-details
-              ></v-switch>
-            </v-list-item-action>
-          </template>
-        </v-list-item>
-
-        <v-list-item density="compact" slim>
-          <template #prepend>
-            <v-list-item-action start>
-              <v-switch
-                v-model="expireEnabled"
-                color="primary"
-                :label="`Expire after`"
-                hide-details
-              ></v-switch>
-            </v-list-item-action>
-          </template>
-        </v-list-item>
-
-        <v-list-item density="compact" slim>
-          <v-select
-            v-model="exp"
-            :items="DURATIONS"
-            label="Select a duration"
-            item-title="label"
-            item-value="id"
-            hide-details="auto"
-            :disabled="!expireEnabled"
-          />
-        </v-list-item>
-
-        <v-list-item density="compact" slim class="py-6">
-          <v-card height="40px">
-            <v-btn
-              v-if="shareLink === null"
-              color="teal-accent-4"
-              variant="outlined"
-              class="button button-submit"
-              type="submit"
-              block
-              @click="createLink()"
-            >
-              Create Link
-            </v-btn>
-            <v-text-field
-              v-else
-              rounded
-              v-model="shareLink"
-              slim
+        <div class="text-caption text-medium-emphasis mb-2 text-uppercase font-weight-bold">
+          Permissions
+        </div>
+        <v-row dense class="mb-2">
+          <v-col cols="6">
+            <v-switch
+              v-model="showDownload"
+              label="Allow Download"
+              color="primary"
               density="compact"
-              variant="outlined"
-              readonly
-              append-inner-icon="mdi-content-copy"
-              @click:append-inner="performCopy(shareLink)"
               hide-details
+              inset
+            ></v-switch>
+          </v-col>
+          <v-col cols="6">
+            <v-switch
+              v-model="showUpload"
+              label="Allow Upload"
+              color="primary"
+              density="compact"
+              hide-details
+              inset
+            ></v-switch>
+          </v-col>
+          <v-col cols="12">
+            <v-switch
+              v-model="showMetadata"
+              label="Show Metadata"
+              color="primary"
+              density="compact"
+              hide-details
+              inset
+            ></v-switch>
+          </v-col>
+        </v-row>
+
+        <v-divider class="mb-4 border-opacity-25"></v-divider>
+
+        <v-row dense align="center" class="mb-1">
+          <v-col cols="5">
+            <v-switch
+              v-model="passwordRequired"
+              label="Password"
+              color="primary"
+              density="compact"
+              hide-details
+              inset
+            ></v-switch>
+          </v-col>
+          <v-col cols="7">
+            <v-text-field
+              ref="passwordInputRef"
+              v-model="password"
+              :disabled="!passwordRequired"
+              :placeholder="passwordRequired && !password ? 'Required *' : 'Set password'"
+              :base-color="passwordRequired && !password ? 'red-accent-2' : undefined"
+              variant="outlined"
+              density="compact"
+              type="password"
+              hide-details
+              bg-color="grey-darken-4"
+              prepend-inner-icon="mdi-lock-outline"
             ></v-text-field>
-          </v-card>
-        </v-list-item>
-      </v-list>
+          </v-col>
+        </v-row>
+
+        <v-row dense align="center">
+          <v-col cols="5">
+            <v-switch
+              v-model="expireEnabled"
+              label="Expiration"
+              color="primary"
+              density="compact"
+              hide-details
+              inset
+            ></v-switch>
+          </v-col>
+          <v-col cols="7">
+            <v-select
+              v-model="exp"
+              :items="DURATIONS"
+              :disabled="!expireEnabled"
+              label="Duration"
+              item-title="label"
+              item-value="id"
+              variant="outlined"
+              density="compact"
+              hide-details
+              bg-color="grey-darken-4"
+              prepend-inner-icon="mdi-clock-outline"
+            ></v-select>
+          </v-col>
+        </v-row>
+      </v-card-text>
+
+      <v-card-actions class="pa-4 pt-2">
+        <v-sheet
+          border
+          :color="shareLink ? 'grey-darken-4' : 'transparent'"
+          :style="{
+            borderColor: shareLink ? 'rgba(255,255,255,0.15)' : 'transparent !important',
+            transition: 'none !important'
+          }"
+          :class="['d-flex align-center w-100 pr-1', shareLink ? 'pl-4' : 'justify-end']"
+          height="54"
+          rounded="pill"
+        >
+          <div
+            v-if="shareLink"
+            class="text-body-2 text-grey-lighten-1 text-truncate flex-grow-1 mr-3"
+            style="user-select: all"
+          >
+            {{ shareLink }}
+          </div>
+
+          <v-btn
+            color="primary"
+            variant="flat"
+            rounded="pill"
+            width="150"
+            height="44"
+            class="text-capitalize"
+            :loading="loading"
+            :disabled="!isFormValid"
+            @click="handleAction"
+          >
+            {{ buttonLabel }}
+          </v-btn>
+        </v-sheet>
+      </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
@@ -147,16 +173,20 @@
 <script setup lang="ts">
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 import axios from 'axios'
-import { ref, Ref, watchEffect } from 'vue'
+import { ref, Ref, watchEffect, computed, watch, nextTick } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { DURATIONS } from '@type/constants'
+
 const props = defineProps<{
   albumId: string
 }>()
 
 const modalStore = useModalStore('mainId')
 const messageStore = useMessageStore('mainId')
+
+// 表單資料
 const description = ref('')
 const passwordRequired = ref(false)
 const password = ref('')
@@ -165,37 +195,137 @@ const showUpload = ref(false)
 const showDownload = ref(true)
 const showMetadata = ref(false)
 const exp: Ref<number | null> = ref(null)
+
+// 狀態資料
 const shareLink: Ref<string | null> = ref(null)
+const createdShareKey: Ref<string | null> = ref(null)
+const loading = ref(false)
+const lastSavedState = ref('')
 
-const { copy } = useClipboard()
+// DOM 引用
+const passwordInputRef = ref<any>(null)
 
+// Clipboard logic
+const { copy, copied } = useClipboard({ legacy: true })
+
+// 清理邏輯
 watchEffect(() => {
-  console.log('exp is', exp.value)
-  console.log('description is', description.value)
+  if (!passwordRequired.value) password.value = ''
+  if (!expireEnabled.value) exp.value = null
 })
 
+// --- Auto Focus 邏輯 ---
+watch(passwordRequired, async (newVal) => {
+  if (newVal) {
+    await nextTick()
+    passwordInputRef.value?.focus()
+  }
+})
+
+// --- 驗證與變更偵測 ---
+const isFormValid = computed(() => {
+  if (passwordRequired.value && !password.value) return false
+  return true
+})
+
+const currentFormState = computed(() => ({
+  description: description.value,
+  passwordRequired: passwordRequired.value,
+  password: password.value,
+  expireEnabled: expireEnabled.value,
+  exp: exp.value,
+  showUpload: showUpload.value,
+  showDownload: showDownload.value,
+  showMetadata: showMetadata.value
+}))
+
+const hasChanges = computed(() => {
+  if (!createdShareKey.value) return true
+  return JSON.stringify(currentFormState.value) !== lastSavedState.value
+})
+
+// --- 按鈕邏輯 ---
+const buttonLabel = computed(() => {
+  if (!shareLink.value) return 'Create Link'
+  if (hasChanges.value) return 'Save Changes'
+  return copied.value ? 'Copied!' : 'Copy'
+})
+
+const handleAction = () => {
+  if (!shareLink.value) {
+    createLink()
+  } else if (hasChanges.value) {
+    updateLink()
+  } else {
+    performCopy(shareLink.value)
+  }
+}
+
+// --- API 操作 ---
 const createLink = async () => {
-  // 計算過期時間戳 (Timestamp in seconds)
-  // 如果啟用過期且有選擇時間，則當前時間 + 分鐘數 * 60
-  // 否則為 0 (永不過期)
+  if (!isFormValid.value) return
+  loading.value = true
   const expirationTimestamp =
     expireEnabled.value && exp.value ? Math.floor(Date.now() / 1000) + exp.value * 60 : 0
 
-  const result = await axios.post<string>('/post/create_share', {
-    albumId: props.albumId,
-    description: description.value,
-    password: passwordRequired.value ? password.value : null,
-    showMetadata: showMetadata.value,
-    showDownload: showDownload.value,
-    showUpload: showUpload.value,
-    exp: expirationTimestamp
-  })
-  shareLink.value = `${window.location.origin}/share/${props.albumId}-${result.data}`
-  console.log('shareLink is', shareLink)
+  try {
+    const result = await axios.post<string>('/post/create_share', {
+      albumId: props.albumId,
+      description: description.value,
+      password: passwordRequired.value ? password.value : null,
+      showMetadata: showMetadata.value,
+      showDownload: showDownload.value,
+      showUpload: showUpload.value,
+      exp: expirationTimestamp
+    })
+
+    createdShareKey.value = result.data
+    shareLink.value = `${window.location.origin}/share/${props.albumId}-${result.data}`
+    lastSavedState.value = JSON.stringify(currentFormState.value)
+    messageStore.success('Share link created successfully.')
+  } catch (e) {
+    console.error(e)
+    messageStore.error('Failed to create share link.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const updateLink = async () => {
+  if (!createdShareKey.value) return
+  if (!isFormValid.value) return
+
+  loading.value = true
+  const expirationTimestamp =
+    expireEnabled.value && exp.value ? Math.floor(Date.now() / 1000) + exp.value * 60 : 0
+
+  try {
+    await tryWithMessageStore('mainId', async () => {
+      await axios.put('/put/edit_share', {
+        albumId: props.albumId,
+        share: {
+          url: createdShareKey.value,
+          description: description.value,
+          password: passwordRequired.value ? password.value : null,
+          showMetadata: showMetadata.value,
+          showDownload: showDownload.value,
+          showUpload: showUpload.value,
+          exp: expirationTimestamp
+        }
+      })
+      lastSavedState.value = JSON.stringify(currentFormState.value)
+      messageStore.success('Share settings updated.')
+    })
+  } catch (e) {
+    console.error('Update failed', e)
+  } finally {
+    loading.value = false
+  }
 }
 
 async function performCopy(text: string) {
+  if (!text) return
   await copy(text)
-  messageStore.success('Share URL copied to clipboard.')
+  messageStore.success('Link copied to clipboard')
 }
 </script>
