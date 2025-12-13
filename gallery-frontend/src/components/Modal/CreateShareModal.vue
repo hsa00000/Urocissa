@@ -115,7 +115,6 @@
         }"
         :class="['d-flex align-center w-100 pr-1', shareLink ? 'pl-4' : 'justify-end']"
         height="54"
-        rounded="pill"
       >
         <div
           v-if="shareLink"
@@ -128,7 +127,6 @@
         <v-btn
           color="primary"
           variant="flat"
-          rounded="pill"
           width="150"
           height="44"
           class="text-capitalize"

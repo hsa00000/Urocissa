@@ -9,7 +9,7 @@
     :fullscreen="fullscreen"
     :id="id"
   >
-    <v-card rounded="xl" class="d-flex flex-column" color="#212121">
+    <v-card rounded="lg" class="d-flex flex-column" color="#212121">
       <slot name="header">
         <v-toolbar color="transparent" density="compact" class="px-2 pt-1">
           <v-toolbar-title class="text-h6 font-weight-bold ml-2">
