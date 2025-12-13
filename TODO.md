@@ -6,7 +6,3 @@ migration 注意：
 
 1. abstractData.album.userDefinedMetadata.\_user_defined_description?.[0] -> object.description
 2. abstractData.database.exif_vec.\_user_defined_description -> object.description
-
-關於 tag
-
-1. tag.\_favorite -> tags
