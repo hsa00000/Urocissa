@@ -1,190 +1,143 @@
 <template>
-  <v-dialog
-    v-if="submit !== undefined"
+  <BaseModal
     v-model="modalStore.showBatchEditAlbumsModal"
-    variant="flat"
-    persistent
-    id="batch-edit-album-overlay"
+    title="Batch Edit Albums"
+    width="500"
+    :loading="isSaving"
   >
-    <v-confirm-edit
-      v-model="changedAlbums"
-      :disabled="false"
-      @save="submit"
-      @cancel="modalStore.showBatchEditAlbumsModal = false"
-    >
-      <template #default="{ model: proxyModel, actions }">
-        <v-card class="mx-auto w-100" max-width="400" variant="elevated" retain-focus>
-          <template #title>Edit&nbsp;Albums</template>
-          <template #text>
-            <v-form
-              ref="formRef"
-              v-model="formIsValid"
-              @submit.prevent="submit"
-              validate-on="input"
-            >
-              <v-container>
-                <v-combobox
-                  clearable
-                  v-model="proxyModel.value.add"
-                  chips
-                  multiple
-                  item-title="displayName"
-                  item-value="albumId"
-                  :items="albumItems"
-                  :rules="[addAlbumsRule]"
-                  label="Add to Albums"
-                  return-object
-                  closable-chips
-                  :menu-props="{ maxWidth: 0 }"
-                  :hide-no-data="false"
-                  autocomplete="off"
-                >
-                  <template #prepend-item v-if="albumStore.albums.size > 0">
-                    <v-list-item value="">
-                      <template #prepend>
-                        <v-list-item-action>
-                          <v-btn
-                            v-if="!loading"
-                            color="transparent"
-                            icon="mdi-plus"
-                            density="comfortable"
-                            flat
-                          />
-                          <v-btn v-else color="transparent" icon density="comfortable" flat>
-                            <v-progress-circular indeterminate size="24" />
-                          </v-btn>
-                        </v-list-item-action>
-                        <v-list-item-title class="wrap" @click="createNonEmptyAlbumWithLoading()">
-                          Create New Album
-                        </v-list-item-title>
-                      </template>
-                    </v-list-item>
-                    <v-divider />
-                  </template>
+    <div class="text-body-2 text-medium-emphasis mb-4">
+      Modifying albums for {{ selectedCount }} selected items.
+    </div>
 
-                  <template #no-data v-else>
-                    <v-list-item value="">
-                      <template #prepend>
-                        <v-list-item-action>
-                          <v-btn color="transparent" icon="mdi-plus" density="comfortable" flat />
-                        </v-list-item-action>
-                        <v-list-item-title class="wrap" @click="createNonEmptyAlbumWithLoading()">
-                          Create New Album
-                        </v-list-item-title>
-                      </template>
-                    </v-list-item>
-                  </template>
-                </v-combobox>
-              </v-container>
+    <v-form v-model="formIsValid" @submit.prevent="handleSave">
+      <v-combobox
+        v-model="addedAlbums"
+        label="Add to Albums"
+        chips
+        closable-chips
+        multiple
+        item-title="title"
+        item-value="id"
+        :items="albumList"
+        variant="outlined"
+        density="comfortable"
+        hide-details="auto"
+        class="mb-4"
+        :disabled="isSaving"
+        :return-object="false"
+      ></v-combobox>
 
-              <v-container>
-                <v-combobox
-                  v-model="proxyModel.value.remove"
-                  chips
-                  multiple
-                  item-title="displayName"
-                  item-value="albumId"
-                  :items="albumItems"
-                  :rules="[removeAlbumsRule]"
-                  label="Remove from Albums"
-                  return-object
-                  closable-chips
-                  :menu-props="{ maxWidth: 0 }"
-                  autocomplete="off"
-                />
-              </v-container>
-            </v-form>
-          </template>
+      <v-combobox
+        v-model="removedAlbums"
+        label="Remove from Albums"
+        chips
+        closable-chips
+        multiple
+        item-title="title"
+        item-value="id"
+        :items="albumList"
+        variant="outlined"
+        density="comfortable"
+        hide-details="auto"
+        :disabled="isSaving"
+        :return-object="false"
+      ></v-combobox>
+    </v-form>
 
-          <v-divider />
-
-          <template #actions>
-            <v-spacer />
-            <component :is="actions" />
-          </template>
-        </v-card>
-      </template>
-    </v-confirm-edit>
-  </v-dialog>
+    <template #actions>
+      <v-spacer />
+      <v-btn
+        variant="text"
+        :disabled="isSaving"
+        @click="modalStore.showBatchEditAlbumsModal = false"
+      >
+        Cancel
+      </v-btn>
+      <v-btn
+        color="primary"
+        variant="flat"
+        :loading="isSaving"
+        :disabled="!formIsValid"
+        @click="handleSave"
+      >
+        Save
+      </v-btn>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
-import { useCollectionStore } from '@/store/collectionStore'
 import { useAlbumStore } from '@/store/albumStore'
+import { useCollectionStore } from '@/store/collectionStore' // 使用 CollectionStore
+import { useMessageStore } from '@/store/messageStore'
+import { editAlbums } from '@/api/editAlbums' // 使用標準 API
+import BaseModal from '@/components/Modal/BaseModal.vue'
 import { getIsolationIdByRoute } from '@utils/getter'
-import { createNonEmptyAlbum } from '@utils/createAlbums'
-import { navigateToAlbum } from '@/route/navigator'
-import type { AlbumInfo } from '@type/types'
-import type { VForm } from 'vuetify/components'
-import { editAlbums } from '@/api/editAlbums'
 
 const route = useRoute()
-const router = useRouter()
-const isolationId = getIsolationIdByRoute(route)
-
 const modalStore = useModalStore('mainId')
-const collectionStore = useCollectionStore(isolationId)
 const albumStore = useAlbumStore('mainId')
+const messageStore = useMessageStore('mainId')
 
-const formRef = ref<VForm | null>(null)
+// 取得 isolationId 以初始化 collectionStore
+const isolationId = getIsolationIdByRoute(route)
+const collectionStore = useCollectionStore(isolationId)
+
 const formIsValid = ref(false)
-const loading = ref(false)
+const isSaving = ref(false)
 
-interface ChangedAlbums {
-  add: AlbumInfo[]
-  remove: AlbumInfo[]
-}
-const changedAlbums = ref<ChangedAlbums>({ add: [], remove: [] })
+const addedAlbums = ref<string[]>([])
+const removedAlbums = ref<string[]>([])
 
-const albumItems = computed<AlbumInfo[]>(() => [...albumStore.albums.values()])
+const selectedCount = computed(() => collectionStore.editModeCollection.size)
 
-const addAlbumsRule = (inputArray: AlbumInfo[]) =>
-  inputArray.every(
-    (album) => !changedAlbums.value.remove.map((a) => a.albumId).includes(album.albumId)
-  ) || 'Some albums are already selected in Remove Albums'
+// 轉換相簿列表格式 (Map -> Array)
+const albumList = computed(() =>
+  Array.from(albumStore.albums.values()).map((a) => ({
+    title: a.displayName || a.albumId,
+    id: a.albumId
+  }))
+)
 
-const removeAlbumsRule = (inputArray: AlbumInfo[]) =>
-  inputArray.every(
-    (album) => !changedAlbums.value.add.map((a) => a.albumId).includes(album.albumId)
-  ) || 'Some albums are already selected in Add Albums'
-
-const submit = ref<(() => Promise<void>) | undefined>()
-
-onMounted(() => {
-  submit.value = async () => {
-    const hashArray = Array.from(collectionStore.editModeCollection)
-
-    await editAlbums(
-      hashArray,
-      changedAlbums.value.add.map((a) => a.albumId),
-      changedAlbums.value.remove.map((a) => a.albumId),
-      isolationId
-    )
-
-    modalStore.showBatchEditAlbumsModal = false
-  }
-})
-
-const createNonEmptyAlbumWithLoading = async () => {
-  loading.value = true
-  const newAlbumId = await createNonEmptyAlbum([...collectionStore.editModeCollection], isolationId)
-
-  if (typeof newAlbumId === 'string') {
-    await navigateToAlbum(newAlbumId, router)
-    modalStore.showBatchEditAlbumsModal = false
-    collectionStore.editModeOn = false
-  }
-  loading.value = false
+// 初始化：每次開啟時清空輸入框
+const initializeData = () => {
+  addedAlbums.value = []
+  removedAlbums.value = []
 }
 
 watch(
-  () => [changedAlbums.value.add, changedAlbums.value.remove],
-  async () => {
-    await formRef.value?.validate()
-  },
-  { deep: true }
+  () => modalStore.showBatchEditAlbumsModal, // 修正拼字
+  (isOpen) => {
+    if (isOpen) {
+      initializeData()
+    }
+  }
 )
+
+const handleSave = async () => {
+  if (addedAlbums.value.length === 0 && removedAlbums.value.length === 0) {
+    modalStore.showBatchEditAlbumsModal = false
+    return
+  }
+
+  isSaving.value = true
+  try {
+    // 從 CollectionStore 取得選取的 hashes (Set -> Array)
+    const selectedHashes = Array.from(collectionStore.editModeCollection)
+
+    await editAlbums(selectedHashes, addedAlbums.value, removedAlbums.value, isolationId)
+
+    messageStore.success('Batch update albums successful.')
+    modalStore.showBatchEditAlbumsModal = false
+    collectionStore.editModeOn = false // 關閉編輯模式 (相當於 clearSelected)
+  } catch (e) {
+    console.error(e)
+    messageStore.error('Batch update albums failed.')
+  } finally {
+    isSaving.value = false
+  }
+}
 </script>

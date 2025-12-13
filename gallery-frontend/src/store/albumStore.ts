@@ -37,6 +37,16 @@ export const useAlbumStore = (isolationId: IsolationId) =>
       clearAll() {
         this.albums.clear()
         this.fetched = false
+      },
+      optimisticAddAlbums(_albumIds: string[]) {
+        // 目前 AlbumInfo 沒有計數屬性 (count/number)，所以此處暫無計數更新邏輯。
+        // 未來若 AlbumInfo 加入 itemCount，可在此處實作類似 tagStore 的邏輯：
+        // albumIds.forEach(id => { const album = this.albums.get(id); if (album) album.itemCount++; })
+      },
+      optimisticRemoveAlbums(_albumIds: string[]) {
+        // 目前 AlbumInfo 沒有計數屬性 (count/number)，所以此處暫無計數更新邏輯。
+        // 未來若 AlbumInfo 加入 itemCount，可在此處實作類似 tagStore 的邏輯：
+        // albumIds.forEach(id => { const album = this.albums.get(id); if (album && album.itemCount > 0) album.itemCount--; })
       }
     }
   })()

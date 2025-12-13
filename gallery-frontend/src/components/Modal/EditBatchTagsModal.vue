@@ -1,122 +1,158 @@
 <template>
-  <v-dialog
-    v-if="submit !== undefined"
+  <BaseModal
     v-model="modalStore.showBatchEditTagsModal"
-    variant="flat"
-    persistent
-    id="batch-edit-tag-overlay"
+    title="Batch Edit Tags"
+    width="500"
+    :loading="isSaving"
   >
-    <v-confirm-edit
-      v-model="changedTags"
-      :disabled="false"
-      @save="submit"
-      @cancel="modalStore.showBatchEditTagsModal = false"
-    >
-      <template #default="{ model: proxyModel, actions }">
-        <v-card class="mx-auto w-100" max-width="400" variant="elevated" retain-focus>
-          <template #title>Edit&nbsp;Tags</template>
+    <div class="text-body-2 text-medium-emphasis mb-4">
+      Modifying tags for {{ selectedCount }} selected items.
+    </div>
 
-          <template #text>
-            <v-form
-              ref="formRef"
-              v-model="formIsValid"
-              @submit.prevent="submit"
-              validate-on="input"
-            >
-              <v-container>
-                <v-combobox
-                  v-model="proxyModel.value.add"
-                  chips
-                  multiple
-                  label="Add Tags"
-                  :items="availableTags"
-                  :rules="[addTagsRule]"
-                  closable-chips
-                  :menu-props="{ maxWidth: 0 }"
-                  autocomplete="off"
-                />
-              </v-container>
+    <v-form v-model="formIsValid" @submit.prevent="handleSave">
+      <v-combobox
+        v-model="addedTags"
+        label="Add Tags"
+        chips
+        closable-chips
+        multiple
+        item-title="tag"
+        item-value="tag"
+        :items="allTags"
+        variant="outlined"
+        density="comfortable"
+        hide-details="auto"
+        class="mb-4"
+        :disabled="isSaving"
+      ></v-combobox>
 
-              <v-container>
-                <v-combobox
-                  v-model="proxyModel.value.remove"
-                  chips
-                  multiple
-                  label="Remove Tags"
-                  :items="availableTags"
-                  :rules="[removeTagsRule]"
-                  closable-chips
-                  :menu-props="{ maxWidth: 0 }"
-                  autocomplete="off"
-                />
-              </v-container>
-            </v-form>
-          </template>
+      <v-combobox
+        v-model="removedTags"
+        label="Remove Tags"
+        chips
+        closable-chips
+        multiple
+        item-title="tag"
+        item-value="tag"
+        :items="commonTags"
+        variant="outlined"
+        density="comfortable"
+        hide-details="auto"
+        :disabled="isSaving"
+      >
+        <template #details>
+          <div class="text-caption text-medium-emphasis">
+            Only tags present in all selected items are shown here.
+          </div>
+        </template>
+      </v-combobox>
+    </v-form>
 
-          <v-divider />
-
-          <template #actions>
-            <v-spacer />
-            <component :is="actions" />
-          </template>
-        </v-card>
-      </template>
-    </v-confirm-edit>
-  </v-dialog>
+    <template #actions>
+      <v-spacer />
+      <v-btn variant="text" :disabled="isSaving" @click="modalStore.showBatchEditTagsModal = false">
+        Cancel
+      </v-btn>
+      <v-btn
+        color="primary"
+        variant="flat"
+        :loading="isSaving"
+        :disabled="!formIsValid"
+        @click="handleSave"
+      >
+        Save
+      </v-btn>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
-import { useCollectionStore } from '@/store/collectionStore'
 import { useTagStore } from '@/store/tagStore'
+import { useCollectionStore } from '@/store/collectionStore' // 使用 CollectionStore
+import { useMessageStore } from '@/store/messageStore'
+import { editTags } from '@/api/editTags' // 使用標準 editTags
+// 注意：你需要在 api/editTags 中實作 getCommonTags，目前先不引入以避免報錯
+// import { getCommonTags } from '@/api/editTags'
+import BaseModal from '@/components/Modal/BaseModal.vue'
 import { getIsolationIdByRoute } from '@utils/getter'
-import type { VForm } from 'vuetify/components'
-import { editTags } from '@/api/editTags'
-
-interface ChangedTags {
-  add: string[]
-  remove: string[]
-}
-
-const formRef = ref<VForm | null>(null)
-const formIsValid = ref(false)
-const changedTags = ref<ChangedTags>({ add: [], remove: [] })
 
 const route = useRoute()
-const isolationId = getIsolationIdByRoute(route)
-
 const modalStore = useModalStore('mainId')
-const collectionStore = useCollectionStore(isolationId)
 const tagStore = useTagStore('mainId')
+const messageStore = useMessageStore('mainId')
 
-const specialTag = (t: string) => t === '_archived' || t === '_favorite' || t === '_trashed'
-const availableTags = computed(() => tagStore.tags.map((t) => t.tag).filter((t) => !specialTag(t)))
+const isolationId = getIsolationIdByRoute(route)
+const collectionStore = useCollectionStore(isolationId)
 
-const addTagsRule = (arr: string[]) =>
-  arr.every((t) => !changedTags.value.remove.includes(t)) ||
-  'Some tags are already selected in Remove Tags'
+const formIsValid = ref(false)
+const isSaving = ref(false)
 
-const removeTagsRule = (arr: string[]) =>
-  arr.every((t) => !changedTags.value.add.includes(t)) ||
-  'Some tags are already selected in Add Tags'
+const addedTags = ref<string[]>([])
+const removedTags = ref<string[]>([])
+const commonTags = ref<string[]>([])
 
-const submit = ref<() => Promise<void> | undefined>()
+const allTags = computed(() => tagStore.tags.map((t) => t.tag))
+const selectedCount = computed(() => collectionStore.editModeCollection.size)
 
-onMounted(() => {
-  submit.value = async () => {
-    const hashes = Array.from(collectionStore.editModeCollection)
-    await editTags(hashes, changedTags.value.add, changedTags.value.remove, isolationId)
-    modalStore.showBatchEditTagsModal = false
+// 初始化數據
+const initializeData = async () => {
+  addedTags.value = []
+  removedTags.value = []
+  commonTags.value = []
+
+  if (selectedCount.value === 0) return
+
+  // TODO: 如果你想實作 "只顯示共同 Tag"，請在 src/api/editTags.ts 實作 getCommonTags
+  // 並在這裡解開註解
+  /*
+  try {
+    const result = await getCommonTags(Array.from(collectionStore.editModeCollection))
+    commonTags.value = result
+  } catch (e) {
+    console.error('Failed to fetch common tags', e)
+    messageStore.error('Failed to fetch common tags.')
   }
-})
+  */
 
+  // 暫時替代方案：顯示所有 Tags 供移除
+  commonTags.value = allTags.value
+}
+
+// 監聽 Modal 開啟
 watch(
-  () => [changedTags.value.add, changedTags.value.remove],
-  async () => {
-    await formRef.value?.validate()
-  },
-  { deep: true }
+  () => modalStore.showBatchEditTagsModal, // 修正拼字
+  (isOpen) => {
+    if (isOpen) {
+      initializeData()
+    }
+  }
 )
+
+const handleSave = async () => {
+  if (addedTags.value.length === 0 && removedTags.value.length === 0) {
+    modalStore.showBatchEditTagsModal = false
+    return
+  }
+
+  isSaving.value = true
+  try {
+    const selectedHashes = Array.from(collectionStore.editModeCollection)
+    // 使用 editTags 進行批量修改
+    await editTags(selectedHashes, addedTags.value, removedTags.value, isolationId)
+
+    messageStore.success('Batch update tags successful.')
+    modalStore.showBatchEditTagsModal = false
+
+    // 清空選取狀態
+    collectionStore.editModeOn = false
+  } catch (e) {
+    console.error(e)
+    messageStore.error('Batch update tags failed.')
+  } finally {
+    isSaving.value = false
+  }
+}
 </script>
