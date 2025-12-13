@@ -3,15 +3,18 @@ import {
   AlbumExpressionCstChildren,
   AndExpressionCstChildren,
   AnyExpressionCstChildren,
+  ArchivedExpressionCstChildren,
   AtomicExpressionCstChildren,
   ExpressionCstChildren,
   ExtExpressionCstChildren,
+  FavoriteExpressionCstChildren,
   MakeExpressionCstChildren,
   ModelExpressionCstChildren,
   NotExpressionCstChildren,
   OrExpressionCstChildren,
   PathExpressionCstChildren,
   TagExpressionCstChildren,
+  TrashedExpressionCstChildren,
   TypeExpressionCstChildren
 } from '@type/MyParserCst'
 import { getArrayValue } from '@utils/getter'
@@ -35,6 +38,10 @@ const Make: TokenType = createToken({ name: 'Makel', pattern: /make:/ })
 const Album: TokenType = createToken({ name: 'Album', pattern: /album:/ })
 const Path: TokenType = createToken({ name: 'Path', pattern: /path:/ })
 const Any: TokenType = createToken({ name: 'Any', pattern: /any:/ })
+const Favorite: TokenType = createToken({ name: 'Favorite', pattern: /favorite:/ })
+const Archived: TokenType = createToken({ name: 'Archived', pattern: /archived:/ })
+const Trashed: TokenType = createToken({ name: 'Trashed', pattern: /trashed:/ })
+const BooleanVal: TokenType = createToken({ name: 'BooleanVal', pattern: /true|false/ })
 const Comma: TokenType = createToken({ name: 'Comma', pattern: /,/ })
 
 const Identifier: TokenType = createToken({
@@ -63,6 +70,10 @@ const allTokens: TokenType[] = [
   Model,
   Path,
   Any,
+  Favorite,
+  Archived,
+  Trashed,
+  BooleanVal,
   Comma,
   Identifier
 ]
@@ -115,7 +126,10 @@ export class MyParser extends CstParser {
       { ALT: () => this.SUBRULE(this.modelExpression) },
       { ALT: () => this.SUBRULE(this.albumExpression) },
       { ALT: () => this.SUBRULE(this.pathExpression) },
-      { ALT: () => this.SUBRULE(this.anyExpression) }
+      { ALT: () => this.SUBRULE(this.anyExpression) },
+      { ALT: () => this.SUBRULE(this.favoriteExpression) },
+      { ALT: () => this.SUBRULE(this.archivedExpression) },
+      { ALT: () => this.SUBRULE(this.trashedExpression) }
     ])
   })
 
@@ -158,6 +172,21 @@ export class MyParser extends CstParser {
   public anyExpression = this.RULE('anyExpression', () => {
     this.CONSUME1(Any)
     this.CONSUME2(Identifier)
+  })
+
+  public favoriteExpression = this.RULE('favoriteExpression', () => {
+    this.CONSUME1(Favorite)
+    this.CONSUME2(BooleanVal)
+  })
+
+  public archivedExpression = this.RULE('archivedExpression', () => {
+    this.CONSUME1(Archived)
+    this.CONSUME2(BooleanVal)
+  })
+
+  public trashedExpression = this.RULE('trashedExpression', () => {
+    this.CONSUME1(Trashed)
+    this.CONSUME2(BooleanVal)
   })
 }
 
@@ -228,6 +257,15 @@ export class MyVisitor extends BaseVisitor {
     if (children.anyExpression) {
       return this.visit(children.anyExpression)
     }
+    if (children.favoriteExpression) {
+      return this.visit(children.favoriteExpression)
+    }
+    if (children.archivedExpression) {
+      return this.visit(children.archivedExpression)
+    }
+    if (children.trashedExpression) {
+      return this.visit(children.trashedExpression)
+    }
   }
 
   // Visit a tagExpression node
@@ -256,5 +294,20 @@ export class MyVisitor extends BaseVisitor {
   }
   anyExpression(children: AnyExpressionCstChildren) {
     return { Any: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
+  }
+
+  favoriteExpression(children: FavoriteExpressionCstChildren) {
+    const val = getArrayValue(children.BooleanVal, 0).image === 'true'
+    return { Favorite: val }
+  }
+
+  archivedExpression(children: ArchivedExpressionCstChildren) {
+    const val = getArrayValue(children.BooleanVal, 0).image === 'true'
+    return { Archived: val }
+  }
+
+  trashedExpression(children: TrashedExpressionCstChildren) {
+    const val = getArrayValue(children.BooleanVal, 0).image === 'true'
+    return { Trashed: val }
   }
 }
