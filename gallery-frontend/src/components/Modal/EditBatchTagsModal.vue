@@ -24,6 +24,7 @@
         hide-details="auto"
         class="mb-4"
         :disabled="isSaving"
+        autocomplete="off"
       ></v-combobox>
 
       <v-combobox
@@ -39,6 +40,7 @@
         density="comfortable"
         hide-details="auto"
         :disabled="isSaving"
+        autocomplete="off"
       >
         <template #details>
           <div class="text-caption text-medium-emphasis">

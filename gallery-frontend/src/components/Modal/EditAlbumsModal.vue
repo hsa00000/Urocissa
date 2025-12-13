@@ -17,10 +17,10 @@
         label="Albums"
         closable-chips
         variant="outlined"
-        autocomplete="off"
         hide-details
         :disabled="isSaving"
         :return-object="false"
+        autocomplete="off"
       />
     </v-form>
 

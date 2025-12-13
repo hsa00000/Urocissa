@@ -25,6 +25,7 @@
         class="mb-4"
         :disabled="isSaving"
         :return-object="false"
+        autocomplete="off"
       ></v-combobox>
 
       <v-combobox
@@ -41,6 +42,7 @@
         hide-details="auto"
         :disabled="isSaving"
         :return-object="false"
+        autocomplete="off"
       ></v-combobox>
     </v-form>
 

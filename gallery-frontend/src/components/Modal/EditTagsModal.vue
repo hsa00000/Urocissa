@@ -18,9 +18,9 @@
         label="Tags"
         closable-chips
         variant="outlined"
-        autocomplete="off"
         hide-details
         :disabled="isSaving"
+        autocomplete="off"
       />
     </v-form>
 
