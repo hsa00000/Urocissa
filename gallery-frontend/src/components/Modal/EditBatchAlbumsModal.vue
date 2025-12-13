@@ -26,6 +26,8 @@
         :disabled="isSaving"
         :return-object="false"
         autocomplete="off"
+        :rules="[rules.noEmpty, rules.noConflictAdded]"
+        validate-on="input"
       ></v-combobox>
 
       <v-combobox
@@ -43,6 +45,8 @@
         :disabled="isSaving"
         :return-object="false"
         autocomplete="off"
+        :rules="[rules.noEmpty, rules.noConflictRemoved]"
+        validate-on="input"
       ></v-combobox>
     </v-form>
 
@@ -55,11 +59,12 @@
       >
         Cancel
       </v-btn>
+
       <v-btn
         color="primary"
         variant="flat"
         :loading="isSaving"
-        :disabled="!formIsValid"
+        :disabled="!hasChanges || !formIsValid"
         @click="handleSave"
       >
         Save
@@ -73,9 +78,9 @@ import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { useAlbumStore } from '@/store/albumStore'
-import { useCollectionStore } from '@/store/collectionStore' // 使用 CollectionStore
+import { useCollectionStore } from '@/store/collectionStore'
 import { useMessageStore } from '@/store/messageStore'
-import { editAlbums } from '@/api/editAlbums' // 使用標準 API
+import { editAlbums } from '@/api/editAlbums'
 import BaseModal from '@/components/Modal/BaseModal.vue'
 import { getIsolationIdByRoute } from '@utils/getter'
 
@@ -88,9 +93,11 @@ const messageStore = useMessageStore('mainId')
 const isolationId = getIsolationIdByRoute(route)
 const collectionStore = useCollectionStore(isolationId)
 
+// 狀態控制
 const formIsValid = ref(false)
 const isSaving = ref(false)
 
+// 資料模型 (這裡存的是 ID 字串陣列)
 const addedAlbums = ref<string[]>([])
 const removedAlbums = ref<string[]>([])
 
@@ -104,14 +111,59 @@ const albumList = computed(() =>
   }))
 )
 
-// 初始化：每次開啟時清空輸入框
+// 計算是否有任何變更
+const hasChanges = computed(() => {
+  return addedAlbums.value.length > 0 || removedAlbums.value.length > 0
+})
+
+// === 輔助函式：透過 ID 找相簿名稱（用於顯示錯誤訊息） ===
+const getAlbumName = (id: string) => {
+  const target = albumList.value.find((a) => a.id === id)
+  return target ? target.title : id
+}
+
+// === 驗證規則 ===
+const rules = {
+  // 非空檢查
+  noEmpty: (v: string[]) => {
+    const hasEmpty = v.some((id) => !id || (typeof id === 'string' && id.trim() === ''))
+    return !hasEmpty || 'Selection cannot be empty.'
+  },
+
+  // 互斥檢查 (Added)：檢查是否出現在 Removed 清單中
+  noConflictAdded: (ids: string[]) => {
+    // 找出同時存在於 removedAlbums 的 ID
+    const conflictId = ids.find((id) => removedAlbums.value.includes(id))
+
+    if (conflictId) {
+      const name = getAlbumName(conflictId)
+      return `Conflict: Album '${name}' is also in the remove list.`
+    }
+    return true
+  },
+
+  // 互斥檢查 (Removed)：檢查是否出現在 Added 清單中
+  noConflictRemoved: (ids: string[]) => {
+    // 找出同時存在於 addedAlbums 的 ID
+    const conflictId = ids.find((id) => addedAlbums.value.includes(id))
+
+    if (conflictId) {
+      const name = getAlbumName(conflictId)
+      return `Conflict: Album '${name}' is also in the add list.`
+    }
+    return true
+  }
+}
+
+// 初始化：每次開啟時清空輸入框並重置驗證狀態
 const initializeData = () => {
   addedAlbums.value = []
   removedAlbums.value = []
+  formIsValid.value = true // 初始狀態視為有效
 }
 
 watch(
-  () => modalStore.showBatchEditAlbumsModal, // 修正拼字
+  () => modalStore.showBatchEditAlbumsModal,
   (isOpen) => {
     if (isOpen) {
       initializeData()
@@ -120,14 +172,11 @@ watch(
 )
 
 const handleSave = async () => {
-  if (addedAlbums.value.length === 0 && removedAlbums.value.length === 0) {
-    modalStore.showBatchEditAlbumsModal = false
-    return
-  }
+  // 雙重保險
+  if (!hasChanges.value || !formIsValid.value) return
 
   isSaving.value = true
   try {
-    // 從 CollectionStore 取得選取的 hashes (Set -> Array)
     const selectedHashes = Array.from(collectionStore.editModeCollection)
 
     await editAlbums(selectedHashes, addedAlbums.value, removedAlbums.value, isolationId)

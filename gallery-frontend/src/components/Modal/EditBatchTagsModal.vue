@@ -25,6 +25,8 @@
         class="mb-4"
         :disabled="isSaving"
         autocomplete="off"
+        :rules="[rules.noEmpty, rules.noConflictAdded]"
+        validate-on="input"
       ></v-combobox>
 
       <v-combobox
@@ -41,13 +43,9 @@
         hide-details="auto"
         :disabled="isSaving"
         autocomplete="off"
-      >
-        <template #details>
-          <div class="text-caption text-medium-emphasis">
-            Only tags present in all selected items are shown here.
-          </div>
-        </template>
-      </v-combobox>
+        :rules="[rules.noEmpty, rules.noConflictRemoved]"
+        validate-on="input"
+      ></v-combobox>
     </v-form>
 
     <template #actions>
@@ -55,11 +53,12 @@
       <v-btn variant="text" :disabled="isSaving" @click="modalStore.showBatchEditTagsModal = false">
         Cancel
       </v-btn>
+
       <v-btn
         color="primary"
         variant="flat"
         :loading="isSaving"
-        :disabled="!formIsValid"
+        :disabled="!hasChanges || !formIsValid"
         @click="handleSave"
       >
         Save
@@ -73,11 +72,9 @@ import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { useTagStore } from '@/store/tagStore'
-import { useCollectionStore } from '@/store/collectionStore' // 使用 CollectionStore
+import { useCollectionStore } from '@/store/collectionStore'
 import { useMessageStore } from '@/store/messageStore'
-import { editTags } from '@/api/editTags' // 使用標準 editTags
-// 注意：你需要在 api/editTags 中實作 getCommonTags，目前先不引入以避免報錯
-// import { getCommonTags } from '@/api/editTags'
+import { editTags } from '@/api/editTags'
 import BaseModal from '@/components/Modal/BaseModal.vue'
 import { getIsolationIdByRoute } from '@utils/getter'
 
@@ -89,43 +86,62 @@ const messageStore = useMessageStore('mainId')
 const isolationId = getIsolationIdByRoute(route)
 const collectionStore = useCollectionStore(isolationId)
 
+// 狀態控制
 const formIsValid = ref(false)
 const isSaving = ref(false)
 
+// 資料模型
 const addedTags = ref<string[]>([])
 const removedTags = ref<string[]>([])
-const commonTags = ref<string[]>([])
 
+// Computed
 const allTags = computed(() => tagStore.tags.map((t) => t.tag))
 const selectedCount = computed(() => collectionStore.editModeCollection.size)
 
+// 計算是否有任何變更（用於控制 Save 按鈕啟用狀態）
+const hasChanges = computed(() => {
+  return addedTags.value.length > 0 || removedTags.value.length > 0
+})
+
+// === 驗證規則 ===
+const rules = {
+  // 非空檢查：過濾掉空字串或純空白
+  noEmpty: (v: string[]) => {
+    const hasEmpty = v.some((tag) => !tag || tag.trim() === '')
+    return !hasEmpty || 'Tags cannot be empty.'
+  },
+
+  // 互斥檢查 (Added)：檢查是否出現在 Removed 清單中
+  noConflictAdded: (v: string[]) => {
+    // 找出同時存在於 removedTags 的標籤
+    const conflicts = v.filter((tag) => removedTags.value.includes(tag))
+    if (conflicts.length > 0) {
+      return `Conflict: '${conflicts[0]}' is also in the remove list.`
+    }
+    return true
+  },
+
+  // 互斥檢查 (Removed)：檢查是否出現在 Added 清單中
+  noConflictRemoved: (v: string[]) => {
+    // 找出同時存在於 addedTags 的標籤
+    const conflicts = v.filter((tag) => addedTags.value.includes(tag))
+    if (conflicts.length > 0) {
+      return `Conflict: '${conflicts[0]}' is also in the add list.`
+    }
+    return true
+  }
+}
+
 // 初始化數據
-const initializeData = async () => {
+const initializeData = () => {
   addedTags.value = []
   removedTags.value = []
-  commonTags.value = []
-
-  if (selectedCount.value === 0) return
-
-  // TODO: 如果你想實作 "只顯示共同 Tag"，請在 src/api/editTags.ts 實作 getCommonTags
-  // 並在這裡解開註解
-  /*
-  try {
-    const result = await getCommonTags(Array.from(collectionStore.editModeCollection))
-    commonTags.value = result
-  } catch (e) {
-    console.error('Failed to fetch common tags', e)
-    messageStore.error('Failed to fetch common tags.')
-  }
-  */
-
-  // 暫時替代方案：顯示所有 Tags 供移除
-  commonTags.value = allTags.value
+  formIsValid.value = true // 重置時預設為 true (因為空陣列是合法的起始狀態，直到使用者輸入錯誤)
 }
 
 // 監聽 Modal 開啟
 watch(
-  () => modalStore.showBatchEditTagsModal, // 修正拼字
+  () => modalStore.showBatchEditTagsModal,
   (isOpen) => {
     if (isOpen) {
       initializeData()
@@ -134,19 +150,19 @@ watch(
 )
 
 const handleSave = async () => {
-  if (addedTags.value.length === 0 && removedTags.value.length === 0) {
-    modalStore.showBatchEditTagsModal = false
-    return
-  }
+  // 雙重保險：如果無變更或表單驗證未通過，則不執行
+  if (!hasChanges.value || !formIsValid.value) return
 
   isSaving.value = true
   try {
     const selectedHashes = Array.from(collectionStore.editModeCollection)
-    // 使用 editTags 進行批量修改
+
     await editTags(selectedHashes, addedTags.value, removedTags.value, isolationId)
 
     messageStore.success('Batch update tags successful.')
     modalStore.showBatchEditTagsModal = false
+
+    // 清空選取狀態
     collectionStore.leaveEdit()
   } catch (e) {
     console.error(e)
