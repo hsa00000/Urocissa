@@ -7,6 +7,7 @@ use anyhow::Result;
 use anyhow::anyhow;
 use arrayvec::ArrayString;
 use jsonwebtoken::{DecodingKey, Validation, decode};
+use log::info;
 use rocket::Request;
 use serde::de::DeserializeOwned;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -134,6 +135,12 @@ fn validate_share_access(share: &Share, req: &Request<'_>) -> Result<(), ShareEr
             .duration_since(UNIX_EPOCH)
             .map_err(|e| ShareError::Internal(anyhow!("Time error: {}", e)))?
             .as_secs();
+
+        // --- 新增測試用 Log 區塊 (檢查剩餘時間) ---
+        // 使用 saturating_sub 避免時間差微小誤差導致 panic
+        let distance = share.exp.saturating_sub(now);
+        info!("Expire 壽命距離現在時間是剩下 {} 秒", distance);
+        // ----------------------------------------
 
         if now > share.exp {
             return Err(ShareError::Expired); // 明確的過期錯誤

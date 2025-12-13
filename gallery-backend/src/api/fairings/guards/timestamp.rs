@@ -26,12 +26,18 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = match extract_bearer_token(req) {
             Ok(token) => token,
-            Err(err) => return Outcome::Error((Status::Unauthorized, err.into())),
+            Err(err) => return Outcome::Error((Status::Unauthorized, GuardError {
+                status: Status::Unauthorized,
+                error: err,
+            })),
         };
 
         let claims: ClaimsTimestamp = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
-            Err(err) => return Outcome::Error((Status::Unauthorized, err.into())),
+            Err(err) => return Outcome::Error((Status::Unauthorized, GuardError {
+                status: Status::Unauthorized,
+                error: err,
+            })),
         };
 
         let query_timestamp = req.uri().query().and_then(|query| {
@@ -46,7 +52,10 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
             None => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    anyhow!("No valid 'timestamp' parameter found in the query").into(),
+                    GuardError {
+                        status: Status::Unauthorized,
+                        error: anyhow!("No valid 'timestamp' parameter found in the query"),
+                    },
                 ));
             }
         };
@@ -56,7 +65,10 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
                 "Timestamp does not match; received: {}; expected: {}",
                 query_timestamp, claims.timestamp
             );
-            return Outcome::Error((Status::Unauthorized, anyhow!("Timestamp mismatch").into()));
+            return Outcome::Error((Status::Unauthorized, GuardError {
+                status: Status::Unauthorized,
+                error: anyhow!("Timestamp mismatch"),
+            }));
         }
 
         Outcome::Success(GuardTimestamp { claims })

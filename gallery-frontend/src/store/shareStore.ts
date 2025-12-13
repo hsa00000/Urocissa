@@ -9,7 +9,8 @@ export const useShareStore = (isolationId: IsolationId) =>
       albumId: null | string
       shareId: null | string
       password: null | string
-      isAuthFailed: boolean
+      isAuthFailed: boolean // 您可以考慮保留或移除，目前我們主要用下面的
+      isLinkExpired: boolean // <--- 新增這個狀態
       resolvedShare: null | ResolvedShare
       allShares: ResolvedShare[]
       fetched: boolean
@@ -18,6 +19,7 @@ export const useShareStore = (isolationId: IsolationId) =>
       shareId: null,
       password: null,
       isAuthFailed: false,
+      isLinkExpired: false, // <--- 初始化
       resolvedShare: null,
       allShares: [],
       fetched: false

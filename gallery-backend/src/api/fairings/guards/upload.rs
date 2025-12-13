@@ -23,8 +23,10 @@ impl<'r> FromRequest<'r> for GuardUpload {
         match try_jwt_cookie_auth(req, &VALIDATION) {
             Ok(_) => return Outcome::Success(GuardUpload),
             Err(err) => {
-                let full_err = err.context("Authentication error").into();
-                Outcome::Error((Status::Unauthorized, full_err))
+                Outcome::Error((Status::Unauthorized, GuardError {
+                    status: Status::Unauthorized,
+                    error: err.context("Authentication error"),
+                }))
             }
         }
     }

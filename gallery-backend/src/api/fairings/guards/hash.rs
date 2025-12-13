@@ -28,7 +28,10 @@ impl<'r> FromRequest<'r> for GuardHash {
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    err.context("Bearer token extraction failed").into(),
+                    GuardError {
+                        status: Status::Unauthorized,
+                        error: err.context("Bearer token extraction failed"),
+                    },
                 ));
             }
         };
@@ -38,7 +41,10 @@ impl<'r> FromRequest<'r> for GuardHash {
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    err.context("JWT decoding failed").into(),
+                    GuardError {
+                        status: Status::Unauthorized,
+                        error: err.context("JWT decoding failed"),
+                    },
                 ));
             }
         };
@@ -59,7 +65,10 @@ impl<'r> FromRequest<'r> for GuardHash {
                 "Hash does not match. Received: {}, Expected: {}.",
                 data_hash, claims.hash
             );
-            return Outcome::Error((Status::Unauthorized, anyhow!("Hash does not match").into()));
+            return Outcome::Error((Status::Unauthorized, GuardError {
+                status: Status::Unauthorized,
+                error: anyhow!("Hash does not match"),
+            }));
         }
         Outcome::Success(GuardHash)
     }
@@ -77,7 +86,10 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    err.context("Bearer token extraction failed").into(),
+                    GuardError {
+                        status: Status::Unauthorized,
+                        error: err.context("Bearer token extraction failed"),
+                    },
                 ));
             }
         };
@@ -87,7 +99,10 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    err.context("JWT decoding failed").into(),
+                    GuardError {
+                        status: Status::Unauthorized,
+                        error: err.context("JWT decoding failed"),
+                    },
                 ));
             }
         };
@@ -102,7 +117,10 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    err.context("Hash extraction failed").into(),
+                    GuardError {
+                        status: Status::Unauthorized,
+                        error: err.context("Hash extraction failed"),
+                    },
                 ));
             }
         };
@@ -113,7 +131,10 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
                 "Hash does not match. Received: {}, Expected: {}.",
                 data_hash, claims.hash
             );
-            return Outcome::Error((Status::Unauthorized, anyhow!("Hash does not match").into()));
+            return Outcome::Error((Status::Unauthorized, GuardError {
+                status: Status::Unauthorized,
+                error: anyhow!("Hash does not match"),
+            }));
         }
         Outcome::Success(GuardHashOriginal)
     }

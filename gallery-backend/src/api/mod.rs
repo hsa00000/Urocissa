@@ -49,13 +49,16 @@ where
 pub type AppResult<T> = Result<T, AppError>;
 
 #[derive(Debug)]
-pub struct GuardError(anyhow::Error);
+pub struct GuardError {
+    pub status: Status,
+    pub error: anyhow::Error,
+}
 
 impl From<GuardError> for AppError {
     fn from(err: GuardError) -> Self {
         AppError {
-            status: Status::Unauthorized,
-            error: err.0,
+            status: err.status, // 使用 GuardError 攜帶的狀態碼
+            error: err.error,
         }
     }
 }
@@ -67,6 +70,10 @@ where
     anyhow::Error: From<E>,
 {
     fn from(err: E) -> Self {
-        GuardError(anyhow::Error::from(err))
+        // 預設情況下 (例如 Auth Guard 的一般錯誤)，維持 Unauthorized
+        GuardError {
+            status: Status::Unauthorized,
+            error: anyhow::Error::from(err),
+        }
     }
 }

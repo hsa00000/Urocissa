@@ -7,6 +7,7 @@ export const fixedBigRowHeight = 2400
 export const layoutBatchNumber = 20
 export const navBarHeight = 68
 export const DURATIONS = [
+  { label: '1 second later (Test)', id: 1 / 60 }, // 新增這行：1/60 * 60 = 1 秒
   { label: '30 minutes later', id: 30 },
   { label: '1 hour later', id: 60 },
   { label: '6 hours later', id: 360 },

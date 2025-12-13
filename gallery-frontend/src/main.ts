@@ -18,9 +18,11 @@ import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
-import { useRedirectionStore } from '@/store/redirectionStore'
 import { useShareStore } from '@/store/shareStore'
 import { useConstStore } from '@/store/constStore'
+import { useMessageStore } from '@/store/messageStore'
+import { useModalStore } from '@/store/modalStore' // <--- 新增
+import { useRedirectionStore } from '@/store/redirectionStore' // <--- 記得加回這個 import
 
 // Request interceptor
 axios.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -41,21 +43,52 @@ axios.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 // Response interceptor
 axios.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response
+  },
   async (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    // --- 新增/修改 401 與 403 處理邏輯 ---
+    if (error.response) {
+      const status = error.response.status
+      const modalStore = useModalStore('mainId')
+      const messageStore = useMessageStore('mainId')
       const shareStore = useShareStore('mainId')
+      const redirectionStore = useRedirectionStore('mainId') // <--- 使用 store
 
-      // Check if this is a share context (albumId/shareId are present)
-      // This prevents redirecting to admin login when trying to access a locked share
-      if (shareStore.albumId && shareStore.shareId) {
-        shareStore.isAuthFailed = true
-        return Promise.reject(error)
+      // 檢查是否為分享頁面 (有 albumId 與 shareId)
+      // 這樣避免管理員後台的 401/403 也誤開這個 Modal
+      const isSharePage = shareStore.albumId && shareStore.shareId
+
+      if (isSharePage) {
+        if (status === 401) {
+          // 401: 需要密碼，未過期
+          if (!modalStore.showShareLoginModal) {
+            shareStore.isLinkExpired = false // 設定 shareStore 狀態
+            modalStore.showShareLoginModal = true
+          }
+        } else if (status === 403) {
+          // 403: 過期
+          messageStore.error('Share link has expired or access is denied.')
+          if (!modalStore.showShareLoginModal) {
+            shareStore.isLinkExpired = true // 設定 shareStore 狀態
+            modalStore.showShareLoginModal = true
+          }
+        }
+      } else {
+        // --- 一般頁面邏輯 (Home/Admin) ---
+
+        // 401 Unauthorized: 未登入 -> 跳轉到登入頁
+        if (status === 401) {
+          await redirectionStore.redirectionToLogin()
+        }
+        // 403 Forbidden: 已登入但無權限 -> 顯示錯誤
+        else if (status === 403) {
+          messageStore.error('Access denied.')
+        }
       }
-
-      const redirectionStore = useRedirectionStore('mainId')
-      await redirectionStore.redirectionToLogin()
     }
+    // -------------------------------------
+
     return Promise.reject(error)
   }
 )

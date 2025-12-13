@@ -36,7 +36,15 @@ impl<'r> FromRequest<'r> for GuardShare {
                     _ => anyhow::anyhow!("Share authentication failed: {:?}", err),
                 };
 
-                return Outcome::Error((status, GuardError(err_msg)));
+                // --- 修改這裡：明確建構包含 status 的 GuardError ---
+                return Outcome::Error((
+                    status,
+                    GuardError {
+                        status,
+                        error: err_msg,
+                    },
+                ));
+                // -----------------------------------------------
             }
         }
 
@@ -54,7 +62,16 @@ impl<'r> FromRequest<'r> for GuardShare {
                     ShareError::Internal(e) => e,
                     _ => anyhow::anyhow!("Share authentication failed: {:?}", err),
                 };
-                return Outcome::Error((status, GuardError(err_msg)));
+
+                // --- 修改這裡：明確建構包含 status 的 GuardError ---
+                return Outcome::Error((
+                    status,
+                    GuardError {
+                        status,
+                        error: err_msg,
+                    },
+                ));
+                // -----------------------------------------------
             }
         }
 
@@ -62,9 +79,13 @@ impl<'r> FromRequest<'r> for GuardShare {
         match try_jwt_cookie_auth(req, &VALIDATION) {
             Ok(claims) => return Outcome::Success(GuardShare { claims }),
             Err(err) => {
+                // 如果 JWT 驗證失敗 (例如沒登入)，這應該是 401，而不是 500
                 return Outcome::Error((
-                    Status::InternalServerError,
-                    err.context("Authentication error").into(),
+                    Status::Unauthorized, // <--- 改回 Unauthorized (401)
+                    GuardError {
+                        status: Status::Unauthorized, // <--- 改回 Unauthorized (401)
+                        error: err.context("Authentication error"),
+                    },
                 ));
             }
         }
