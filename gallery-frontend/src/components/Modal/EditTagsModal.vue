@@ -65,13 +65,12 @@ const modalStore = useModalStore('mainId')
 const tagStore = useTagStore('mainId')
 
 const tagList = computed(() => tagStore.tags)
+const specialTag = (tag: string): boolean =>
+  tag === '_archived' || tag === '_favorite' || tag === '_trashed'
+
 const filteredTagList = computed(() =>
   tagList.value.filter((tag) => !specialTag(tag.tag)).map((tag) => tag.tag)
 )
-
-const specialTag = (tag: string): boolean => {
-  return tag === '_archived' || tag === '_favorite' || tag === '_trashed'
-}
 
 // 將初始化邏輯提取為函數
 const initializeData = () => {
