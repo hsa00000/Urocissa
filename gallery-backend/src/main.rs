@@ -10,7 +10,7 @@ mod config;
 mod database;
 mod models;
 mod utils;
-mod migration; // 引入 migration 模組
+mod migration; // Added migration
 
 use crate::common::{INDEX_RUNTIME, ROCKET_RUNTIME};
 use crate::common::errors::handle_error;
@@ -39,11 +39,9 @@ use std::time::Instant;
 use tokio::sync::broadcast;
 
 async fn build_rocket() -> rocket::Rocket<rocket::Build> {
-    // 1. 建立設定：禁用 Rocket 內建的 Ctrl-C 監聽
     let figment = rocket::Config::figment()
         .merge(("shutdown.ctrlc", false));
 
-    // 2. 使用 custom(figment) 取代 build()
     rocket::custom(figment)
         .attach(cache_control_fairing())
         .mount(
@@ -60,9 +58,10 @@ async fn build_rocket() -> rocket::Rocket<rocket::Build> {
 }
 
 fn main() -> Result<()> {
-    // 1. 執行遷移檢查
+    // Perform Migration Check and Execution
     if let Err(e) = migration::migrate() {
-        eprintln!("Migration failed: {:?}", e);
+        eprintln!("Error during migration:\n{:?}", e);
+        eprintln!("Migration failed. Please check the logs above.");
         std::process::exit(1);
     }
 
@@ -71,13 +70,11 @@ fn main() -> Result<()> {
         info!("Initializing database tables...");
         let txn = crate::database::ops::tree::TREE.begin_write()?;
         
-        // 1. 主要物件與 Metadata 表
         let _ = txn.open_table(crate::database::schema::object::OBJECT_TABLE)?;
         let _ = txn.open_table(crate::database::schema::meta_album::META_ALBUM_TABLE)?;
         let _ = txn.open_table(crate::database::schema::meta_image::META_IMAGE_TABLE)?;
         let _ = txn.open_table(crate::database::schema::meta_video::META_VIDEO_TABLE)?;
         
-        // 2. 關聯表 (Relations)
         let _ = txn.open_table(crate::database::schema::relations::album_data::ALBUM_ITEMS_TABLE)?;
         let _ = txn.open_table(crate::database::schema::relations::album_data::ITEM_ALBUMS_TABLE)?;
         let _ = txn.open_table(crate::database::schema::relations::album_share::ALBUM_SHARE_TABLE)?;
@@ -136,38 +133,21 @@ fn main() -> Result<()> {
 
                 let mut shutdown_rx = shutdown_tx.subscribe();
                 
-                // 3. 判斷是誰觸發了關閉
                 let is_ctrl_c = tokio::select! {
-                    _ = tokio::signal::ctrl_c() => {
-                        println!("\n[DEBUG] Ctrl-C signal detected in worker!"); 
-                        true
-                    },
-                    _ = shutdown_rx.recv() => {
-                        println!("\n[DEBUG] Internal shutdown signal detected!");
-                        false
-                    },
+                    _ = tokio::signal::ctrl_c() => true,
+                    _ = shutdown_rx.recv() => false,
                 };
 
-                // 4. 先停止 TUI
                 if let Some(handle) = tui_handle {
                     handle.abort();
-                    let _ = handle.await; // 等待任務結束
+                    let _ = handle.await;
                 }
 
-                // 這會強制將 SuperConsole 留下的 "還原終端機" 指令立刻送出
                 let _ = std::io::stdout().flush();
 
-                // 5. 再次通知與印出 Log
-                // 為了雙重保險，我們在字串前面加 \r (回到行首) 和 \x1b[2K (清除整行)
-                // 這樣就算 TUI 殘留了一些髒東西，這行字也能乾淨地印出來
                 if is_ctrl_c {
-                    println!("\r\x1b[2K[DEBUG] TUI stopped. Notifying Rocket to shutdown...");
                     let _ = shutdown_tx.send(());
-                } else {
-                    println!("\r\x1b[2K[DEBUG] TUI stopped. Shutdown in progress...");
                 }
-
-                println!("Worker thread shutting down successfully.");
             });
         }
     });
@@ -175,17 +155,13 @@ fn main() -> Result<()> {
     let rocket_handle = thread::spawn({
         let shutdown_tx = shutdown_tx.clone();
         move || {
-            info!("Rocket thread starting.");
             let result = ROCKET_RUNTIME.block_on(async {
                 let rocket_instance = build_rocket().await.ignite().await?;
                 let shutdown_handle = rocket_instance.shutdown();
                 let shutdown_tx_clone = shutdown_tx.clone();
                 ROCKET_RUNTIME.spawn(async move {
                     let mut shutdown_rx = shutdown_tx_clone.subscribe();
-                    
-                    // 6. Rocket 執行緒不再自己聽 Ctrl-C，只等待 worker 發出的廣播
                     if shutdown_rx.recv().await.is_ok() {
-                        info!("Shutdown signal received, shutting down Rocket server gracefully.");
                         shutdown_handle.notify();
                     }
                 });

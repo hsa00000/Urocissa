@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
-use log::info;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
@@ -10,10 +9,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-// For old redb
-use redb_old::ReadableTable;
+// 引入舊版 redb 的 ReadableTable trait
+use redb_old::{ReadableTable as OldReadableTable, ReadableTableMetadata};
 
-// 引入新版資料庫 Schema (假設專案結構如 new.txt 所述)
+// Import New Schema
 use crate::database::ops::tree::TREE;
 use crate::database::schema::{
     meta_album::{AlbumMetadataSchema, META_ALBUM_TABLE},
@@ -28,11 +27,12 @@ use crate::database::schema::{
 };
 
 // ==================================================================================
-// Old Data Structures (Snapshot from old.txt / previous version)
+// Old Data Structures
 // ==================================================================================
 
 mod old_structure {
     use super::*;
+    use redb_old::{TypeName, Value};
     use std::collections::HashMap;
 
     #[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq)]
@@ -50,6 +50,30 @@ mod old_structure {
         pub alias: Vec<FileModify>,
         pub ext_type: String,
         pub pending: bool,
+    }
+
+    impl Value for Database {
+        type SelfType<'a> = Self;
+        type AsBytes<'a> = Vec<u8>;
+
+        fn fixed_width() -> Option<usize> {
+            None
+        }
+
+        fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+        where
+            Self: 'a,
+        {
+            bitcode::decode(data).expect("Failed to decode OldDatabase")
+        }
+
+        fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a> {
+            bitcode::encode(value)
+        }
+
+        fn type_name() -> TypeName {
+            TypeName::new("Database")
+        }
     }
 
     #[derive(
@@ -94,6 +118,30 @@ mod old_structure {
         pub pending: bool,
     }
 
+    impl Value for Album {
+        type SelfType<'a> = Self;
+        type AsBytes<'a> = Vec<u8>;
+
+        fn fixed_width() -> Option<usize> {
+            None
+        }
+
+        fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+        where
+            Self: 'a,
+        {
+            bitcode::decode(data).expect("Failed to decode OldAlbum")
+        }
+
+        fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a> {
+            bitcode::encode(value)
+        }
+
+        fn type_name() -> TypeName {
+            TypeName::new("Album")
+        }
+    }
+
     #[derive(
         Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash,
     )]
@@ -123,7 +171,6 @@ static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(\d{4})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})\b").unwrap()
 });
 
-/// 計算 Timestamp (邏輯與舊版 generate_exif 類似)
 fn compute_timestamp(db: &OldDatabase) -> i64 {
     let now_time = chrono::Local::now().naive_local();
     let priority_list = &["DateTimeOriginal", "filename", "modified", "scan_time"];
@@ -205,7 +252,6 @@ fn compute_timestamp(db: &OldDatabase) -> i64 {
 }
 
 pub fn migrate() -> Result<()> {
-    // 1. 檢查是否需要遷移
     if !Path::new(OLD_DB_PATH).exists() {
         return Ok(());
     }
@@ -231,27 +277,28 @@ pub fn migrate() -> Result<()> {
         std::process::exit(0);
     }
 
-    info!("Starting migration...");
+    println!("Starting migration...");
 
-    // 2. 開啟舊資料庫 (唯讀，使用 redb 2.6)
     let old_db = redb_old::Database::open(OLD_DB_PATH)
-        .context("Failed to open old database. Is it corrupted?")?;
+        .context("Failed to open old database file. Please verify file permissions.")?;
     let read_txn = old_db.begin_read()?;
 
-    // 定義舊表
-    let old_data_table_def: redb_old::TableDefinition<&str, Vec<u8>> =
+    let old_data_table_def: redb_old::TableDefinition<&str, OldDatabase> =
         redb_old::TableDefinition::new("database");
-    let old_album_table_def: redb_old::TableDefinition<&str, Vec<u8>> =
+    let old_album_table_def: redb_old::TableDefinition<&str, OldAlbum> =
         redb_old::TableDefinition::new("album");
 
-    let old_data_table = read_txn.open_table(old_data_table_def)?;
-    let old_album_table = read_txn.open_table(old_album_table_def)?;
+    let old_data_table = read_txn.open_table(old_data_table_def).context(
+        "Failed to open table 'database'. The old database schema (v2.6) expects type 'Database'.",
+    )?;
+    let old_album_table = read_txn.open_table(old_album_table_def).context(
+        "Failed to open table 'album'. The old database schema (v2.6) expects type 'Album'.",
+    )?;
 
-    // 3. 開啟新資料庫 (寫入，使用全域 TREE / redb 3.1)
     let write_txn = TREE.in_disk.begin_write()?;
 
     {
-        // --- 遷移資料 (Images/Videos) ---
+        // --- Migrate DATA (Images/Videos) ---
         let mut object_table = write_txn.open_table(OBJECT_TABLE)?;
         let mut image_table = write_txn.open_table(META_IMAGE_TABLE)?;
         let mut video_table = write_txn.open_table(META_VIDEO_TABLE)?;
@@ -265,11 +312,15 @@ pub fn migrate() -> Result<()> {
         let mut item_albums_table = write_txn
             .open_table(crate::database::schema::relations::album_data::ITEM_ALBUMS_TABLE)?;
 
+        let total_items = old_data_table.len()?;
+        println!("Found {} items to migrate.", total_items);
+
         let mut processed_count = 0;
+        let mut log_interval = 0;
 
         for result in old_data_table.iter()? {
             let (_, value) = result?;
-            let old_data: OldDatabase = bitcode::decode(&value.value())?;
+            let old_data: OldDatabase = value.value();
             let hash_str = old_data.hash.as_str();
 
             // 1. Description
@@ -328,11 +379,10 @@ pub fn migrate() -> Result<()> {
                     image_table.insert(hash_str, bitcode::encode(&meta).as_slice())?;
                 }
                 ObjectType::Video => {
-                    // FIX: 從 exif_vec 中讀取 duration
                     let duration = old_data
                         .exif_vec
                         .get("duration")
-                        .and_then(|s| s.parse::<f64>().ok())
+                        .and_then(|s| s.parse::<f32>().ok())
                         .unwrap_or(0.0);
 
                     let meta = VideoMetadataSchema {
@@ -341,7 +391,7 @@ pub fn migrate() -> Result<()> {
                         width: old_data.width,
                         height: old_data.height,
                         ext: old_data.ext,
-                        duration,
+                        duration: duration as f64,
                     };
                     video_table.insert(hash_str, bitcode::encode(&meta).as_slice())?;
                 }
@@ -350,12 +400,12 @@ pub fn migrate() -> Result<()> {
 
             // 7. Relations
             for tag in tags {
-                tag_table.insert((hash_str, tag.as_str()), &())?;
+                tag_table.insert((hash_str, tag.as_str()), ())?;
             }
 
             for album_id in old_data.album {
-                album_items_table.insert((album_id.as_str(), hash_str), &())?;
-                item_albums_table.insert((hash_str, album_id.as_str()), &())?;
+                album_items_table.insert((album_id.as_str(), hash_str), ())?;
+                item_albums_table.insert((hash_str, album_id.as_str()), ())?;
             }
 
             for alias in old_data.alias {
@@ -379,23 +429,27 @@ pub fn migrate() -> Result<()> {
             }
 
             processed_count += 1;
-            if processed_count % 1000 == 0 {
-                info!("Migrated {} items...", processed_count);
+            log_interval += 1;
+            if log_interval >= 1000 {
+                println!("Migrated {} / {} items...", processed_count, total_items);
+                log_interval = 0;
             }
         }
-
-        info!(
-            "Finished migrating {} items. Starting albums...",
-            processed_count
-        );
+        println!("Data migration completed.");
 
         // --- Migrate ALBUMS ---
         let mut meta_album_table = write_txn.open_table(META_ALBUM_TABLE)?;
         let mut album_share_table = write_txn.open_table(ALBUM_SHARE_TABLE)?;
 
+        let total_albums = old_album_table.len()?;
+        println!("Found {} albums to migrate.", total_albums);
+
+        processed_count = 0;
+        log_interval = 0;
+
         for result in old_album_table.iter()? {
             let (_, value) = result?;
-            let old_album: OldAlbum = bitcode::decode(&value.value())?;
+            let old_album: OldAlbum = value.value();
             let id_str = old_album.id.as_str();
 
             // 1. Description
@@ -411,7 +465,7 @@ pub fn migrate() -> Result<()> {
             let is_archived = tags.remove("_archived");
             let is_trashed = tags.remove("_trashed");
 
-            // 3. New Object (Album)
+            // 3. New Object
             let new_object = ObjectSchema {
                 id: old_album.id,
                 created_time: old_album.created_time as i64,
@@ -430,11 +484,11 @@ pub fn migrate() -> Result<()> {
             let new_meta = AlbumMetadataSchema {
                 id: old_album.id,
                 title: old_album.title,
+                cover: old_album.cover,
                 start_time: old_album.start_time.map(|t| t as i64),
                 end_time: old_album.end_time.map(|t| t as i64),
                 last_modified_time: old_album.last_modified_time as i64,
-                cover: old_album.cover,
-                user_defined_metadata: old_album.user_defined_metadata,
+                user_defined_metadata: old_album.user_defined_metadata.into_iter().collect(),
                 item_count: old_album.item_count,
                 item_size: old_album.item_size,
             };
@@ -442,7 +496,7 @@ pub fn migrate() -> Result<()> {
 
             // 5. Relations
             for tag in tags {
-                tag_table.insert((id_str, tag.as_str()), &())?;
+                tag_table.insert((id_str, tag.as_str()), ())?;
             }
 
             // 6. Shares
@@ -461,19 +515,28 @@ pub fn migrate() -> Result<()> {
                     bitcode::encode(&new_share).as_slice(),
                 )?;
             }
+
+            processed_count += 1;
+            log_interval += 1;
+            if log_interval >= 100 {
+                // Albums usually fewer, log more frequently
+                println!("Migrated {} / {} albums...", processed_count, total_albums);
+                log_interval = 0;
+            }
         }
+        println!("Album migration completed.");
     }
 
     write_txn.commit()?;
 
-    info!("Migration completed successfully.");
+    println!("Migration completed successfully.");
 
     // Rename old DB
     let backup_path = format!("{}.bak", OLD_DB_PATH);
     std::fs::rename(OLD_DB_PATH, &backup_path)
         .context(format!("Failed to rename old DB to {}", backup_path))?;
 
-    info!("Old database renamed to {}", backup_path);
+    println!("Old database renamed to {}", backup_path);
 
     Ok(())
 }
