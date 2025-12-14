@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
-use rayon::prelude::*; // 引入 Rayon 並行迭代器
+use rayon::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
@@ -165,19 +165,19 @@ use old_structure::{Album as OldAlbum, Database as OldDatabase};
 // ==================================================================================
 
 const OLD_DB_PATH: &str = "./db/index.redb";
+const NEW_DB_PATH: &str = "./db/gallery.redb"; // Added back
+const BATCH_SIZE: usize = 5000;
 const USER_DEFINED_DESCRIPTION: &str = "_user_defined_description";
-const BATCH_SIZE: usize = 5000; // 設定批次處理大小
 
-// 定義一個中間結構來存放轉換後的數據，避免在寫入時才進行計算與序列化
 struct TransformedData {
-    object: (String, Vec<u8>),              // Object Table Key/Value
-    meta_image: Option<(String, Vec<u8>)>,  // Image Meta Key/Value
-    meta_video: Option<(String, Vec<u8>)>,  // Video Meta Key/Value
-    tags: Vec<(String, String)>,            // Tag Relations
-    album_items: Vec<(String, String)>,     // Album Item Relations
-    item_albums: Vec<(String, String)>,     // Item Album Relations
-    aliases: Vec<((String, i64), Vec<u8>)>, // Alias Key/Value
-    exifs: Vec<((String, String), String)>, // Exif Key/Value
+    object: (String, Vec<u8>),
+    meta_image: Option<(String, Vec<u8>)>,
+    meta_video: Option<(String, Vec<u8>)>,
+    tags: Vec<(String, String)>,
+    album_items: Vec<(String, String)>,
+    item_albums: Vec<(String, String)>,
+    aliases: Vec<((String, i64), Vec<u8>)>,
+    exifs: Vec<((String, String), String)>,
 }
 
 static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -198,7 +198,7 @@ fn compute_timestamp(db: &OldDatabase) -> i64 {
                             chrono::Local.from_local_datetime(&naive_dt).single()
                         {
                             if local_dt.naive_local() <= now_time {
-                                return local_dt.timestamp_millis();
+                                return local_dt.timestamp();
                             }
                         }
                     }
@@ -245,17 +245,17 @@ fn compute_timestamp(db: &OldDatabase) -> i64 {
                     return chrono::Local
                         .from_local_datetime(&datetime)
                         .unwrap()
-                        .timestamp_millis();
+                        .timestamp();
                 }
             }
             "scan_time" => {
                 if let Some(t) = db.alias.iter().map(|a| a.scan_time).max() {
-                    return t as i64;
+                    return (t / 1000) as i64;
                 }
             }
             "modified" => {
                 if let Some(max_alias) = db.alias.iter().max_by_key(|a| a.scan_time) {
-                    return max_alias.modified as i64;
+                    return (max_alias.modified / 1000) as i64;
                 }
             }
             _ => {}
@@ -273,16 +273,24 @@ pub fn migrate() -> Result<()> {
     println!(" DETECTED OLD DATABASE (v2.6.0) at {}", OLD_DB_PATH);
     println!(" A MIGRATION IS REQUIRED TO UPGRADE TO VERSION 0.18.3+");
     println!("========================================================");
-    // ... (使用者確認邏輯保持不變) ...
+    println!(" Please ensure you have BACKED UP your './db' folder.");
+    println!(" The migration will read from the old DB and create a new one.");
+    println!(
+        " Existing data in '{}' might be overwritten/merged.",
+        NEW_DB_PATH
+    );
     println!("Type 'yes' to start migration:");
+
     let mut input = String::new();
     io::stdout().flush()?;
     io::stdin().read_line(&mut input)?;
+
     if input.trim() != "yes" {
+        println!("Migration cancelled. Exiting.");
         std::process::exit(0);
     }
 
-    println!("Starting accelerated migration...");
+    println!("Starting migration...");
 
     let old_db =
         redb_old::Database::open(OLD_DB_PATH).context("Failed to open old database file.")?;
@@ -294,11 +302,10 @@ pub fn migrate() -> Result<()> {
     let old_album_table =
         read_txn.open_table(redb_old::TableDefinition::<&str, OldAlbum>::new("album"))?;
 
-    // 開啟寫入交易
     let write_txn = TREE.in_disk.begin_write()?;
 
     // ==========================================
-    // 1. Migrate DATA (Images/Videos) - Parallel
+    // 1. Migrate DATA (Images/Videos)
     // ==========================================
     {
         let mut object_table = write_txn.open_table(OBJECT_TABLE)?;
@@ -320,7 +327,6 @@ pub fn migrate() -> Result<()> {
         let mut batch_buffer: Vec<OldDatabase> = Vec::with_capacity(BATCH_SIZE);
 
         let mut commit_batch = |batch: Vec<OldDatabase>| -> Result<()> {
-            // [關鍵優化] 使用 Rayon 並行處理轉換與編碼
             let transformed_batch: Vec<TransformedData> = batch
                 .into_par_iter()
                 .map(|old_data| {
@@ -416,11 +422,15 @@ pub fn migrate() -> Result<()> {
 
                     let mut alias_rels = Vec::new();
                     for alias in old_data.alias {
+                        // [FIX] Alias 轉換：將毫秒轉為秒
+                        let scan_time_sec = (alias.scan_time / 1000) as i64;
+                        let modified_sec = (alias.modified / 1000) as i64;
+
                         let new_alias = DatabaseAliasSchema {
                             hash: hash_str.clone(),
                             file: alias.file,
-                            modified: alias.modified as i64,
-                            scan_time: alias.scan_time as i64,
+                            modified: modified_sec,
+                            scan_time: scan_time_sec,
                         };
                         alias_rels.push((
                             (hash_str.clone(), new_alias.scan_time),
@@ -448,7 +458,7 @@ pub fn migrate() -> Result<()> {
                 })
                 .collect();
 
-            // 主線程只負責快速寫入已經計算好的數據
+            // 寫入數據
             for item in transformed_batch {
                 object_table.insert(item.object.0.as_str(), item.object.1.as_slice())?;
 
@@ -477,7 +487,6 @@ pub fn migrate() -> Result<()> {
             Ok(())
         };
 
-        // 迭代並分批處理
         for result in old_data_table.iter()? {
             let (_, value) = result?;
             batch_buffer.push(value.value());
@@ -488,7 +497,6 @@ pub fn migrate() -> Result<()> {
                 println!("Migrated {} / {} items...", processed_count, total_items);
             }
         }
-        // 處理剩餘的
         if !batch_buffer.is_empty() {
             let len = batch_buffer.len();
             commit_batch(batch_buffer)?;
@@ -498,10 +506,9 @@ pub fn migrate() -> Result<()> {
     }
 
     // ==========================================
-    // 2. Migrate ALBUMS (Usually smaller, no need for heavy optimization)
+    // 2. Migrate ALBUMS
     // ==========================================
     {
-        // Album 數量通常較少，維持原邏輯或簡單優化即可
         let mut object_table = write_txn.open_table(OBJECT_TABLE)?;
         let mut meta_album_table = write_txn.open_table(META_ALBUM_TABLE)?;
         let mut album_share_table = write_txn.open_table(ALBUM_SHARE_TABLE)?;
@@ -511,33 +518,30 @@ pub fn migrate() -> Result<()> {
         let total_albums = old_album_table.len()?;
         println!("Found {} albums to migrate.", total_albums);
 
+        let mut processed_count = 0;
+
         for result in old_album_table.iter()? {
             let (_, value) = result?;
             let old_album: OldAlbum = value.value();
             let id_str = old_album.id.as_str();
 
-            // ... (Album 轉換邏輯，同原始代碼) ...
-
-            // 這裡為了簡潔省略重複的轉換代碼，若 Album 數量也非常巨大(>10萬)，
-            // 也可以套用上面的 Batch + Rayon 模式。
-            // 由於通常 Album 遠少於圖片，直接串行處理即可。
-
-            // 1. Description
             let description = old_album
                 .user_defined_metadata
                 .get(USER_DEFINED_DESCRIPTION)
                 .and_then(|v| v.first())
                 .cloned();
 
-            // 2. Tags
             let mut tags = old_album.tag.clone();
             let is_favorite = tags.remove("_favorite");
             let is_archived = tags.remove("_archived");
             let is_trashed = tags.remove("_trashed");
 
+            // [FIX] 時間轉換：毫秒 -> 秒
+            let created_time = (old_album.created_time / 1000) as i64;
+
             let new_object = ObjectSchema {
                 id: old_album.id,
-                created_time: old_album.created_time as i64,
+                created_time,
                 obj_type: ObjectType::Album,
                 thumbhash: old_album.thumbhash,
                 pending: old_album.pending,
@@ -553,9 +557,10 @@ pub fn migrate() -> Result<()> {
                 id: old_album.id,
                 title: old_album.title,
                 cover: old_album.cover,
-                start_time: old_album.start_time.map(|t| t as i64),
-                end_time: old_album.end_time.map(|t| t as i64),
-                last_modified_time: old_album.last_modified_time as i64,
+                // [FIX] 時間轉換：毫秒 -> 秒
+                start_time: old_album.start_time.map(|t| (t / 1000) as i64),
+                end_time: old_album.end_time.map(|t| (t / 1000) as i64),
+                last_modified_time: (old_album.last_modified_time / 1000) as i64,
                 user_defined_metadata: old_album.user_defined_metadata.into_iter().collect(),
                 item_count: old_album.item_count,
                 item_size: old_album.item_size,
@@ -581,8 +586,13 @@ pub fn migrate() -> Result<()> {
                     bitcode::encode(&new_share).as_slice(),
                 )?;
             }
+
+            processed_count += 1;
+            if processed_count % 100 == 0 {
+                println!("Migrated {} / {} albums...", processed_count, total_albums);
+            }
         }
-        println!("Album migration completed.");
+        println!("Album migration completed. Total: {}", processed_count);
     }
 
     write_txn.commit()?;
