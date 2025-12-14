@@ -8,4 +8,11 @@ migration 注意：
 2. abstractData.database.exif_vec.\_user_defined_description -> object.description
 
 關於 video duration
-就的 duration 儲存在
+
+1. 舊的影片 duration 儲存在 database.exif_vec.duration
+
+關於 (special) tags
+
+1. \_favorite -> object.is_favorite
+2. \_archived -> object.is_archived
+3. \_trashed -> object.is_trashed
