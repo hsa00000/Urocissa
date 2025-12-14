@@ -4,15 +4,7 @@ import { useDataStore } from '@/store/dataStore'
 import debounce from 'lodash/debounce'
 import { getArrayValue } from '@utils/getter'
 import { IsolationId } from '@type/types'
-/**
- * Hook to fetch image batches for visible rows in a virtual scroll.
- *
- * @param visibleRows - Reactive reference to visible row ranges.
- * @param visibleRowsLength - Reactive reference to the length of visible rows.
- * @param batchNumber - Number of items per batch.
- * @param debounceTime - Debounce delay in milliseconds.
- * @param maxWait - Max wait time for the debounced function.
- */
+
 export function useFetchImgs(
   visibleRows: Ref<{ start: number; end: number }[]>,
   visibleRowsLength: Ref<number>,

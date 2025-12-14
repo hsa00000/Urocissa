@@ -86,34 +86,31 @@ const messageStore = useMessageStore('mainId')
 const isolationId = getIsolationIdByRoute(route)
 const collectionStore = useCollectionStore(isolationId)
 
-// 狀態控制
 const formIsValid = ref(false)
 const isSaving = ref(false)
 
-// 資料模型
 const addedTags = ref<string[]>([])
 const removedTags = ref<string[]>([])
 
-// Computed
 const allTags = computed(() => tagStore.tags.map((t) => t.tag))
 const selectedCount = computed(() => collectionStore.editModeCollection.size)
 
-// 計算是否有任何變更（用於控制 Save 按鈕啟用狀態）
 const hasChanges = computed(() => {
   return addedTags.value.length > 0 || removedTags.value.length > 0
 })
 
-// === 驗證規則 ===
 const rules = {
-  // 非空檢查：過濾掉空字串或純空白
   noEmpty: (v: string[]) => {
     const hasEmpty = v.some((tag) => !tag || tag.trim() === '')
     return !hasEmpty || 'Tags cannot be empty.'
   },
 
-  // 互斥檢查 (Added)：檢查是否出現在 Removed 清單中
+  /**
+   * Cross-field Validation:
+   * Prevents the same tag from appearing in both "Add" and "Remove" lists simultaneously
+   * to avoid ambiguous state resolution on the backend.
+   */
   noConflictAdded: (v: string[]) => {
-    // 找出同時存在於 removedTags 的標籤
     const conflicts = v.filter((tag) => removedTags.value.includes(tag))
     if (conflicts.length > 0) {
       return `Conflict: '${conflicts[0]}' is also in the remove list.`
@@ -121,9 +118,7 @@ const rules = {
     return true
   },
 
-  // 互斥檢查 (Removed)：檢查是否出現在 Added 清單中
   noConflictRemoved: (v: string[]) => {
-    // 找出同時存在於 addedTags 的標籤
     const conflicts = v.filter((tag) => addedTags.value.includes(tag))
     if (conflicts.length > 0) {
       return `Conflict: '${conflicts[0]}' is also in the add list.`
@@ -132,14 +127,12 @@ const rules = {
   }
 }
 
-// 初始化數據
 const initializeData = () => {
   addedTags.value = []
   removedTags.value = []
-  formIsValid.value = true // 重置時預設為 true (因為空陣列是合法的起始狀態，直到使用者輸入錯誤)
+  formIsValid.value = true
 }
 
-// 監聽 Modal 開啟
 watch(
   () => modalStore.showBatchEditTagsModal,
   (isOpen) => {
@@ -150,7 +143,6 @@ watch(
 )
 
 const handleSave = async () => {
-  // 雙重保險：如果無變更或表單驗證未通過，則不執行
   if (!hasChanges.value || !formIsValid.value) return
 
   isSaving.value = true
@@ -162,7 +154,7 @@ const handleSave = async () => {
     messageStore.success('Batch update tags successful.')
     modalStore.showBatchEditTagsModal = false
 
-    // 清空選取狀態
+    // Resets UI selection state after successful batch operation
     collectionStore.leaveEdit()
   } catch (e) {
     console.error(e)
