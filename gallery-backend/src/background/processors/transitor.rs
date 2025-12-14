@@ -8,8 +8,8 @@
 //! - Permission resolution
 
 use crate::database::ops::snapshot::tree::MyCow;
-use crate::models::entity::abstract_data::AbstractData;
 use crate::database::schema::relations::album_share::ResolvedShare;
+use crate::models::entity::abstract_data::AbstractData;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,15 +33,30 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
 
 /// Process abstract data for API response
 pub fn process_abstract_data_for_response(
-    abstract_data: AbstractData,
-    _show_metadata: bool,
+    mut abstract_data: AbstractData,
+    show_metadata: bool,
 ) -> AbstractData {
-    match abstract_data {
-        AbstractData::Image(_) | AbstractData::Video(_) => {
-            // 媒體的 metadata 清除，暫時保持
+    // 若不需要隱藏 Metadata，直接回傳
+    if show_metadata {
+        return abstract_data;
+    }
+
+    match &mut abstract_data {
+        AbstractData::Image(image) => {
+            image.object.tags.clear();
+            image.object.description = None;
+            image.albums.clear();
+            image.exif_vec.clear();
         }
-        AbstractData::Album(_) => {
-            // Album 的 tag 現在從關聯表讀取，不需要清除
+        AbstractData::Video(video) => {
+            video.object.tags.clear();
+            video.object.description = None;
+            video.albums.clear();
+            video.exif_vec.clear();
+        }
+        AbstractData::Album(album) => {
+            album.object.tags.clear();
+            album.object.description = None;
         }
     }
     abstract_data
