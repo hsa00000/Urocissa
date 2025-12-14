@@ -1,9 +1,9 @@
-//! Video processing module - handles all video related logic
+//! Video processing module - handles all video related logic.
 //!
 //! Includes:
 //! - Video metadata extraction via ffprobe
-//! - Thumbnail generation from first frame
-//! - Video compression
+//! - Thumbnail generation
+//! - Video compression with progress monitoring
 //! - Width/height calculation with rotation handling
 
 use crate::{
@@ -25,44 +25,219 @@ use crate::{
     utils::{compressed_path, imported_path, thumbnail_path},
 };
 use anyhow::{Context, Result, anyhow};
+use arrayvec::ArrayString;
 use log::info;
 use regex::Regex;
 use std::{
-    cmp,
+    cmp::min,
     collections::BTreeMap,
-    error::Error,
     io::{BufRead, BufReader},
+    path::Path,
     process::{Command, Stdio},
     sync::LazyLock,
 };
 
 use super::metadata::generate_exif_for_video;
 
+// ────────────────────────────────────────────────────────────────
+// Constants & Statics
+// ────────────────────────────────────────────────────────────────
+
 static REGEX_OUT_TIME_US: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"out_time_us=(\d+)").unwrap());
 
-// 定義新的結果列舉
+/// Heuristic duration (ms) often reported by FFmpeg for single-frame/static GIFs.
+const STATIC_GIF_DURATION_MS: u32 = 100;
+const MAX_VIDEO_HEIGHT: u32 = 720;
+const FFMPEG_PROGRESS_PIPE: &str = "pipe:2";
+
+// ────────────────────────────────────────────────────────────────
+// Enums
+// ────────────────────────────────────────────────────────────────
+
+/// Result status after attempting to process a video file.
 pub enum VideoProcessResult {
     Success,
     ConvertedToImage,
 }
 
-// 輔助函數：將 Video AbstractData 轉換為 Image AbstractData
+enum DurationAnalysis {
+    Valid(f64),
+    StaticOrCorruptGif,
+    Error(anyhow::Error),
+}
+
+// ────────────────────────────────────────────────────────────────
+// Public API
+// ────────────────────────────────────────────────────────────────
+
+/// Analyzes the newly-imported video to populate metadata, dimensions, and hashes.
+///
+/// This orchestrates FFprobe extraction, rotation correction, and thumbnail generation.
+pub fn process_video_info(index_task: &mut IndexTask) -> Result<()> {
+    generate_exif_for_video(index_task).context("failed to extract video metadata via ffprobe")?;
+
+    let (w, h) =
+        generate_video_width_height(index_task).context("failed to obtain video width/height")?;
+    index_task.width = w;
+    index_task.height = h;
+
+    fix_video_width_height(index_task);
+
+    generate_thumbnail_for_video(index_task)
+        .context("failed to generate video thumbnail via ffmpeg")?;
+
+    let dynamic_image = generate_dynamic_image(index_task)
+        .context("failed to decode first video frame into DynamicImage")?;
+
+    index_task.thumbhash = generate_thumbhash(&dynamic_image);
+    index_task.phash = generate_phash(&dynamic_image);
+
+    Ok(())
+}
+
+/// Rebuilds all metadata and re-runs the processing pipeline for an existing video file.
+pub fn regenerate_metadata_for_video(index_task: &mut IndexTask) -> Result<()> {
+    index_task.size = std::fs::metadata(&index_task.imported_path)
+        .context("failed to read metadata for imported video file")?
+        .len();
+
+    process_video_info(index_task).context("failed to process video info")?;
+    Ok(())
+}
+
+/// Orchestrates the video compression workflow.
+///
+/// # Business Logic
+/// Detects static GIFs (which are technically videos in some contexts) and converts
+/// them to Image objects to avoid transcoding issues.
+pub fn generate_compressed_video(data: &mut AbstractData) -> Result<VideoProcessResult> {
+    let (id, ext, height, original_path, output_path) = match data {
+        AbstractData::Video(v) => (
+            v.object.id,
+            v.metadata.ext.clone(),
+            v.metadata.height,
+            imported_path(&v.object.id, &v.metadata.ext),
+            compressed_path(&v.object.id, ObjectType::Video),
+        ),
+        _ => return Err(anyhow!("Invalid data type: expected Video")),
+    };
+
+    let duration = match analyze_duration(&original_path, &ext) {
+        DurationAnalysis::StaticOrCorruptGif => {
+            info!(
+                "Static or corrupt GIF detected. Processing as image: {:?}",
+                original_path
+            );
+            convert_video_data_to_image_data(data)?;
+            return Ok(VideoProcessResult::ConvertedToImage);
+        }
+        DurationAnalysis::Valid(d) => d,
+        DurationAnalysis::Error(e) => return Err(e),
+    };
+
+    if let AbstractData::Video(v) = data {
+        v.metadata.duration = duration;
+    }
+
+    compress_with_ffmpeg(&original_path, &output_path, height, duration, id)?;
+
+    Ok(VideoProcessResult::Success)
+}
+
+// ────────────────────────────────────────────────────────────────
+// Private Logic & Helpers
+// ────────────────────────────────────────────────────────────────
+
+fn analyze_duration(path: &Path, ext: &str) -> DurationAnalysis {
+    match video_duration(&path.to_string_lossy()) {
+        Ok(d) if (d * 1000.0) as u32 == STATIC_GIF_DURATION_MS => {
+            DurationAnalysis::StaticOrCorruptGif
+        }
+        Ok(d) => DurationAnalysis::Valid(d),
+        Err(e) => {
+            // Fallback: Broken GIFs often fail ffprobe duration parsing entirely.
+            if ext.eq_ignore_ascii_case("gif") && e.to_string().contains("fail to parse") {
+                DurationAnalysis::StaticOrCorruptGif
+            } else {
+                DurationAnalysis::Error(e)
+            }
+        }
+    }
+}
+
+fn compress_with_ffmpeg(
+    input: &Path,
+    output: &Path,
+    height: u32,
+    total_duration: f64,
+    task_id: ArrayString<64>,
+) -> Result<()> {
+    // Constraint: Many video codecs (e.g., H.264) require dimensions to be divisible by 2.
+    // We scale down if the video exceeds MAX_VIDEO_HEIGHT, ensuring even dimensions.
+    let target_height = min(height, MAX_VIDEO_HEIGHT);
+    let scale_filter = format!("scale=trunc(oh*a/2)*2:{}", (target_height / 2) * 2);
+
+    let mut cmd = create_silent_ffmpeg_command();
+    cmd.args([
+        "-y",
+        "-i",
+        &input.to_string_lossy(),
+        "-vf",
+        &scale_filter,
+        "-movflags",
+        "faststart", // Optimizes for progressive web streaming (moves moov atom to front)
+        &output.to_string_lossy(),
+        "-progress",
+        FFMPEG_PROGRESS_PIPE,
+    ]);
+
+    let mut child = cmd
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("Failed to spawn ffmpeg")?;
+
+    if let Some(stderr) = child.stderr.take() {
+        monitor_progress(stderr, total_duration, task_id);
+    }
+
+    child.wait().context("FFmpeg execution failed")?;
+    Ok(())
+}
+
+fn monitor_progress(
+    stderr: std::process::ChildStderr,
+    total_duration: f64,
+    task_id: ArrayString<64>,
+) {
+    let reader = BufReader::new(stderr);
+
+    for line in reader.lines().filter_map(Result::ok) {
+        if let Some(caps) = REGEX_OUT_TIME_US.captures(&line) {
+            if let Ok(microseconds) = caps[1].parse::<f64>() {
+                // (current_us / 1M) / total_seconds * 100
+                let percentage = (microseconds / 1_000_000.0 / total_duration) * 100.0;
+                DASHBOARD.update_progress(task_id, percentage);
+            }
+        }
+    }
+}
+
+/// Mutates the AbstractData enum from Video variant to Image variant.
+/// Used when a file initially identified as Video (e.g. GIF) is determined to be static.
 fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
-    // 暫存需要轉移的資料，避免 borrow checker 衝突
     let (video_combined, albums, tags) = match data {
         AbstractData::Video(v) => (v.clone(), v.albums.clone(), v.object.tags.clone()),
         _ => return Err(anyhow!("Data is not a video")),
     };
 
-    let phash = if let Ok(dyn_img) = generate_dynamic_image_from_path(&imported_path(
+    let phash = generate_dynamic_image_from_path(&imported_path(
         &video_combined.object.id,
         &video_combined.metadata.ext,
-    )) {
-        Some(generate_phash(&dyn_img))
-    } else {
-        None
-    };
+    ))
+    .ok()
+    .map(|img| generate_phash(&img));
 
     let object = ObjectSchema {
         id: video_combined.object.id,
@@ -93,134 +268,25 @@ fn convert_video_data_to_image_data(data: &mut AbstractData) -> Result<()> {
         exif_vec: BTreeMap::new(),
     };
 
-    // 將修改後的資料寫回 data
     *data = AbstractData::Image(image_combined);
     Ok(())
 }
 
 // ────────────────────────────────────────────────────────────────
-// Public API
+// Low-level FFmpeg Tools
 // ────────────────────────────────────────────────────────────────
 
-/// Analyse the newly-imported video and populate the DatabaseSchema record
-pub fn process_video_info(index_task: &mut IndexTask) -> Result<()> {
-    // Extract EXIF-like metadata via ffprobe
-    generate_exif_for_video(index_task).context("failed to extract video metadata via ffprobe")?;
-
-    // Get logical dimensions and fix if rotated
-    (index_task.width, index_task.height) =
-        generate_video_width_height(index_task).context("failed to obtain video width/height")?;
-    fix_video_width_height(index_task);
-
-    // Produce thumbnail from first frame
-    generate_thumbnail_for_video(index_task)
-        .context("failed to generate video thumbnail via ffmpeg")?;
-
-    // Decode the first frame for hashing purposes
-    let dynamic_image = generate_dynamic_image(index_task)
-        .context("failed to decode first video frame into DynamicImage")?;
-
-    // Compute perceptual hashes
-    index_task.thumbhash = generate_thumbhash(&dynamic_image);
-    index_task.phash = generate_phash(&dynamic_image);
-
-    Ok(())
-}
-
-/// Rebuild all metadata for an existing video file
-pub fn regenerate_metadata_for_video(index_task: &mut IndexTask) -> Result<()> {
-    // Refresh size from filesystem metadata
-    index_task.size = std::fs::metadata(&index_task.imported_path)
-        .context("failed to read metadata for imported video file")?
-        .len();
-
-    // Re-run the full processing pipeline
-    process_video_info(index_task).context("failed to process video info")?;
-    Ok(())
-}
-
-// ────────────────────────────────────────────────────────────────
-// Width/Height Calculation
-// ────────────────────────────────────────────────────────────────
-
-/// Probe a video file using ffprobe to obtain `(width, height)`
-pub fn generate_video_width_height(index_task: &IndexTask) -> Result<(u32, u32)> {
-    let imported = index_task.imported_path.to_string_lossy().to_string();
-
-    let width = video_width_height("width", &imported)
-        .context(format!("failed to obtain video width for {:?}", imported))?;
-    let height = video_width_height("height", &imported)
-        .context(format!("failed to obtain video height for {:?}", imported))?;
-
-    Ok((width, height))
-}
-
-pub fn fix_video_width_height(index_task: &mut IndexTask) {
-    let should_swap_video_width_height = {
-        if let Some(rotation) = index_task.exif_vec.get("rotation") {
-            SHOULD_SWAP_WIDTH_HEIGHT_ROTATION.contains(&rotation.trim())
-        } else {
-            false
-        }
-    };
-    if should_swap_video_width_height {
-        (index_task.width, index_task.height) = (index_task.height, index_task.width)
-    }
-}
-
-fn video_width_height(info: impl AsRef<str>, file_path: impl AsRef<str>) -> Result<u32> {
-    let info = info.as_ref();
-    let file_path = file_path.as_ref();
-    let command_text = match info {
-        "width" => Ok("stream=width"),
-        "height" => Ok("stream=height"),
-        _ => Err(anyhow::Error::msg("Command error")),
-    };
-    let output = Command::new("ffprobe")
-        .args(&[
-            "-v",
-            "error",
-            "-show_entries",
-            command_text?,
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            file_path,
-        ])
-        .output()
-        .context(format!(
-            "Fail to spawn new command for ffmpeg: {:?}",
-            file_path
-        ))?;
-    if output.status.success() {
-        Ok(String::from_utf8(output.stdout)?.trim().parse::<u32>()?)
-    } else {
-        Err(anyhow::anyhow!(
-            "ffprobe failed for {:?} with status code {:?}: {}",
-            file_path,
-            output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&output.stderr)
-        ))
-    }
-}
-
-// ────────────────────────────────────────────────────────────────
-// Thumbnail Generation
-// ────────────────────────────────────────────────────────────────
-
-/// Generate a single JPEG thumbnail taken from the first frame of a video asset.
-/// Uses ffprobe for metadata and ffmpeg for frame extraction.
+/// Generates a single JPEG thumbnail from the first frame (t=0).
 pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
     let (width, height) = (index_task.width, index_task.height);
     let (thumb_width, thumb_height) = small_width_height(width, height, 1280);
     let thumbnail_path = thumbnail_path(index_task.hash());
 
-    // Create target directory tree if missing
-    if let Some(parent) = std::path::Path::new(&thumbnail_path).parent() {
+    if let Some(parent) = Path::new(&thumbnail_path).parent() {
         std::fs::create_dir_all(parent)
             .context("failed to create parent directory for video thumbnail")?;
     }
 
-    // Assemble silent ffmpeg command
     let mut cmd = create_silent_ffmpeg_command();
     cmd.args([
         "-y",
@@ -235,7 +301,6 @@ pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
         &thumbnail_path.to_string_lossy(),
     ]);
 
-    // Execute and wait; we discard both stdout/stderr
     let status = cmd
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -248,125 +313,67 @@ pub fn generate_thumbnail_for_video(index_task: &mut IndexTask) -> Result<()> {
             status.code().unwrap_or(-1)
         ));
     }
-
     Ok(())
 }
 
-// ────────────────────────────────────────────────────────────────
-// Video Compression
-// ────────────────────────────────────────────────────────────────
+/// Probes the video file for logical width and height.
+pub fn generate_video_width_height(index_task: &IndexTask) -> Result<(u32, u32)> {
+    let imported = index_task.imported_path.to_string_lossy().to_string();
 
-/// Compresses a video file, reporting progress by parsing ffmpeg's output.
-pub fn generate_compressed_video(data: &mut AbstractData) -> Result<VideoProcessResult> {
-    // 確保是 Video 類型，並取得必要資訊
-    let (imported_path, compressed_path, height, ext, hash) = match data {
-        AbstractData::Video(v) => (
-            imported_path(&v.object.id, &v.metadata.ext),
-            compressed_path(&v.object.id, ObjectType::Video),
-            v.metadata.height,
-            v.metadata.ext.clone(),
-            v.object.id,
-        ),
-        _ => return Err(anyhow!("Cannot compress non-video data")),
-    };
+    let width = video_width_height("width", &imported)
+        .context(format!("failed to obtain video width for {:?}", imported))?;
+    let height = video_width_height("height", &imported)
+        .context(format!("failed to obtain video height for {:?}", imported))?;
 
-    let duration_result = video_duration(&imported_path.to_string_lossy());
-
-    // 處理 duration 結果與類型轉換 (例如 GIF 處理)
-    let duration = match duration_result {
-        // Handle static GIFs by delegating to the image processor.
-        Ok(d) if (d * 1000.0) as u32 == 100 => {
-            info!(
-                "Static GIF detected. Processing as image: {:?}",
-                imported_path
-            );
-            convert_video_data_to_image_data(data)?;
-            return Ok(VideoProcessResult::ConvertedToImage);
-        }
-        // Handle non-GIFs that fail to parse duration.
-        Err(err)
-            if err.to_string().contains("fail to parse to f32")
-                && ext.eq_ignore_ascii_case("gif") =>
-        {
-            info!(
-                "Potentially corrupt or non-standard GIF. Processing as image: {:?}",
-                imported_path
-            );
-            convert_video_data_to_image_data(data)?;
-            return Ok(VideoProcessResult::ConvertedToImage);
-        }
-        Ok(d) => d,
-        Err(err) => {
-            return Err(anyhow!("{}", err));
-        }
-    };
-
-    // 將計算出的 duration 寫回 Video 結構
-    if let AbstractData::Video(vid) = data {
-        vid.metadata.duration = duration;
-    }
-
-    let mut cmd = create_silent_ffmpeg_command();
-    cmd.args([
-        "-y", // Overwrite output file if it exists
-        "-i",
-        &imported_path.to_string_lossy(),
-        "-vf",
-        // Scale video to a max height of 720p, ensuring dimensions are even.
-        &format!("scale=trunc(oh*a/2)*2:{}", (cmp::min(height, 720) / 2) * 2),
-        "-movflags",
-        "faststart", // Optimize for web streaming
-        &compressed_path.to_string_lossy(),
-        "-progress",
-        "pipe:2", // Send machine-readable progress to stderr (pipe 2)
-    ]);
-
-    // We capture stderr for progress parsing and discard stdout completely.
-    let mut child = cmd
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("Failed to spawn ffmpeg for video compression")?;
-
-    let stderr = child
-        .stderr
-        .take()
-        .context("Failed to capture ffmpeg stderr")?;
-    let reader = BufReader::new(stderr);
-
-    // Process each line of progress output from ffmpeg's stderr.
-    for line in reader.lines().filter_map(Result::ok) {
-        if let Some(caps) = REGEX_OUT_TIME_US.captures(&line) {
-            // The regex captures the digits of the duration.
-            // We only proceed if the captured value can be parsed as a number.
-            if let Ok(microseconds) = caps[1].parse::<f64>() {
-                let percentage = (microseconds / 1_000_000.0 / duration) * 100.0;
-                DASHBOARD.update_progress(hash, percentage);
-            }
-        }
-    }
-
-    child
-        .wait()
-        .context("Failed to wait for ffmpeg child process")?;
-    Ok(VideoProcessResult::Success)
+    Ok((width, height))
 }
 
-// ────────────────────────────────────────────────────────────────
-// FFmpeg/FFprobe Utilities
-// ────────────────────────────────────────────────────────────────
+/// Swaps width and height in `index_task` if the EXIF rotation metadata implies a 90/270 degree turn.
+pub fn fix_video_width_height(index_task: &mut IndexTask) {
+    let should_swap = if let Some(rotation) = index_task.exif_vec.get("rotation") {
+        SHOULD_SWAP_WIDTH_HEIGHT_ROTATION.contains(&rotation.trim())
+    } else {
+        false
+    };
 
-/// Creates a base `ffmpeg` command with flags to ensure it runs silently.
-/// This prevents duplicating arguments and ensures all ffmpeg calls are quiet.
-pub fn create_silent_ffmpeg_command() -> Command {
-    let mut cmd = Command::new("ffmpeg");
-    // These global options must come before the input/output options.
-    cmd.args(["-v", "quiet", "-hide_banner", "-nostats", "-nostdin"]);
-    cmd
+    if should_swap {
+        (index_task.width, index_task.height) = (index_task.height, index_task.width)
+    }
 }
 
-pub fn video_duration(file_path: impl AsRef<str> + std::fmt::Debug) -> Result<f64, Box<dyn Error>> {
-    let file_path = file_path.as_ref();
+fn video_width_height(info: &str, file_path: &str) -> Result<u32> {
+    let command_text = match info {
+        "width" => "stream=width",
+        "height" => "stream=height",
+        _ => return Err(anyhow!("Invalid width/height probe command")),
+    };
+
+    let output = Command::new("ffprobe")
+        .args(&[
+            "-v",
+            "error",
+            "-show_entries",
+            command_text,
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            file_path,
+        ])
+        .output()
+        .context(format!("Fail to spawn ffprobe for {:?}", file_path))?;
+
+    if output.status.success() {
+        let val = String::from_utf8(output.stdout)?.trim().parse::<u32>()?;
+        Ok(val)
+    } else {
+        Err(anyhow!(
+            "ffprobe failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+/// Uses ffprobe to extract the duration in seconds (f64).
+pub fn video_duration(file_path: &str) -> Result<f64> {
     let output = Command::new("ffprobe")
         .args(&[
             "-v",
@@ -379,18 +386,26 @@ pub fn video_duration(file_path: impl AsRef<str> + std::fmt::Debug) -> Result<f6
         ])
         .output()
         .context(format!(
-            "Fail to spawn new command for ffmpeg: {:?}",
+            "Fail to spawn ffprobe for duration: {:?}",
             file_path
         ))?;
+
     if output.status.success() {
-        let duration_in_seconds = String::from_utf8(output.stdout)?
+        let duration = String::from_utf8(output.stdout)?
             .trim()
             .parse::<f64>()
-            .context(format!("Fail to parse to f64: {:?}", file_path))?;
-        Ok(duration_in_seconds)
+            .context(format!("Fail to parse duration to f64: {:?}", file_path))?;
+        Ok(duration)
     } else {
-        Err(From::from(
-            String::from_utf8_lossy(&output.stderr).to_string(),
+        Err(anyhow!(
+            "ffprobe duration check failed: {}",
+            String::from_utf8_lossy(&output.stderr)
         ))
     }
+}
+
+pub fn create_silent_ffmpeg_command() -> Command {
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args(["-v", "quiet", "-hide_banner", "-nostats", "-nostdin"]);
+    cmd
 }
