@@ -18,11 +18,11 @@ use crate::database::ops::tree::TREE;
 use crate::database::schema::{
     meta_album::{AlbumMetadataSchema, META_ALBUM_TABLE},
     meta_image::{ImageMetadataSchema, META_IMAGE_TABLE},
-    meta_video::{VideoMetadataSchema, META_VIDEO_TABLE},
-    object::{ObjectSchema, ObjectType, OBJECT_TABLE},
+    meta_video::{META_VIDEO_TABLE, VideoMetadataSchema},
+    object::{OBJECT_TABLE, ObjectSchema, ObjectType},
     relations::{
-        album_share::{Share as NewShare, ALBUM_SHARE_TABLE},
-        alias::{DatabaseAliasSchema, DATABASE_ALIAS_TABLE},
+        album_share::{ALBUM_SHARE_TABLE, Share as NewShare},
+        alias::{DATABASE_ALIAS_TABLE, DatabaseAliasSchema},
         exif::DATABASE_EXIF_TABLE,
     },
 };
@@ -52,7 +52,20 @@ mod old_structure {
         pub pending: bool,
     }
 
-    #[derive(Debug, Default, Clone, Deserialize, Serialize, Decode, Encode, Hash, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(
+        Debug,
+        Default,
+        Clone,
+        Deserialize,
+        Serialize,
+        Decode,
+        Encode,
+        Hash,
+        PartialEq,
+        Eq,
+        PartialOrd,
+        Ord,
+    )]
     #[serde(rename_all = "camelCase")]
     pub struct FileModify {
         pub file: String,
@@ -81,7 +94,9 @@ mod old_structure {
         pub pending: bool,
     }
 
-    #[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
+    #[derive(
+        Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash,
+    )]
     #[serde(rename_all = "camelCase")]
     pub struct Share {
         pub url: ArrayString<64>,
@@ -117,8 +132,11 @@ fn compute_timestamp(db: &OldDatabase) -> i64 {
         match field {
             "DateTimeOriginal" => {
                 if let Some(value) = db.exif_vec.get("DateTimeOriginal") {
-                    if let Ok(naive_dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-                        if let Some(local_dt) = chrono::Local.from_local_datetime(&naive_dt).single() {
+                    if let Ok(naive_dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
+                    {
+                        if let Some(local_dt) =
+                            chrono::Local.from_local_datetime(&naive_dt).single()
+                        {
                             if local_dt.naive_local() <= now_time {
                                 return local_dt.timestamp_millis();
                             }
@@ -131,7 +149,9 @@ fn compute_timestamp(db: &OldDatabase) -> i64 {
                 for alias in &db.alias {
                     let path = PathBuf::from(&alias.file);
                     if let Some(file_name) = path.file_name() {
-                        if let Some(caps) = FILE_NAME_TIME_REGEX.captures(file_name.to_str().unwrap()) {
+                        if let Some(caps) =
+                            FILE_NAME_TIME_REGEX.captures(file_name.to_str().unwrap())
+                        {
                             let parts: Option<(i32, u32, u32, u32, u32, u32)> = (|| {
                                 Some((
                                     caps[1].parse().ok()?,
@@ -141,14 +161,19 @@ fn compute_timestamp(db: &OldDatabase) -> i64 {
                                     caps[5].parse().ok()?,
                                     caps[6].parse().ok()?,
                                 ))
-                            })();
+                            })(
+                            );
 
                             if let Some((year, month, day, hour, minute, second)) = parts {
                                 if let Some(date) = NaiveDate::from_ymd_opt(year, month, day) {
-                                    if let Some(time) = NaiveTime::from_hms_opt(hour, minute, second) {
+                                    if let Some(time) =
+                                        NaiveTime::from_hms_opt(hour, minute, second)
+                                    {
                                         let datetime = NaiveDateTime::new(date, time);
                                         if datetime <= now_time {
-                                            max_time = Some(max_time.map_or(datetime, |t| t.max(datetime)));
+                                            max_time = Some(
+                                                max_time.map_or(datetime, |t| t.max(datetime)),
+                                            );
                                         }
                                     }
                                 }
@@ -157,7 +182,10 @@ fn compute_timestamp(db: &OldDatabase) -> i64 {
                     }
                 }
                 if let Some(datetime) = max_time {
-                    return chrono::Local.from_local_datetime(&datetime).unwrap().timestamp_millis();
+                    return chrono::Local
+                        .from_local_datetime(&datetime)
+                        .unwrap()
+                        .timestamp_millis();
                 }
             }
             "scan_time" => {
@@ -181,14 +209,17 @@ pub fn migrate() -> Result<()> {
     if !Path::new(OLD_DB_PATH).exists() {
         return Ok(());
     }
-    
+
     println!("========================================================");
     println!(" DETECTED OLD DATABASE (v2.6.0) at {}", OLD_DB_PATH);
     println!(" A MIGRATION IS REQUIRED TO UPGRADE TO VERSION 0.18.3+");
     println!("========================================================");
     println!(" Please ensure you have BACKED UP your './db' folder.");
     println!(" The migration will read from the old DB and create a new one.");
-    println!(" Existing data in '{}' might be overwritten/merged.", NEW_DB_PATH);
+    println!(
+        " Existing data in '{}' might be overwritten/merged.",
+        NEW_DB_PATH
+    );
     println!("Type 'yes' to start migration:");
 
     let mut input = String::new();
@@ -206,10 +237,12 @@ pub fn migrate() -> Result<()> {
     let old_db = redb_old::Database::open(OLD_DB_PATH)
         .context("Failed to open old database. Is it corrupted?")?;
     let read_txn = old_db.begin_read()?;
-    
+
     // 定義舊表
-    let old_data_table_def: redb_old::TableDefinition<&str, Vec<u8>> = redb_old::TableDefinition::new("database");
-    let old_album_table_def: redb_old::TableDefinition<&str, Vec<u8>> = redb_old::TableDefinition::new("album");
+    let old_data_table_def: redb_old::TableDefinition<&str, Vec<u8>> =
+        redb_old::TableDefinition::new("database");
+    let old_album_table_def: redb_old::TableDefinition<&str, Vec<u8>> =
+        redb_old::TableDefinition::new("album");
 
     let old_data_table = read_txn.open_table(old_data_table_def)?;
     let old_album_table = read_txn.open_table(old_album_table_def)?;
@@ -224,10 +257,13 @@ pub fn migrate() -> Result<()> {
         let mut video_table = write_txn.open_table(META_VIDEO_TABLE)?;
         let mut alias_table = write_txn.open_table(DATABASE_ALIAS_TABLE)?;
         let mut exif_table = write_txn.open_table(DATABASE_EXIF_TABLE)?;
-        
-        let mut tag_table = write_txn.open_table(crate::database::schema::relations::tag::TAG_DATABASE_TABLE)?;
-        let mut album_items_table = write_txn.open_table(crate::database::schema::relations::album_data::ALBUM_ITEMS_TABLE)?;
-        let mut item_albums_table = write_txn.open_table(crate::database::schema::relations::album_data::ITEM_ALBUMS_TABLE)?;
+
+        let mut tag_table =
+            write_txn.open_table(crate::database::schema::relations::tag::TAG_DATABASE_TABLE)?;
+        let mut album_items_table = write_txn
+            .open_table(crate::database::schema::relations::album_data::ALBUM_ITEMS_TABLE)?;
+        let mut item_albums_table = write_txn
+            .open_table(crate::database::schema::relations::album_data::ITEM_ALBUMS_TABLE)?;
 
         let mut processed_count = 0;
 
@@ -258,7 +294,11 @@ pub fn migrate() -> Result<()> {
                 id: old_data.hash,
                 created_time,
                 obj_type,
-                thumbhash: if old_data.thumbhash.is_empty() { None } else { Some(old_data.thumbhash) },
+                thumbhash: if old_data.thumbhash.is_empty() {
+                    None
+                } else {
+                    Some(old_data.thumbhash)
+                },
                 pending: old_data.pending,
                 description,
                 tags: tags.clone(),
@@ -279,13 +319,18 @@ pub fn migrate() -> Result<()> {
                         width: old_data.width,
                         height: old_data.height,
                         ext: old_data.ext,
-                        phash: if old_data.phash.is_empty() { None } else { Some(old_data.phash) },
+                        phash: if old_data.phash.is_empty() {
+                            None
+                        } else {
+                            Some(old_data.phash)
+                        },
                     };
                     image_table.insert(hash_str, bitcode::encode(&meta).as_slice())?;
                 }
                 ObjectType::Video => {
                     // FIX: 從 exif_vec 中讀取 duration
-                    let duration = old_data.exif_vec
+                    let duration = old_data
+                        .exif_vec
                         .get("duration")
                         .and_then(|s| s.parse::<f64>().ok())
                         .unwrap_or(0.0);
@@ -307,7 +352,7 @@ pub fn migrate() -> Result<()> {
             for tag in tags {
                 tag_table.insert((hash_str, tag.as_str()), &())?;
             }
-            
+
             for album_id in old_data.album {
                 album_items_table.insert((album_id.as_str(), hash_str), &())?;
                 item_albums_table.insert((hash_str, album_id.as_str()), &())?;
@@ -321,13 +366,15 @@ pub fn migrate() -> Result<()> {
                     scan_time: alias.scan_time as i64,
                 };
                 alias_table.insert(
-                    (hash_str, new_alias.scan_time), 
-                    bitcode::encode(&new_alias).as_slice()
+                    (hash_str, new_alias.scan_time),
+                    bitcode::encode(&new_alias).as_slice(),
                 )?;
             }
 
             for (k, v) in old_data.exif_vec {
-                if k == USER_DEFINED_DESCRIPTION { continue; }
+                if k == USER_DEFINED_DESCRIPTION {
+                    continue;
+                }
                 exif_table.insert((hash_str, k.as_str()), v.as_str())?;
             }
 
@@ -337,7 +384,10 @@ pub fn migrate() -> Result<()> {
             }
         }
 
-        info!("Finished migrating {} items. Starting albums...", processed_count);
+        info!(
+            "Finished migrating {} items. Starting albums...",
+            processed_count
+        );
 
         // --- Migrate ALBUMS ---
         let mut meta_album_table = write_txn.open_table(META_ALBUM_TABLE)?;
@@ -349,7 +399,8 @@ pub fn migrate() -> Result<()> {
             let id_str = old_album.id.as_str();
 
             // 1. Description
-            let description = old_album.user_defined_metadata
+            let description = old_album
+                .user_defined_metadata
                 .get(USER_DEFINED_DESCRIPTION)
                 .and_then(|v| v.first())
                 .cloned();
@@ -407,21 +458,21 @@ pub fn migrate() -> Result<()> {
                 };
                 album_share_table.insert(
                     (id_str, share_url.as_str()),
-                    bitcode::encode(&new_share).as_slice()
+                    bitcode::encode(&new_share).as_slice(),
                 )?;
             }
         }
     }
 
     write_txn.commit()?;
-    
+
     info!("Migration completed successfully.");
-    
+
     // Rename old DB
     let backup_path = format!("{}.bak", OLD_DB_PATH);
     std::fs::rename(OLD_DB_PATH, &backup_path)
         .context(format!("Failed to rename old DB to {}", backup_path))?;
-    
+
     info!("Old database renamed to {}", backup_path);
 
     Ok(())
