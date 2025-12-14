@@ -10,6 +10,7 @@ mod config;
 mod database;
 mod models;
 mod utils;
+mod migration; // 引入 migration 模組
 
 use crate::common::{INDEX_RUNTIME, ROCKET_RUNTIME};
 use crate::common::errors::handle_error;
@@ -59,6 +60,12 @@ async fn build_rocket() -> rocket::Rocket<rocket::Build> {
 }
 
 fn main() -> Result<()> {
+    // 1. 執行遷移檢查
+    if let Err(e) = migration::migrate() {
+        eprintln!("Migration failed: {:?}", e);
+        std::process::exit(1);
+    }
+
     initialize_folder();
     {
         info!("Initializing database tables...");
