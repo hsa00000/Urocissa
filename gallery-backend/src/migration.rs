@@ -15,6 +15,8 @@ use redb_old::{ReadableTable as OldReadableTable, ReadableTableMetadata};
 
 // Import New Schema
 use crate::database::ops::tree::TREE;
+use crate::database::schema::relations::album_data::{ALBUM_ITEMS_TABLE, ITEM_ALBUMS_TABLE};
+use crate::database::schema::relations::tag::OBJECT_TAGS_TABLE;
 use crate::database::schema::{
     meta_album::{AlbumMetadataSchema, META_ALBUM_TABLE},
     meta_image::{ImageMetadataSchema, META_IMAGE_TABLE},
@@ -165,7 +167,6 @@ use old_structure::{Album as OldAlbum, Database as OldDatabase};
 // ==================================================================================
 
 const OLD_DB_PATH: &str = "./db/index.redb";
-const NEW_DB_PATH: &str = "./db/gallery.redb"; // Added back
 const BATCH_SIZE: usize = 5000;
 const USER_DEFINED_DESCRIPTION: &str = "_user_defined_description";
 
@@ -184,8 +185,7 @@ static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(\d{4})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})\b").unwrap()
 });
 
-fn compute_timestamp(db: &OldDatabase) -> i64 {
-    let now_time = chrono::Local::now().naive_local();
+fn compute_timestamp(db: &OldDatabase, now_time: NaiveDateTime) -> i64 {
     let priority_list = &["DateTimeOriginal", "filename", "modified", "scan_time"];
 
     for &field in priority_list {
@@ -209,9 +209,8 @@ fn compute_timestamp(db: &OldDatabase) -> i64 {
                 for alias in &db.alias {
                     let path = PathBuf::from(&alias.file);
                     if let Some(file_name) = path.file_name() {
-                        if let Some(caps) =
-                            FILE_NAME_TIME_REGEX.captures(file_name.to_str().unwrap())
-                        {
+                        let file_name_str = file_name.to_string_lossy();
+                        if let Some(caps) = FILE_NAME_TIME_REGEX.captures(&file_name_str) {
                             let parts: Option<(i32, u32, u32, u32, u32, u32)> = (|| {
                                 Some((
                                     caps[1].parse().ok()?,
@@ -275,10 +274,6 @@ pub fn migrate() -> Result<()> {
     println!("========================================================");
     println!(" Please ensure you have BACKED UP your './db' folder.");
     println!(" The migration will read from the old DB and create a new one.");
-    println!(
-        " Existing data in '{}' might be overwritten/merged.",
-        NEW_DB_PATH
-    );
     println!("Type 'yes' to start migration:");
 
     let mut input = String::new();
@@ -313,18 +308,17 @@ pub fn migrate() -> Result<()> {
         let mut video_table = write_txn.open_table(META_VIDEO_TABLE)?;
         let mut alias_table = write_txn.open_table(DATABASE_ALIAS_TABLE)?;
         let mut exif_table = write_txn.open_table(DATABASE_EXIF_TABLE)?;
-        let mut tag_table =
-            write_txn.open_table(crate::database::schema::relations::tag::TAG_DATABASE_TABLE)?;
-        let mut album_items_table = write_txn
-            .open_table(crate::database::schema::relations::album_data::ALBUM_ITEMS_TABLE)?;
-        let mut item_albums_table = write_txn
-            .open_table(crate::database::schema::relations::album_data::ITEM_ALBUMS_TABLE)?;
+        let mut tag_table = write_txn.open_table(OBJECT_TAGS_TABLE)?;
+        let mut album_items_table = write_txn.open_table(ALBUM_ITEMS_TABLE)?;
+        let mut item_albums_table = write_txn.open_table(ITEM_ALBUMS_TABLE)?;
 
         let total_items = old_data_table.len()?;
         println!("Found {} items to migrate.", total_items);
 
         let mut processed_count = 0;
         let mut batch_buffer: Vec<OldDatabase> = Vec::with_capacity(BATCH_SIZE);
+
+        let now_time = chrono::Local::now().naive_local();
 
         let mut commit_batch = |batch: Vec<OldDatabase>| -> Result<()> {
             let transformed_batch: Vec<TransformedData> = batch
@@ -349,7 +343,8 @@ pub fn migrate() -> Result<()> {
                     };
 
                     // 4. Create New Object
-                    let created_time = compute_timestamp(&old_data);
+
+                    let created_time = compute_timestamp(&old_data, now_time);
                     let new_object = ObjectSchema {
                         id: old_data.hash,
                         created_time,
@@ -422,7 +417,7 @@ pub fn migrate() -> Result<()> {
 
                     let mut alias_rels = Vec::new();
                     for alias in old_data.alias {
-                        // [FIX] Alias 轉換：將毫秒轉為秒
+                        // 將毫秒轉為秒
                         let scan_time_sec = (alias.scan_time / 1000) as i64;
                         let modified_sec = (alias.modified / 1000) as i64;
 
@@ -512,8 +507,7 @@ pub fn migrate() -> Result<()> {
         let mut object_table = write_txn.open_table(OBJECT_TABLE)?;
         let mut meta_album_table = write_txn.open_table(META_ALBUM_TABLE)?;
         let mut album_share_table = write_txn.open_table(ALBUM_SHARE_TABLE)?;
-        let mut tag_table =
-            write_txn.open_table(crate::database::schema::relations::tag::TAG_DATABASE_TABLE)?;
+        let mut tag_table = write_txn.open_table(OBJECT_TAGS_TABLE)?;
 
         let total_albums = old_album_table.len()?;
         println!("Found {} albums to migrate.", total_albums);
@@ -536,7 +530,7 @@ pub fn migrate() -> Result<()> {
             let is_archived = tags.remove("_archived");
             let is_trashed = tags.remove("_trashed");
 
-            // [FIX] 時間轉換：毫秒 -> 秒
+            // 時間轉換：毫秒 -> 秒
             let created_time = (old_album.created_time / 1000) as i64;
 
             let new_object = ObjectSchema {
@@ -557,7 +551,7 @@ pub fn migrate() -> Result<()> {
                 id: old_album.id,
                 title: old_album.title,
                 cover: old_album.cover,
-                // [FIX] 時間轉換：毫秒 -> 秒
+                // 時間轉換：毫秒 -> 秒
                 start_time: old_album.start_time.map(|t| (t / 1000) as i64),
                 end_time: old_album.end_time.map(|t| (t / 1000) as i64),
                 last_modified_time: (old_album.last_modified_time / 1000) as i64,

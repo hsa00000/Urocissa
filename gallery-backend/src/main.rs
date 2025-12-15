@@ -59,11 +59,6 @@ async fn build_rocket() -> rocket::Rocket<rocket::Build> {
 
 fn main() -> Result<()> {
     // Perform Migration Check and Execution
-    if let Err(e) = migration::migrate() {
-        eprintln!("Error during migration:\n{:?}", e);
-        eprintln!("Migration failed. Please check the logs above.");
-        std::process::exit(1);
-    }
 
     initialize_folder();
     {
@@ -80,11 +75,17 @@ fn main() -> Result<()> {
         let _ = txn.open_table(crate::database::schema::relations::album_share::ALBUM_SHARE_TABLE)?;
         let _ = txn.open_table(crate::database::schema::relations::alias::DATABASE_ALIAS_TABLE)?;
         let _ = txn.open_table(crate::database::schema::relations::exif::DATABASE_EXIF_TABLE)?;
-        let _ = txn.open_table(crate::database::schema::relations::tag::TAG_DATABASE_TABLE)?;
+        let _ = txn.open_table(crate::database::schema::relations::tag::OBJECT_TAGS_TABLE)?;
         let _ = txn.open_table(crate::database::schema::relations::tag::IDX_TAG_HASH_TABLE)?;
         
         txn.commit()?;
         info!("Database tables initialized successfully.");
+    }
+
+     if let Err(e) = migration::migrate() {
+        eprintln!("Error during migration:\n{:?}", e);
+        eprintln!("Migration failed. Please check the logs above.");
+        std::process::exit(1);
     }
     
     let (shutdown_tx, _) = broadcast::channel::<()>(1);

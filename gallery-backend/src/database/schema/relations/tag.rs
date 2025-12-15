@@ -4,7 +4,7 @@ use redb::{ReadTransaction, TableDefinition, WriteTransaction};
 use std::collections::{HashMap, HashSet};
 
 // 正向: (Hash, Tag) -> ()
-pub const TAG_DATABASE_TABLE: TableDefinition<(&str, &str), ()> =
+pub const OBJECT_TAGS_TABLE: TableDefinition<(&str, &str), ()> =
     TableDefinition::new("rel_object_tags");
 
 // 反向索引: (Tag, Hash) -> ()
@@ -21,7 +21,7 @@ pub struct TagDatabase;
 
 impl TagDatabase {
     pub fn add_tag(txn: &mut WriteTransaction, hash: &str, tag: &str) -> Result<()> {
-        txn.open_table(TAG_DATABASE_TABLE)?
+        txn.open_table(OBJECT_TAGS_TABLE)?
             .insert((hash, tag), &())?;
         txn.open_table(IDX_TAG_HASH_TABLE)?
             .insert((tag, hash), &())?;
@@ -29,13 +29,13 @@ impl TagDatabase {
     }
 
     pub fn remove_tag(txn: &mut WriteTransaction, hash: &str, tag: &str) -> Result<()> {
-        txn.open_table(TAG_DATABASE_TABLE)?.remove((hash, tag))?;
+        txn.open_table(OBJECT_TAGS_TABLE)?.remove((hash, tag))?;
         txn.open_table(IDX_TAG_HASH_TABLE)?.remove((tag, hash))?;
         Ok(())
     }
 
     pub fn fetch_tags(txn: &ReadTransaction, hash: &str) -> Result<HashSet<String>> {
-        let table = txn.open_table(TAG_DATABASE_TABLE)?;
+        let table = txn.open_table(OBJECT_TAGS_TABLE)?;
         let start = (hash, "");
 
         let mut tags = HashSet::new();
@@ -56,7 +56,7 @@ impl TagDatabase {
     pub fn fetch_all_tags(
         txn: &ReadTransaction,
     ) -> Result<HashMap<ArrayString<64>, HashSet<String>>> {
-        let table = txn.open_table(TAG_DATABASE_TABLE)?;
+        let table = txn.open_table(OBJECT_TAGS_TABLE)?;
         let mut map: HashMap<ArrayString<64>, HashSet<String>> = HashMap::new();
 
         for entry in table.range::<(&str, &str)>(..)? {
