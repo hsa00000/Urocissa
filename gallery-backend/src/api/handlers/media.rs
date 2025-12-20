@@ -36,6 +36,7 @@ use crate::background::actors::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use crate::background::batchers::flush_query::FlushQuerySnapshotTask;
 use crate::background::batchers::flush_snapshot::FlushTreeSnapshotTask;
 use crate::background::batchers::flush_tree::FlushTreeTask;
+use crate::background::batchers::update_tree::UpdateTreeTask;
 use crate::background::flows::index_workflow;
 use crate::background::processors::image::{
     generate_dynamic_image, generate_phash, generate_thumbhash,
@@ -921,6 +922,11 @@ pub async fn regenerate_thumbnail_with_frame(
         .execute_batch_waiting(FlushTreeTask::insert(vec![abstract_data]))
         .await
         .context("Failed to execute FlushTreeTask")?;
+
+    BATCH_COORDINATOR
+        .execute_batch_waiting(UpdateTreeTask)
+        .await
+        .unwrap();
 
     info!("Regenerating thumbnail successfully");
     Ok(())

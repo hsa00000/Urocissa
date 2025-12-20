@@ -1,28 +1,24 @@
+use anyhow::Result;
 use log::error;
 use mini_executor::BatchTask;
-use anyhow::Result;
 
 use crate::{
     database::{
         ops::tree::TREE,
         schema::{
-            object::OBJECT_TABLE,
+            meta_album::META_ALBUM_TABLE,
             meta_image::META_IMAGE_TABLE,
             meta_video::META_VIDEO_TABLE,
-            meta_album::META_ALBUM_TABLE,
+            object::OBJECT_TABLE,
             relations::{
                 album_data::{AlbumDatabase, AlbumItemSchema},
-                alias::{DatabaseAliasSchema, DATABASE_ALIAS_TABLE},
-                exif::{ExifSchema, DATABASE_EXIF_TABLE},
+                alias::{DATABASE_ALIAS_TABLE, DatabaseAliasSchema},
+                exif::{DATABASE_EXIF_TABLE, ExifSchema},
                 tag::{TagDatabase, TagDatabaseSchema},
             },
         },
     },
     models::entity::abstract_data::AbstractData,
-    background::{
-        actors::BATCH_COORDINATOR,
-        batchers::update_tree::UpdateTreeTask,
-    },
 };
 
 #[derive(Debug)]
@@ -89,11 +85,13 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> Result<()> {
                 match &data {
                     AbstractData::Image(i) => {
                         let obj_bytes = bitcode::encode(&i.object);
-                        tx.open_table(OBJECT_TABLE)?.insert(id_str, obj_bytes.as_slice())?;
-                        
+                        tx.open_table(OBJECT_TABLE)?
+                            .insert(id_str, obj_bytes.as_slice())?;
+
                         let meta_bytes = bitcode::encode(&i.metadata);
-                        tx.open_table(META_IMAGE_TABLE)?.insert(id_str, meta_bytes.as_slice())?;
-                        
+                        tx.open_table(META_IMAGE_TABLE)?
+                            .insert(id_str, meta_bytes.as_slice())?;
+
                         for tag in &i.object.tags {
                             TagDatabase::add_tag(&mut tx, id_str, tag)?;
                         }
@@ -103,10 +101,12 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> Result<()> {
                     }
                     AbstractData::Video(v) => {
                         let obj_bytes = bitcode::encode(&v.object);
-                        tx.open_table(OBJECT_TABLE)?.insert(id_str, obj_bytes.as_slice())?;
-                        
+                        tx.open_table(OBJECT_TABLE)?
+                            .insert(id_str, obj_bytes.as_slice())?;
+
                         let meta_bytes = bitcode::encode(&v.metadata);
-                        tx.open_table(META_VIDEO_TABLE)?.insert(id_str, meta_bytes.as_slice())?;
+                        tx.open_table(META_VIDEO_TABLE)?
+                            .insert(id_str, meta_bytes.as_slice())?;
 
                         for tag in &v.object.tags {
                             TagDatabase::add_tag(&mut tx, id_str, tag)?;
@@ -117,10 +117,12 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> Result<()> {
                     }
                     AbstractData::Album(a) => {
                         let obj_bytes = bitcode::encode(&a.object);
-                        tx.open_table(OBJECT_TABLE)?.insert(id_str, obj_bytes.as_slice())?;
-                        
+                        tx.open_table(OBJECT_TABLE)?
+                            .insert(id_str, obj_bytes.as_slice())?;
+
                         let meta_bytes = bitcode::encode(&a.metadata);
-                        tx.open_table(META_ALBUM_TABLE)?.insert(id_str, meta_bytes.as_slice())?;
+                        tx.open_table(META_ALBUM_TABLE)?
+                            .insert(id_str, meta_bytes.as_slice())?;
 
                         for tag in &a.object.tags {
                             TagDatabase::add_tag(&mut tx, id_str, tag)?;
@@ -134,9 +136,15 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> Result<()> {
 
                 tx.open_table(OBJECT_TABLE)?.remove(id_str)?;
                 match data {
-                    AbstractData::Image(_) => { tx.open_table(META_IMAGE_TABLE)?.remove(id_str)?; },
-                    AbstractData::Video(_) => { tx.open_table(META_VIDEO_TABLE)?.remove(id_str)?; },
-                    AbstractData::Album(_) => { tx.open_table(META_ALBUM_TABLE)?.remove(id_str)?; },
+                    AbstractData::Image(_) => {
+                        tx.open_table(META_IMAGE_TABLE)?.remove(id_str)?;
+                    }
+                    AbstractData::Video(_) => {
+                        tx.open_table(META_VIDEO_TABLE)?.remove(id_str)?;
+                    }
+                    AbstractData::Album(_) => {
+                        tx.open_table(META_ALBUM_TABLE)?.remove(id_str)?;
+                    }
                 }
             }
             FlushOperation::InsertTag(schema) => {
@@ -153,25 +161,19 @@ fn flush_tree_task(operations: Vec<FlushOperation>) -> Result<()> {
             }
             FlushOperation::InsertDatabaseAlias(schema) => {
                 let bytes = bitcode::encode(&schema);
-                tx.open_table(DATABASE_ALIAS_TABLE)?.insert(
-                    (schema.hash.as_str(), schema.scan_time), 
-                    bytes.as_slice()
-                )?;
+                tx.open_table(DATABASE_ALIAS_TABLE)?
+                    .insert((schema.hash.as_str(), schema.scan_time), bytes.as_slice())?;
             }
             FlushOperation::InsertExif(schema) => {
                 tx.open_table(DATABASE_EXIF_TABLE)?.insert(
                     (schema.hash.as_str(), schema.tag.as_str()),
-                    schema.value.as_str()
+                    schema.value.as_str(),
                 )?;
             }
         }
     }
 
     tx.commit()?;
-
-    // [Fix] 補回：觸發記憶體緩存更新
-    // 這是讓 TUI 和 API 能夠讀取到新寫入資料的關鍵
-    BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
 
     Ok(())
 }

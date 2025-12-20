@@ -1,15 +1,14 @@
 use crate::database::schema::relations::alias::DatabaseAliasSchema;
 use crate::{
-    common::{
-        DEFAULT_PRIORITY_LIST,
-        errors::handle_error,
+    background::{
+        actors::BATCH_COORDINATOR,
+        batchers::flush_tree::{FlushOperation, FlushTreeTask},
     },
+    cli::tui::DASHBOARD,
+    common::{DEFAULT_PRIORITY_LIST, errors::handle_error},
     database::{
+        helpers::{file_modify::FileModify, timestamp::compute_timestamp_ms_by_file_modify},
         ops::tree::TREE,
-        helpers::{
-            file_modify::FileModify,
-            timestamp::compute_timestamp_ms_by_file_modify,
-        },
         schema::{
             image::ImageCombined,
             meta_image::ImageMetadataSchema,
@@ -18,16 +17,8 @@ use crate::{
             video::VideoCombined,
         },
     },
-    models::{
-        entity::abstract_data::AbstractData,
-        dto::guards::PendingGuard,
-    },
-    cli::tui::DASHBOARD,
+    models::{dto::guards::PendingGuard, entity::abstract_data::AbstractData},
     utils::PathExt,
-    background::{
-        actors::BATCH_COORDINATOR,
-        batchers::flush_tree::{FlushOperation, FlushTreeTask},
-    },
 };
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -97,7 +88,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
 
     match existing_db_opt {
         Some(mut existing_data) => {
-            // [Fix] 處理重複檔案：加入相簿關聯
+            // 處理重複檔案：加入相簿關聯
             if let Some(album_id) = task.presigned_album_id_opt {
                 match &mut existing_data {
                     AbstractData::Image(i) => {
@@ -119,7 +110,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
             Ok(None)
         }
         None => {
-            // [Fix] 新檔案處理
+            // 新檔案處理
             let ext = task.path.ext_lower();
             let obj_type = ObjectType::from_ext(&ext).unwrap();
 
@@ -188,7 +179,7 @@ fn deduplicate_task(task: DeduplicateTask) -> Result<Option<(AbstractData, Vec<F
                 ObjectType::Album => unreachable!("Unexpected album type in deduplicate task"),
             };
 
-            // [Fix] 處理新檔案的相簿關聯
+            // 處理新檔案的相簿關聯
             if let Some(album_id) = task.presigned_album_id_opt {
                 match &mut data {
                     AbstractData::Image(i) => {

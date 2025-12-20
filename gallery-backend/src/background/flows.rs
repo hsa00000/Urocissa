@@ -1,3 +1,4 @@
+use crate::background::batchers::update_tree::UpdateTreeTask;
 use crate::background::types::try_acquire;
 use anyhow::{Result, anyhow};
 use arrayvec::ArrayString;
@@ -6,18 +7,16 @@ use path_clean::PathClean;
 use std::path::PathBuf;
 use tokio::task::spawn_blocking;
 
-use crate::models::entity::abstract_data::AbstractData;
-use crate::cli::tui::DASHBOARD;
-use crate::utils::imported_path;
 use crate::background::actors::{
-    BATCH_COORDINATOR,
-    INDEX_COORDINATOR,
-        copy::CopyTask, deduplicate::DeduplicateTask, delete_in_update::DeleteTask,
- hash::HashTask,
-    index::IndexTask, open_file::OpenFileTask, video::VideoTask,
+    BATCH_COORDINATOR, INDEX_COORDINATOR, copy::CopyTask, deduplicate::DeduplicateTask,
+    delete_in_update::DeleteTask, hash::HashTask, index::IndexTask, open_file::OpenFileTask,
+    video::VideoTask,
 };
-use crate::background::batchers::flush_tree::{FlushOperation, FlushTreeTask}; // 確保引入 FlushOperation
-// 引入 ExifSchema 以便建立寫入操作
+use crate::background::batchers::flush_tree::{FlushOperation, FlushTreeTask};
+use crate::cli::tui::DASHBOARD;
+use crate::models::entity::abstract_data::AbstractData;
+use crate::utils::imported_path;
+
 use crate::database::schema::relations::database_exif::ExifSchema;
 
 pub async fn index_workflow(
@@ -180,9 +179,17 @@ pub async fn index_workflow(
     }
 
     // 執行所有寫入操作
-    BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask {
-        operations: all_operations,
-    });
+    BATCH_COORDINATOR
+        .execute_batch_waiting(FlushTreeTask {
+            operations: all_operations,
+        })
+        .await
+        .unwrap();
+
+    BATCH_COORDINATOR
+        .execute_batch_waiting(UpdateTreeTask)
+        .await
+        .unwrap();
 
     // Step 7: Cleanup source file
     INDEX_COORDINATOR.execute_detached(DeleteTask::new(&path));
@@ -203,6 +210,10 @@ pub async fn index_workflow(
                 return Err(anyhow!("Join error: {}", e));
             }
         };
+        BATCH_COORDINATOR
+            .execute_batch_waiting(UpdateTreeTask)
+            .await
+            .unwrap();
     }
 
     Ok(())
