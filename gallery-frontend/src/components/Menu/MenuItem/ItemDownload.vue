@@ -9,7 +9,7 @@ import { useDataStore } from '@/store/dataStore'
 import axios from 'axios'
 import { saveAs } from 'file-saver'
 import { fetchDataInWorker } from '@/api/fetchData'
-import { getIsolationIdByRoute, getSrcOriginal } from '@utils/getter'
+import { getIsolationIdByRoute, getSrc } from '@utils/getter'
 import { AbstractData } from '@type/types'
 import { useTokenStore } from '@/store/tokenStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
@@ -76,7 +76,7 @@ const downloadAllFiles = async () => {
           const media = abstractData.data
           const hash = media.id
 
-          const url = getSrcOriginal(hash, true, media.ext)
+          const url = getSrc(hash, true, media.ext)
           await tokenStore.tryRefreshAndStoreTokenToDb(hash)
           const hashToken = tokenStore.hashTokenMap.get(hash)
           if (hashToken === undefined) {

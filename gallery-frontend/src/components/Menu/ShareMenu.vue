@@ -6,7 +6,7 @@
     <v-list>
       <ItemViewOriginalFile
         :src="
-          getSrcOriginal(
+          getSrc(
             media.id,
             true,
             media.ext,
@@ -24,7 +24,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { AbstractData, GalleryImage, GalleryVideo, IsolationId } from '@type/types'
-import { getSrcOriginal } from '@utils/getter'
+import { getSrc } from '@utils/getter'
 import { useTokenStore } from '@/store/tokenStore'
 import { useShareStore } from '@/store/shareStore'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'

@@ -153,41 +153,6 @@ export function getSrc(
   return queryString ? `${basePath}?${queryString}` : basePath
 }
 
-export function getSrcOriginal(
-  hash: string,
-  original: boolean,
-  ext: string,
-  shareContext?: { albumId: string | null; shareId: string | null },
-  token?: string
-) {
-  const compressedOrImported = original ? 'imported' : 'compressed'
-  const basePath = `/object/${compressedOrImported}/${hash.slice(0, 2)}/${hash}.${ext}`
-  const params = new URLSearchParams()
-
-  if (shareContext?.albumId && shareContext?.shareId) {
-    params.append('albumId', shareContext.albumId)
-    params.append('shareId', shareContext.shareId)
-
-    // Append password if it exists in the store for this share context
-
-    const shareStore = useShareStore('mainId')
-    if (
-      shareStore.password &&
-      shareStore.albumId === shareContext.albumId &&
-      shareStore.shareId === shareContext.shareId
-    ) {
-      params.append('password', shareStore.password)
-    }
-  }
-
-  if (token) {
-    params.append('token', token)
-  }
-
-  const queryString = params.toString()
-  return queryString ? `${basePath}?${queryString}` : basePath
-}
-
 // ---- UnifiedData helpers ----
 
 export function getThumbnailSrc(data: UnifiedData, token: string): string {
