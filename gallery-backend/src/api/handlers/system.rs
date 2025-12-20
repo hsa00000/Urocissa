@@ -1,6 +1,8 @@
 use anyhow::Result;
 use arrayvec::ArrayString;
 use log::{error, info};
+use rand::Rng;
+use rand::seq::IndexedRandom;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::http::Status;
 use rocket::serde::json::Json;
@@ -306,12 +308,67 @@ pub async fn reindex(
     BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
     Ok(Status::Ok)
 }
-
 fn create_random_data() -> AbstractData {
-    // 簡單的隨機數據生成 - 創建一個假的 ImageCombined
+    // 取得隨機數產生器 (rand 0.9+)
+    let mut rng = rand::rng();
+
+    // 1. 隨機長寬
+    let short_side = rng.random_range(600..1080);
+    let long_side = rng.random_range(1080..1920);
+
+    let (width, height) = if rng.random_bool(0.5) {
+        (long_side, short_side)
+    } else {
+        (short_side, long_side)
+    };
+
+    // 2. 隨機 Tags
+    let tag_pool = vec![
+        "Nature",
+        "Urban",
+        "Travel",
+        "Food",
+        "Family",
+        "Pets",
+        "Summer",
+        "Winter",
+        "Screenshot",
+        "Memes",
+    ];
+    let num_tags = rng.random_range(0..=3);
+    let mut tags = HashSet::new();
+    // 使用 IndexedRandom::choose_multiple
+    let chosen_tags: Vec<_> = tag_pool
+        .choose_multiple(&mut rng, num_tags)
+        .cloned()
+        .collect();
+    for tag in chosen_tags {
+        tags.insert(tag.to_string());
+    }
+
+    // 3. 隨機 Description
+    let desc_pool = vec![
+        "A beautiful memory.",
+        "Taken with my phone.",
+        "I love this place!",
+        "Random shot.",
+        "Testing data generation.",
+        "Unbelievable view!",
+    ];
+    let description = if rng.random_bool(0.6) {
+        // 使用 IndexedRandom::choose
+        desc_pool.choose(&mut rng).map(|s| s.to_string())
+    } else {
+        None
+    };
+
+    // ID
+    let id_raw = format!("random_{}", rng.random::<u64>());
+    let id = ArrayString::from(&id_raw).unwrap_or_default();
+
     let image = ImageCombined {
         object: ObjectSchema {
-            id: ArrayString::from(&format!("random_{}", rand::random::<u64>())).unwrap(),
+            id,
             obj_type: ObjectType::Image,
             created_time: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -319,17 +376,17 @@ fn create_random_data() -> AbstractData {
                 .as_millis() as i64,
             pending: false,
             thumbhash: None,
-            description: None,
-            tags: HashSet::new(),
-            is_favorite: false,
-            is_archived: false,
+            description,
+            tags,
+            is_favorite: rng.random_bool(0.2),
+            is_archived: rng.random_bool(0.1),
             is_trashed: false,
         },
         metadata: ImageMetadataSchema {
-            id: ArrayString::from(&format!("random_{}", rand::random::<u64>())).unwrap(),
-            size: 1024,
-            width: 100,
-            height: 100,
+            id,
+            size: rng.random_range(50_000..5_000_000),
+            width,
+            height,
             ext: "jpg".to_string(),
             phash: None,
         },
@@ -351,7 +408,10 @@ pub async fn generate_random_data(
         .into_par_iter()
         .map(|_| create_random_data())
         .collect();
-    BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(database_list));
+    BATCH_COORDINATOR
+        .execute_batch_waiting(FlushTreeTask::insert(database_list))
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to flush tree: {}", e))?;
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
         .await
