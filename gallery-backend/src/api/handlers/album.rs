@@ -1,17 +1,17 @@
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rand::{Rng, distr::Alphanumeric};
-use rocket::{get, post, put};
-use rocket::serde::json::Json;
+use redb::ReadableTable;
 use rocket::response::stream::ByteStream;
+use rocket::serde::json::Json;
+use rocket::{get, post, put};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
-use redb::ReadableTable;
 
-use crate::api::{AppResult, GuardResult};
 use crate::api::fairings::guards::auth::GuardAuth;
 use crate::api::fairings::guards::readonly::GuardReadOnlyMode;
 use crate::api::fairings::guards::share::GuardShare;
+use crate::api::{AppResult, GuardResult};
 use crate::background::actors::BATCH_COORDINATOR;
 use crate::background::batchers::flush_tree::{FlushOperation, FlushTreeTask};
 use crate::background::batchers::update_tree::UpdateTreeTask;
@@ -211,8 +211,8 @@ pub async fn set_album_cover(
         let album_id = set_album_cover_inner.album_id;
         let cover_hash = set_album_cover_inner.cover_hash;
 
-        let data_opt = TREE.load_data_from_hash(&cover_hash).unwrap();
-        let _data = data_opt.unwrap();
+        let data_data_opt = TREE.load_data_from_hash(&cover_hash).unwrap();
+        let cover_data = data_data_opt.unwrap();
         let cover_str = cover_hash.as_str();
 
         // 修正：分別更新 object 與 meta_album
@@ -220,36 +220,50 @@ pub async fn set_album_cover(
         {
             // 1. 更新 meta_album 的 cover
             let album_data = {
-                let temp_table = tx.open_table(crate::database::schema::meta_album::META_ALBUM_TABLE).unwrap();
-                temp_table.get(&*album_id).unwrap().map(|bytes| bytes.value().to_vec())
+                let temp_table = tx
+                    .open_table(crate::database::schema::meta_album::META_ALBUM_TABLE)
+                    .unwrap();
+                temp_table
+                    .get(&*album_id)
+                    .unwrap()
+                    .map(|bytes| bytes.value().to_vec())
             };
             if let Some(album_bytes) = album_data {
-                let mut album: crate::database::schema::meta_album::AlbumMetadataSchema = bitcode::decode(&album_bytes).unwrap();
+                let mut album: crate::database::schema::meta_album::AlbumMetadataSchema =
+                    bitcode::decode(&album_bytes).unwrap();
                 album.cover = Some(ArrayString::from(cover_str).unwrap());
                 let encoded = bitcode::encode(&album);
-                let mut table = tx.open_table(crate::database::schema::meta_album::META_ALBUM_TABLE).unwrap();
+                let mut table = tx
+                    .open_table(crate::database::schema::meta_album::META_ALBUM_TABLE)
+                    .unwrap();
                 table.insert(&*album_id, encoded.as_slice()).unwrap();
             }
         }
 
-        let album_data = TREE.load_data_from_hash(&album_id).unwrap().unwrap();
-
         // 2. 更新 object 的 thumbhash
-        let thumbhash = match &album_data {
+        let thumbhash = match &cover_data {
             AbstractData::Image(i) => i.object.thumbhash.clone(),
             AbstractData::Video(v) => v.object.thumbhash.clone(),
             AbstractData::Album(_) => None,
         };
         {
             let object_data = {
-                let temp_table = tx.open_table(crate::database::schema::object::OBJECT_TABLE).unwrap();
-                temp_table.get(&*album_id).unwrap().map(|bytes| bytes.value().to_vec())
+                let temp_table = tx
+                    .open_table(crate::database::schema::object::OBJECT_TABLE)
+                    .unwrap();
+                temp_table
+                    .get(&*album_id)
+                    .unwrap()
+                    .map(|bytes| bytes.value().to_vec())
             };
             if let Some(object_bytes) = object_data {
-                let mut object: crate::database::schema::object::ObjectSchema = bitcode::decode(&object_bytes).unwrap();
+                let mut object: crate::database::schema::object::ObjectSchema =
+                    bitcode::decode(&object_bytes).unwrap();
                 object.thumbhash = thumbhash;
                 let encoded = bitcode::encode(&object);
-                let mut object_table = tx.open_table(crate::database::schema::object::OBJECT_TABLE).unwrap();
+                let mut object_table = tx
+                    .open_table(crate::database::schema::object::OBJECT_TABLE)
+                    .unwrap();
                 object_table.insert(&*album_id, encoded.as_slice()).unwrap();
             }
         }
@@ -287,14 +301,22 @@ pub async fn set_album_title(
         let txn = TREE.begin_write().unwrap();
         {
             let album_data = {
-                let temp_table = txn.open_table(crate::database::schema::meta_album::META_ALBUM_TABLE).unwrap();
-                temp_table.get(&*album_id).unwrap().map(|bytes| bytes.value().to_vec())
+                let temp_table = txn
+                    .open_table(crate::database::schema::meta_album::META_ALBUM_TABLE)
+                    .unwrap();
+                temp_table
+                    .get(&*album_id)
+                    .unwrap()
+                    .map(|bytes| bytes.value().to_vec())
             };
             if let Some(album_bytes) = album_data {
-                let mut album: crate::database::schema::meta_album::AlbumMetadataSchema = bitcode::decode(&album_bytes).unwrap();
+                let mut album: crate::database::schema::meta_album::AlbumMetadataSchema =
+                    bitcode::decode(&album_bytes).unwrap();
                 album.title = set_album_title_inner.title;
                 let encoded = bitcode::encode(&album);
-                let mut table = txn.open_table(crate::database::schema::meta_album::META_ALBUM_TABLE).unwrap();
+                let mut table = txn
+                    .open_table(crate::database::schema::meta_album::META_ALBUM_TABLE)
+                    .unwrap();
                 table.insert(&*album_id, encoded.as_slice()).unwrap();
             }
         }
