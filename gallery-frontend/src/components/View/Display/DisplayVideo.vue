@@ -40,7 +40,7 @@ const videoSrc = computed(() =>
   getSrc(
     props.data.id,
     false,
-    props.data.ext,
+    'mp4',
     { albumId: shareStore.albumId || null, shareId: shareStore.shareId || null },
     tokenStore.hashTokenMap.get(props.data.id)
   )
