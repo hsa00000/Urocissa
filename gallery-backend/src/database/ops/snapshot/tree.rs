@@ -3,14 +3,11 @@ use dashmap::DashMap;
 use redb::{Database, ReadTransaction, ReadableDatabase};
 use crate::models::dto::reduced_data::ReducedData;
 use arrayvec::ArrayString;
-use crate::database::ops::snapshot::create_tree;
 use crate::database::ops::snapshot::create_tree::SNAPSHOTS_TABLE;
 use crate::common::ROW_BATCH_NUMBER;
-use crate::models::entity::row::{DisplayElement, Row, ScrollBarData};
+use crate::models::entity::row::{DisplayElement, Row};
 use anyhow::{Result, bail, Context};
-use log::{error, info};
-use chrono::{Datelike, TimeZone, Utc};
-use std::time::Instant;
+use log::error;
 use dashmap::mapref::one::Ref;
 
 #[derive(Debug)]
@@ -23,7 +20,7 @@ pub static TREE_SNAPSHOT: LazyLock<TreeSnapshot> = LazyLock::new(|| TreeSnapshot
 
 impl TreeSnapshot {
     pub fn new() -> Self {
-        create_tree::create_tree()
+        super::create_tree::create_tree()
     }
 
     pub fn read_tree_snapshot(&'static self, timestamp: &u128) -> Result<MyCow> {
@@ -66,49 +63,7 @@ impl TreeSnapshot {
         })
     }
 
-    pub fn read_scrollbar(&'static self, timestamp: u128) -> Vec<ScrollBarData> {
-        let start_time = Instant::now();
-        let tree_snapshot = self.read_tree_snapshot(&timestamp).unwrap();
-        let mut scroll_bar_data_vec = Vec::new();
-        let mut last_year = None;
-        let mut last_month = None;
 
-        let mut process_data = |index: usize, data: &ReducedData| {
-            let datetime = Utc.timestamp_opt(data.date as i64, 0).unwrap();
-            let year = datetime.year();
-            let month = datetime.month();
-            if last_year != Some(year) || last_month != Some(month) {
-                last_year = Some(year);
-                last_month = Some(month);
-                scroll_bar_data_vec.push(ScrollBarData {
-                    year: year as usize,
-                    month: month as usize,
-                    index: index,
-                });
-            }
-        };
-
-        match tree_snapshot {
-            MyCow::DashMap(ref_data) => {
-                ref_data.iter().enumerate().for_each(|(index, data)| {
-                    process_data(index, data);
-                });
-            }
-            MyCow::Redb(txn, ts) => {
-                let table = txn.open_table(SNAPSHOTS_TABLE).unwrap();
-                let start = (ts, 0);
-                let end = (ts, u64::MAX);
-                for (index, entry) in table.range(start..=end).unwrap().enumerate() {
-                    let (_, val) = entry.unwrap();
-                    if let Ok(data) = bitcode::decode::<ReducedData>(val.value()) {
-                        process_data(index, &data);
-                    }
-                }
-            }
-        }
-        info!(duration = &*format!("{:?}", start_time.elapsed()); "Generate scrollbar");
-        scroll_bar_data_vec
-    }
 }
 
 pub enum MyCow {

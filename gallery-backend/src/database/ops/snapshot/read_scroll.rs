@@ -1,8 +1,8 @@
-use super::{TreeSnapshot, new::SNAPSHOTS_TABLE};
-use crate::{
-    public::db::tree_snapshot::read_tree_snapshot::MyCow,
-    public::structure::reduced_data::ReducedData, public::structure::row::ScrollBarData,
+use super::{
+    create_tree::SNAPSHOTS_TABLE,
+    tree::{MyCow, TreeSnapshot},
 };
+use crate::{models::dto::reduced_data::ReducedData, models::entity::row::ScrollBarData};
 use chrono::{Datelike, TimeZone, Utc};
 use log::info;
 use std::time::Instant;
@@ -16,7 +16,8 @@ impl TreeSnapshot {
         let mut last_month = None;
 
         let mut process_data = |index: usize, data: &ReducedData| {
-            let datetime = Utc.timestamp_opt(data.date as i64, 0).unwrap();
+            // 修改處：使用 timestamp_millis_opt 來解析毫秒時間戳
+            let datetime = Utc.timestamp_millis_opt(data.date as i64).unwrap();
             let year = datetime.year();
             let month = datetime.month();
             if last_year != Some(year) || last_month != Some(month) {
