@@ -198,7 +198,7 @@ fn compute_timestamp(db: &OldDatabase, now_time: NaiveDateTime) -> i64 {
                             chrono::Local.from_local_datetime(&naive_dt).single()
                         {
                             if local_dt.naive_local() <= now_time {
-                                return local_dt.timestamp();
+                                return local_dt.timestamp_millis();
                             }
                         }
                     }
@@ -244,17 +244,17 @@ fn compute_timestamp(db: &OldDatabase, now_time: NaiveDateTime) -> i64 {
                     return chrono::Local
                         .from_local_datetime(&datetime)
                         .unwrap()
-                        .timestamp();
+                        .timestamp_millis();
                 }
             }
             "scan_time" => {
                 if let Some(t) = db.alias.iter().map(|a| a.scan_time).max() {
-                    return (t / 1000) as i64;
+                    return t as i64;
                 }
             }
             "modified" => {
                 if let Some(max_alias) = db.alias.iter().max_by_key(|a| a.scan_time) {
-                    return (max_alias.modified / 1000) as i64;
+                    return max_alias.modified as i64;
                 }
             }
             _ => {}
