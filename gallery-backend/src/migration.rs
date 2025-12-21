@@ -530,8 +530,7 @@ pub fn migrate() -> Result<()> {
             let is_archived = tags.remove("_archived");
             let is_trashed = tags.remove("_trashed");
 
-            // 時間轉換：毫秒 -> 秒
-            let created_time = (old_album.created_time / 1000) as i64;
+            let created_time = old_album.created_time as i64;
 
             let new_object = ObjectSchema {
                 id: old_album.id,
