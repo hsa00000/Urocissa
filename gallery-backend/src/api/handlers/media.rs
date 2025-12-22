@@ -3,7 +3,7 @@ use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use log::{error, info, warn};
 use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+    IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use rocket::form::{Errors, Form, FromForm};
 use rocket::fs::{NamedFile, TempFile};
@@ -206,22 +206,33 @@ pub async fn get_data(
             return Ok(Json(vec![]));
         }
 
-        let database_timestamp_return_list: Result<_> = (start..end)
-            .into_par_iter()
-            .map(|index| {
-                let hash = index_to_hash(&tree_snapshot, index)?;
+        // --- 優化開始 ---
+        // 1. 開啟單一 Read Transaction
+        let txn = TREE.begin_read()?;
+        
+        let mut response_list = Vec::with_capacity(end - start);
 
-                let abstract_data = TREE.load_from_db(&hash)?;
+        // 2. 改用序列迴圈 (Sequential Loop)，移除 into_par_iter()
+        // 20 筆資料的讀取非常快，不需要多執行緒開銷
+        for index in start..end {
+            let hash = index_to_hash(&tree_snapshot, index)?;
 
-                let processed_data =
-                    process_abstract_data_for_response(abstract_data, show_metadata);
-                Ok(processed_data.to_response(guard_timestamp.claims.timestamp, show_download))
-            })
-            .collect();
+            // 3. 使用 load_from_txn
+            let abstract_data = TREE.load_from_txn(&txn, &hash)?;
+
+            let processed_data =
+                process_abstract_data_for_response(abstract_data, show_metadata);
+            
+            // 4. 使用 to_response 傳入 txn
+            response_list.push(
+                processed_data.to_response(&txn, guard_timestamp.claims.timestamp, show_download)
+            );
+        }
+        // --- 優化結束 ---
 
         let duration = format!("{:?}", start_time.elapsed());
         info!(duration = &*duration; "Get data: {} ~ {}", start, end);
-        Ok(Json(database_timestamp_return_list?))
+        Ok(Json(response_list))
     })
     .await?
 }

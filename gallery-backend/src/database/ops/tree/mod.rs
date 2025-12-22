@@ -5,7 +5,7 @@ pub mod tags;
 // use crate::database::ops::tree::create;
 
 use anyhow::Result;
-use redb::{Database, ReadableDatabase};
+use redb::{Database, ReadTransaction, ReadableDatabase};
 
 use crate::database::schema::album::AlbumCombined;
 use crate::database::schema::image::ImageCombined;
@@ -34,6 +34,16 @@ impl Tree {
     pub fn load_from_db(&self, id: impl AsRef<str>) -> Result<AbstractData> {
         let id = id.as_ref();
         let txn = self.in_disk.begin_read()?;
+        self.load_from_txn(&txn, id)
+    }
+
+    // 新增此方法：使用外部傳入的 Transaction 讀取資料
+    pub fn load_from_txn(
+        &self,
+        txn: &ReadTransaction,
+        id: impl AsRef<str>,
+    ) -> Result<AbstractData> {
+        let id = id.as_ref();
 
         // 先查詢 Object 表確認類型
         let obj_table = txn.open_table(OBJECT_TABLE)?;
@@ -45,15 +55,15 @@ impl Tree {
 
         match obj_schema.obj_type {
             ObjectType::Album => {
-                let album = AlbumCombined::get_by_id(&txn, id)?;
+                let album = AlbumCombined::get_by_id(txn, id)?;
                 Ok(AbstractData::Album(album))
             }
             ObjectType::Image => {
-                let image = ImageCombined::get_by_id(&txn, id)?;
+                let image = ImageCombined::get_by_id(txn, id)?;
                 Ok(AbstractData::Image(image))
             }
             ObjectType::Video => {
-                let video = VideoCombined::get_by_id(&txn, id)?;
+                let video = VideoCombined::get_by_id(txn, id)?;
                 Ok(AbstractData::Video(video))
             }
         }

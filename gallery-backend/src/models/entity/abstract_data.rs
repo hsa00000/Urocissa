@@ -1,4 +1,5 @@
 use arrayvec::ArrayString;
+use redb::ReadTransaction;
 use serde::{Deserialize, Serialize};
 
 use crate::database::ops::tree::TREE;
@@ -54,32 +55,39 @@ impl AbstractData {
         }
     }
     pub fn alias(self: &Self) -> Vec<FileModify> {
+        let txn = crate::database::ops::tree::TREE.begin_read().unwrap();
+        self.alias_with_txn(&txn)
+    }
+
+    pub fn alias_with_txn(self: &Self, txn: &ReadTransaction) -> Vec<FileModify> {
         match self {
-            AbstractData::Image(image) => Self::fetch_alias(&image.object.id),
-            AbstractData::Video(video) => Self::fetch_alias(&video.object.id),
+            AbstractData::Image(image) => Self::fetch_alias(txn, &image.object.id),
+            AbstractData::Video(video) => Self::fetch_alias(txn, &video.object.id),
             AbstractData::Album(_) => vec![],
         }
     }
 
-    fn fetch_alias(hash: &ArrayString<64>) -> Vec<FileModify> {
-        let txn = TREE.begin_read().unwrap();
-        let table = txn.open_table(crate::database::schema::relations::database_alias::DATABASE_ALIAS_TABLE).unwrap();
+    fn fetch_alias(txn: &ReadTransaction, hash: &ArrayString<64>) -> Vec<FileModify> {
+        let table = txn
+            .open_table(crate::database::schema::relations::database_alias::DATABASE_ALIAS_TABLE)
+            .unwrap();
         let mut aliases = Vec::new();
-        
+
         // Iterate through all entries with the given hash prefix
         let range_start = (hash.as_str(), i64::MIN);
         let range_end = (hash.as_str(), i64::MAX);
         let mut iter = table.range(range_start..=range_end).unwrap().rev(); // rev() for DESC order
-        
+
         while let Some(Ok((_, value))) = iter.next() {
-            let alias: crate::database::schema::relations::database_alias::DatabaseAliasSchema = bitcode::decode(value.value()).unwrap();
+            let alias: crate::database::schema::relations::database_alias::DatabaseAliasSchema =
+                bitcode::decode(value.value()).unwrap();
             aliases.push(FileModify {
                 file: alias.file,
                 modified: alias.modified as u128,
                 scan_time: alias.scan_time as u128,
             });
         }
-        
+
         aliases
     }
 
@@ -104,8 +112,13 @@ impl AbstractData {
         }
     }
 
-    pub fn to_response(self, timestamp: u128, allow_original: bool) -> AbstractDataResponse {
-        let alias = self.alias();
+    pub fn to_response(
+        self,
+        txn: &ReadTransaction,
+        timestamp: u128,
+        allow_original: bool,
+    ) -> AbstractDataResponse {
+        let alias = self.alias_with_txn(txn);
         let token = self.generate_token(timestamp, allow_original);
         AbstractDataResponse {
             data: self,
