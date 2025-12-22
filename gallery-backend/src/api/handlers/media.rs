@@ -2,9 +2,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use log::{error, info, warn};
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::form::{Errors, Form, FromForm};
 use rocket::fs::{NamedFile, TempFile};
 use rocket::http::Status;
@@ -185,6 +183,8 @@ pub async fn get_all_shares(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<
     .await?
 }
 
+use std::time::Duration; // 確保引入 Duration
+
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
 pub async fn get_data(
     guard_timestamp: GuardResult<GuardTimestamp>,
@@ -193,45 +193,88 @@ pub async fn get_data(
     mut end: usize,
 ) -> AppResult<Json<Vec<AbstractDataResponse>>> {
     let guard_timestamp = guard_timestamp?;
+
     tokio::task::spawn_blocking(move || {
-        let start_time = Instant::now();
+        let total_start_time = Instant::now();
 
         let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
         let (show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
 
+        // Step A: Snapshot Read
+        let t_snapshot = Instant::now();
         let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
         end = end.min(tree_snapshot.len());
+        let snapshot_cost = t_snapshot.elapsed();
 
         if start >= end {
             return Ok(Json(vec![]));
         }
 
-        // --- 優化開始 ---
-        // 1. 開啟單一 Read Transaction
+        // --- 優化與 Debug 開始 ---
+
+        // 1. 開啟 Transaction 的時間
+        let t_txn = Instant::now();
         let txn = TREE.begin_read()?;
-        
+        let txn_open_cost = t_txn.elapsed();
+
         let mut response_list = Vec::with_capacity(end - start);
 
-        // 2. 改用序列迴圈 (Sequential Loop)，移除 into_par_iter()
-        // 20 筆資料的讀取非常快，不需要多執行緒開銷
+        // 定義累加計時器
+        let mut hash_lookup_cost = Duration::new(0, 0);
+        let mut db_load_cost = Duration::new(0, 0);
+        let mut process_data_cost = Duration::new(0, 0);
+        let mut alias_lookup_cost = Duration::new(0, 0); // 對應 to_response
+
         for index in start..end {
+            // 2. 索引轉 Hash (Snapshot 查詢)
+            let t1 = Instant::now();
             let hash = index_to_hash(&tree_snapshot, index)?;
+            hash_lookup_cost += t1.elapsed();
 
-            // 3. 使用 load_from_txn
+            // 3. 從 DB 讀取主資料 (Load Object/Metadata & Deserialize)
+            let t2 = Instant::now();
             let abstract_data = TREE.load_from_txn(&txn, &hash)?;
+            db_load_cost += t2.elapsed();
 
-            let processed_data =
-                process_abstract_data_for_response(abstract_data, show_metadata);
-            
-            // 4. 使用 to_response 傳入 txn
-            response_list.push(
-                processed_data.to_response(&txn, guard_timestamp.claims.timestamp, show_download)
-            );
+            // 4. 清除敏感資料邏輯 (純記憶體操作)
+            let t3 = Instant::now();
+            let processed_data = process_abstract_data_for_response(abstract_data, show_metadata);
+            process_data_cost += t3.elapsed();
+
+            // 5. 轉換回應 (包含 Alias 查詢)
+            let t4 = Instant::now();
+            response_list.push(processed_data.to_response(
+                &txn,
+                guard_timestamp.claims.timestamp,
+                show_download,
+            ));
+            alias_lookup_cost += t4.elapsed();
         }
-        // --- 優化結束 ---
+        // --- 優化與 Debug 結束 ---
 
-        let duration = format!("{:?}", start_time.elapsed());
-        info!(duration = &*duration; "Get data: {} ~ {}", start, end);
+        let total_duration = total_start_time.elapsed();
+
+        // 印出詳細的時間分析
+        info!(
+            "Get Data Performance ({}-{}): \n\
+            - Total Time: {:?}\n\
+            - Snapshot Read: {:?}\n\
+            - Txn Open: {:?}\n\
+            - Index->Hash: {:?}\n\
+            - DB Load (Data): {:?}\n\
+            - Logic Process: {:?}\n\
+            - DB Load (Alias/Token): {:?}",
+            start,
+            end,
+            total_duration,
+            snapshot_cost,
+            txn_open_cost,
+            hash_lookup_cost,
+            db_load_cost,
+            process_data_cost,
+            alias_lookup_cost
+        );
+
         Ok(Json(response_list))
     })
     .await?
