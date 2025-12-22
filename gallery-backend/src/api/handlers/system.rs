@@ -11,6 +11,8 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 
+use redb::ReadableDatabase;
+
 use crate::api::fairings::guards::auth::GuardAuth;
 use crate::api::fairings::guards::readonly::GuardReadOnlyMode;
 use crate::api::{AppResult, GuardResult};
@@ -63,8 +65,12 @@ pub async fn edit_status(
     let _ = auth?;
     let _ = read_only_mode?;
     let flush_ops = tokio::task::spawn_blocking(move || -> Result<Vec<FlushOperation>> {
+        // 1. 開啟 Transaction
+        let txn = TREE_SNAPSHOT.in_disk.begin_read().unwrap();
+        
+        // 2. 傳入 txn
         let tree_snapshot = TREE_SNAPSHOT
-            .read_tree_snapshot(&json_data.timestamp)
+            .read_tree_snapshot(&txn, &json_data.timestamp)
             .unwrap();
 
         let mut flush_ops = Vec::new();
@@ -132,8 +138,12 @@ pub async fn edit_tag(
     let _ = auth?;
     let _ = read_only_mode?;
     let flush_ops = tokio::task::spawn_blocking(move || -> Result<Vec<FlushOperation>> {
+        // 1. 開啟 Transaction
+        let txn = TREE_SNAPSHOT.in_disk.begin_read().unwrap();
+        
+        // 2. 傳入 txn
         let tree_snapshot = TREE_SNAPSHOT
-            .read_tree_snapshot(&json_data.timestamp)
+            .read_tree_snapshot(&txn, &json_data.timestamp)
             .unwrap();
 
         let mut flush_ops = Vec::new();
@@ -198,8 +208,12 @@ pub async fn reindex(
     let _ = read_only_mode?;
     let json_data = json_data.into_inner();
     tokio::task::spawn_blocking(move || {
+        // 1. 開啟 Transaction
+        let txn = TREE_SNAPSHOT.in_disk.begin_read().unwrap();
+        
+        // 2. 傳入 txn
         let reduced_data_vec = TREE_SNAPSHOT
-            .read_tree_snapshot(&json_data.timestamp)
+            .read_tree_snapshot(&txn, &json_data.timestamp)
             .unwrap();
         let hash_vec: Vec<ArrayString<64>> = json_data
             .index_array

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rand::{Rng, distr::Alphanumeric};
-use redb::ReadableTable;
+use redb::{ReadableDatabase, ReadableTable};
 use rocket::response::stream::ByteStream;
 use rocket::serde::json::Json;
 use rocket::{get, post, put};
@@ -89,7 +89,11 @@ async fn create_album_elements(
     timestamp: u128,
 ) -> Result<()> {
     let flush_ops = tokio::task::spawn_blocking(move || -> Result<Vec<FlushOperation>> {
-        let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
+        // 1. 開啟 Transaction
+        let txn = TREE_SNAPSHOT.in_disk.begin_read().unwrap();
+        
+        // 2. 傳入 txn
+        let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&txn, &timestamp).unwrap();
         let mut flush_ops = Vec::new();
         for idx in elements_index {
             let hash = index_to_hash(&tree_snapshot, idx)?;
@@ -147,8 +151,12 @@ pub async fn edit_album(
 
     // 在 blocking 執行緒產生所有要寫入的 payload 與受影響相簿
     let flush_ops = tokio::task::spawn_blocking(move || -> Result<Vec<FlushOperation>> {
+        // 1. 開啟 Transaction
+        let txn = TREE_SNAPSHOT.in_disk.begin_read().unwrap();
+        
+        // 2. 傳入 txn
         let tree_snapshot = TREE_SNAPSHOT
-            .read_tree_snapshot(&json_data.timestamp)
+            .read_tree_snapshot(&txn, &json_data.timestamp)
             .unwrap();
 
         let mut flush_ops = Vec::new();
@@ -352,8 +360,12 @@ pub async fn set_user_defined_description(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || -> Result<()> {
+        // 1. 開啟 Transaction
+        let txn = TREE_SNAPSHOT.in_disk.begin_read().unwrap();
+        
+        // 2. 傳入 txn
         let tree_snapshot = TREE_SNAPSHOT
-            .read_tree_snapshot(&set_user_defined_description.timestamp)
+            .read_tree_snapshot(&txn, &set_user_defined_description.timestamp)
             .unwrap();
         let hash = index_to_hash(&tree_snapshot, set_user_defined_description.index)?;
         let abstract_data = TREE.load_from_db(&hash)?;

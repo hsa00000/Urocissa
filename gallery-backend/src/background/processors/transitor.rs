@@ -20,7 +20,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Convert an index to its corresponding hash
 pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
-    if index >= tree_snapshot.len() {
+    if index >= tree_snapshot.len()? {
         return Err(anyhow::anyhow!("Index out of bounds: {}", index));
     }
     let hash = tree_snapshot.get_hash(index)?;

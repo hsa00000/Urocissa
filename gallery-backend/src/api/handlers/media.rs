@@ -18,6 +18,8 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::sync::atomic::Ordering;
+
+use redb::ReadableDatabase;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
@@ -200,22 +202,21 @@ pub async fn get_data(
         let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
         let (show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
 
+        // 1. 開啟 Transaction (由最外層持有)
+        let t_txn = Instant::now();
+        let txn = TREE.begin_read()?; // 這是一個 ReadTransaction
+        let tree_snapshot_txn = TREE_SNAPSHOT.in_disk.begin_read()?; // 這是 Snapshot DB 的 txn
+        let txn_open_cost = t_txn.elapsed();
+
         // Step A: Snapshot Read
         let t_snapshot = Instant::now();
-        let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
-        end = end.min(tree_snapshot.len());
+        // 傳入 snapshot txn
+        let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&tree_snapshot_txn, &timestamp)?;
+        
+        // 注意：len() 現在回傳 Result
+        let total_len = tree_snapshot.len()?; 
+        end = end.min(total_len);
         let snapshot_cost = t_snapshot.elapsed();
-
-        if start >= end {
-            return Ok(Json(vec![]));
-        }
-
-        // --- 優化與 Debug 開始 ---
-
-        // 1. 開啟 Transaction 的時間
-        let t_txn = Instant::now();
-        let txn = TREE.begin_read()?;
-        let txn_open_cost = t_txn.elapsed();
 
         let mut response_list = Vec::with_capacity(end - start);
 

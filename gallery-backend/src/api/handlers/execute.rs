@@ -8,6 +8,8 @@ use crate::background::processors::transitor::index_to_hash;
 use crate::database::ops::snapshot::tree::TREE_SNAPSHOT;
 use crate::database::ops::tree::TREE;
 use crate::models::entity::abstract_data::AbstractData;
+
+use redb::ReadableDatabase;
 use anyhow::Result;
 use rocket::serde::{Deserialize, json::Json};
 #[derive(Debug, Deserialize)]
@@ -43,7 +45,11 @@ pub async fn delete_data(
 }
 
 fn process_deletes(delete_list: Vec<usize>, timestamp: u128) -> Result<Vec<AbstractData>> {
-    let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&timestamp).unwrap();
+    // 1. 開啟 Transaction
+    let txn = TREE_SNAPSHOT.in_disk.begin_read().unwrap();
+    
+    // 2. 傳入 txn
+    let tree_snapshot = TREE_SNAPSHOT.read_tree_snapshot(&txn, &timestamp).unwrap();
 
     let mut abstract_data_to_remove = Vec::new();
 
