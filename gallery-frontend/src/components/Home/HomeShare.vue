@@ -29,14 +29,14 @@ const searchString = ref<LocationQueryValue | LocationQueryValue[] | undefined>(
 const shareStore = useShareStore('mainId')
 
 onBeforeMount(async () => {
+  searchString.value = route.query.search
+
   const albumIdOpt = route.params.albumId
   const shareIdOpt = route.params.shareId
 
   // Reset store state on mount
   shareStore.isAuthFailed = false
   shareStore.isLinkExpired = false
-  // [刪除] 不要強制重置密碼，否則會覆蓋 IndexedDB 中的資料
-  // shareStore.password = null
 
   if (typeof albumIdOpt === 'string' && typeof shareIdOpt === 'string') {
     albumId.value = albumIdOpt
@@ -46,7 +46,6 @@ onBeforeMount(async () => {
     shareStore.albumId = albumIdOpt
     shareStore.shareId = shareIdOpt
 
-    // [新增] 嘗試從 IndexedDB 恢復密碼
     const savedInfo = await getShareInfo(albumIdOpt, shareIdOpt)
     if (savedInfo && savedInfo.password) {
       shareStore.password = savedInfo.password
@@ -57,7 +56,6 @@ onBeforeMount(async () => {
   } else {
     console.error(`(albumId, shareId) is (${albumId.value}, ${shareId.value})`)
   }
-  searchString.value = route.query.search
 })
 
 // Watch for password changes and sync to IndexedDB
