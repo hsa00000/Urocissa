@@ -80,7 +80,7 @@
     <v-row dense align="center">
       <v-col cols="5">
         <v-switch
-          v-model="expireEnabled"
+          v-model="toggleExpiration"
           label="Expiration"
           color="primary"
           density="compact"
@@ -183,7 +183,27 @@ const { copy, copied } = useClipboard({ legacy: true })
 // 清理邏輯
 watchEffect(() => {
   if (!passwordRequired.value) password.value = ''
-  if (!expireEnabled.value) exp.value = null
+})
+
+// 使用 Writable Computed 來封裝邏輯
+const toggleExpiration = computed({
+  // Getter: 告訴 Switch 現在是開還是關
+  get: () => expireEnabled.value,
+
+  // Setter: 當使用者切換 Switch 時觸發
+  set: (val: boolean) => {
+    expireEnabled.value = val
+
+    if (val) {
+      // 開啟時：如果沒有值，自動填入預設值 (例如 DURATIONS 第一個選項)
+      if (!exp.value) {
+        exp.value = DURATIONS[0]?.id || 60
+      }
+    } else {
+      // 關閉時：清空數值
+      exp.value = null
+    }
+  }
 })
 
 // --- Auto Focus 邏輯 ---
