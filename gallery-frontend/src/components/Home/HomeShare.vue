@@ -16,7 +16,7 @@ import { LocationQueryValue, useRoute } from 'vue-router'
 import Home from './Home.vue'
 import HomeShareBar from '@/components/NavBar/HomeBars/HomeShareBar.vue'
 import ShareLoginModal from '@/components/Modal/ShareLoginModal.vue'
-import { onBeforeMount, ref, Ref } from 'vue'
+import { onBeforeMount, ref, Ref, watch } from 'vue'
 import { useShareStore } from '@/store/shareStore'
 
 const route = useRoute()
@@ -27,7 +27,7 @@ const searchString = ref<LocationQueryValue | LocationQueryValue[] | undefined>(
 
 const shareStore = useShareStore('mainId')
 
-onBeforeMount(() => {
+onBeforeMount(async () => {
   const albumIdOpt = route.params.albumId
   const shareIdOpt = route.params.shareId
 
@@ -43,9 +43,25 @@ onBeforeMount(() => {
 
     shareStore.albumId = albumIdOpt
     shareStore.shareId = shareIdOpt
+
+    // Sync to IndexedDB for Service Worker
+    await shareStore.syncShareInfoToIndexedDB()
   } else {
     console.error(`(albumId, shareId) is (${albumId.value}, ${shareId.value})`)
   }
   searchString.value = route.query.search
 })
+
+// Watch for password changes and sync to IndexedDB
+watch(
+  () => shareStore.password,
+  async () => {
+    await shareStore.syncShareInfoToIndexedDB()
+  }
+)
+
+// Note: We intentionally do NOT clear IndexedDB on unmount
+// because other tabs may still be using the same share.
+// Each share has its own key (albumId_shareId) in IndexedDB,
+// so there's no pollution between different shares.
 </script>

@@ -2,6 +2,7 @@ import { IsolationId, ResolvedShare } from '@type/types'
 import axios from 'axios'
 import { defineStore } from 'pinia'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
+import { storeShareInfo, clearShareInfo } from '@/db/db'
 
 export const useShareStore = (isolationId: IsolationId) =>
   defineStore('shareStore' + isolationId, {
@@ -36,6 +37,20 @@ export const useShareStore = (isolationId: IsolationId) =>
           this.allShares = response.data as ResolvedShare[]
           this.fetched = true
         })
+      },
+      async syncShareInfoToIndexedDB() {
+        if (this.albumId && this.shareId) {
+          await storeShareInfo({
+            albumId: this.albumId,
+            shareId: this.shareId,
+            password: this.password
+          })
+        }
+      },
+      async clearShareInfoFromIndexedDB() {
+        if (this.albumId && this.shareId) {
+          await clearShareInfo(this.albumId, this.shareId)
+        }
       }
     }
   })()
