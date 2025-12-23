@@ -17,21 +17,25 @@
           <v-toolbar-title class="text-h5">Info</v-toolbar-title>
         </v-toolbar>
       </div>
-      <v-card-item>
+      <v-card-item v-if="!isShareMode || userDefinedDescriptionModel">
         <v-textarea
           v-model="userDefinedDescriptionModel"
-          variant="underlined"
+          :variant="isShareMode ? 'plain' : 'underlined'"
+          :readonly="isShareMode"
           rows="1"
           auto-grow
           @blur="
-            editUserDefinedDescription(
-              props.abstractData,
-              userDefinedDescriptionModel,
-              props.index,
-              props.isolationId
-            )
+            !isShareMode &&
+              editUserDefinedDescription(
+                props.abstractData,
+                userDefinedDescriptionModel,
+                props.index,
+                props.isolationId
+              )
           "
-          :placeholder="userDefinedDescriptionModel === '' ? 'Add description' : undefined"
+          :placeholder="
+            !isShareMode && userDefinedDescriptionModel === '' ? 'Add description' : undefined
+          "
         />
       </v-card-item>
       <div v-if="abstractData.database" class="h-100 w-100">
@@ -109,6 +113,12 @@ const props = defineProps<{
 const showMetadata = computed(() => {
   return route.meta.baseName !== 'share' || shareStore.resolvedShare?.share.showMetadata
 })
+
+// 新增：判斷是否為分享模式
+const isShareMode = computed(() => {
+  return route.meta.baseName === 'share'
+})
+
 const constStore = useConstStore('mainId')
 const shareStore = useShareStore('mainId')
 
