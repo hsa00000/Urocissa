@@ -14,6 +14,7 @@ export interface ProcessSmallImagePayload {
   albumMode?: boolean
   albumId: null | string
   shareId: null | string
+  password: null | string
   timestampToken: string
   hashToken: string
 }
@@ -24,6 +25,7 @@ export interface ProcessImagePayload {
   devicePixelRatio: number
   albumId: null | string
   shareId: null | string
+  password: null | string
   timestampToken: string
   hashToken: string
 }

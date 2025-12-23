@@ -12,7 +12,6 @@ use redb::{ReadableTable, WriteTransaction};
 use rocket::post;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -73,10 +72,7 @@ fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) ->
                 show_metadata: create_share.show_metadata,
                 show_download: create_share.show_download,
                 show_upload: create_share.show_upload,
-                exp: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
+                exp: create_share.exp,
             };
             album.share_list.insert(share_id, share);
             album_table.insert(&*create_share.album_id, album).unwrap();

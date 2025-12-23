@@ -36,6 +36,7 @@ const handler = createHandler<typeof toImgWorker>({
       const headers: Record<string, string> = {}
       if (event.albumId !== null) headers['x-album-id'] = event.albumId
       if (event.shareId !== null) headers['x-share-id'] = event.shareId
+      if (event.password) headers['x-share-password'] = event.password
 
       headers.Authorization = `Bearer ${event.hashToken}`
 
@@ -81,6 +82,7 @@ const handler = createHandler<typeof toImgWorker>({
       const headers: Record<string, string> = {}
       if (event.albumId !== null) headers['x-album-id'] = event.albumId
       if (event.shareId !== null) headers['x-share-id'] = event.shareId
+      if (event.password) headers['x-share-password'] = event.password
       headers.Authorization = `Bearer ${event.hashToken}`
 
       const config = {

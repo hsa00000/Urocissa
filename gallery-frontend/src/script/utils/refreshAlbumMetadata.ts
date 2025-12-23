@@ -64,6 +64,7 @@ export async function refreshAlbumMetadata(albumId: string) {
         devicePixelRatio: window.devicePixelRatio,
         albumId: shareStore.albumId,
         shareId: shareStore.shareId,
+        password: shareStore.password,
         timestampToken,
         hashToken
       })
@@ -77,6 +78,7 @@ export async function refreshAlbumMetadata(albumId: string) {
         albumMode: true,
         albumId: shareStore.albumId,
         shareId: shareStore.shareId,
+        password: shareStore.password,
         timestampToken,
         hashToken
       })
