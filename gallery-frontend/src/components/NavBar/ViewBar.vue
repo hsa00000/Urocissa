@@ -40,7 +40,7 @@
       :isolation-id="isolationId"
     />
     <ShareMenu
-      v-if="abstractData && abstractData.database && share !== null"
+      v-if="abstractData && abstractData.database && share !== null && share.showDownload"
       :database="abstractData.database"
       :index="index"
       :hash="hash"
