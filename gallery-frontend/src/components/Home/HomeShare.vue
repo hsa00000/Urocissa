@@ -18,6 +18,7 @@ import HomeShareBar from '@/components/NavBar/HomeBars/HomeShareBar.vue'
 import ShareLoginModal from '@/components/Modal/ShareLoginModal.vue'
 import { onBeforeMount, ref, Ref, watch } from 'vue'
 import { useShareStore } from '@/store/shareStore'
+import { getShareInfo } from '@/db/db'
 
 const route = useRoute()
 const albumId: Ref<string | undefined> = ref(undefined)
@@ -34,7 +35,8 @@ onBeforeMount(async () => {
   // Reset store state on mount
   shareStore.isAuthFailed = false
   shareStore.isLinkExpired = false
-  shareStore.password = null
+  // [刪除] 不要強制重置密碼，否則會覆蓋 IndexedDB 中的資料
+  // shareStore.password = null
 
   if (typeof albumIdOpt === 'string' && typeof shareIdOpt === 'string') {
     albumId.value = albumIdOpt
@@ -43,6 +45,12 @@ onBeforeMount(async () => {
 
     shareStore.albumId = albumIdOpt
     shareStore.shareId = shareIdOpt
+
+    // [新增] 嘗試從 IndexedDB 恢復密碼
+    const savedInfo = await getShareInfo(albumIdOpt, shareIdOpt)
+    if (savedInfo && savedInfo.password) {
+      shareStore.password = savedInfo.password
+    }
 
     // Sync to IndexedDB for Service Worker
     await shareStore.syncShareInfoToIndexedDB()
