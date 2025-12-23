@@ -42,9 +42,10 @@
 
                 <!-- Password -->
                 <template #[`item.share.password`]="{ item }">
-                  <span :class="item.share.password ? 'text-success' : 'text-grey'">
-                    {{ item.share.password ? 'v' : 'x' }}
-                  </span>
+                  <v-icon
+                    :icon="item.share.password ? 'mdi-check' : 'mdi-close'"
+                    :color="item.share.password ? 'success' : 'grey'"
+                  />
                 </template>
 
                 <!-- Expiration -->
@@ -58,23 +59,26 @@
 
                 <!-- Allow Download -->
                 <template #[`item.share.showDownload`]="{ item }">
-                  <span :class="item.share.showDownload ? 'text-success' : 'text-grey'">
-                    {{ item.share.showDownload ? 'v' : 'x' }}
-                  </span>
+                  <v-icon
+                    :icon="item.share.showDownload ? 'mdi-check' : 'mdi-close'"
+                    :color="item.share.showDownload ? 'success' : 'grey'"
+                  />
                 </template>
 
                 <!-- Allow Upload -->
                 <template #[`item.share.showUpload`]="{ item }">
-                  <span :class="item.share.showUpload ? 'text-success' : 'text-grey'">
-                    {{ item.share.showUpload ? 'v' : 'x' }}
-                  </span>
+                  <v-icon
+                    :icon="item.share.showUpload ? 'mdi-check' : 'mdi-close'"
+                    :color="item.share.showUpload ? 'success' : 'grey'"
+                  />
                 </template>
 
                 <!-- Show Metadata -->
                 <template #[`item.share.showMetadata`]="{ item }">
-                  <span :class="item.share.showMetadata ? 'text-success' : 'text-grey'">
-                    {{ item.share.showMetadata ? 'v' : 'x' }}
-                  </span>
+                  <v-icon
+                    :icon="item.share.showMetadata ? 'mdi-check' : 'mdi-close'"
+                    :color="item.share.showMetadata ? 'success' : 'grey'"
+                  />
                 </template>
 
                 <!-- Actions -->
