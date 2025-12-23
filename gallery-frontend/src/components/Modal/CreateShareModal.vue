@@ -1,109 +1,6 @@
 <template>
   <BaseModal v-model="modalStore.showShareModal" title="Share Settings" width="450">
-    <v-textarea
-      v-model="description"
-      label="Link Description"
-      variant="outlined"
-      density="compact"
-      rows="1"
-      auto-grow
-      hide-details
-      class="mb-4"
-      color="primary"
-      bg-color="grey-darken-4"
-    ></v-textarea>
-
-    <div class="text-caption text-medium-emphasis mb-2 text-uppercase font-weight-bold">
-      Permissions
-    </div>
-    <v-row dense class="mb-2">
-      <v-col cols="6">
-        <v-switch
-          v-model="showDownload"
-          label="Allow Download"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-        ></v-switch>
-      </v-col>
-      <v-col cols="6">
-        <v-switch
-          v-model="showUpload"
-          label="Allow Upload"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-        ></v-switch>
-      </v-col>
-      <v-col cols="12">
-        <v-switch
-          v-model="showMetadata"
-          label="Show Metadata"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-        ></v-switch>
-      </v-col>
-    </v-row>
-
-    <v-divider class="mb-4 border-opacity-25"></v-divider>
-
-    <v-row dense align="center" class="mb-1">
-      <v-col cols="5">
-        <v-switch
-          v-model="passwordRequired"
-          label="Password"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-        ></v-switch>
-      </v-col>
-      <v-col cols="7">
-        <v-text-field
-          ref="passwordInputRef"
-          v-model="password"
-          :disabled="!passwordRequired"
-          type="password"
-          hide-details
-          density="compact"
-          variant="outlined"
-          bg-color="grey-darken-4"
-          prepend-inner-icon="mdi-lock-outline"
-        ></v-text-field>
-      </v-col>
-    </v-row>
-
-    <v-row dense align="center">
-      <v-col cols="5">
-        <v-switch
-          v-model="toggleExpiration"
-          label="Expiration"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-        ></v-switch>
-      </v-col>
-      <v-col cols="7">
-        <v-select
-          v-model="exp"
-          :items="DURATIONS"
-          :disabled="!expireEnabled"
-          label="Duration"
-          density="compact"
-          variant="outlined"
-          hide-details
-          bg-color="grey-darken-4"
-          prepend-inner-icon="mdi-clock-outline"
-          item-title="label"
-          item-value="id"
-        ></v-select>
-      </v-col>
-    </v-row>
+    <ShareSettingsForm v-model="formState" />
 
     <template #actions>
       <v-sheet
@@ -143,13 +40,13 @@
 
 <script setup lang="ts">
 import BaseModal from '@/components/Modal/BaseModal.vue'
+import ShareSettingsForm, { ShareFormData } from '@/components/Modal/ShareSettingsForm.vue'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import axios from 'axios'
-import { ref, Ref, watchEffect, computed, watch, nextTick } from 'vue'
+import { ref, Ref, computed, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
-import { DURATIONS } from '@type/constants'
 
 const props = defineProps<{
   albumId: string
@@ -158,15 +55,32 @@ const props = defineProps<{
 const modalStore = useModalStore('mainId')
 const messageStore = useMessageStore('mainId')
 
-// 表單資料
-const description = ref('')
-const passwordRequired = ref(false)
-const password = ref('')
-const expireEnabled = ref(false)
-const showUpload = ref(false)
-const showDownload = ref(true)
-const showMetadata = ref(false)
-const exp: Ref<number | null> = ref(null)
+// 初始狀態
+const defaultFormState: ShareFormData = {
+  description: '',
+  passwordRequired: false,
+  password: '',
+  expireEnabled: false,
+  expDuration: null,
+  showUpload: false,
+  showDownload: true,
+  showMetadata: false
+}
+
+const formState = ref<ShareFormData>({ ...defaultFormState })
+
+// 當 Modal 關閉時重置表單（可選）
+watch(
+  () => modalStore.showShareModal,
+  (val) => {
+    if (!val && !shareLink.value) {
+      // 只有在沒有生成連結的情況下才完全重置，或者每次打開都重置
+      formState.value = { ...defaultFormState }
+      createdShareKey.value = null
+      shareLink.value = null
+    }
+  }
+)
 
 // 狀態資料
 const shareLink: Ref<string | null> = ref(null)
@@ -174,66 +88,18 @@ const createdShareKey: Ref<string | null> = ref(null)
 const loading = ref(false)
 const lastSavedState = ref('')
 
-// DOM 引用
-const passwordInputRef = ref<any>(null)
-
 // Clipboard logic
 const { copy, copied } = useClipboard({ legacy: true })
 
-// 清理邏輯
-watchEffect(() => {
-  if (!passwordRequired.value) password.value = ''
-})
-
-// 使用 Writable Computed 來封裝邏輯
-const toggleExpiration = computed({
-  // Getter: 告訴 Switch 現在是開還是關
-  get: () => expireEnabled.value,
-
-  // Setter: 當使用者切換 Switch 時觸發
-  set: (val: boolean) => {
-    expireEnabled.value = val
-
-    if (val) {
-      // 開啟時：如果沒有值，自動填入預設值 (例如 DURATIONS 第一個選項)
-      if (!exp.value) {
-        exp.value = DURATIONS[0]?.id || 60
-      }
-    } else {
-      // 關閉時：清空數值
-      exp.value = null
-    }
-  }
-})
-
-// --- Auto Focus 邏輯 ---
-watch(passwordRequired, async (newVal) => {
-  if (newVal) {
-    await nextTick()
-    passwordInputRef.value?.focus()
-  }
-})
-
 // --- 驗證與變更偵測 ---
 const isFormValid = computed(() => {
-  if (passwordRequired.value && !password.value) return false
+  if (formState.value.passwordRequired && !formState.value.password) return false
   return true
 })
 
-const currentFormState = computed(() => ({
-  description: description.value,
-  passwordRequired: passwordRequired.value,
-  password: password.value,
-  expireEnabled: expireEnabled.value,
-  exp: exp.value,
-  showUpload: showUpload.value,
-  showDownload: showDownload.value,
-  showMetadata: showMetadata.value
-}))
-
 const hasChanges = computed(() => {
   if (!createdShareKey.value) return true
-  return JSON.stringify(currentFormState.value) !== lastSavedState.value
+  return JSON.stringify(formState.value) !== lastSavedState.value
 })
 
 // --- 按鈕邏輯 ---
@@ -258,22 +124,24 @@ const createLink = async () => {
   if (!isFormValid.value) return
   loading.value = true
   const expirationTimestamp =
-    expireEnabled.value && exp.value ? Math.floor(Date.now() / 1000) + exp.value * 60 : 0
+    formState.value.expireEnabled && formState.value.expDuration
+      ? Math.floor(Date.now() / 1000) + formState.value.expDuration * 60
+      : 0
 
   try {
     const result = await axios.post<string>('/post/create_share', {
       albumId: props.albumId,
-      description: description.value,
-      password: passwordRequired.value ? password.value : null,
-      showMetadata: showMetadata.value,
-      showDownload: showDownload.value,
-      showUpload: showUpload.value,
+      description: formState.value.description,
+      password: formState.value.passwordRequired ? formState.value.password : null,
+      showMetadata: formState.value.showMetadata,
+      showDownload: formState.value.showDownload,
+      showUpload: formState.value.showUpload,
       exp: expirationTimestamp
     })
 
     createdShareKey.value = result.data
     shareLink.value = `${window.location.origin}/share/${props.albumId}-${result.data}`
-    lastSavedState.value = JSON.stringify(currentFormState.value)
+    lastSavedState.value = JSON.stringify(formState.value)
     messageStore.success('Share link created successfully.')
   } catch (e) {
     console.error(e)
@@ -289,7 +157,9 @@ const updateLink = async () => {
 
   loading.value = true
   const expirationTimestamp =
-    expireEnabled.value && exp.value ? Math.floor(Date.now() / 1000) + exp.value * 60 : 0
+    formState.value.expireEnabled && formState.value.expDuration
+      ? Math.floor(Date.now() / 1000) + formState.value.expDuration * 60
+      : 0
 
   try {
     await tryWithMessageStore('mainId', async () => {
@@ -297,15 +167,15 @@ const updateLink = async () => {
         albumId: props.albumId,
         share: {
           url: createdShareKey.value,
-          description: description.value,
-          password: passwordRequired.value ? password.value : null,
-          showMetadata: showMetadata.value,
-          showDownload: showDownload.value,
-          showUpload: showUpload.value,
+          description: formState.value.description,
+          password: formState.value.passwordRequired ? formState.value.password : null,
+          showMetadata: formState.value.showMetadata,
+          showDownload: formState.value.showDownload,
+          showUpload: formState.value.showUpload,
           exp: expirationTimestamp
         }
       })
-      lastSavedState.value = JSON.stringify(currentFormState.value)
+      lastSavedState.value = JSON.stringify(formState.value)
       messageStore.success('Share settings updated.')
     })
   } catch (e) {

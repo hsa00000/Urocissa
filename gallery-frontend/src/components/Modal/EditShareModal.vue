@@ -1,139 +1,41 @@
 <template>
-  <v-dialog
-    v-if="submit !== undefined"
+  <BaseModal
+    v-if="modalStore.showEditShareModal"
     v-model="modalStore.showEditShareModal"
-    id="share-modal"
-    variant="flat"
-    persistent
-    rounded
+    title="Edit Share Settings"
+    width="450"
   >
-    <v-confirm-edit
-      v-model="shareModel"
-      :disabled="false"
-      @save="submit"
-      @cancel="modalStore.showEditShareModal = false"
-    >
-      <template #default="{ model: proxyModel, actions }">
-        <v-card
-          class="h-100 mx-auto w-100"
-          max-width="400"
-          variant="elevated"
-          retain-focus
-          rounded="xl"
+    <ShareSettingsForm v-model="formState" duration-label="Reset Duration" />
+
+    <template #actions>
+      <v-sheet class="d-flex justify-end w-100 pa-2" color="transparent">
+        <v-btn
+          color="primary"
+          variant="flat"
+          width="150"
+          height="44"
+          class="text-capitalize"
+          :loading="loading"
+          :disabled="!isFormValid"
+          @click="saveChanges"
         >
-          <v-toolbar color="transparent">
-            <v-toolbar-title class="text-h5">Share</v-toolbar-title>
-            <template #append>
-              <v-btn icon="mdi-close" @click="modalStore.showEditShareModal = false" />
-            </template>
-          </v-toolbar>
-          <v-divider />
-          <v-list class="px-6">
-            <v-list-item>
-              <v-textarea
-                v-model="proxyModel.value.description"
-                label="Description of this link"
-                hide-details="auto"
-                rows="1"
-              />
-            </v-list-item>
-
-            <v-list-item density="compact">
-              <v-text-field
-                v-model="proxyModel.value.password"
-                label="Password (Optional)"
-                placeholder="Leave empty for no password"
-                hide-details="auto"
-                clearable
-              ></v-text-field>
-            </v-list-item>
-          </v-list>
-          <v-divider />
-          <v-list class="px-6">
-            <v-list-item density="compact">
-              <template #prepend>
-                <v-list-item-action start>
-                  <v-switch
-                    v-model="proxyModel.value.showDownload"
-                    color="primary"
-                    :label="`Allow public user to download`"
-                    hide-details
-                  />
-                </v-list-item-action>
-              </template>
-            </v-list-item>
-            <v-list-item density="compact">
-              <template #prepend>
-                <v-list-item-action start>
-                  <v-switch
-                    v-model="proxyModel.value.showUpload"
-                    color="primary"
-                    :label="`Allow public user to upload`"
-                    hide-details
-                  />
-                </v-list-item-action>
-              </template>
-            </v-list-item>
-            <v-list-item density="compact">
-              <template #prepend>
-                <v-list-item-action start>
-                  <v-switch
-                    v-model="proxyModel.value.showMetadata"
-                    color="primary"
-                    :label="`Show metadata`"
-                    hide-details
-                  />
-                </v-list-item-action>
-              </template>
-            </v-list-item>
-          </v-list>
-
-          <v-divider />
-
-          <v-list class="px-6">
-            <v-list-item density="compact">
-              <v-list-item-title class="text-caption mb-1">
-                Expires:
-                {{
-                  proxyModel.value.exp === 0
-                    ? 'Never'
-                    : new Date(proxyModel.value.exp * 1000).toLocaleString()
-                }}
-              </v-list-item-title>
-              <v-select
-                :model-value="newDuration"
-                @update:model-value="(val: number | null) => updateExpiration(proxyModel, val)"
-                :items="DURATIONS"
-                label="Reset Expiration to..."
-                item-title="label"
-                item-value="id"
-                hide-details="auto"
-                clearable
-                persistent-hint
-                hint="Select to update expiration time from now"
-              />
-            </v-list-item>
-          </v-list>
-
-          <template #actions>
-            <v-spacer />
-            <component :is="actions"></component>
-          </template>
-        </v-card>
-      </template>
-    </v-confirm-edit>
-  </v-dialog>
+          Save Changes
+        </v-btn>
+      </v-sheet>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import BaseModal from '@/components/Modal/BaseModal.vue'
+import ShareSettingsForm, { ShareFormData } from '@/components/Modal/ShareSettingsForm.vue'
 import { useModalStore } from '@/store/modalStore'
-import type { EditShareData, Share } from '@/type/types'
 import { useMessageStore } from '@/store/messageStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
-import { DURATIONS } from '@type/constants'
+import { EditShareData } from '@/type/types'
+import axios from 'axios'
+import { ref, computed, watchEffect } from 'vue'
 
 const props = defineProps<{ editShareData: EditShareData }>()
 
@@ -141,55 +43,92 @@ const modalStore = useModalStore('mainId')
 const messageStore = useMessageStore('mainId')
 const albumStore = useAlbumStore('mainId')
 
-const shareModel = ref<Share>({
-  url: props.editShareData.share.url,
-  description: props.editShareData.share.description,
-  showDownload: props.editShareData.share.showDownload,
-  showUpload: props.editShareData.share.showUpload,
-  showMetadata: props.editShareData.share.showMetadata,
-  exp: props.editShareData.share.exp,
-  password: props.editShareData.share.password
+const loading = ref(false)
+
+// 初始化表單狀態
+const formState = ref<ShareFormData>({
+  description: '',
+  passwordRequired: false,
+  password: '',
+  expireEnabled: false,
+  expDuration: null,
+  showUpload: false,
+  showDownload: false,
+  showMetadata: false
 })
 
-const newDuration = ref<number | null>(null)
-const submit = ref<(() => Promise<void>) | undefined>()
-
-// Helper function to handle expiration time update
-const updateExpiration = (proxyModel: any, val: number | null) => {
-  newDuration.value = val
-  if (val !== null) {
-    // Calculate new expiration time from now
-    proxyModel.value.exp = Math.floor(Date.now() / 1000) + val * 60
-  } else {
-    proxyModel.value.exp = 0
-  }
-}
-
-onMounted(() => {
-  submit.value = async () => {
-    modalStore.showEditShareModal = false
-
-    if (shareModel.value.password === '') {
-      shareModel.value.password = null
+// 監聽 props 變更以初始化資料
+watchEffect(() => {
+  if (props.editShareData && props.editShareData.share) {
+    const share = props.editShareData.share
+    formState.value = {
+      description: share.description || '',
+      passwordRequired: !!share.password,
+      password: share.password || '',
+      // 如果 exp > 0 代表有過期時間
+      expireEnabled: share.exp > 0,
+      // 編輯模式下，duration 預設為 null (不改變)，除非使用者想重設
+      expDuration: null,
+      showUpload: share.showUpload,
+      showDownload: share.showDownload,
+      showMetadata: share.showMetadata
     }
+  }
+})
 
-    // Update props.editShareData.share for optimistic update in LinksPage
-    Object.assign(props.editShareData.share, shareModel.value)
+const isFormValid = computed(() => {
+  if (formState.value.passwordRequired && !formState.value.password) return false
+  return true
+})
 
-    // Update AlbumStore if the album exists
+const saveChanges = async () => {
+  if (!isFormValid.value) return
+  loading.value = true
+
+  // 計算新的過期時間
+  let newExp = props.editShareData.share.exp
+
+  if (!formState.value.expireEnabled) {
+    // 使用者關閉了過期
+    newExp = 0
+  } else if (formState.value.expDuration) {
+    // 使用者選擇了新的時長，重設過期時間
+    newExp = Math.floor(Date.now() / 1000) + formState.value.expDuration * 60
+  }
+  // 如果 enabled 為 true 但 duration 為 null，則保持原有的 exp 不變
+
+  const updatedShare = {
+    url: props.editShareData.share.url,
+    description: formState.value.description,
+    password: formState.value.passwordRequired ? formState.value.password : null,
+    showMetadata: formState.value.showMetadata,
+    showDownload: formState.value.showDownload,
+    showUpload: formState.value.showUpload,
+    exp: newExp
+  }
+
+  try {
+    // Optimistic Update (更新 Store)
     const album = albumStore.albums.get(props.editShareData.albumId)
     if (album) {
-      album.shareList.set(props.editShareData.share.url, shareModel.value)
+      // 這裡需要確保 editShareData.share 的引用被更新，
+      // 或者更新 album store 中的 Map
+      Object.assign(props.editShareData.share, updatedShare)
+      album.shareList.set(updatedShare.url, { ...props.editShareData.share, ...updatedShare })
     }
 
     await tryWithMessageStore('mainId', async () => {
       await axios.put('/put/edit_share', {
         albumId: props.editShareData.albumId,
-        share: shareModel.value
+        share: updatedShare
       })
-
       messageStore.success('Updated share settings successfully')
+      modalStore.showEditShareModal = false
     })
+  } catch (e) {
+    console.error('Update failed', e)
+  } finally {
+    loading.value = false
   }
-})
+}
 </script>
