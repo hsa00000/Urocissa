@@ -64,16 +64,15 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
     match abstract_data {
         AbstractData::Database(database) => {
             database.alias = vec![database.alias.pop().unwrap()];
+            database.album.clear();
+            database.tag.clear();
             if !show_metadata {
-                database.tag.clear();
-                database.album.clear();
                 database.alias.clear();
+                database.exif_vec.clear();
             }
         }
         AbstractData::Album(album) => {
-            if !show_metadata {
-                album.tag.clear();
-            }
+            album.tag.clear();
         }
     }
 }
@@ -91,10 +90,10 @@ pub fn abstract_data_to_database_timestamp_return(
         timestamp,
         show_download,
     );
-    
+
     // Then clear metadata from the abstract_data
     clear_abstract_data_metadata(&mut abstract_data, show_metadata);
-    
+
     // Return with the cleared abstract_data but the original computed timestamp
     DataBaseTimestampReturn {
         abstract_data,
