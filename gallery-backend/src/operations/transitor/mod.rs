@@ -79,14 +79,26 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
 }
 
 pub fn abstract_data_to_database_timestamp_return(
-    abstract_data: AbstractData,
+    mut abstract_data: AbstractData,
     timestamp: u128,
     show_download: bool,
+    show_metadata: bool,
 ) -> DataBaseTimestampReturn {
-    DataBaseTimestampReturn::new(
-        abstract_data,
+    // Create the return object first (which computes timestamp from abstract_data)
+    let result = DataBaseTimestampReturn::new(
+        abstract_data.clone(),
         &crate::public::constant::DEFAULT_PRIORITY_LIST,
         timestamp,
         show_download,
-    )
+    );
+    
+    // Then clear metadata from the abstract_data
+    clear_abstract_data_metadata(&mut abstract_data, show_metadata);
+    
+    // Return with the cleared abstract_data but the original computed timestamp
+    DataBaseTimestampReturn {
+        abstract_data,
+        timestamp: result.timestamp,
+        token: result.token,
+    }
 }

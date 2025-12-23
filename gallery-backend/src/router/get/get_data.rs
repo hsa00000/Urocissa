@@ -1,7 +1,7 @@
 use crate::operations::open_db::{open_data_and_album_tables, open_tree_snapshot_table};
 use crate::operations::resolve_show_download_and_metadata;
 use crate::operations::transitor::{
-    abstract_data_to_database_timestamp_return, clear_abstract_data_metadata,
+    abstract_data_to_database_timestamp_return,
     hash_to_abstract_data, index_to_hash,
 };
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
@@ -43,14 +43,13 @@ pub async fn get_data(
             .map(|index| {
                 let hash = index_to_hash(&tree_snapshot, index)?;
 
-                let mut abstract_data = hash_to_abstract_data(&data_table, &album_table, hash)?;
-
-                clear_abstract_data_metadata(&mut abstract_data, show_metadata);
+                let abstract_data = hash_to_abstract_data(&data_table, &album_table, hash)?;
 
                 let database_timestamp_return = abstract_data_to_database_timestamp_return(
                     abstract_data,
                     timestamp,
                     show_download,
+                    show_metadata,
                 );
                 Ok(database_timestamp_return)
             })

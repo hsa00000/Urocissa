@@ -28,11 +28,6 @@
                 :items-per-page="-1"
                 :sort-by="[{ key: 'share.url', order: 'asc' }]"
               >
-                <!-- Link -->
-                <template #[`item.share.url`]="{ item }">
-                  {{ item.share.url }}
-                </template>
-
                 <!-- Description with tooltip -->
                 <template #[`item.share.description`]="{ item }">
                   <v-tooltip location="top" :open-on-click="true">
@@ -45,14 +40,41 @@
                   </v-tooltip>
                 </template>
 
+                <!-- Password -->
+                <template #[`item.share.password`]="{ item }">
+                  <span :class="item.share.password ? 'text-success' : 'text-grey'">
+                    {{ item.share.password ? 'v' : 'x' }}
+                  </span>
+                </template>
+
+                <!-- Expiration -->
+                <template #[`item.share.exp`]="{ item }">
+                  <span v-if="item.share.exp === 0">Never</span>
+                  <span v-else-if="item.share.exp * 1000 < Date.now()" class="text-error">
+                    Expired
+                  </span>
+                  <span v-else>{{ formatExpiration(item.share.exp) }}</span>
+                </template>
+
                 <!-- Allow Download -->
                 <template #[`item.share.showDownload`]="{ item }">
-                  {{ item.share.showDownload }}
+                  <span :class="item.share.showDownload ? 'text-success' : 'text-grey'">
+                    {{ item.share.showDownload ? 'v' : 'x' }}
+                  </span>
                 </template>
 
                 <!-- Allow Upload -->
                 <template #[`item.share.showUpload`]="{ item }">
-                  {{ item.share.showUpload }}
+                  <span :class="item.share.showUpload ? 'text-success' : 'text-grey'">
+                    {{ item.share.showUpload ? 'v' : 'x' }}
+                  </span>
+                </template>
+
+                <!-- Show Metadata -->
+                <template #[`item.share.showMetadata`]="{ item }">
+                  <span :class="item.share.showMetadata ? 'text-success' : 'text-grey'">
+                    {{ item.share.showMetadata ? 'v' : 'x' }}
+                  </span>
                 </template>
 
                 <!-- Actions -->
@@ -151,7 +173,6 @@ const currentEditShareData = ref<EditShareData | null>(null)
 const currentDeleteShareData = ref<EditShareData | null>(null)
 
 const headers = [
-  { title: 'Link', key: 'share.url' },
   {
     title: 'Description',
     key: 'share.description',
@@ -159,18 +180,11 @@ const headers = [
     maxWidth: '200px',
     nowrap: true
   },
-  {
-    title: 'Allow Download',
-    key: 'share.showDownload'
-  },
-  {
-    title: 'Allow Upload',
-    key: 'share.showUpload'
-  },
-  {
-    title: 'Show Metadata',
-    key: 'share.showMetadata'
-  },
+  { title: 'Password', key: 'share.password' },
+  { title: 'Expires', key: 'share.exp', nowrap: true },
+  { title: 'Download', key: 'share.showDownload' },
+  { title: 'Upload', key: 'share.showUpload' },
+  { title: 'Metadata', key: 'share.showMetadata' },
   { title: 'Actions', key: 'actions', sortable: false }
 ]
 
@@ -199,6 +213,11 @@ function openDeleteConfirm(data: EditShareData) {
 async function performCopy(item: EditShareData) {
   await copy(`${locationOrigin}/share/${item.albumId}-${item.share.url}`)
   messageStore.success('Share URL copied to clipboard.')
+}
+
+function formatExpiration(exp: number): string {
+  const date = new Date(exp * 1000)
+  return date.toLocaleString()
 }
 
 watch(
