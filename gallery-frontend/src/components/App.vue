@@ -10,7 +10,7 @@
       <router-view v-slot="{ Component }" :key="routeKey">
         <component :is="Component" />
       </router-view> </v-main
-    ><v-snackbar-queue v-model="messageStore.queue" timeout="2500" />
+    ><v-snackbar-queue v-model="messageStore.queue" timeout="2500" :close-on-back="false" />
     <EditTagsModal v-if="modalStore.showEditTagsModal" />
     <EditAlbumsModal v-if="modalStore.showEditAlbumsModal" />
     <EditBatchTagsModal v-if="modalStore.showBatchEditTagsModal" />
