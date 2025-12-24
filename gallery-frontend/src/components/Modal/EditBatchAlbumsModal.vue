@@ -40,7 +40,7 @@
                   autocomplete="off"
                 >
                   <template #prepend-item v-if="albumStore.albums.size > 0">
-                    <v-list-item value="">
+                    <v-list-item value="" @click.stop.prevent="createNonEmptyAlbumWithLoading">
                       <template #prepend>
                         <v-list-item-action>
                           <v-btn
@@ -54,23 +54,19 @@
                             <v-progress-circular indeterminate size="24" />
                           </v-btn>
                         </v-list-item-action>
-                        <v-list-item-title class="wrap" @click="createNonEmptyAlbumWithLoading()">
-                          Create New Album
-                        </v-list-item-title>
+                        <v-list-item-title class="wrap"> Create New Album </v-list-item-title>
                       </template>
                     </v-list-item>
                     <v-divider />
                   </template>
 
                   <template #no-data v-else>
-                    <v-list-item value="">
+                    <v-list-item value="" @click.stop.prevent="createNonEmptyAlbumWithLoading">
                       <template #prepend>
                         <v-list-item-action>
                           <v-btn color="transparent" icon="mdi-plus" density="comfortable" flat />
                         </v-list-item-action>
-                        <v-list-item-title class="wrap" @click="createNonEmptyAlbumWithLoading()">
-                          Create New Album
-                        </v-list-item-title>
+                        <v-list-item-title class="wrap"> Create New Album </v-list-item-title>
                       </template>
                     </v-list-item>
                   </template>
@@ -109,8 +105,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, watch, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { isNavigationFailure, NavigationFailureType } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useAlbumStore } from '@/store/albumStore'
@@ -170,14 +167,32 @@ onMounted(() => {
 
 const createNonEmptyAlbumWithLoading = async () => {
   loading.value = true
-  const newAlbumId = await createNonEmptyAlbum([...collectionStore.editModeCollection], isolationId)
+  try {
+    const newAlbumId = await createNonEmptyAlbum(
+      [...collectionStore.editModeCollection],
+      isolationId
+    )
 
-  if (typeof newAlbumId === 'string') {
-    await navigateToAlbum(newAlbumId, router)
-    modalStore.showBatchEditAlbumsModal = false
-    collectionStore.editModeOn = false
+    if (typeof newAlbumId === 'string' && newAlbumId.length > 0) {
+      // 先把可能會擋導航的狀態關掉
+      modalStore.showBatchEditAlbumsModal = false
+      collectionStore.editModeOn = false
+
+      try {
+        const failure = await navigateToAlbum(newAlbumId, router)
+
+        if (isNavigationFailure(failure, NavigationFailureType.aborted)) {
+          console.warn('Navigation aborted:', failure)
+        } else if (isNavigationFailure(failure, NavigationFailureType.cancelled)) {
+          console.warn('Navigation cancelled:', failure)
+        }
+      } catch (err) {
+        console.error('navigateToAlbum threw:', err)
+      }
+    }
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 
 watch(
