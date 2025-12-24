@@ -105,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, nextTick } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { isNavigationFailure, NavigationFailureType } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
