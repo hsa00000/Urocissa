@@ -63,16 +63,24 @@ pub fn hash_to_abstract_data(
 pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metadata: bool) {
     match abstract_data {
         AbstractData::Database(database) => {
-            database.alias = vec![database.alias.pop().unwrap()];
-            database.album.clear();
-            database.tag.clear();
+            // Keep the original logic of reducing alias to the last item
+            if let Some(last_alias) = database.alias.pop() {
+                database.alias = vec![last_alias];
+            } else {
+                database.alias.clear();
+            }
+
             if !show_metadata {
+                database.album.clear();
+                database.tag.clear();
                 database.alias.clear();
                 database.exif_vec.clear();
             }
         }
         AbstractData::Album(album) => {
-            album.tag.clear();
+            if !show_metadata {
+                album.tag.clear();
+            }
         }
     }
 }
