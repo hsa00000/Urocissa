@@ -27,7 +27,9 @@ impl Album {
             .filter_map(
                 |database_timestamp| match &database_timestamp.abstract_data {
                     AbstractData::Database(database) => {
-                        if database.album.contains(&self.id) {
+                        // Modified: add && !database.tag.contains("_trashed")
+                        // to ensure photos marked as trashed are not included
+                        if database.album.contains(&self.id) && !database.tag.contains("_trashed") {
                             Some((database, database_timestamp.timestamp))
                         } else {
                             None
