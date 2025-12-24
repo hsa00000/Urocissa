@@ -7,14 +7,16 @@
     theme="dark"
     scrollable
     :fullscreen="fullscreen"
+    :transition="transition"
     :id="id"
   >
     <v-card rounded="lg" class="d-flex flex-column" color="#212121">
       <slot name="header">
-        <v-toolbar color="transparent" density="compact" class="px-2 pt-1">
-          <v-toolbar-title class="text-h6 font-weight-bold ml-2">
+        <v-toolbar color="transparent" density="compact">
+          <v-toolbar-title>
             {{ title }}
           </v-toolbar-title>
+
           <template #append>
             <v-btn
               v-if="!hideClose"
@@ -41,7 +43,7 @@
       </v-card-text>
 
       <template v-if="$slots.actions">
-        <v-card-actions class="pa-4 pt-2">
+        <v-card-actions>
           <slot name="actions"></slot>
         </v-card-actions>
       </template>
@@ -56,15 +58,12 @@ const props = defineProps({
   modelValue: { type: Boolean, required: true },
   title: { type: String, default: '' },
   width: { type: [String, Number], default: 450 },
-  // 允許外部覆寫 padding，例如 UploadModal 可以設為 'pa-0'
+  // 保持 contentClass 讓外部控制內部 padding，預設仍為 pa-4 (Vuetify 標準卡片內距)
   contentClass: { type: String, default: 'pa-4' },
-  // 統一的 Loading 狀態控制
   loading: { type: Boolean, default: false },
-  // 是否隱藏右上角關閉按鈕
   hideClose: { type: Boolean, default: false },
-  // 是否全螢幕
   fullscreen: { type: Boolean, default: false },
-  // 傳遞 ID 以便 CSS 定位 (如 original code 中的 id="edit-tag-overlay")
+  transition: { type: String, default: 'dialog-transition' },
   id: { type: String, default: undefined }
 })
 
@@ -77,7 +76,6 @@ const internalValue = computed({
 </script>
 
 <style scoped>
-/* 這是 BaseModal 唯一保留的 Style，確保所有 Modal 滾動條一致 */
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;
 }

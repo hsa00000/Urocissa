@@ -1,114 +1,87 @@
 <template>
-  <div>
+  <div class="pa-2">
     <v-textarea
-      v-model="formData.description"
+      v-model="model.description"
       label="Link Description"
+      placeholder="Add a description"
       variant="outlined"
       density="compact"
-      rows="1"
-      auto-grow
-      hide-details
-      class="mb-4"
+      bg-color="#2a2a2a"
       color="primary"
-      bg-color="grey-darken-4"
+      rows="3"
+      auto-grow
+      hide-details="auto"
+      class="mb-4 rounded-lg"
     ></v-textarea>
 
-    <div class="text-caption text-medium-emphasis mb-2 text-uppercase font-weight-bold">
-      Permissions
-    </div>
-    <v-row dense class="mb-2">
-      <v-col cols="6">
-        <v-switch
-          v-model="formData.showDownload"
-          label="Allow Download"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-        ></v-switch>
-      </v-col>
-      <v-col cols="6">
-        <v-switch
-          v-model="formData.showUpload"
-          label="Allow Upload"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-        ></v-switch>
-      </v-col>
-      <v-col cols="12">
-        <v-switch
-          v-model="formData.showMetadata"
-          label="Show Metadata"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-        ></v-switch>
-      </v-col>
-    </v-row>
+    <v-text-field
+      v-model="model.password"
+      label="Password"
+      placeholder="Enter password"
+      hint="Require a password to access this link"
+      persistent-hint
+      type="password"
+      variant="outlined"
+      density="compact"
+      bg-color="#2a2a2a"
+      color="primary"
+      hide-details="auto"
+      single-line
+      clearable
+      prepend-inner-icon="mdi-lock-outline"
+      class="mb-4 rounded-lg"
+    ></v-text-field>
 
-    <v-divider class="mb-4 border-opacity-25"></v-divider>
+    <v-select
+      v-model="model.expDuration"
+      :items="DURATIONS"
+      item-title="label"
+      item-value="id"
+      label="Expiration"
+      placeholder="Never"
+      hint="Set when this link should expire"
+      persistent-hint
+      variant="outlined"
+      density="compact"
+      bg-color="#2a2a2a"
+      color="primary"
+      hide-details="auto"
+      single-line
+      clearable
+      prepend-inner-icon="mdi-clock-outline"
+      class="mb-4 rounded-lg"
+      @click:clear="model.expDuration = null"
+    ></v-select>
 
-    <v-row dense align="center" class="mb-1">
-      <v-col cols="5">
-        <v-switch
-          v-model="formData.passwordRequired"
-          label="Password"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-        ></v-switch>
-      </v-col>
-      <v-col cols="7">
-        <v-text-field
-          ref="passwordInputRef"
-          v-model="formData.password"
-          :disabled="!formData.passwordRequired"
-          type="password"
-          hide-details
-          density="compact"
-          variant="outlined"
-          bg-color="grey-darken-4"
-          prepend-inner-icon="mdi-lock-outline"
-        ></v-text-field>
-      </v-col>
-    </v-row>
+    <v-divider class="my-4 border-opacity-25"></v-divider>
 
-    <v-row dense align="center">
-      <v-col cols="5">
-        <v-switch
-          v-model="toggleExpiration"
-          label="Expiration"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-        ></v-switch>
-      </v-col>
-      <v-col cols="7">
-        <v-select
-          v-model="formData.expDuration"
-          :items="DURATIONS"
-          :disabled="!formData.expireEnabled"
-          :label="durationLabel"
-          density="compact"
-          variant="outlined"
-          hide-details
-          bg-color="grey-darken-4"
-          prepend-inner-icon="mdi-clock-outline"
-          item-title="label"
-          item-value="id"
-        ></v-select>
-      </v-col>
-    </v-row>
+    <v-list lines="one" class="bg-transparent pa-0">
+      <v-list-item
+        v-for="item in settingsItems"
+        :key="item.key"
+        :title="item.title"
+        class="mb-1 rounded-lg"
+        @click="toggleSetting(item.key)"
+        link
+      >
+        <template v-slot:append>
+          <v-switch
+            :model-value="model[item.key]"
+            color="primary"
+            hide-details
+            density="compact"
+            inset
+            readonly
+            class="pointer-events-none ml-2"
+          ></v-switch>
+        </template>
+      </v-list-item>
+    </v-list>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, PropType } from 'vue'
+import { watch } from 'vue'
 import { DURATIONS } from '@type/constants'
 
 export interface ShareFormData {
@@ -122,55 +95,48 @@ export interface ShareFormData {
   showMetadata: boolean
 }
 
-const props = defineProps({
-  modelValue: {
-    type: Object as PropType<ShareFormData>,
-    required: true
-  },
-  durationLabel: {
-    type: String,
-    default: 'Duration'
-  }
-})
+// 使用 defineModel (Vue 3.4+) 簡化 v-model 邏輯
+// 如果是舊版 Vue 3，請保留原本的 props + computed 寫法
+const model = defineModel<ShareFormData>({ required: true })
 
-const emit = defineEmits(['update:modelValue'])
+// 定義設置項目的配置，讓 Template 更乾淨 (DRY 原則)
+const settingsItems = [
+  { title: 'Show Metadata', key: 'showMetadata' },
+  { title: 'Allow Download', key: 'showDownload' },
+  { title: 'Allow Upload', key: 'showUpload' }
+] as const
 
-const formData = computed({
-  get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val)
-})
+// 通用切換函數
+const toggleSetting = (
+  key: keyof Pick<ShareFormData, 'showMetadata' | 'showDownload' | 'showUpload'>
+) => {
+  model.value[key] = !model.value[key]
+}
 
-const passwordInputRef = ref<any>(null)
+// --- Logic Automation ---
 
-// --- Auto Focus 邏輯 ---
+// 1. Password Logic
 watch(
-  () => formData.value.passwordRequired,
-  async (newVal) => {
-    if (newVal) {
-      await nextTick()
-      passwordInputRef.value?.focus()
-    } else {
-      // 關閉時清空密碼
-      formData.value.password = ''
-    }
+  () => model.value.password,
+  (newVal) => {
+    model.value.passwordRequired = !!(newVal && newVal.length > 0)
   }
 )
 
-// --- Expiration Toggle 邏輯 ---
-const toggleExpiration = computed({
-  get: () => formData.value.expireEnabled,
-  set: (val: boolean) => {
-    formData.value.expireEnabled = val
-
-    if (val) {
-      // 開啟時：如果沒有值，自動填入預設值
-      if (!formData.value.expDuration) {
-        formData.value.expDuration = DURATIONS[0]?.id || 60
-      }
-    } else {
-      // 關閉時：清空數值
-      formData.value.expDuration = null
-    }
+// 2. Expiration Logic
+watch(
+  () => model.value.expDuration,
+  (newVal) => {
+    model.value.expireEnabled = !!newVal
   }
-})
+)
 </script>
+
+<style scoped>
+/* Utility class to ensure the v-switch is purely visual 
+  and the interaction is handled by the parent v-list-item.
+*/
+.pointer-events-none {
+  pointer-events: none;
+}
+</style>

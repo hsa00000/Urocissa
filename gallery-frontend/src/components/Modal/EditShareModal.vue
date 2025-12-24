@@ -1,41 +1,25 @@
 <template>
-  <BaseModal
+  <ShareModalBase
     v-if="modalStore.showEditShareModal"
     v-model="modalStore.showEditShareModal"
+    v-model:form-state="formState"
     title="Edit Share Settings"
-    width="450"
-  >
-    <ShareSettingsForm v-model="formState" duration-label="Reset Duration" />
-
-    <template #actions>
-      <v-sheet class="d-flex justify-end w-100 pa-2" color="transparent">
-        <v-btn
-          color="primary"
-          variant="flat"
-          width="150"
-          height="44"
-          class="text-capitalize"
-          :loading="loading"
-          :disabled="!isFormValid"
-          @click="saveChanges"
-        >
-          Save Changes
-        </v-btn>
-      </v-sheet>
-    </template>
-  </BaseModal>
+    mode="edit"
+    :loading="loading"
+    @update="saveChanges"
+  />
 </template>
 
 <script setup lang="ts">
-import BaseModal from '@/components/Modal/BaseModal.vue'
-import ShareSettingsForm, { ShareFormData } from '@/components/Modal/ShareSettingsForm.vue'
+import ShareModalBase from '@/components/Modal/ShareModalBase.vue'
+import { ShareFormData } from '@/components/Modal/ShareSettingsForm.vue'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { EditShareData } from '@/type/types'
 import axios from 'axios'
-import { ref, computed, watchEffect } from 'vue'
+import { ref, watchEffect } from 'vue'
 
 const props = defineProps<{ editShareData: EditShareData }>()
 
@@ -76,34 +60,28 @@ watchEffect(() => {
   }
 })
 
-const isFormValid = computed(() => {
-  if (formState.value.passwordRequired && !formState.value.password) return false
-  return true
-})
-
-const saveChanges = async () => {
-  if (!isFormValid.value) return
+const saveChanges = async (formData: ShareFormData) => {
   loading.value = true
 
   // 計算新的過期時間
   let newExp = props.editShareData.share.exp
 
-  if (!formState.value.expireEnabled) {
+  if (!formData.expireEnabled) {
     // 使用者關閉了過期
     newExp = 0
-  } else if (formState.value.expDuration) {
+  } else if (formData.expDuration) {
     // 使用者選擇了新的時長，重設過期時間
-    newExp = Math.floor(Date.now() / 1000) + formState.value.expDuration * 60
+    newExp = Math.floor(Date.now() / 1000) + formData.expDuration * 60
   }
   // 如果 enabled 為 true 但 duration 為 null，則保持原有的 exp 不變
 
   const updatedShare = {
     url: props.editShareData.share.url,
-    description: formState.value.description,
-    password: formState.value.passwordRequired ? formState.value.password : null,
-    showMetadata: formState.value.showMetadata,
-    showDownload: formState.value.showDownload,
-    showUpload: formState.value.showUpload,
+    description: formData.description,
+    password: formData.passwordRequired ? formData.password : null,
+    showMetadata: formData.showMetadata,
+    showDownload: formData.showDownload,
+    showUpload: formData.showUpload,
     exp: newExp
   }
 
@@ -111,8 +89,6 @@ const saveChanges = async () => {
     // Optimistic Update (更新 Store)
     const album = albumStore.albums.get(props.editShareData.albumId)
     if (album) {
-      // 這裡需要確保 editShareData.share 的引用被更新，
-      // 或者更新 album store 中的 Map
       Object.assign(props.editShareData.share, updatedShare)
       album.shareList.set(updatedShare.url, { ...props.editShareData.share, ...updatedShare })
     }
