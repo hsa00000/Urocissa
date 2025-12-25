@@ -57,7 +57,6 @@ import { useTheme } from 'vuetify'
 const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
-const form = ref()
 
 const router = useRouter()
 const redirectionStore = useRedirectionStore('mainId')
