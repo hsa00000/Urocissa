@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import Home from './Home.vue'
 import HomeIsolatedBar from '@/components/NavBar/HomeBars/HomeIsolatedBar.vue'
-import { Album } from '@type/types'
+import { GalleryAlbum } from '@type/types'
 import { computed, onBeforeMount, Ref, ref } from 'vue'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useRoute, useRouter } from 'vue-router'
@@ -31,7 +31,7 @@ import { useDataStore } from '@/store/dataStore'
 const route = useRoute()
 const router = useRouter()
 const dataStore = useDataStore('mainId')
-const album: Ref<Album | undefined> = ref(undefined)
+const album: Ref<GalleryAlbum | undefined> = ref(undefined)
 const basicString: Ref<string | null> = ref(null)
 const collectionStore = useCollectionStore('subId')
 
@@ -59,12 +59,15 @@ onBeforeMount(() => {
   if (typeof hash === 'string') {
     const index = dataStore.hashMapData.get(hash)
     if (index !== undefined) {
-      album.value = dataStore.data.get(index)?.album
+      const data = dataStore.data.get(index)
+      if (data?.type === 'album') {
+        album.value = data
+      }
     }
   }
   const album_id = route.params.hash
   if (typeof album_id === 'string') {
-    basicString.value = `and(album:"${album_id}", not(tag:"_trashed"))`
+    basicString.value = `and(album:"${album_id}", trashed:false)`
   }
 })
 </script>

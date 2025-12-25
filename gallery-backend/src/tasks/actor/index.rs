@@ -4,15 +4,13 @@ use anyhow::anyhow;
 use tokio_rayon::AsyncThreadPool;
 
 use crate::public::constant::runtime::WORKER_RAYON_POOL;
-use crate::public::structure::abstract_data::AbstractData;
 use crate::tasks::BATCH_COORDINATOR;
 
 use crate::{
     process::info::{process_image_info, process_video_info},
     public::{
-        constant::VALID_IMAGE_EXTENSIONS,
         error_data::handle_error,
-        structure::{database_struct::database::definition::Database, guard::PendingGuard},
+        structure::{abstract_data::AbstractData, guard::PendingGuard},
         tui::{DASHBOARD, FileType},
     },
     tasks::batcher::flush_tree::FlushTreeTask,
@@ -20,23 +18,23 @@ use crate::{
 use mini_executor::Task;
 
 pub struct IndexTask {
-    pub database: Database,
+    pub abstract_data: AbstractData,
 }
 
 impl IndexTask {
-    pub fn new(database: Database) -> Self {
-        Self { database }
+    pub fn new(abstract_data: AbstractData) -> Self {
+        Self { abstract_data }
     }
 }
 
 impl Task for IndexTask {
-    type Output = Result<Database>;
+    type Output = Result<AbstractData>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
             let _pending_guard = PendingGuard::new();
             WORKER_RAYON_POOL
-                .spawn_async(move || index_task_match(self.database))
+                .spawn_async(move || index_task_match(self.abstract_data))
                 .await
                 .map_err(|err| handle_error(err.context("Failed to run index task")))
         }
@@ -45,12 +43,12 @@ impl Task for IndexTask {
 
 /// Outer layer: unify business result matching and update TUI  
 /// (success -> advance, failure -> mark_failed)
-fn index_task_match(database: Database) -> Result<Database> {
-    let hash = database.hash; // hash is Copy, no need to clone
-    match index_task(database) {
-        Ok(db) => {
+fn index_task_match(abstract_data: AbstractData) -> Result<AbstractData> {
+    let hash = abstract_data.hash();
+    match index_task(abstract_data) {
+        Ok(data) => {
             DASHBOARD.advance_task_state(&hash);
-            Ok(db)
+            Ok(data)
         }
         Err(e) => {
             DASHBOARD.mark_failed(&hash);
@@ -60,10 +58,10 @@ fn index_task_match(database: Database) -> Result<Database> {
 }
 
 /// Inner layer: only responsible for business logic, no TUI state updates
-fn index_task(mut database: Database) -> Result<Database> {
-    let hash = database.hash;
-    let newest_path = database
-        .alias
+fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
+    let hash = abstract_data.hash();
+    let newest_path = abstract_data
+        .alias()
         .iter()
         .max()
         .ok_or_else(|| anyhow!("alias collection is empty for hash: {}", hash))?
@@ -74,27 +72,26 @@ fn index_task(mut database: Database) -> Result<Database> {
     DASHBOARD.add_task(
         hash,
         newest_path.clone(),
-        FileType::try_from(database.ext_type.as_str())
-            .context(format!("unsupported file type: {}", database.ext_type))?,
+        FileType::try_from(abstract_data.ext_type())
+            .context(format!("unsupported file type: {}", abstract_data.ext_type()))?,
     );
 
-    // Branch processing based on file extension
-    let is_image = VALID_IMAGE_EXTENSIONS.contains(&database.ext.as_str());
+    // Branch processing based on file type
+    let is_image = abstract_data.is_image();
     if is_image {
-        process_image_info(&mut database).context(format!(
+        process_image_info(&mut abstract_data).context(format!(
             "failed to process image metadata pipeline:\n{:#?}",
-            database
+            abstract_data
         ))?;
     } else {
-        process_video_info(&mut database).context(format!(
+        process_video_info(&mut abstract_data).context(format!(
             "failed to process video metadata pipeline:\n{:#?}",
-            database
+            abstract_data
         ))?;
-        database.pending = true;
+        abstract_data.set_pending(true);
     }
 
-    let abstract_data = AbstractData::Database(database.clone());
-    BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
+    BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data.clone()]));
 
-    Ok(database)
+    Ok(abstract_data)
 }

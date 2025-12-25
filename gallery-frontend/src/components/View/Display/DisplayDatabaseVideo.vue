@@ -19,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { Database, IsolationId } from '@type/types'
+import { GalleryVideo, IsolationId } from '@type/types'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getSrc } from '@utils/getter'
@@ -27,7 +27,7 @@ import { useTokenStore } from '@/store/tokenStore'
 const props = defineProps<{
   isolationId: IsolationId
   hash: string
-  database: Database
+  database: GalleryVideo
   enableWatch: boolean
 }>()
 
@@ -51,7 +51,7 @@ onBeforeUnmount(() => {
 })
 
 onMounted(async () => {
-  await tokenStore.tryRefreshAndStoreTokenToDb(props.database.hash)
+  await tokenStore.tryRefreshAndStoreTokenToDb(props.database.id)
   tokenReady.value = true
 })
 </script>

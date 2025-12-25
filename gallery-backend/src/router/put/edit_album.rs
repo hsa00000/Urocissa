@@ -1,7 +1,8 @@
 use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
-use crate::process::transitor::index_to_database;
-use crate::public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
+use crate::process::transitor::index_to_abstract_data;
+use crate::public::constant::redb::DATA_TABLE;
 use crate::public::db::tree::TREE;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
@@ -38,18 +39,21 @@ pub async fn edit_album(
     let (to_flush, effected_album_vec) =
         tokio::task::spawn_blocking(move || -> Result<(Vec<_>, Vec<ArrayString<64>>)> {
             let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)?;
-            let data_table = open_data_table()?;
+            let data_table = open_data_table();
 
             let mut to_flush = Vec::with_capacity(json_data.index_array.len());
             for &index in &json_data.index_array {
-                let mut database = index_to_database(&tree_snapshot, &data_table, index)?;
-                for album_id in &json_data.add_albums_array {
-                    database.album.insert(album_id.clone());
+                let mut abstract_data =
+                    index_to_abstract_data(&tree_snapshot, &data_table, index)?;
+                if let Some(albums) = abstract_data.albums_mut() {
+                    for album_id in &json_data.add_albums_array {
+                        albums.insert(album_id.clone());
+                    }
+                    for album_id in &json_data.remove_albums_array {
+                        albums.remove(album_id);
+                    }
                 }
-                for album_id in &json_data.remove_albums_array {
-                    database.album.remove(album_id);
-                }
-                to_flush.push(database.into());
+                to_flush.push(abstract_data);
             }
 
             let effected_album_vec = json_data
@@ -112,14 +116,17 @@ pub async fn set_album_cover(
 
         let txn = TREE.in_disk.begin_write().unwrap();
         {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
-            let data_table = txn.open_table(DATA_TABLE).unwrap();
+            let mut data_table = txn.open_table(DATA_TABLE).unwrap();
 
-            let mut album = album_table.get(&*album_id).unwrap().unwrap().value();
+            let album = data_table.get(&*album_id).unwrap().unwrap().value();
+            let mut album = match album {
+                AbstractData::Album(album) => album,
+                _ => panic!("Expected Album but got different type"),
+            };
             let database = data_table.get(&*cover_hash).unwrap().unwrap().value();
 
             album.set_cover(&database);
-            album_table.insert(&*album_id, album).unwrap();
+            data_table.insert(&*album_id, AbstractData::Album(album)).unwrap();
         }
         txn.commit().unwrap();
     })
@@ -153,12 +160,16 @@ pub async fn set_album_title(
 
         let txn = TREE.in_disk.begin_write().unwrap();
         {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
+            let mut data_table = txn.open_table(DATA_TABLE).unwrap();
 
-            let mut album = album_table.get(&*album_id).unwrap().unwrap().value();
+            let album = data_table.get(&*album_id).unwrap().unwrap().value();
+            let mut album = match album {
+                AbstractData::Album(album) => album,
+                _ => panic!("Expected Album but got different type"),
+            };
 
-            album.title = set_album_title_inner.title;
-            album_table.insert(&*album_id, album).unwrap();
+            album.metadata.title = set_album_title_inner.title;
+            data_table.insert(&*album_id, AbstractData::Album(album)).unwrap();
         }
         txn.commit().unwrap();
     })

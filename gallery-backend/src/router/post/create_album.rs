@@ -10,11 +10,9 @@ use std::time::Instant;
 
 use crate::operations::hash::generate_random_hash;
 use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
-use crate::process::transitor::index_to_database;
-
+use crate::process::transitor::index_to_abstract_data;
 use crate::public::db::tree_snapshot::read_tree_snapshot::MyCow;
 use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database_struct::database::definition::Database;
 use crate::router::GuardResult;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 
@@ -70,9 +68,9 @@ async fn create_album_internal(title: Option<String>) -> Result<ArrayString<64>>
     let start_time = Instant::now();
 
     let album_id = generate_random_hash();
-    let album = AbstractData::Album(Album::new(album_id, title));
+    let album = Album::new(album_id, title);
     BATCH_COORDINATOR
-        .execute_batch_waiting(FlushTreeTask::insert(vec![album]))
+        .execute_batch_waiting(FlushTreeTask::insert(vec![album.into_abstract_data()]))
         .await?;
 
     BATCH_COORDINATOR
@@ -90,7 +88,7 @@ async fn create_album_elements(
 ) -> Result<()> {
     let element_batch = tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>> {
         let tree_snapshot = open_tree_snapshot_table(timestamp)?;
-        let data_table = open_data_table()?;
+        let data_table = open_data_table();
         elements_index
             .into_par_iter()
             .map(|idx| index_edit_album_insert(&tree_snapshot, &data_table, idx, album_id))
@@ -113,12 +111,14 @@ async fn create_album_elements(
 
 pub fn index_edit_album_insert(
     tree_snapshot: &MyCow,
-    data_table: &ReadOnlyTable<&'static str, Database>,
-    database_index: usize,
+    data_table: &ReadOnlyTable<&'static str, AbstractData>,
+    index: usize,
     album_id: ArrayString<64>,
 ) -> Result<AbstractData> {
-    let mut db = index_to_database(&tree_snapshot, &data_table, database_index)
-        .map_err(|e| anyhow!("convert index {database_index}: {e}"))?;
-    db.album.insert(album_id);
-    Ok(AbstractData::Database(db))
+    let mut abstract_data = index_to_abstract_data(&tree_snapshot, &data_table, index)
+        .map_err(|e| anyhow!("convert index {index}: {e}"))?;
+    if let Some(albums) = abstract_data.albums_mut() {
+        albums.insert(album_id);
+    }
+    Ok(abstract_data)
 }

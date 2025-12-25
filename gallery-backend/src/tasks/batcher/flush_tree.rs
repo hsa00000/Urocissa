@@ -2,7 +2,7 @@ use mini_executor::BatchTask;
 
 use crate::{
     public::{
-        constant::redb::{ALBUM_TABLE, DATA_TABLE},
+        constant::redb::DATA_TABLE,
         db::tree::TREE,
         structure::abstract_data::AbstractData,
     },
@@ -15,29 +15,31 @@ pub struct FlushTreeTask {
 }
 
 impl FlushTreeTask {
-    pub fn insert(databases: Vec<AbstractData>) -> Self {
+    pub fn insert(data_list: Vec<AbstractData>) -> Self {
         Self {
-            insert_list: databases,
+            insert_list: data_list,
             remove_list: Vec::new(),
         }
     }
-    pub fn remove(databases: Vec<AbstractData>) -> Self {
+
+    pub fn remove(abstract_data_list: Vec<AbstractData>) -> Self {
         Self {
             insert_list: Vec::new(),
-            remove_list: databases,
+            remove_list: abstract_data_list,
         }
     }
 }
+
 impl BatchTask for FlushTreeTask {
     fn batch_run(list: Vec<Self>) -> impl Future<Output = ()> + Send {
         async move {
-            let mut all_insert_databases = Vec::new();
-            let mut all_remove_databases = Vec::new();
+            let mut all_insert_data = Vec::new();
+            let mut all_remove_abstract_data = Vec::new();
             for task in list {
-                all_insert_databases.extend(task.insert_list);
-                all_remove_databases.extend(task.remove_list);
+                all_insert_data.extend(task.insert_list);
+                all_remove_abstract_data.extend(task.remove_list);
             }
-            flush_tree_task(all_insert_databases, all_remove_databases);
+            flush_tree_task(all_insert_data, all_remove_abstract_data);
         }
     }
 }
@@ -46,27 +48,18 @@ fn flush_tree_task(insert_list: Vec<AbstractData>, remove_list: Vec<AbstractData
     let write_txn = TREE.in_disk.begin_write().unwrap();
     {
         let mut data_table = write_txn.open_table(DATA_TABLE).unwrap();
-        let mut album_table = write_txn.open_table(ALBUM_TABLE).unwrap();
 
         insert_list
             .iter()
-            .for_each(|abstract_data| match abstract_data {
-                AbstractData::Database(database) => {
-                    data_table.insert(&*database.hash, database).unwrap();
-                }
-                AbstractData::Album(album) => {
-                    album_table.insert(&*album.id, album).unwrap();
-                }
+            .for_each(|abstract_data| {
+                let hash = abstract_data.hash();
+                data_table.insert(&*hash, abstract_data).unwrap();
             });
         remove_list
             .iter()
-            .for_each(|abstract_data| match abstract_data {
-                AbstractData::Database(database) => {
-                    data_table.remove(&*database.hash).unwrap();
-                }
-                AbstractData::Album(album) => {
-                    album_table.remove(&*album.id).unwrap();
-                }
+            .for_each(|abstract_data| {
+                let hash = abstract_data.hash();
+                data_table.remove(&*hash).unwrap();
             });
     };
     write_txn.commit().unwrap();

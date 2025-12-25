@@ -16,17 +16,17 @@
   </v-overlay>
 </template>
 <script setup lang="ts">
-import { Album } from '@type/types'
+import { GalleryAlbum } from '@type/types'
 import Home from './Home.vue'
 import HomeTempBar from '@/components/NavBar/HomeBars/HomeTempBar.vue'
 import { useModalStore } from '@/store/modalStore'
 import { onBeforeRouteLeave } from 'vue-router'
 const modalStore = useModalStore('mainId')
 const props = defineProps<{
-  album: Album
+  album: GalleryAlbum
 }>()
 
-const basicString = `and(not(type:"album"), not(tag:"_trashed"), not(album:"${props.album.id}"))`
+const basicString = `and(not(type:"album"), trashed:false, not(album:"${props.album.id}"))`
 onBeforeRouteLeave(() => {
   // 如果 overlay 正在顯示，就先關掉並阻止這次導航
   if (modalStore.showHomeTempModal) {

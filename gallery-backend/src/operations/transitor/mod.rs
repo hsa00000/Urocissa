@@ -2,10 +2,7 @@ use crate::public::{
     db::tree_snapshot::read_tree_snapshot::MyCow,
     structure::{
         abstract_data::AbstractData,
-        album::Album,
-        database_struct::{
-            database::definition::Database, database_timestamp::DataBaseTimestampReturn,
-        },
+        response::database_timestamp::DataBaseTimestampReturn,
     },
 };
 use anyhow::Result;
@@ -20,41 +17,12 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
     Ok(hash)
 }
 
-pub fn hash_to_database(
-    data_table: &ReadOnlyTable<&'static str, Database>,
-    hash: ArrayString<64>,
-) -> Result<Database> {
-    if let Some(database) = data_table.get(&*hash)? {
-        let database = database.value();
-        Ok(database)
-    } else {
-        Err(anyhow::anyhow!("No data found for hash: {}", hash))
-    }
-}
-
-pub fn hash_to_album(
-    album_table: &ReadOnlyTable<&'static str, Album>,
-    hash: ArrayString<64>,
-) -> Result<Album> {
-    if let Some(album) = album_table.get(&*hash)? {
-        let album = album.value();
-        Ok(album)
-    } else {
-        Err(anyhow::anyhow!("No album found for hash: {}", hash))
-    }
-}
-
 pub fn hash_to_abstract_data(
-    data_table: &ReadOnlyTable<&'static str, Database>,
-    album_table: &ReadOnlyTable<&'static str, Album>,
+    data_table: &ReadOnlyTable<&'static str, AbstractData>,
     hash: ArrayString<64>,
 ) -> Result<AbstractData> {
-    if let Some(database) = data_table.get(&*hash)? {
-        let database = database.value();
-        Ok(database.into())
-    } else if let Some(album) = album_table.get(&*hash)? {
-        let album = album.value();
-        Ok(album.into())
+    if let Some(data) = data_table.get(&*hash)? {
+        Ok(data.value())
     } else {
         Err(anyhow::anyhow!("No data found for hash: {}", hash))
     }
@@ -62,24 +30,39 @@ pub fn hash_to_abstract_data(
 
 pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metadata: bool) {
     match abstract_data {
-        AbstractData::Database(database) => {
+        AbstractData::Image(img) => {
             // Keep the original logic of reducing alias to the last item
-            if let Some(last_alias) = database.alias.pop() {
-                database.alias = vec![last_alias];
+            if let Some(last_alias) = img.metadata.alias.pop() {
+                img.metadata.alias = vec![last_alias];
             } else {
-                database.alias.clear();
+                img.metadata.alias.clear();
             }
 
             if !show_metadata {
-                database.album.clear();
-                database.tag.clear();
-                database.alias.clear();
-                database.exif_vec.clear();
+                img.metadata.albums.clear();
+                img.object.tags.clear();
+                img.metadata.alias.clear();
+                img.metadata.exif_vec.clear();
+            }
+        }
+        AbstractData::Video(vid) => {
+            // Keep the original logic of reducing alias to the last item
+            if let Some(last_alias) = vid.metadata.alias.pop() {
+                vid.metadata.alias = vec![last_alias];
+            } else {
+                vid.metadata.alias.clear();
+            }
+
+            if !show_metadata {
+                vid.metadata.albums.clear();
+                vid.object.tags.clear();
+                vid.metadata.alias.clear();
+                vid.metadata.exif_vec.clear();
             }
         }
         AbstractData::Album(album) => {
             if !show_metadata {
-                album.tag.clear();
+                album.object.tags.clear();
             }
         }
     }

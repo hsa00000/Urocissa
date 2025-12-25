@@ -1,8 +1,7 @@
-use crate::operations::open_db::{open_data_and_album_tables, open_tree_snapshot_table};
-use crate::process::transitor::index_to_abstract_data;
-use crate::public::constant::USER_DEFINED_DESCRIPTION;
-
+use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
+use crate::operations::transitor::index_to_hash;
 use crate::public::structure::abstract_data::AbstractData;
+
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
@@ -33,39 +32,29 @@ pub async fn set_user_defined_description(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || -> Result<()> {
-        let (data_table, album_table) = open_data_and_album_tables();
+        let data_table = open_data_table();
         let tree_snapshot = open_tree_snapshot_table(set_user_defined_description.timestamp)?;
 
-        let mut abstract_data = index_to_abstract_data(
-            &tree_snapshot,
-            &data_table,
-            &album_table,
-            set_user_defined_description.index,
-        )?;
+        let hash = index_to_hash(&tree_snapshot, set_user_defined_description.index)?;
 
-        match &mut abstract_data {
-            AbstractData::Database(db) => {
-                db.exif_vec.insert(
-                    USER_DEFINED_DESCRIPTION.to_string(),
-                    set_user_defined_description
-                        .description
-                        .clone()
-                        .unwrap_or("".to_string()),
-                );
+        if let Some(guard) = data_table.get(&*hash).unwrap() {
+            let mut abstract_data = guard.value();
+
+            match &mut abstract_data {
+                AbstractData::Image(img) => {
+                    img.object.description = set_user_defined_description.description.clone();
+                }
+                AbstractData::Video(vid) => {
+                    vid.object.description = set_user_defined_description.description.clone();
+                }
+                AbstractData::Album(album) => {
+                    album.object.description = set_user_defined_description.description.clone();
+                }
             }
-            AbstractData::Album(alb) => {
-                alb.user_defined_metadata.insert(
-                    USER_DEFINED_DESCRIPTION.to_string(),
-                    if let Some(desc) = &set_user_defined_description.description {
-                        vec![desc.clone()]
-                    } else {
-                        vec![]
-                    },
-                );
-            }
+
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
         }
 
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
         Ok(())
     })
     .await

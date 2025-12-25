@@ -1,9 +1,10 @@
 use crate::public::db::tree::TREE;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Share;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::{public::constant::redb::ALBUM_TABLE, router::GuardResult};
+use crate::{public::constant::redb::DATA_TABLE, router::GuardResult};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rand::Rng;
@@ -49,12 +50,18 @@ pub async fn create_share(
 }
 
 fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) -> AppResult<String> {
-    let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
+    let mut data_table = txn.open_table(DATA_TABLE).unwrap();
 
-    let album_opt = album_table
+    let album_opt = data_table
         .get(&*create_share.album_id)
         .unwrap()
-        .map(|guard| guard.value());
+        .and_then(|guard| {
+            let abstract_data = guard.value();
+            match abstract_data {
+                AbstractData::Album(album) => Some(album),
+                _ => None,
+            }
+        });
 
     match album_opt {
         Some(mut album) => {
@@ -74,8 +81,8 @@ fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) ->
                 show_upload: create_share.show_upload,
                 exp: create_share.exp,
             };
-            album.share_list.insert(share_id, share);
-            album_table.insert(&*create_share.album_id, album).unwrap();
+            album.metadata.share_list.insert(share_id, share);
+            data_table.insert(&*create_share.album_id, AbstractData::Album(album)).unwrap();
             Ok(link)
         }
         None => Err(anyhow::anyhow!("Album not found").into()),

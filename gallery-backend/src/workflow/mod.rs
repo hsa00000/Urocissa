@@ -53,7 +53,7 @@ pub async fn index_for_watch(
         }
     };
 
-    let database_opt = INDEX_COORDINATOR
+    let abstract_data_opt = INDEX_COORDINATOR
         .execute_waiting(DeduplicateTask::new(
             path.clone(),
             hash,
@@ -62,25 +62,25 @@ pub async fn index_for_watch(
         .await??;
 
     // If the file is already in the database, we can skip further processing.
-    let mut database = match database_opt {
-        Some(db) => db,
+    let mut abstract_data = match abstract_data_opt {
+        Some(data) => data,
         None => {
             INDEX_COORDINATOR.execute_detached(DeleteTask::new(path));
             return Ok(());
         }
     };
 
-    database = INDEX_COORDINATOR
-        .execute_waiting(CopyTask::new(database))
+    abstract_data = INDEX_COORDINATOR
+        .execute_waiting(CopyTask::new(abstract_data))
         .await??;
-    database = INDEX_COORDINATOR
-        .execute_waiting(IndexTask::new(database))
+    abstract_data = INDEX_COORDINATOR
+        .execute_waiting(IndexTask::new(abstract_data))
         .await??;
 
     INDEX_COORDINATOR.execute_detached(DeleteTask::new(PathBuf::from(&path)));
-    if database.ext_type == "video" {
+    if abstract_data.is_video() {
         INDEX_COORDINATOR
-            .execute_waiting(VideoTask::new(database))
+            .execute_waiting(VideoTask::new(abstract_data))
             .await??;
     }
 

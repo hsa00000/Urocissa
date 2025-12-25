@@ -2,7 +2,7 @@
   <v-list-item>
     <template #prepend>
       <v-avatar>
-        <v-icon >mdi-calendar</v-icon>
+        <v-icon>mdi-calendar</v-icon>
       </v-avatar>
     </template>
     <v-list-item-title class="text-wrap">{{ dater(props.database.timestamp) }}</v-list-item-title>
@@ -13,11 +13,11 @@
 </template>
 
 <script setup lang="ts">
-import { Database } from '@type/types'
+import { GalleryImage, GalleryVideo } from '@type/types'
 import { dater } from '@utils/dater'
 
 const props = defineProps<{
-  database: Database
+  database: GalleryImage | GalleryVideo
 }>()
 
 function timer(timestamp: number): string {

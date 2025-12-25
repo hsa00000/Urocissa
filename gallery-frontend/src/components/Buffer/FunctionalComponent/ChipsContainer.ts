@@ -3,36 +3,35 @@ import ProcessingChip from './ProcessingChip'
 import DurationChip from './DurationChip'
 import AlbumChip from './AlbumChip'
 import FilenameChip from './FilenameChip'
-import { AbstractData, DisplayElement } from '@type/types'
+import { EnrichedUnifiedData, DisplayElement } from '@type/types'
 import { formatDuration } from '@utils/dater'
 import { basename, extname } from 'upath'
 import { useConstStore } from '@/store/constStore'
 
 interface ChipsContainerProps {
-  abstractData: AbstractData
+  abstractData: EnrichedUnifiedData
   displayElement: DisplayElement
 }
 
 const ChipsContainer: FunctionalComponent<ChipsContainerProps> = (props) => {
   const chips = []
-  const database = props.abstractData.database
+  const data = props.abstractData
   const maxWidth = `${(props.displayElement.displayWidth - 16) * 0.75}px`
   const constStore = useConstStore('mainId')
-  if (database) {
-    const pending = database.pending
 
-    if (pending) {
+  if (data.type === 'image' || data.type === 'video') {
+    if (data.pending) {
       chips.push(h(ProcessingChip))
     }
-    const duration = database.exif_vec.duration
 
+    // For video, check duration in exif
+    const duration = data.exif?.duration
     if (duration !== undefined) {
       const formattedDuration = formatDuration(duration)
       chips.push(h(DurationChip, { label: formattedDuration }))
     }
 
-    const file = database.alias[0]?.file
-
+    const file = data.alias[0]?.file
     if (constStore.showFilenameChip && file !== undefined) {
       const base = basename(file)
       const filename = basename(base, extname(base))
@@ -42,11 +41,10 @@ const ChipsContainer: FunctionalComponent<ChipsContainerProps> = (props) => {
     return h(Fragment, null, chips)
   }
 
-  const albumTitle = props.abstractData.album?.title
-
+  // Album type
   chips.push(
     h(AlbumChip, {
-      label: albumTitle ?? 'Untitled',
+      label: data.title ?? 'Untitled',
       maxWidth: maxWidth
     })
   )
@@ -58,7 +56,7 @@ const ChipsContainer: FunctionalComponent<ChipsContainerProps> = (props) => {
 // Define the props for the component with type safety
 ChipsContainer.props = {
   abstractData: {
-    type: Object as PropType<AbstractData>,
+    type: Object as PropType<EnrichedUnifiedData>,
     required: true
   },
   displayElement: {

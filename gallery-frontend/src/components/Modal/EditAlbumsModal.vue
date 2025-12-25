@@ -75,12 +75,12 @@ onMounted(() => {
     }
 
     const { index, data } = parsed
-    if (!data.database) {
-      console.error("initSubmit: 'data.database' is undefined.")
+    if (data.type !== 'image' && data.type !== 'video') {
+      console.error("initSubmit: 'data' is not an image or video.")
       return
     }
 
-    const defaultAlbumIds = [...data.database.album]
+    const defaultAlbumIds = [...data.albums]
 
     const initialAlbums = defaultAlbumIds
       .map((id) => albumStore.albums.get(id))

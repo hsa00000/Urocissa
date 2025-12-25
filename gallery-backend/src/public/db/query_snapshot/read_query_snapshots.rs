@@ -3,7 +3,7 @@ use std::{error::Error, sync::atomic::Ordering};
 use super::QuerySnapshot;
 use crate::public::db::{query_snapshot::Prefetch, tree::VERSION_COUNT_TIMESTAMP};
 
-use redb::TableDefinition;
+use redb::{ReadableDatabase, TableDefinition};
 
 impl QuerySnapshot {
     pub fn read_query_snapshot(

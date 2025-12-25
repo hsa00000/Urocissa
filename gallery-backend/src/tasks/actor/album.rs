@@ -1,4 +1,4 @@
-use crate::public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
+use crate::public::constant::redb::DATA_TABLE;
 use crate::public::db::tree::TREE;
 use crate::public::error_data::handle_error;
 use crate::public::structure::abstract_data::AbstractData;
@@ -42,19 +42,25 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
         .begin_write()
         .context("begin_write failed (album)")?;
     {
-        let mut album_table = txn.open_table(ALBUM_TABLE)?;
+        let mut data_table = txn.open_table(DATA_TABLE)?;
 
-        let album_opt = album_table
+        let album_opt = data_table
             .get(&*album_id)
             .unwrap()
-            .map(|guard| guard.value());
+            .and_then(|guard| {
+                let abstract_data = guard.value();
+                match abstract_data {
+                    AbstractData::Album(album) => Some(album),
+                    _ => None,
+                }
+            });
 
         match album_opt {
             Some(mut album) => {
-                album.pending = true;
+                album.object.pending = true;
                 album.self_update();
-                album.pending = false;
-                album_table.insert(&*album_id, album).unwrap();
+                album.object.pending = false;
+                data_table.insert(&*album_id, AbstractData::Album(album)).unwrap();
             }
             _ => {
                 // Album has been deleted
@@ -64,20 +70,23 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
                 let hash_list: Vec<_> = ref_data
                     .par_iter()
                     .filter_map(|dt| match &dt.abstract_data {
-                        AbstractData::Database(db) if db.album.contains(&*album_id) => {
-                            Some(db.hash)
+                        AbstractData::Image(img) if img.metadata.albums.contains(&*album_id) => {
+                            Some(img.object.id)
+                        }
+                        AbstractData::Video(vid) if vid.metadata.albums.contains(&*album_id) => {
+                            Some(vid.object.id)
                         }
                         _ => None,
                     })
                     .collect();
 
-                let mut table = txn.open_table(DATA_TABLE).unwrap();
-
                 // Remove this album from these data
                 hash_list.into_iter().for_each(|hash| {
-                    let mut database = table.get(&*hash).unwrap().unwrap().value();
-                    database.album.remove(&*album_id);
-                    table.insert(&*hash, database).unwrap();
+                    let mut abstract_data = data_table.get(&*hash).unwrap().unwrap().value();
+                    if let Some(albums) = abstract_data.albums_mut() {
+                        albums.remove(&*album_id);
+                    }
+                    data_table.insert(&*hash, abstract_data).unwrap();
                 });
             }
         }

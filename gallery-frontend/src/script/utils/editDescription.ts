@@ -1,10 +1,10 @@
 import axios from 'axios'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
-import { AbstractData, IsolationId } from '@type/types'
+import { EnrichedUnifiedData, IsolationId } from '@type/types'
 
 export async function editUserDefinedDescription(
-  abstractData: AbstractData,
+  abstractData: EnrichedUnifiedData,
   descriptionModelValue: string,
   index: number,
   isolationId: IsolationId
@@ -12,12 +12,8 @@ export async function editUserDefinedDescription(
   const dataStore = useDataStore('mainId')
 
   function getCurrentDescription(): string {
-    if (abstractData.database) {
-      return abstractData.database.exif_vec._user_defined_description ?? ''
-    } else if (abstractData.album) {
-      return abstractData.album.userDefinedMetadata._user_defined_description?.[0] ?? ''
-    }
-    return ''
+    // 新結構：description 直接在 data 上
+    return abstractData.description ?? ''
   }
 
   const prefetchStore = usePrefetchStore(isolationId)
@@ -35,11 +31,8 @@ export async function editUserDefinedDescription(
     // Update local data store
     const item = dataStore.data.get(index)
     if (item) {
-      if (abstractData.database && item.database) {
-        item.database.exif_vec._user_defined_description = descriptionModelValue
-      } else if (abstractData.album && item.album) {
-        item.album.userDefinedMetadata._user_defined_description = descriptionModelValue === '' ? [] : [descriptionModelValue]
-      }
+      // 新結構：直接更新 description 屬性
+      item.description = descriptionModelValue === '' ? null : descriptionModelValue
     }
   }
 }

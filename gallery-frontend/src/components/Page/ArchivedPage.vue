@@ -9,5 +9,5 @@
 <script setup lang="ts">
 import HomeMain from '@/components/Home/HomeMain.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
-const basicString = 'and(tag:"_archived", not(tag:"_trashed"))'
+const basicString = 'and(archived:true, trashed:false)'
 </script>

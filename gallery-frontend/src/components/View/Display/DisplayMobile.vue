@@ -1,7 +1,7 @@
 <template>
   <div class="swiper-container h-100 w-100">
     <swiper
-      v-if="abstractData && abstractData.database && abstractData.database.ext_type === 'image'"
+      v-if="abstractData && abstractData.type === 'image'"
       :modules="modules"
       :slides-per-view="1"
       :space-between="10"
@@ -24,18 +24,24 @@
           <div class="slide-content">
             <ViewPageDisplayDatabase
               v-if="
-                previousAbstractData && previousAbstractData.database && !configStore.disableImg
+                previousAbstractData &&
+                (previousAbstractData.type === 'image' || previousAbstractData.type === 'video') &&
+                !configStore.disableImg
               "
               :index="index - 1"
-              :hash="previousAbstractData.database.hash"
+              :hash="previousAbstractData.id"
               :abstract-data="previousAbstractData"
               :isolation-id="isolationId"
               :enable-watch="false"
             />
             <ViewPageDisplayAlbum
-              v-if="previousAbstractData && previousAbstractData.album && !configStore.disableImg"
+              v-if="
+                previousAbstractData &&
+                previousAbstractData.type === 'album' &&
+                !configStore.disableImg
+              "
               :index="index - 1"
-              :album="previousAbstractData.album"
+              :album="previousAbstractData"
             />
           </div>
         </div>
@@ -45,7 +51,11 @@
         <div class="swiper-zoom-container">
           <div class="slide-content">
             <ViewPageDisplayDatabase
-              v-if="abstractData && abstractData.database && !configStore.disableImg"
+              v-if="
+                abstractData &&
+                (abstractData.type === 'image' || abstractData.type === 'video') &&
+                !configStore.disableImg
+              "
               :index="index"
               :hash="hash"
               :abstract-data="abstractData"
@@ -53,9 +63,9 @@
               :enable-watch="false"
             />
             <ViewPageDisplayAlbum
-              v-if="abstractData && abstractData.album && !configStore.disableImg"
+              v-if="abstractData && abstractData.type === 'album' && !configStore.disableImg"
               :index="index"
-              :album="abstractData.album"
+              :album="abstractData"
             />
           </div>
         </div>
@@ -65,17 +75,23 @@
         <div class="swiper-zoom-container">
           <div class="slide-content">
             <ViewPageDisplayDatabase
-              v-if="nextAbstractData && nextAbstractData.database && !configStore.disableImg"
+              v-if="
+                nextAbstractData &&
+                (nextAbstractData.type === 'image' || nextAbstractData.type === 'video') &&
+                !configStore.disableImg
+              "
               :index="index + 1"
-              :hash="nextAbstractData.database.hash"
+              :hash="nextAbstractData.id"
               :abstract-data="nextAbstractData"
               :isolation-id="isolationId"
               :enable-watch="false"
             />
             <ViewPageDisplayAlbum
-              v-if="nextAbstractData && nextAbstractData.album && !configStore.disableImg"
+              v-if="
+                nextAbstractData && nextAbstractData.type === 'album' && !configStore.disableImg
+              "
               :index="index + 1"
-              :album="nextAbstractData.album"
+              :album="nextAbstractData"
             />
           </div>
         </div>
@@ -99,17 +115,25 @@
       <swiper-slide v-if="previousHash !== undefined">
         <div class="slide-content">
           <ViewPageDisplayDatabase
-            v-if="previousAbstractData && previousAbstractData.database && !configStore.disableImg"
+            v-if="
+              previousAbstractData &&
+              (previousAbstractData.type === 'image' || previousAbstractData.type === 'video') &&
+              !configStore.disableImg
+            "
             :index="index - 1"
-            :hash="previousAbstractData.database.hash"
+            :hash="previousAbstractData.id"
             :abstract-data="previousAbstractData"
             :isolation-id="isolationId"
             :enable-watch="false"
           />
           <ViewPageDisplayAlbum
-            v-if="previousAbstractData && previousAbstractData.album && !configStore.disableImg"
+            v-if="
+              previousAbstractData &&
+              previousAbstractData.type === 'album' &&
+              !configStore.disableImg
+            "
             :index="index - 1"
-            :album="previousAbstractData.album"
+            :album="previousAbstractData"
           />
         </div>
       </swiper-slide>
@@ -118,7 +142,11 @@
       <swiper-slide>
         <div class="slide-content">
           <ViewPageDisplayDatabase
-            v-if="abstractData && abstractData.database && !configStore.disableImg"
+            v-if="
+              abstractData &&
+              (abstractData.type === 'image' || abstractData.type === 'video') &&
+              !configStore.disableImg
+            "
             :index="index"
             :hash="hash"
             :abstract-data="abstractData"
@@ -126,9 +154,9 @@
             :enable-watch="true"
           />
           <ViewPageDisplayAlbum
-            v-if="abstractData && abstractData.album && !configStore.disableImg"
+            v-if="abstractData && abstractData.type === 'album' && !configStore.disableImg"
             :index="index"
-            :album="abstractData.album"
+            :album="abstractData"
           />
         </div>
       </swiper-slide>
@@ -137,17 +165,21 @@
       <swiper-slide v-if="nextHash !== undefined">
         <div class="slide-content">
           <ViewPageDisplayDatabase
-            v-if="nextAbstractData && nextAbstractData.database && !configStore.disableImg"
+            v-if="
+              nextAbstractData &&
+              (nextAbstractData.type === 'image' || nextAbstractData.type === 'video') &&
+              !configStore.disableImg
+            "
             :index="index + 1"
-            :hash="nextAbstractData.database.hash"
+            :hash="nextAbstractData.id"
             :abstract-data="nextAbstractData"
             :isolation-id="isolationId"
             :enable-watch="false"
           />
           <ViewPageDisplayAlbum
-            v-if="nextAbstractData && nextAbstractData.album && !configStore.disableImg"
+            v-if="nextAbstractData && nextAbstractData.type === 'album' && !configStore.disableImg"
             :index="index + 1"
-            :album="nextAbstractData.album"
+            :album="nextAbstractData"
           />
         </div>
       </swiper-slide>
@@ -168,14 +200,14 @@ import 'swiper/css'
 import 'swiper/css/manipulation'
 import 'swiper/css/zoom'
 import type { Swiper as SwiperType } from 'swiper'
-import type { AbstractData, IsolationId } from '@type/types'
+import type { EnrichedUnifiedData, IsolationId } from '@type/types'
 import { Swiper, SwiperSlide } from 'swiper/vue'
 
 const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  abstractData: AbstractData | undefined
+  abstractData: EnrichedUnifiedData | undefined
   previousHash: string | undefined
   nextHash: string | undefined
   previousPage: Record<string, unknown> | undefined

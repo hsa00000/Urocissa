@@ -2,7 +2,7 @@
   <v-list-item>
     <template #prepend>
       <v-avatar>
-        <v-icon >mdi-image</v-icon>
+        <v-icon>mdi-image</v-icon>
       </v-avatar>
     </template>
     <v-list-item-title class="text-wrap">{{
@@ -16,9 +16,9 @@
 
 <script setup lang="ts">
 import { filesize } from 'filesize'
-import { Database } from '@type/types'
+import { GalleryImage, GalleryVideo } from '@type/types'
 
 const props = defineProps<{
-  database: Database
+  database: GalleryImage | GalleryVideo
 }>()
 </script>

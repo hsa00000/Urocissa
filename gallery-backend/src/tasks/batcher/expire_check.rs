@@ -9,7 +9,7 @@ use mini_executor::BatchTask;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use log::{error, info};
-use redb::{ReadableTable, TableDefinition, TableHandle};
+use redb::{ReadableDatabase, ReadableTable, TableDefinition, TableHandle};
 use std::sync::atomic::Ordering;
 
 pub struct ExpireCheckTask;

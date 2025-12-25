@@ -1,7 +1,7 @@
 use dashmap::DashMap;
 use std::sync::LazyLock;
 
-use crate::public::structure::reduced_data::ReducedData;
+use crate::public::structure::response::reduced_data::ReducedData;
 
 use super::TreeSnapshot;
 

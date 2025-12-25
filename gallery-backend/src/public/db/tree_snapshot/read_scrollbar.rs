@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use super::TreeSnapshot;
 use crate::{
-    public::db::tree_snapshot::read_tree_snapshot::MyCow, public::structure::row::ScrollBarData,
+    public::db::tree_snapshot::read_tree_snapshot::MyCow, public::structure::response::row::ScrollBarData,
 };
 
 use chrono::{Datelike, TimeZone, Utc};

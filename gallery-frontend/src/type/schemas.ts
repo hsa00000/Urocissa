@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { fixedBigRowHeight } from '@/type/constants'
 
+// --- 基礎組件 ---
 export const AliasSchema = z.object({
   file: z.string(),
   modified: z.number(),
@@ -28,6 +29,124 @@ export const rowWithOffsetSchema = z.object({
   offset: z.number(),
   windowWidth: z.number()
 })
+
+// --- 新的資料結構：Object + Image/Video/Album ---
+
+// 定義後端回傳的 Common 欄位
+const BaseObjectRaw = z.object({
+  id: z.string(),
+  pending: z.boolean(),
+  thumbhash: z.array(z.number()).nullable().optional().default(null),
+  description: z.string().nullable().optional(),
+  tags: z.array(z.string()).default([]),
+  exifVec: z.record(z.string(), z.string()).default({}),
+  isFavorite: z.boolean().default(false),
+  isArchived: z.boolean().default(false),
+  isTrashed: z.boolean().default(false)
+})
+
+// 1. Image Schema
+const ImageSchemaRaw = BaseObjectRaw.extend({
+  type: z.literal('image'),
+  width: z.number(),
+  height: z.number(),
+  ext: z.string(),
+  size: z.number(),
+  phash: z.array(z.number()).nullable().optional().default([]),
+  albums: z.array(z.string()).default([]),
+  alias: z.array(AliasSchema).default([])
+}).transform((data) => ({
+  type: 'image' as const,
+  id: data.id,
+  width: data.width,
+  height: data.height,
+  ext: data.ext,
+  size: data.size,
+  tags: data.tags,
+  exif: data.exifVec,
+  phash: data.phash,
+  thumbhash: data.thumbhash,
+  pending: data.pending,
+  albums: data.albums,
+  alias: data.alias,
+  description: data.description,
+  isFavorite: data.isFavorite,
+  isArchived: data.isArchived,
+  isTrashed: data.isTrashed
+}))
+
+// 2. Video Schema
+const VideoSchemaRaw = BaseObjectRaw.extend({
+  type: z.literal('video'),
+  width: z.number(),
+  height: z.number(),
+  ext: z.string(),
+  size: z.number(),
+  duration: z.number().default(0),
+  albums: z.array(z.string()).default([]),
+  alias: z.array(AliasSchema).default([])
+}).transform((data) => ({
+  type: 'video' as const,
+  id: data.id,
+  width: data.width,
+  height: data.height,
+  ext: data.ext,
+  size: data.size,
+  duration: data.duration,
+  tags: data.tags,
+  exif: data.exifVec,
+  thumbhash: data.thumbhash,
+  pending: data.pending,
+  albums: data.albums,
+  alias: data.alias,
+  description: data.description,
+  isFavorite: data.isFavorite,
+  isArchived: data.isArchived,
+  isTrashed: data.isTrashed
+}))
+
+// 3. Album Schema (新結構)
+const AlbumSchemaRaw = BaseObjectRaw.extend({
+  type: z.literal('album'),
+  title: z.string().nullable(),
+  startTime: z.number().nullable(),
+  endTime: z.number().nullable(),
+  lastModifiedTime: z.number(),
+  cover: z.string().nullable(),
+  itemCount: z.number(),
+  itemSize: z.number(),
+  shareList: z.record(z.string(), z.any()).default({})
+}).transform((data) => ({
+  type: 'album' as const,
+  id: data.id,
+  title: data.title,
+  startTime: data.startTime,
+  endTime: data.endTime,
+  lastModifiedTime: data.lastModifiedTime,
+  cover: data.cover,
+  thumbhash: data.thumbhash,
+  tags: data.tags,
+  itemCount: data.itemCount,
+  itemSize: data.itemSize,
+  pending: data.pending,
+  description: data.description,
+  isFavorite: data.isFavorite,
+  isArchived: data.isArchived,
+  isTrashed: data.isTrashed,
+  shareList: data.shareList
+}))
+
+// 這是 Worker 解析後端資料時使用的 Schema
+export const BackendDataParser = z.union([ImageSchemaRaw, VideoSchemaRaw, AlbumSchemaRaw])
+
+// 用於 Response 的 Parser
+export const AbstractDataResponseSchema = z.object({
+  data: BackendDataParser,
+  alias: z.array(AliasSchema).default([]),
+  token: z.string()
+})
+
+// --- 其他 Schemas ---
 
 export const prefetchSchema = z.object({
   timestamp: z.number(),
@@ -94,7 +213,6 @@ export const AlbumParse = z.object({
   lastModifiedTime: z.number(),
   cover: z.string().nullable(),
   thumbhash: z.array(z.number()).nullable(),
-  userDefinedMetadata: z.record(z.string(), z.array(z.string())),
   shareList: z.record(z.string(), ShareSchema).transform((obj) => new Map(Object.entries(obj))),
   tag: z.array(z.string()),
   width: z.number(),
@@ -143,8 +261,9 @@ export const albumInfoSchema = z
     displayName: albumData.albumName ?? 'Untitled'
   }))
 
+// 後端直接回傳 Image/Video/Album (使用 serde tag="type")
 export const databaseTimestampSchema = z.object({
-  abstractData: AbstractDataParseSchema,
+  abstractData: BackendDataParser,
   timestamp: z.number(),
   token: z.string()
 })
@@ -168,5 +287,5 @@ export const TokenResponseSchema = z.object({
 
 export const serverErrorSchema = z.object({
   error: z.string(),
-  chain: z.array(z.string()).optional(),
+  chain: z.array(z.string()).optional()
 })

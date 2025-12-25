@@ -1,7 +1,7 @@
 use super::TreeSnapshot;
 use crate::{
     public::constant::ROW_BATCH_NUMBER,
-    public::structure::row::{DisplayElement, Row},
+    public::structure::response::row::{DisplayElement, Row},
 };
 use anyhow::{Result, bail};
 

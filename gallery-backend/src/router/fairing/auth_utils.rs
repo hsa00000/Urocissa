@@ -1,5 +1,6 @@
-use crate::public::constant::redb::ALBUM_TABLE;
+use crate::public::constant::redb::DATA_TABLE;
 use crate::public::db::tree::TREE;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::{ResolvedShare, Share};
 use crate::router::claims::claims::Claims;
 use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
@@ -9,6 +10,7 @@ use anyhow::anyhow;
 use arrayvec::ArrayString;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use log::info;
+use redb::ReadableDatabase;
 use rocket::Request;
 use serde::de::DeserializeOwned;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -139,26 +141,39 @@ pub fn try_resolve_share_from_headers(req: &Request<'_>) -> Result<Option<Claims
         ))),
 
         (Some(album_id), Some(share_id)) => {
-            let read_txn = TREE
-                .in_disk
-                .begin_read()
-                .map_err(|e| ShareError::Internal(anyhow!("Failed to begin read transaction: {}", e)))?;
+            let read_txn = TREE.in_disk.begin_read().map_err(|e| {
+                ShareError::Internal(anyhow!("Failed to begin read transaction: {}", e))
+            })?;
 
             let table = read_txn
-                .open_table(ALBUM_TABLE)
-                .map_err(|e| ShareError::Internal(anyhow!("Failed to open album table: {}", e)))?;
+                .open_table(DATA_TABLE)
+                .map_err(|e| ShareError::Internal(anyhow!("Failed to open data table: {}", e)))?;
 
-            let album_guard = table
+            let data_guard = table
                 .get(album_id)
-                .map_err(|e| ShareError::Internal(anyhow!("Failed to get album from table: {}", e)))?
-                .ok_or_else(|| ShareError::Internal(anyhow!("Album not found for id '{}'", album_id)))?;
+                .map_err(|e| ShareError::Internal(anyhow!("Failed to get data from table: {}", e)))?
+                .ok_or_else(|| {
+                    ShareError::Internal(anyhow!("Album not found for id '{}'", album_id))
+                })?;
 
-            let mut album = album_guard.value();
+            let abstract_data = data_guard.value();
+            let mut album = match abstract_data {
+                AbstractData::Album(album) => album,
+                _ => {
+                    return Err(ShareError::Internal(anyhow!(
+                        "Data with id '{}' is not an album",
+                        album_id
+                    )));
+                }
+            };
 
-            let share = album
-                .share_list
-                .remove(share_id)
-                .ok_or_else(|| ShareError::Internal(anyhow!("Share '{}' not found in album '{}'", share_id, album_id)))?;
+            let share = album.metadata.share_list.remove(share_id).ok_or_else(|| {
+                ShareError::Internal(anyhow!(
+                    "Share '{}' not found in album '{}'",
+                    share_id,
+                    album_id
+                ))
+            })?;
 
             // Validate share access (password and expiration)
             validate_share_access(&share, req)?;
@@ -166,7 +181,7 @@ pub fn try_resolve_share_from_headers(req: &Request<'_>) -> Result<Option<Claims
             let resolved_share = ResolvedShare::new(
                 ArrayString::<64>::from(album_id)
                     .map_err(|_| ShareError::Internal(anyhow!("Failed to parse album_id")))?,
-                album.title,
+                album.metadata.title,
                 share,
             );
             let claims = Claims::new_share(resolved_share);
@@ -188,26 +203,39 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>,
         ))),
 
         (Some(album_id), Some(share_id)) => {
-            let read_txn = TREE
-                .in_disk
-                .begin_read()
-                .map_err(|e| ShareError::Internal(anyhow!("Failed to begin read transaction: {}", e)))?;
+            let read_txn = TREE.in_disk.begin_read().map_err(|e| {
+                ShareError::Internal(anyhow!("Failed to begin read transaction: {}", e))
+            })?;
 
             let table = read_txn
-                .open_table(ALBUM_TABLE)
-                .map_err(|e| ShareError::Internal(anyhow!("Failed to open album table: {}", e)))?;
+                .open_table(DATA_TABLE)
+                .map_err(|e| ShareError::Internal(anyhow!("Failed to open data table: {}", e)))?;
 
-            let album_guard = table
+            let data_guard = table
                 .get(album_id)
-                .map_err(|e| ShareError::Internal(anyhow!("Failed to get album from table: {}", e)))?
-                .ok_or_else(|| ShareError::Internal(anyhow!("Album not found for id '{}'", album_id)))?;
+                .map_err(|e| ShareError::Internal(anyhow!("Failed to get data from table: {}", e)))?
+                .ok_or_else(|| {
+                    ShareError::Internal(anyhow!("Album not found for id '{}'", album_id))
+                })?;
 
-            let mut album = album_guard.value();
+            let abstract_data = data_guard.value();
+            let mut album = match abstract_data {
+                AbstractData::Album(album) => album,
+                _ => {
+                    return Err(ShareError::Internal(anyhow!(
+                        "Data with id '{}' is not an album",
+                        album_id
+                    )));
+                }
+            };
 
-            let share = album
-                .share_list
-                .remove(share_id)
-                .ok_or_else(|| ShareError::Internal(anyhow!("Share '{}' not found in album '{}'", share_id, album_id)))?;
+            let share = album.metadata.share_list.remove(share_id).ok_or_else(|| {
+                ShareError::Internal(anyhow!(
+                    "Share '{}' not found in album '{}'",
+                    share_id,
+                    album_id
+                ))
+            })?;
 
             // Validate share access (password and expiration)
             validate_share_access(&share, req)?;
@@ -215,7 +243,7 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>,
             let resolved_share = ResolvedShare::new(
                 ArrayString::<64>::from(album_id)
                     .map_err(|_| ShareError::Internal(anyhow!("Failed to parse album_id")))?,
-                album.title,
+                album.metadata.title,
                 share,
             );
             let claims = Claims::new_share(resolved_share);
@@ -231,20 +259,22 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
 
     if let (Some(album_id), Some(share_id)) = (album_id, share_id) {
         if let Ok(read_txn) = TREE.in_disk.begin_read() {
-            if let Ok(table) = read_txn.open_table(ALBUM_TABLE) {
-                if let Ok(Some(album_guard)) = table.get(album_id) {
-                    let mut album = album_guard.value();
-                    if let Some(share) = album.share_list.remove(share_id) {
-                        if share.show_upload {
-                            // Ensure password and expiration are also valid for upload
-                            if validate_share_access(&share, req).is_err() {
-                                return false;
-                            }
+            if let Ok(table) = read_txn.open_table(DATA_TABLE) {
+                if let Ok(Some(data_guard)) = table.get(album_id) {
+                    let abstract_data = data_guard.value();
+                    if let AbstractData::Album(mut album) = abstract_data {
+                        if let Some(share) = album.metadata.share_list.remove(share_id) {
+                            if share.show_upload {
+                                // Ensure password and expiration are also valid for upload
+                                if validate_share_access(&share, req).is_err() {
+                                    return false;
+                                }
 
-                            if let Some(Ok(album_id_parsed)) =
-                                req.query_value::<&str>("presigned_album_id_opt")
-                            {
-                                return album.id.as_str() == album_id_parsed;
+                                if let Some(Ok(album_id_parsed)) =
+                                    req.query_value::<&str>("presigned_album_id_opt")
+                                {
+                                    return album.object.id.as_str() == album_id_parsed;
+                                }
                             }
                         }
                     }

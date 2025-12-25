@@ -9,7 +9,11 @@
     />
     <div class="h-100 w-100">
       <ViewPageDisplayDatabase
-        v-if="abstractData && abstractData.database && !configStore.disableImg"
+        v-if="
+          abstractData &&
+          (abstractData.type === 'image' || abstractData.type === 'video') &&
+          !configStore.disableImg
+        "
         :index="index"
         :hash="hash"
         :abstract-data="abstractData"
@@ -17,9 +21,9 @@
         :enable-watch="true"
       />
       <ViewPageDisplayAlbum
-        v-if="abstractData && abstractData.album && !configStore.disableImg"
+        v-if="abstractData && abstractData.type === 'album' && !configStore.disableImg"
         :index="index"
-        :album="abstractData.album"
+        :album="abstractData"
       />
     </div>
   </div>
@@ -30,13 +34,13 @@ import { useConfigStore } from '@/store/configStore'
 import ViewPageDisplayDatabase from './DisplayDatabase.vue'
 import ViewPageDisplayAlbum from './DisplayAlbum.vue'
 import NavigationOverlays from './NavigationOverlays.vue'
-import type { AbstractData, IsolationId } from '@type/types'
+import type { EnrichedUnifiedData, IsolationId } from '@type/types'
 
 const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  abstractData: AbstractData | undefined
+  abstractData: EnrichedUnifiedData | undefined
   previousHash: string | undefined
   nextHash: string | undefined
   previousPage: Record<string, unknown> | undefined

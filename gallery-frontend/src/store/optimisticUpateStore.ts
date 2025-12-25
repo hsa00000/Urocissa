@@ -1,4 +1,4 @@
-import { AbstractData, IsolationId } from '@type/types'
+import { EnrichedUnifiedData, IsolationId } from '@type/types'
 import { defineStore } from 'pinia'
 import { useDataStore } from './dataStore'
 
@@ -19,7 +19,7 @@ export interface EditAlbumsPayload {
 export const useOptimisticStore = (isolationId: IsolationId) =>
   defineStore('optimisticUpdateStore' + isolationId, {
     state: (): {
-      backupData: Map<number, AbstractData> // dataIndex -> data
+      backupData: Map<number, EnrichedUnifiedData> // dataIndex -> data
       queueTagsUpdate: EditTagsPayload[]
       queueAlbumsUpdate: EditAlbumsPayload[]
     } => ({

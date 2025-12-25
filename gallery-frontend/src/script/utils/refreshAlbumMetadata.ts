@@ -33,13 +33,13 @@ export async function refreshAlbumMetadata(albumId: string) {
         }
       })
 
-      const album = dataStore.data.get(albumIndex)?.album
-      if (!album) {
+      const data = dataStore.data.get(albumIndex)
+      if (!data || data.type !== 'album') {
         console.error(`cannot find album with albumIndex = ${albumIndex}`)
         return
       }
 
-      const coverHash = album.cover
+      const coverHash = data.cover
       if (coverHash === null) return
 
       await tokenStore.refreshTimestampTokenIfExpired()

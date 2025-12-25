@@ -40,7 +40,7 @@ import SelectAll from '@Menu/MenuButton/BtnSelectAll.vue'
 import SelectClear from '@Menu/MenuButton/BtnSelectClear.vue'
 import SelectInverse from '@Menu/MenuButton/BtnSelectInverse.vue'
 import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
-import { Album } from '@type/types'
+import { GalleryAlbum } from '@type/types'
 import { useModalStore } from '@/store/modalStore'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { ref, watchEffect } from 'vue'
@@ -49,7 +49,7 @@ import { refreshAlbumMetadata } from '@utils/refreshAlbumMetadata'
 import { useRoute } from 'vue-router'
 
 const props = defineProps<{
-  album: Album
+  album: GalleryAlbum
 }>()
 const collectionStore = useCollectionStore('tempId')
 const prefetchStore = usePrefetchStore('tempId')

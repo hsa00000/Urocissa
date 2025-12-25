@@ -43,9 +43,9 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
         let album_info_list = album_list
             .into_iter()
             .map(|album| AlbumInfo {
-                album_id: album.id.to_string(),
-                album_name: album.title,
-                share_list: album.share_list,
+                album_id: album.object.id.to_string(),
+                album_name: album.metadata.title,
+                share_list: album.metadata.share_list,
             })
             .collect();
         Ok(Json(album_info_list))

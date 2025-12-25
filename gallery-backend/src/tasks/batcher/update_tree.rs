@@ -1,8 +1,7 @@
-use crate::operations::open_db::open_data_and_album_tables;
+use crate::operations::open_db::open_data_table;
 use crate::operations::utils::timestamp::get_current_timestamp_u64;
 use crate::public::db::tree::TREE;
-use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::database_struct::database_timestamp::DatabaseTimestamp;
+use crate::public::structure::response::database_timestamp::DatabaseTimestamp;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use mini_executor::BatchTask;
@@ -42,7 +41,7 @@ impl BatchTask for UpdateTreeTask {
 
 fn update_tree_task() {
     let start_time = Instant::now();
-    let (data_table, album_table) = open_data_and_album_tables();
+    let data_table = open_data_table();
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
@@ -52,27 +51,15 @@ fn update_tree_task() {
         .par_bridge()
         .map(|guard| {
             let (_, value) = guard.unwrap();
-            let mut database = value.value();
+            let mut abstract_data = value.value();
             // retain only necessary exif data used for query search
-            database
-                .exif_vec
-                .retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
-            DatabaseTimestamp::new(AbstractData::Database(database), &priority_list)
+            if let Some(exif_vec) = abstract_data.exif_vec_mut() {
+                exif_vec.retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
+            }
+            DatabaseTimestamp::new(abstract_data, &priority_list)
         })
         .collect();
 
-    let album_vec: Vec<DatabaseTimestamp> = album_table
-        .iter()
-        .unwrap()
-        .par_bridge()
-        .map(|guard| {
-            let (_, value) = guard.unwrap();
-            let album = value.value();
-            DatabaseTimestamp::new(AbstractData::Album(album), &priority_list)
-        })
-        .collect();
-
-    database_timestamp_vec.extend(album_vec);
     database_timestamp_vec.par_sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
     *TREE.in_memory.write().unwrap() = database_timestamp_vec;

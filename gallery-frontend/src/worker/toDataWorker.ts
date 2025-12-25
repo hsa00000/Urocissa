@@ -1,21 +1,16 @@
+import { rowSchema, rowWithOffsetSchema, databaseTimestampSchema } from '@type/schemas'
 import {
-  rowSchema,
-  rowWithOffsetSchema,
-  databaseTimestampSchema
-} from '@type/schemas'
-import {
-  AbstractData,
-  Database,
   DisplayElement,
   FetchDataMethod,
   Row,
   RowWithOffset,
   SlicedData,
-  SubRow
+  SubRow,
+  UnifiedData
 } from '@type/types'
 import { batchNumber, fixedBigRowHeight, paddingPixel } from '@/type/constants'
 import { getArrayValue } from '@utils/getter'
-import { createAbstractData, createAlbum, createDataBase } from '@utils/createData'
+import { enrichWithThumbhash } from '@utils/createData'
 
 import axios from 'axios'
 
@@ -54,7 +49,6 @@ self.addEventListener('message', (e) => {
       if (result.size > 0) {
         const indices = Array.from({ length: endIndex - startIndex }, (_, i) => startIndex + i)
 
-        //Push the result Map into a SlicedData[]
         const slicedDataArray: SlicedData[] = []
         for (const index of indices) {
           const getData = result.get(index)
@@ -94,8 +88,9 @@ self.addEventListener('message', (e) => {
 })
 
 /**
+/**
  * Fetches a batch of data based on the provided batch index and timestamp.
- * Processes the fetched data into Database instances and accumulates them into a map.
+ * Processes the fetched data into UnifiedData instances and accumulates them into a map.
  *
  * @param batchIndex - The index of the batch to fetch.
  * @param timestamp - The timestamp associated with the data fetch.
@@ -108,7 +103,10 @@ async function fetchData(
   timestamp: number,
   timestampToken: string
 ): Promise<{
-  result: Map<number, { abstractData: AbstractData; hashToken: string }>
+  result: Map<
+    number,
+    { abstractData: UnifiedData & { thumbhashUrl: string | null }; hashToken: string }
+  >
   startIndex: number
   endIndex: number
 }> {
@@ -130,14 +128,17 @@ async function fetchData(
 
   const fetchUrl = `/get/get-data?timestamp=${timestamp}&start=${start}&end=${end}`
 
-  const response = await workerAxios.get<Database[]>(fetchUrl, {
+  const response = await workerAxios.get(fetchUrl, {
     headers: {
       Authorization: `Bearer ${timestampToken}`
     }
   })
   const databaseTimestampArray = z.array(databaseTimestampSchema).parse(response.data)
 
-  const data = new Map<number, { abstractData: AbstractData; hashToken: string }>()
+  const data = new Map<
+    number,
+    { abstractData: UnifiedData & { thumbhashUrl: string | null }; hashToken: string }
+  >()
 
   for (let i = 0; i < databaseTimestampArray.length; i++) {
     // Determine the current batch index based on the fetch method
@@ -159,15 +160,12 @@ async function fetchData(
       continue
     }
 
-    if ('Database' in item.abstractData) {
-      const databaseInstance = createDataBase(item.abstractData.Database, item.timestamp)
-      const abstractData = createAbstractData(databaseInstance)
-      data.set(key, { abstractData, hashToken: item.token })
-    } else if ('Album' in item.abstractData) {
-      const albumInstance = createAlbum(item.abstractData.Album, item.timestamp)
-      const abstractData = createAbstractData(albumInstance)
-      data.set(key, { abstractData, hashToken: item.token })
+    const dataWithCorrectTimestamp = {
+      ...item.abstractData,
+      timestamp: item.timestamp
     }
+    const enrichedData = enrichWithThumbhash(dataWithCorrectTimestamp)
+    data.set(key, { abstractData: enrichedData, hashToken: item.token })
 
     if (i % 100 === 0) {
       // Yield after every 100 items

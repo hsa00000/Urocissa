@@ -10,7 +10,7 @@ import axios from 'axios'
 import { saveAs } from 'file-saver'
 import { fetchDataInWorker } from '@/api/fetchData'
 import { getIsolationIdByRoute, getSrcOriginal } from '@utils/getter'
-import { AbstractData } from '@type/types'
+import { EnrichedUnifiedData } from '@type/types'
 import { useTokenStore } from '@/store/tokenStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 
@@ -23,7 +23,11 @@ const isolationId = getIsolationIdByRoute(route)
 const dataStore = useDataStore(isolationId)
 const tokenStore = useTokenStore(isolationId)
 
-const waitForMetadata = (index: number, timeout = 5000, interval = 100): Promise<AbstractData> => {
+const waitForMetadata = (
+  index: number,
+  timeout = 5000,
+  interval = 100
+): Promise<EnrichedUnifiedData> => {
   console.log(`data with index ${index} not fetch; waiting...`)
 
   return new Promise((resolve, reject) => {
@@ -72,10 +76,10 @@ const downloadAllFiles = async () => {
           }
         }
 
-        if (abstractData.database) {
-          const hash = abstractData.database.hash
+        if (abstractData.type === 'image' || abstractData.type === 'video') {
+          const hash = abstractData.id
 
-          const url = getSrcOriginal(hash, true, abstractData.database.ext)
+          const url = getSrcOriginal(hash, true, abstractData.ext)
           await tokenStore.tryRefreshAndStoreTokenToDb(hash)
           const hashToken = tokenStore.hashTokenMap.get(hash)
           if (hashToken === undefined) {
@@ -91,8 +95,8 @@ const downloadAllFiles = async () => {
               }
             })
 
-            if (abstractData.database) {
-              const fileName = `${hash}.${abstractData.database.ext}`
+            if (abstractData.type === 'image' || abstractData.type === 'video') {
+              const fileName = `${hash}.${abstractData.ext}`
               saveAs(response.data, fileName)
             }
             return true

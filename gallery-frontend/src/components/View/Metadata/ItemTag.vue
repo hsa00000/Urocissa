@@ -2,18 +2,18 @@
   <v-list-item>
     <template #prepend>
       <v-avatar>
-        <v-icon >mdi-tag</v-icon>
+        <v-icon>mdi-tag</v-icon>
       </v-avatar>
     </template>
     <v-list-item-title v-if="route.meta.baseName !== 'share'">
       <v-chip
-        v-if="tags.includes('_favorite')"
+        v-if="isFavorite"
         prepend-icon="mdi-star"
         color="warning"
         variant="tonal"
         class="ma-1"
         link
-        @click="quickRemoveTags('_favorite', [index], isolationId)"
+        @click="setFavorite([index], false, isolationId)"
         >favorite</v-chip
       >
       <v-chip
@@ -23,17 +23,17 @@
         variant="tonal"
         class="ma-1"
         link
-        @click="quickAddTags('_favorite', [index], isolationId)"
+        @click="setFavorite([index], true, isolationId)"
         >favorite</v-chip
       >
       <v-chip
-        v-if="tags.includes('_archived')"
+        v-if="isArchived"
         prepend-icon="mdi-archive-arrow-down"
         color="primary"
         variant="tonal"
         class="ma-1"
         link
-        @click="quickRemoveTags('_archived', [index], isolationId)"
+        @click="setArchived([index], false, isolationId)"
         >archived</v-chip
       >
       <v-chip
@@ -43,7 +43,7 @@
         variant="tonal"
         class="ma-1"
         link
-        @click="quickAddTags('_archived', [index], isolationId)"
+        @click="setArchived([index], true, isolationId)"
         >archived</v-chip
       >
     </v-list-item-title>
@@ -51,7 +51,7 @@
       <v-chip
         variant="flat"
         color="primary"
-        v-for="tag in filteredTags"
+        v-for="tag in tags"
         :key="tag"
         link
         class="ma-1"
@@ -75,29 +75,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { IsolationId } from '@type/types'
 import { searchByTag } from '@utils/getter'
-import { quickRemoveTags, quickAddTags } from '@utils/quickEditTags'
+import { setFavorite, setArchived } from '@/api/editFlags'
 
 const props = defineProps<{
   isolationId: IsolationId
   index: number
   tags: string[]
+  isFavorite: boolean
+  isArchived: boolean
 }>()
 
 const modalStore = useModalStore('mainId')
 const route = useRoute()
 const router = useRouter()
-
-// Computed Properties
-const filteredTags = computed(() => {
-  return props.tags.filter(
-    (tag) => tag !== '_favorite' && tag !== '_archived' && tag !== '_trashed'
-  )
-})
 
 function openEditTagsModal() {
   modalStore.showEditTagsModal = true

@@ -1,7 +1,7 @@
 <template>
   <v-list-item
     prepend-icon="mdi-trash-can-outline"
-    @click="quickAddTags('_trashed', props.indexList, isolationId)"
+    @click="setTrashed(props.indexList, true, isolationId)"
   >
     <v-list-item-title class="wrap">Delete</v-list-item-title>
   </v-list-item>
@@ -9,7 +9,7 @@
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
 import { getIsolationIdByRoute } from '@utils/getter'
-import { quickAddTags } from '@utils/quickEditTags'
+import { setTrashed } from '@/api/editFlags'
 
 const props = defineProps<{
   indexList: number[]

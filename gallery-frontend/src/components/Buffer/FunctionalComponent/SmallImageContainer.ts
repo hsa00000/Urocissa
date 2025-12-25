@@ -1,7 +1,7 @@
 import { Fragment, FunctionalComponent, h, PropType } from 'vue'
 import DesktopSmallImage from './DesktopSmallImage'
 import MobileSmallImage from './MobileSmallImage'
-import { AbstractData, DisplayElement, IsolationId } from '@type/types'
+import { EnrichedUnifiedData, DisplayElement, IsolationId } from '@type/types'
 import { useImgStore } from '@/store/imgStore'
 import { useQueueStore } from '@/store/queueStore'
 import { useWorkerStore } from '@/store/workerStore'
@@ -11,7 +11,7 @@ import { useTokenStore } from '@/store/tokenStore'
 import { useConstStore } from '@/store/constStore'
 
 interface SmallImageContainerProps {
-  abstractData: AbstractData
+  abstractData: EnrichedUnifiedData
   index: number
   displayElement: DisplayElement
   isolationId: IsolationId
@@ -46,7 +46,7 @@ const SmallImageContainer: FunctionalComponent<SmallImageContainerProps> = (prop
 
   const chips = []
 
-  const hasBorder = props.abstractData.album !== undefined
+  const hasBorder = props.abstractData.type === 'album'
 
   if (props.mobile) {
     chips.push(
@@ -73,7 +73,7 @@ const SmallImageContainer: FunctionalComponent<SmallImageContainerProps> = (prop
 
 SmallImageContainer.props = {
   abstractData: {
-    type: Object as PropType<AbstractData>,
+    type: Object as PropType<EnrichedUnifiedData>,
     required: true
   },
   displayElement: {
@@ -110,7 +110,7 @@ SmallImageContainer.props = {
   }
 }
 async function checkAndFetch(
-  abstractData: AbstractData,
+  abstractData: EnrichedUnifiedData,
   index: number,
   displayWidth: number,
   displayHeight: number,
@@ -133,8 +133,8 @@ async function checkAndFetch(
     return
   }
 
-  if (abstractData.database) {
-    const hash = abstractData.database.hash
+  if (abstractData.type === 'image' || abstractData.type === 'video') {
+    const hash = abstractData.id
     await tokenStore.refreshHashTokenIfExpired(hash)
     const hashToken = tokenStore.hashTokenMap.get(hash)
     if (hashToken === undefined) {
@@ -153,8 +153,8 @@ async function checkAndFetch(
       timestampToken,
       hashToken
     })
-  } else if (abstractData.album?.cover != null) {
-    const hash = abstractData.album.cover
+  } else if (abstractData.type === 'album' && abstractData.cover != null) {
+    const hash = abstractData.cover
     await tokenStore.refreshHashTokenIfExpired(hash)
     const hashToken = tokenStore.hashTokenMap.get(hash)
     if (hashToken === undefined) {

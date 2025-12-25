@@ -2,30 +2,28 @@
   <v-list-item>
     <template #prepend>
       <v-avatar>
-        <v-icon >mdi-camera-iris</v-icon>
+        <v-icon>mdi-camera-iris</v-icon>
       </v-avatar>
     </template>
     <v-list-item-title class="text-wrap">{{
-      generateExifMake(props.database.exif_vec)
+      generateExifMake(props.database.exif)
     }}</v-list-item-title>
     <v-list-item-subtitle class="text-wrap">
       <v-row>
-        <v-col cols="auto">{{ formatExifData(props.database.exif_vec).FNumber }}</v-col>
-        <v-col cols="auto">{{ formatExifData(props.database.exif_vec).ExposureTime }}</v-col>
-        <v-col cols="auto">{{ formatExifData(props.database.exif_vec).FocalLength }}</v-col>
-        <v-col cols="auto">{{
-          formatExifData(props.database.exif_vec).PhotographicSensitivity
-        }}</v-col>
+        <v-col cols="auto">{{ formatExifData(props.database.exif).FNumber }}</v-col>
+        <v-col cols="auto">{{ formatExifData(props.database.exif).ExposureTime }}</v-col>
+        <v-col cols="auto">{{ formatExifData(props.database.exif).FocalLength }}</v-col>
+        <v-col cols="auto">{{ formatExifData(props.database.exif).PhotographicSensitivity }}</v-col>
       </v-row>
     </v-list-item-subtitle>
   </v-list-item>
 </template>
 
 <script setup lang="ts">
-import { Database } from '@type/types'
+import { GalleryImage, GalleryVideo } from '@type/types'
 
 const props = defineProps<{
-  database: Database
+  database: GalleryImage | GalleryVideo
 }>()
 
 function generateExifMake(exifData: Record<string, string>): string {

@@ -28,28 +28,61 @@ impl Expression {
             }
             Expression::Tag(tag) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => db.tag.contains(&tag),
-                    AbstractData::Album(album) => album.tag.contains(&tag),
+                    AbstractData::Image(img) => img.object.tags.contains(&tag),
+                    AbstractData::Video(vid) => vid.object.tags.contains(&tag),
+                    AbstractData::Album(alb) => alb.object.tags.contains(&tag),
+                })
+            }
+            Expression::Favorite(value) => {
+                Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                    AbstractData::Image(img) => img.object.is_favorite == value,
+                    AbstractData::Video(vid) => vid.object.is_favorite == value,
+                    AbstractData::Album(alb) => alb.object.is_favorite == value,
+                })
+            }
+            Expression::Archived(value) => {
+                Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                    AbstractData::Image(img) => img.object.is_archived == value,
+                    AbstractData::Video(vid) => vid.object.is_archived == value,
+                    AbstractData::Album(alb) => alb.object.is_archived == value,
+                })
+            }
+            Expression::Trashed(value) => {
+                Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                    AbstractData::Image(img) => img.object.is_trashed == value,
+                    AbstractData::Video(vid) => vid.object.is_trashed == value,
+                    AbstractData::Album(alb) => alb.object.is_trashed == value,
                 })
             }
             Expression::ExtType(ext_type) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => db.ext_type.contains(&ext_type),
+                    AbstractData::Image(_) => ext_type.contains("image"),
+                    AbstractData::Video(_) => ext_type.contains("video"),
                     AbstractData::Album(_) => ext_type.contains("album"),
                 })
             }
             Expression::Ext(ext) => {
                 let ext_lower = ext.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => db.ext.to_ascii_lowercase().contains(&ext_lower),
+                    AbstractData::Image(img) => {
+                        img.metadata.ext.to_ascii_lowercase().contains(&ext_lower)
+                    }
+                    AbstractData::Video(vid) => {
+                        vid.metadata.ext.to_ascii_lowercase().contains(&ext_lower)
+                    }
                     AbstractData::Album(_) => false,
                 })
             }
             Expression::Model(model) => {
                 let model_lower = model.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => {
-                        db.exif_vec.get("Model").map_or(false, |model_of_exif| {
+                    AbstractData::Image(img) => {
+                        img.metadata.exif_vec.get("Model").map_or(false, |model_of_exif| {
+                            model_of_exif.to_ascii_lowercase().contains(&model_lower)
+                        })
+                    }
+                    AbstractData::Video(vid) => {
+                        vid.metadata.exif_vec.get("Model").map_or(false, |model_of_exif| {
                             model_of_exif.to_ascii_lowercase().contains(&model_lower)
                         })
                     }
@@ -59,8 +92,13 @@ impl Expression {
             Expression::Make(make) => {
                 let make_lower = make.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => {
-                        db.exif_vec.get("Make").map_or(false, |make_of_exif| {
+                    AbstractData::Image(img) => {
+                        img.metadata.exif_vec.get("Make").map_or(false, |make_of_exif| {
+                            make_of_exif.to_ascii_lowercase().contains(&make_lower)
+                        })
+                    }
+                    AbstractData::Video(vid) => {
+                        vid.metadata.exif_vec.get("Make").map_or(false, |make_of_exif| {
                             make_of_exif.to_ascii_lowercase().contains(&make_lower)
                         })
                     }
@@ -70,7 +108,10 @@ impl Expression {
             Expression::Path(path) => {
                 let path_lower = path.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => db.alias.iter().any(|file_modify| {
+                    AbstractData::Image(img) => img.metadata.alias.iter().any(|file_modify| {
+                        file_modify.file.to_ascii_lowercase().contains(&path_lower)
+                    }),
+                    AbstractData::Video(vid) => vid.metadata.alias.iter().any(|file_modify| {
                         file_modify.file.to_ascii_lowercase().contains(&path_lower)
                     }),
                     AbstractData::Album(_) => false,
@@ -78,29 +119,44 @@ impl Expression {
             }
             Expression::Album(album_id) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => db.album.contains(&album_id),
+                    AbstractData::Image(img) => img.metadata.albums.contains(&album_id),
+                    AbstractData::Video(vid) => vid.metadata.albums.contains(&album_id),
                     AbstractData::Album(_) => false,
                 })
             }
             Expression::Any(any_identifier) => {
                 let any_lower = any_identifier.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Database(db) => {
-                        db.tag.contains(&any_identifier)
-                            || db.ext_type.contains(&any_identifier)
-                            || db.ext.to_ascii_lowercase().contains(&any_lower)
-                            || db.exif_vec.get("Make").map_or(false, |make_of_exif| {
+                    AbstractData::Image(img) => {
+                        img.object.tags.contains(&any_identifier)
+                            || "image".contains(&any_identifier)
+                            || img.metadata.ext.to_ascii_lowercase().contains(&any_lower)
+                            || img.metadata.exif_vec.get("Make").map_or(false, |make_of_exif| {
                                 make_of_exif.to_ascii_lowercase().contains(&any_lower)
                             })
-                            || db.exif_vec.get("Model").map_or(false, |model_of_exif| {
+                            || img.metadata.exif_vec.get("Model").map_or(false, |model_of_exif| {
                                 model_of_exif.to_ascii_lowercase().contains(&any_lower)
                             })
-                            || db.alias.iter().any(|file_modify| {
+                            || img.metadata.alias.iter().any(|file_modify| {
                                 file_modify.file.to_ascii_lowercase().contains(&any_lower)
                             })
                     }
-                    AbstractData::Album(album) => {
-                        album.tag.contains(&any_identifier)
+                    AbstractData::Video(vid) => {
+                        vid.object.tags.contains(&any_identifier)
+                            || "video".contains(&any_identifier)
+                            || vid.metadata.ext.to_ascii_lowercase().contains(&any_lower)
+                            || vid.metadata.exif_vec.get("Make").map_or(false, |make_of_exif| {
+                                make_of_exif.to_ascii_lowercase().contains(&any_lower)
+                            })
+                            || vid.metadata.exif_vec.get("Model").map_or(false, |model_of_exif| {
+                                model_of_exif.to_ascii_lowercase().contains(&any_lower)
+                            })
+                            || vid.metadata.alias.iter().any(|file_modify| {
+                                file_modify.file.to_ascii_lowercase().contains(&any_lower)
+                            })
+                    }
+                    AbstractData::Album(alb) => {
+                        alb.object.tags.contains(&any_identifier)
                             || "album".to_ascii_lowercase().contains(&any_lower)
                     }
                 })

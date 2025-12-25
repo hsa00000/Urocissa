@@ -62,13 +62,7 @@ const modalStore = useModalStore('mainId')
 const tagStore = useTagStore('mainId')
 
 const tagList = computed(() => tagStore.tags)
-const filteredTagList = computed(() =>
-  tagList.value.filter((tag) => !specialTag(tag.tag)).map((tag) => tag.tag)
-)
-
-const specialTag = (tag: string): boolean => {
-  return tag === '_archived' || tag === '_favorite' || tag === '_trashed'
-}
+const filteredTagList = computed(() => tagList.value.map((tag) => tag.tag))
 
 onMounted(() => {
   const useSubmit = (): undefined | (() => Promise<void>) => {
@@ -81,23 +75,23 @@ onMounted(() => {
     }
     const { index, data } = initializeResult
     let defaultTags: string[]
-    if (data.database) {
-      defaultTags = data.database.tag
-    } else if (data.album) {
-      defaultTags = data.album.tag
+    if (data.type === 'image' || data.type === 'video') {
+      defaultTags = data.tags
+    } else if (data.type === 'album') {
+      defaultTags = data.tags
     } else {
-      console.error("useSubmit Error: 'data.database' is undefined.")
+      console.error("useSubmit Error: 'data' type is not recognized.")
       return undefined
     }
-    changedTagsArray.value = defaultTags.filter((tag) => !specialTag(tag))
+    changedTagsArray.value = [...defaultTags]
 
     const innerSubmit = async () => {
       const hashArray: number[] = [index]
       const addTagsArrayComputed = changedTagsArray.value.filter(
-        (tag) => !specialTag(tag) && !defaultTags.includes(tag)
+        (tag) => !defaultTags.includes(tag)
       )
       const removeTagsArrayComputed = defaultTags.filter(
-        (tag) => !specialTag(tag) && !changedTagsArray.value.includes(tag)
+        (tag) => !changedTagsArray.value.includes(tag)
       )
 
       const isolationId = getIsolationIdByRoute(route)

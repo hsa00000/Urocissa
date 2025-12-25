@@ -2,7 +2,7 @@ use arrayvec::ArrayString;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::http::Status;
 
-use crate::operations::open_db::open_data_and_album_tables;
+use crate::operations::open_db::open_data_table;
 use crate::process::info::regenerate_metadata_for_image;
 use crate::process::info::regenerate_metadata_for_video;
 use crate::public::constant::PROCESS_BATCH_NUMBER;
@@ -37,7 +37,7 @@ pub async fn reindex(
     let _ = read_only_mode?;
     let json_data = json_data.into_inner();
     tokio::task::spawn_blocking(move || {
-        let (data_table, album_table) = open_data_and_album_tables();
+        let data_table = open_data_table();
         let reduced_data_vec = TREE_SNAPSHOT
             .read_tree_snapshot(&json_data.timestamp)
             .unwrap();
@@ -51,47 +51,44 @@ pub async fn reindex(
         for (i, batch) in hash_vec.chunks(PROCESS_BATCH_NUMBER).enumerate() {
             info!("Processing batch {}/{}", i + 1, total_batches);
 
-            let database_list: Vec<_> = batch
+            let data_list: Vec<_> = batch
                 .into_par_iter()
                 .filter_map(|&hash| {
                     match data_table.get(&*hash).unwrap() {
                         Some(guard) => {
-                            let mut database = guard.value();
-                            if database.ext_type == "image" {
-                                match regenerate_metadata_for_image(&mut database) {
-                                    Ok(_) => Some(AbstractData::Database(database)),
-                                    Err(_) => None,
+                            let mut abstract_data = guard.value();
+                            match &abstract_data {
+                                AbstractData::Image(_) => {
+                                    match regenerate_metadata_for_image(&mut abstract_data) {
+                                        Ok(_) => Some(abstract_data),
+                                        Err(_) => None,
+                                    }
                                 }
-                            } else if database.ext_type == "video" {
-                                match regenerate_metadata_for_video(&mut database) {
-                                    Ok(_) => Some(AbstractData::Database(database)),
-                                    Err(_) => None,
+                                AbstractData::Video(_) => {
+                                    match regenerate_metadata_for_video(&mut abstract_data) {
+                                        Ok(_) => Some(abstract_data),
+                                        Err(_) => None,
+                                    }
                                 }
-                            } else {
-                                None
-                            }
-                        }
-                        _ => {
-                            match album_table.get(&*hash).unwrap() {
-                                Some(_) => {
+                                AbstractData::Album(_) => {
                                     // album_self_update already will commit
                                     INDEX_COORDINATOR
                                         .execute_detached(AlbumSelfUpdateTask::new(hash));
                                     None
                                 }
-                                _ => {
-                                    error!(
-                                        "Reindex failed: cannot find data with hash/id: {}",
-                                        hash
-                                    );
-                                    None
-                                }
                             }
+                        }
+                        _ => {
+                            error!(
+                                "Reindex failed: cannot find data with hash/id: {}",
+                                hash
+                            );
+                            None
                         }
                     }
                 })
                 .collect();
-            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(database_list));
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(data_list));
         }
     })
     .await

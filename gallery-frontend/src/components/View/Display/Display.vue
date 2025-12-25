@@ -49,7 +49,7 @@ import { useWorkerStore } from '@/store/workerStore'
 import { useQueueStore } from '@/store/queueStore'
 import { fetchDataInWorker } from '@/api/fetchData'
 import { usePrefetchStore } from '@/store/prefetchStore'
-import { AbstractData, IsolationId } from '@type/types'
+import { EnrichedUnifiedData, IsolationId } from '@type/types'
 // child display components moved to DisplayMobile / DisplayDesktop
 import DisplayMobile from './DisplayMobile.vue'
 import DisplayDesktop from './DisplayDesktop.vue'
@@ -62,7 +62,7 @@ const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  abstractData: AbstractData | undefined
+  abstractData: EnrichedUnifiedData | undefined
 }>()
 
 const configStore = useConfigStore(props.isolationId)
@@ -81,15 +81,15 @@ const router = useRouter()
 
 const nextHash = computed(() => {
   const nextData = dataStore.data.get(props.index + 1)
-  if (nextData?.database) return nextData.database.hash
-  if (nextData?.album) return nextData.album.id
+  if (nextData?.type === 'image' || nextData?.type === 'video') return nextData.id
+  if (nextData?.type === 'album') return nextData.id
   return undefined
 })
 
 const previousHash = computed(() => {
   const previousData = dataStore.data.get(props.index - 1)
-  if (previousData?.database) return previousData.database.hash
-  if (previousData?.album) return previousData.album.id
+  if (previousData?.type === 'image' || previousData?.type === 'video') return previousData.id
+  if (previousData?.type === 'album') return previousData.id
   return undefined
 })
 
@@ -137,7 +137,8 @@ async function checkAndFetch(index: number): Promise<boolean> {
 
   queueStore.original.add(index)
 
-  const hash = abstractData.database?.hash ?? abstractData.album?.cover
+  // Get hash from either image/video id or album cover
+  const hash = abstractData.type === 'album' ? abstractData.cover : abstractData.id
   if (hash == null) return false
 
   await tokenStore.refreshTimestampTokenIfExpired()

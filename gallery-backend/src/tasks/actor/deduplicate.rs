@@ -2,7 +2,7 @@ use crate::{
     operations::open_db::open_data_table,
     public::{
         error_data::handle_error,
-        structure::{abstract_data::AbstractData, database_struct::database::definition::Database},
+        structure::abstract_data::AbstractData,
     },
     tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
@@ -33,7 +33,7 @@ impl DeduplicateTask {
 }
 
 impl Task for DeduplicateTask {
-    type Output = Result<Option<Database>>;
+    type Output = Result<Option<AbstractData>>;
 
     fn run(self) -> impl Future<Output = Self::Output> + Send {
         async move {
@@ -46,27 +46,34 @@ impl Task for DeduplicateTask {
     }
 }
 
-fn deduplicate_task(task: DeduplicateTask) -> Result<Option<Database>> {
-    let mut database = Database::new(&task.path, task.hash)?;
+fn deduplicate_task(task: DeduplicateTask) -> Result<Option<AbstractData>> {
+    let mut abstract_data = AbstractData::new(&task.path, task.hash)?;
 
-    let data_table = open_data_table()?;
+    let data_table = open_data_table();
     // File already in persistent database
 
-    if let Some(guard) = data_table.get(&*database.hash).unwrap() {
-        let mut database_exist = guard.value();
-        let file_modify = mem::take(&mut database.alias[0]);
-        database_exist.alias.push(file_modify);
-        if let Some(album_id) = task.presigned_album_id_opt {
-            database_exist.album.insert(album_id);
+    if let Some(guard) = data_table.get(&*task.hash).unwrap() {
+        let mut data_exist = guard.value();
+        if let Some(alias_mut) = abstract_data.alias_mut() {
+            let file_modify = mem::take(&mut alias_mut[0]);
+            if let Some(exist_alias) = data_exist.alias_mut() {
+                exist_alias.push(file_modify);
+            }
         }
-        let abstract_data = AbstractData::Database(database_exist);
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
-        warn!("File already exists in the database:\n{:#?}", database);
+        if let Some(album_id) = task.presigned_album_id_opt {
+            if let Some(albums) = data_exist.albums_mut() {
+                albums.insert(album_id);
+            }
+        }
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![data_exist]));
+        warn!("File already exists in the database:\n{:#?}", abstract_data);
         Ok(None)
     } else {
         if let Some(album_id) = task.presigned_album_id_opt {
-            database.album.insert(album_id);
+            if let Some(albums) = abstract_data.albums_mut() {
+                albums.insert(album_id);
+            }
         }
-        Ok(Some(database))
+        Ok(Some(abstract_data))
     }
 }

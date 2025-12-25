@@ -3,7 +3,7 @@ use crate::operations::utils::timestamp::get_current_timestamp_u64;
 // Import necessary modules and items
 use super::{EXPIRE_TABLE_DEFINITION, Expire};
 use log::info;
-use redb::{ReadableTable, ReadableTableMetadata};
+use redb::{ReadableDatabase, ReadableTable, ReadableTableMetadata};
 
 impl Expire {
     /// Checks if the given `timestamp` has expired.

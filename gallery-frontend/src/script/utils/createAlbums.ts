@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { useMessageStore } from '@/store/messageStore'
 import { useAlbumStore } from '@/store/albumStore'
-import { Album, IsolationId } from '@type/types'
+import { GalleryAlbum, IsolationId } from '@type/types'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { tryWithMessageStore } from './try_catch'
@@ -58,7 +58,7 @@ export async function createEmptyAlbum(): Promise<string | undefined> {
   })
 }
 
-export async function editTitle(album: Album, titleModelValue: string) {
+export async function editTitle(album: GalleryAlbum, titleModelValue: string) {
   const albumStore = useAlbumStore('mainId')
   const dataStore = useDataStore('mainId')
 
@@ -73,17 +73,15 @@ export async function editTitle(album: Album, titleModelValue: string) {
 
     const index = dataStore.hashMapData.get(album.id)
     if (index !== undefined) {
-      const album = dataStore.data.get(index)?.album
+      const data = dataStore.data.get(index)
 
-      if (albumInfo && album) {
+      if (albumInfo && data && data.type === 'album') {
         albumInfo.albumName = title
         albumInfo.displayName = albumInfo.albumName ?? 'Untitled'
-        album.title = title
+        data.title = title
       } else {
         console.error(`Cannot find album with id ${id}`)
       }
     }
   }
 }
-
-

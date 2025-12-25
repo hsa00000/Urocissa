@@ -1,7 +1,9 @@
 pub mod abstract_data;
 pub mod album;
-pub mod database_struct;
+pub mod common;
 pub mod expression;
 pub mod guard;
-pub mod reduced_data;
-pub mod row;
+pub mod image;
+pub mod object;
+pub mod response;
+pub mod video;

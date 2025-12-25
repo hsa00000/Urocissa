@@ -1,34 +1,23 @@
 import { thumbHashToDataURL } from 'thumbhash'
-import { z } from 'zod'
-import { AlbumParse, DataBaseParse } from '@type/schemas'
-import { AbstractData, Album, Database } from '@type/types'
+import { UnifiedData } from '@type/types'
 
-export function createDataBase(
-  databaseParse: z.infer<typeof DataBaseParse>,
-  timestamp: number
-): Database {
-  const database: Database = {
-    ...databaseParse,
-    timestamp: timestamp,
-    thumbhashUrl: thumbHashToDataURL(databaseParse.thumbhash),
-    filename: databaseParse.alias[0]?.file.split('/').pop() ?? ''
-  }
-  return database
+/**
+ * 為 UnifiedData 添加 thumbhashUrl 屬性
+ * 後端回傳的資料經過 Zod transform 後已經是扁平結構
+ */
+export function enrichWithThumbhash<T extends UnifiedData>(
+  data: T
+): T & { thumbhashUrl: string | null } {
+  const thumbhashUrl = data.thumbhash ? thumbHashToDataURL(data.thumbhash) : null
+  return { ...data, thumbhashUrl }
 }
 
-export function createAlbum(albumParse: z.infer<typeof AlbumParse>, timestamp: number): Album {
-  const album: Album = {
-    ...albumParse,
-    timestamp: timestamp,
-    thumbhashUrl: albumParse.thumbhash ? thumbHashToDataURL(albumParse.thumbhash) : null
+/**
+ * 取得顯示用的 filename
+ */
+export function getFilename(data: UnifiedData): string {
+  if (data.type === 'image' || data.type === 'video') {
+    return data.alias[0]?.file.split('/').pop() ?? ''
   }
-  return album
-}
-
-export function createAbstractData(data: Database | Album): AbstractData {
-  if ('hash' in data) {
-    return { database: data }
-  } else {
-    return { album: data }
-  }
+  return data.title ?? ''
 }

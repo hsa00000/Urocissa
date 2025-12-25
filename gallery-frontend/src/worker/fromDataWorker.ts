@@ -35,14 +35,16 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       const slicedDataArray: SlicedData[] = payload.slicedDataArray
       slicedDataArray.forEach(({ index, data, hashToken }) => {
         dataStore.data.set(index, data)
-        if (data.database) {
-          dataStore.hashMapData.set(data.database.hash, index)
-          tokenStore.hashTokenMap.set(data.database.hash, hashToken)
-        } else if (data.album) {
-          dataStore.hashMapData.set(data.album.id, index)
-          if (data.album.cover !== null) {
-            tokenStore.hashTokenMap.set(data.album.cover, hashToken)
+        // 新結構：data 是 UnifiedData，直接使用 data.id 和 data.type
+        dataStore.hashMapData.set(data.id, index)
+        if (data.type === 'album') {
+          // Album 使用 cover 作為 token key
+          if (data.cover !== null) {
+            tokenStore.hashTokenMap.set(data.cover, hashToken)
           }
+        } else {
+          // Image/Video 使用自己的 id 作為 token key
+          tokenStore.hashTokenMap.set(data.id, hashToken)
         }
       })
       dataStore.batchFetched.set(payload.batch, true)

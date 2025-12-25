@@ -1,11 +1,12 @@
 use crate::public::db::tree::TREE;
+use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Share;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::{public::constant::redb::ALBUM_TABLE, router::AppResult};
+use crate::{public::constant::redb::DATA_TABLE, router::AppResult};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use redb::ReadableTable;
@@ -28,19 +29,25 @@ pub async fn edit_share(
     tokio::task::spawn_blocking(move || {
         let txn = TREE.in_disk.begin_write().unwrap();
         {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
+            let mut data_table = txn.open_table(DATA_TABLE).unwrap();
 
-            let album_opt = album_table
+            let album_opt = data_table
                 .get(json_data.album_id.as_str())
-                .unwrap() // error-check result if needed
-                .map(|guard| guard.value());
+                .unwrap()
+                .and_then(|guard| {
+                    let abstract_data = guard.value();
+                    match abstract_data {
+                        AbstractData::Album(album) => Some(album),
+                        _ => None,
+                    }
+                });
 
             if let Some(mut album) = album_opt {
                 album
-                    .share_list
+                    .metadata.share_list
                     .insert(json_data.share.url, json_data.share.clone());
-                album_table
-                    .insert(json_data.album_id.as_str(), &album)
+                data_table
+                    .insert(json_data.album_id.as_str(), AbstractData::Album(album))
                     .unwrap();
             }
         }
@@ -73,17 +80,23 @@ pub async fn delete_share(
     tokio::task::spawn_blocking(move || {
         let txn = TREE.in_disk.begin_write().unwrap();
         {
-            let mut album_table = txn.open_table(ALBUM_TABLE).unwrap();
+            let mut data_table = txn.open_table(DATA_TABLE).unwrap();
 
-            let album_opt = album_table
+            let album_opt = data_table
                 .get(json_data.album_id.as_str())
-                .unwrap() // error-check result if needed
-                .map(|guard| guard.value());
+                .unwrap()
+                .and_then(|guard| {
+                    let abstract_data = guard.value();
+                    match abstract_data {
+                        AbstractData::Album(album) => Some(album),
+                        _ => None,
+                    }
+                });
 
             if let Some(mut album) = album_opt {
-                album.share_list.remove(&json_data.share_id);
-                album_table
-                    .insert(json_data.album_id.as_str(), &album)
+                album.metadata.share_list.remove(&json_data.share_id);
+                data_table
+                    .insert(json_data.album_id.as_str(), AbstractData::Album(album))
                     .unwrap();
             }
         }

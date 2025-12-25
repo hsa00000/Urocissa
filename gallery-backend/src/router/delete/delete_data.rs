@@ -1,4 +1,4 @@
-use crate::operations::open_db::{open_data_and_album_tables, open_tree_snapshot_table};
+use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
 use crate::process::transitor::index_to_abstract_data;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -57,7 +57,7 @@ fn process_deletes(
     delete_list: Vec<usize>,
     timestamp: u128,
 ) -> Result<(Vec<AbstractData>, Vec<ArrayString<64>>)> {
-    let (data_table, album_table) = open_data_and_album_tables();
+    let data_table = open_data_table();
     let tree_snapshot = open_tree_snapshot_table(timestamp)?;
 
     let mut all_affected_album_ids = Vec::new();
@@ -65,11 +65,12 @@ fn process_deletes(
 
     for index in delete_list {
         let abstract_data =
-            index_to_abstract_data(&tree_snapshot, &data_table, &album_table, index)?;
+            index_to_abstract_data(&tree_snapshot, &data_table, index)?;
 
         let affected_albums = match &abstract_data {
-            AbstractData::Database(db) => db.album.iter().cloned().collect(),
-            AbstractData::Album(album) => vec![album.id],
+            AbstractData::Image(img) => img.metadata.albums.iter().cloned().collect(),
+            AbstractData::Video(vid) => vid.metadata.albums.iter().cloned().collect(),
+            AbstractData::Album(alb) => vec![alb.object.id],
         };
 
         all_affected_album_ids.extend(affected_albums);

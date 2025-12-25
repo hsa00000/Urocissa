@@ -1,12 +1,12 @@
 <template>
   <div
-    v-if="abstractData && abstractData.database"
+    v-if="abstractData && (abstractData.type === 'image' || abstractData.type === 'video')"
     id="col-ref"
     class="h-100 d-flex align-center justify-center"
   >
     <DisplayDatabaseImage
       :key="index"
-      v-if="abstractData.database.ext_type === 'image'"
+      v-if="abstractData.type === 'image'"
       :isolation-id="isolationId"
       :index="index"
       :abstract-data="abstractData"
@@ -14,14 +14,14 @@
 
     <DisplayDatabaseVideo
       :key="index"
-      v-if="abstractData.database.ext_type === 'video' && !abstractData.database.pending"
-      :database="abstractData.database"
-      :hash="abstractData.database.hash"
+      v-if="abstractData.type === 'video' && !abstractData.pending"
+      :database="abstractData"
+      :hash="abstractData.id"
       :isolation-id="isolationId"
       :enable-watch="enableWatch"
     />
     <v-card
-      v-if="abstractData.database.ext_type === 'video' && abstractData.database.pending"
+      v-if="abstractData.type === 'video' && abstractData.pending"
       class="d-flex align-center justify-start"
       outlined
       style="padding: 16px"
@@ -38,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { AbstractData, IsolationId } from '@type/types'
+import { EnrichedUnifiedData, IsolationId } from '@type/types'
 
 import DisplayDatabaseVideo from './DisplayDatabaseVideo.vue'
 import DisplayDatabaseImage from './DisplayDatabaseImage.vue'
@@ -47,7 +47,7 @@ defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  abstractData: AbstractData
+  abstractData: EnrichedUnifiedData
   enableWatch: boolean
 }>()
 </script>

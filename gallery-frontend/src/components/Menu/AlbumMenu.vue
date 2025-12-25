@@ -7,15 +7,15 @@
       <FindInTimeline :hash="props.hash" />
       <v-divider></v-divider>
       <EditTags />
-      <Delete v-if="!album.tag.includes('_trashed')" :index-list="[props.index]" />
-      <Restore v-if="album.tag.includes('_trashed')" :index-list="[props.index]" />
-      <PermanentlyDelete v-if="album.tag.includes('_trashed')" :index-list="[props.index]" />
+      <Delete v-if="!album.isTrashed" :index-list="[props.index]" />
+      <Restore v-if="album.isTrashed" :index-list="[props.index]" />
+      <PermanentlyDelete v-if="album.isTrashed" :index-list="[props.index]" />
     </v-list>
   </v-menu>
 </template>
 
 <script setup lang="ts">
-import { Album, IsolationId } from '@type/types'
+import { GalleryAlbum, IsolationId } from '@type/types'
 import FindInTimeline from '@Menu/MenuItem/ItemFindInTimeline.vue'
 import EditTags from '@Menu/MenuItem/ItemEditTags.vue'
 import Delete from '@Menu/MenuItem/ItemDelete.vue'
@@ -26,6 +26,6 @@ const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  album: Album
+  album: GalleryAlbum
 }>()
 </script>

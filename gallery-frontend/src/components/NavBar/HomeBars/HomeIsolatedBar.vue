@@ -34,13 +34,13 @@ import EditBar from '@/components/NavBar/EditBar.vue'
 import HomeTemp from '@/components/Home/HomeTemp.vue'
 import CreateShareModal from '@/components/Modal/CreateShareModal.vue'
 import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
-import { Album } from '@type/types'
+import { GalleryAlbum } from '@type/types'
 import { useModalStore } from '@/store/modalStore'
 import { ref, watch } from 'vue'
 import { editTitle } from '@utils/createAlbums'
 
 const props = defineProps<{
-  album: Album
+  album: GalleryAlbum
 }>()
 
 const modalStore = useModalStore('mainId')

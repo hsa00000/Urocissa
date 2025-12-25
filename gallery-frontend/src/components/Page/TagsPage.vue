@@ -26,7 +26,7 @@
                         class="text-caption"
                         variant="tonal"
                       >
-                        {{ displayTagName(tagsData.tag) }}</v-btn
+                        {{ tagsData.tag }}</v-btn
                       >
                     </td>
                     <td>{{ tagsData.number }}</td>
@@ -57,19 +57,6 @@ const tableRef = ref<HTMLElement | null>(null)
 const updateDynamicWidth = () => {
   const tableWidth = tableRef.value?.offsetWidth ?? 0
   dynamicWidth.value = tableWidth <= 300 ? 300 : tableWidth
-}
-
-function displayTagName(tagName: string): string {
-  switch (tagName) {
-    case '_archived':
-      return 'archived'
-    case '_favorite':
-      return 'favorite'
-    case '_trashed':
-      return 'trashed'
-    default:
-      return tagName
-  }
 }
 
 watch(

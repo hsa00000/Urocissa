@@ -28,7 +28,8 @@ const setAsCover = async () => {
     return
   }
 
-  const coverHash = dataStore.data.get(coverIndex)?.database?.hash
+  const data = dataStore.data.get(coverIndex)
+  const coverHash = data?.type === 'image' || data?.type === 'video' ? data.id : undefined
   if (coverHash === undefined) {
     return
   }

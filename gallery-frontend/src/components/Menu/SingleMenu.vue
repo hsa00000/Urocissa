@@ -5,18 +5,18 @@
     </template>
     <v-list>
       <ItemViewOriginalFile
-        :src="getSrc(database.hash, true, database.ext)"
+        :src="getSrc(database.id, true, database.ext)"
         :isolation-id="props.isolationId"
-        :hash="database.hash"
+        :hash="database.id"
       />
       <ItemDownload :index-list="[props.index]" />
       <ItemFindInTimeline :hash="props.hash" />
       <v-divider></v-divider>
       <ItemEditTags />
       <ItemEditAlbums />
-      <ItemDelete v-if="!database.tag.includes('_trashed')" :index-list="[props.index]" />
-      <ItemRestore v-if="database.tag.includes('_trashed')" :index-list="[props.index]" />
-      <ItemPermanentlyDelete v-if="database.tag.includes('_trashed')" :index-list="[props.index]" />
+      <ItemDelete v-if="!database.isTrashed" :index-list="[props.index]" />
+      <ItemRestore v-if="database.isTrashed" :index-list="[props.index]" />
+      <ItemPermanentlyDelete v-if="database.isTrashed" :index-list="[props.index]" />
       <v-divider></v-divider>
       <ItemRegenerateMetadata :index-list="[props.index]" />
       <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
@@ -24,7 +24,7 @@
   </v-menu>
 </template>
 <script setup lang="ts">
-import { Database, IsolationId } from '@type/types'
+import { GalleryImage, GalleryVideo, IsolationId } from '@type/types'
 import { getSrc } from '@utils/getter'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
@@ -41,7 +41,7 @@ const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  database: Database
+  database: GalleryImage | GalleryVideo
 }>()
 const currentFrameStore = useCurrentFrameStore(props.isolationId)
 </script>

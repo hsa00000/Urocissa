@@ -66,7 +66,7 @@ import { useAlbumStore } from '@/store/albumStore'
 import { filesize } from 'filesize'
 import { useRoute } from 'vue-router'
 import { dater } from '@utils/dater'
-import { Album } from '@type/types'
+import { GalleryAlbum } from '@type/types'
 import { ref, watch } from 'vue'
 import { editTitle } from '@utils/createAlbums'
 
@@ -77,7 +77,7 @@ const imgStore = useImgStore('mainId')
 
 const props = defineProps<{
   index: number
-  album: Album
+  album: GalleryAlbum
 }>()
 
 watch(

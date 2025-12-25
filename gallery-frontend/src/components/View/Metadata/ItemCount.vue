@@ -2,7 +2,7 @@
   <v-list-item>
     <template #prepend>
       <v-avatar>
-        <v-icon >mdi-image</v-icon>
+        <v-icon>mdi-image</v-icon>
       </v-avatar>
     </template>
     <v-list-item-title class="text-wrap">{{ `${props.album.itemCount} items` }}</v-list-item-title>
@@ -13,9 +13,9 @@
 </template>
 <script setup lang="ts">
 import { filesize } from 'filesize'
-import { Album } from '@type/types'
+import { GalleryAlbum } from '@type/types'
 
 const props = defineProps<{
-  album: Album
+  album: GalleryAlbum
 }>()
 </script>

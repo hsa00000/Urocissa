@@ -19,9 +19,10 @@ use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::looper::start_expire_check_loop;
 
-use public::constant::redb::{ALBUM_TABLE, DATA_TABLE};
+use public::constant::redb::DATA_TABLE;
 use public::db::tree::TREE;
-use redb::ReadableTableMetadata;
+use public::structure::abstract_data::AbstractData;
+use redb::{ReadableTable, ReadableTableMetadata};
 use rocket::fs::FileServer;
 use router::fairing::cache_control_fairing::cache_control_fairing;
 use router::fairing::generate_fairing_routes;
@@ -54,9 +55,18 @@ fn main() -> Result<()> {
             let txn = TREE.in_disk.begin_write().unwrap();
             {
                 let table = txn.open_table(DATA_TABLE).unwrap();
-                info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos from database.", table.len().unwrap());
-                let album_table = txn.open_table(ALBUM_TABLE).unwrap();
-                info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} albums from database.", album_table.len().unwrap());
+                let total_count = table.len().unwrap();
+                let album_count = table.iter().unwrap()
+                    .filter(|entry| {
+                        if let Ok((_, guard)) = entry {
+                            matches!(guard.value(), AbstractData::Album(_))
+                        } else {
+                            false
+                        }
+                    })
+                    .count();
+                let media_count = total_count as usize - album_count;
+                info!(duration = &*format!("{:?}", start_time.elapsed()); "Read {} photos/videos and {} albums from database.", media_count, album_count);
             }
             txn.commit().unwrap();
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);

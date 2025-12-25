@@ -5,8 +5,8 @@
     </template>
     <v-list>
       <ItemViewOriginalFile
-        :src="getSrcOriginal(database.hash, true, database.ext)"
-        :hash="database.hash"
+        :src="getSrcOriginal(database.id, true, database.ext)"
+        :hash="database.id"
         :isolation-id="props.isolationId"
       />
       <ItemDownload :index-list="[props.index]" />
@@ -14,7 +14,7 @@
   </v-menu>
 </template>
 <script setup lang="ts">
-import { Database, IsolationId } from '@type/types'
+import { GalleryImage, GalleryVideo, IsolationId } from '@type/types'
 import { getSrcOriginal } from '@utils/getter'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
@@ -22,6 +22,6 @@ const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  database: Database
+  database: GalleryImage | GalleryVideo
 }>()
 </script>

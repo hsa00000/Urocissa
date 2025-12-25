@@ -4,7 +4,7 @@ use crate::{
         constant::runtime::WORKER_RAYON_POOL,
         error_data::handle_error,
         structure::{
-            abstract_data::AbstractData, database_struct::database::definition::Database,
+            abstract_data::AbstractData,
             guard::PendingGuard,
         },
         tui::DASHBOARD,
@@ -17,12 +17,12 @@ use mini_executor::Task;
 use tokio_rayon::AsyncThreadPool;
 
 pub struct VideoTask {
-    database: Database,
+    abstract_data: AbstractData,
 }
 
 impl VideoTask {
-    pub fn new(database: Database) -> Self {
-        Self { database }
+    pub fn new(abstract_data: AbstractData) -> Self {
+        Self { abstract_data }
     }
 }
 
@@ -33,20 +33,19 @@ impl Task for VideoTask {
         async move {
             let _pending_guard = PendingGuard::new();
             WORKER_RAYON_POOL
-                .spawn_async(move || video_task(self.database))
+                .spawn_async(move || video_task(self.abstract_data))
                 .await
                 .map_err(|err| handle_error(err.context("Failed to run video task")))
         }
     }
 }
 
-pub fn video_task(mut database: Database) -> Result<()> {
-    let hash = database.hash;
-    match generate_compressed_video(&mut database) {
+pub fn video_task(mut abstract_data: AbstractData) -> Result<()> {
+    let hash = abstract_data.hash();
+    match generate_compressed_video(&mut abstract_data) {
         Ok(_) => {
-            database.pending = false;
-            let abstract_data = AbstractData::Database(database.clone());
-            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
+            abstract_data.set_pending(false);
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data.clone()]));
 
             DASHBOARD.advance_task_state(&hash);
         }

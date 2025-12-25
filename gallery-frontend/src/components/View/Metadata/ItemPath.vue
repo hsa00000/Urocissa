@@ -11,13 +11,12 @@
 </template>
 
 <script setup lang="ts">
-import { Database } from '@type/types'
+import { GalleryImage, GalleryVideo } from '@type/types'
 import { computed } from 'vue'
 import * as upath from 'upath'
 
-
 const props = defineProps<{
-  database: Database
+  database: GalleryImage | GalleryVideo
 }>()
 
 const filePathComplete = computed(() => {

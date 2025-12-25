@@ -5,13 +5,14 @@ use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use redb::ReadableTable;
 use std::sync::atomic::{AtomicUsize, Ordering};
+
 impl TreeSnapshot {
     pub fn read_tags(&self) -> Result<Vec<TagInfo>> {
         // Concurrent counter for each tag
         let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
         // Begin read‑only transaction and open the DATA_TABLE
-        let data_table = open_data_table()?;
+        let data_table = open_data_table();
 
         // Walk the table in parallel; stop on first error
         data_table
@@ -20,16 +21,20 @@ impl TreeSnapshot {
             .par_bridge()
             .try_for_each(|entry| -> Result<()> {
                 let (_, data) = entry.context("Read table row failed")?;
-                for tag in &data.value().tag {
+                let abstract_data = data.value();
+
+                // Count regular tags only
+                for tag in abstract_data.tag() {
                     tag_counts
                         .entry(tag.clone())
                         .or_insert_with(|| AtomicUsize::new(0))
                         .fetch_add(1, Ordering::Relaxed);
                 }
+
                 Ok(())
             })?;
 
-        let tag_infos = tag_counts
+        let tag_infos: Vec<TagInfo> = tag_counts
             .par_iter()
             .map(|e| TagInfo {
                 tag: e.key().clone(),

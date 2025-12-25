@@ -10,45 +10,46 @@
     <ShowInfo />
     <template v-if="route.meta.baseName !== 'share'">
       <v-btn
-        v-if="abstractData && abstractData.database"
-        :icon="abstractData.database.tag.includes('_favorite') ? 'mdi-star' : 'mdi-star-outline'"
-        @click="
-          abstractData.database.tag.includes('_favorite')
-            ? quickRemoveTags('_favorite', [index], isolationId)
-            : quickAddTags('_favorite', [index], isolationId)
-        "
+        v-if="abstractData && (abstractData.type === 'image' || abstractData.type === 'video')"
+        :icon="abstractData.isFavorite ? 'mdi-star' : 'mdi-star-outline'"
+        @click="setFavorite([index], !abstractData.isFavorite, isolationId)"
       ></v-btn>
       <v-btn
-        v-if="abstractData && abstractData.database"
+        v-if="abstractData && (abstractData.type === 'image' || abstractData.type === 'video')"
         :icon="
-          abstractData.database.tag.includes('_archived')
+          abstractData.isArchived
             ? 'mdi-archive-arrow-up-outline'
             : 'mdi-archive-arrow-down-outline'
         "
-        @click="
-          abstractData.database.tag.includes('_archived')
-            ? quickRemoveTags('_archived', [index], isolationId)
-            : quickAddTags('_archived', [index], isolationId)
-        "
+        @click="setArchived([index], !abstractData.isArchived, isolationId)"
       ></v-btn>
     </template>
     <DatabaseMenu
-      v-if="abstractData && abstractData.database && share === null"
-      :database="abstractData.database"
+      v-if="
+        abstractData &&
+        (abstractData.type === 'image' || abstractData.type === 'video') &&
+        share === null
+      "
+      :database="abstractData"
       :index="index"
       :hash="hash"
       :isolation-id="isolationId"
     />
     <ShareMenu
-      v-if="abstractData && abstractData.database && share !== null && share.showDownload"
-      :database="abstractData.database"
+      v-if="
+        abstractData &&
+        (abstractData.type === 'image' || abstractData.type === 'video') &&
+        share !== null &&
+        share.showDownload
+      "
+      :database="abstractData"
       :index="index"
       :hash="hash"
       :isolation-id="isolationId"
     />
     <AlbumMenu
-      v-if="abstractData && abstractData.album"
-      :album="abstractData.album"
+      v-if="abstractData && abstractData.type === 'album'"
+      :album="abstractData"
       :index="index"
       :hash="hash"
       :isolation-id="isolationId"
@@ -56,8 +57,8 @@
   </v-toolbar>
 </template>
 <script setup lang="ts">
-import { quickRemoveTags, quickAddTags } from '@utils/quickEditTags'
-import { AbstractData, IsolationId } from '@type/types'
+import { setFavorite, setArchived } from '@/api/editFlags'
+import { EnrichedUnifiedData, IsolationId } from '@type/types'
 import DatabaseMenu from '@Menu/SingleMenu.vue'
 import AlbumMenu from '@Menu/AlbumMenu.vue'
 import ShareMenu from '@Menu/ShareMenu.vue'
@@ -75,7 +76,7 @@ defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  abstractData: AbstractData | undefined
+  abstractData: EnrichedUnifiedData | undefined
 }>()
 </script>
 <style scoped>

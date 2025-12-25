@@ -38,42 +38,46 @@
           "
         />
       </v-card-item>
-      <div v-if="abstractData.database" class="h-100 w-100">
+      <div
+        v-if="abstractData.type === 'image' || abstractData.type === 'video'"
+        class="h-100 w-100"
+      >
         <v-list class="pa-0" height="100%" lines="two">
-          <ItemSize :database="abstractData.database" />
-          <ItemPath v-if="showMetadata" :database="abstractData.database" />
-          <ItemDate :database="abstractData.database" />
+          <ItemSize :database="abstractData" />
+          <ItemPath v-if="showMetadata" :database="abstractData" />
+          <ItemDate :database="abstractData" />
           <ItemExif
-            v-if="
-              abstractData.database.exif_vec.Make !== undefined ||
-              abstractData.database.exif_vec.Model !== undefined
-            "
-            :database="abstractData.database"
+            v-if="abstractData.exif.Make !== undefined || abstractData.exif.Model !== undefined"
+            :database="abstractData"
           />
           <v-divider></v-divider>
           <ItemTag
             v-if="showMetadata"
             :isolation-id="props.isolationId"
             :index="props.index"
-            :tags="abstractData.database.tag"
+            :tags="abstractData.tags"
+            :is-favorite="abstractData.isFavorite"
+            :is-archived="abstractData.isArchived"
           />
           <ItemAlbum
             v-if="route.meta.baseName !== 'share'"
             :isolation-id="props.isolationId"
             :index="props.index"
-            :albums="abstractData.database.album"
+            :albums="abstractData.albums"
           />
         </v-list>
       </div>
-      <div v-if="abstractData.album" class="h-100 w-100">
+      <div v-if="abstractData.type === 'album'" class="h-100 w-100">
         <v-list class="pa-0" height="100%" lines="two">
-          <ItemTitle :title="abstractData.album.title" />
-          <ItemCount :album="abstractData.album" />
+          <ItemTitle :title="abstractData.title" />
+          <ItemCount :album="abstractData" />
           <v-divider></v-divider>
           <ItemTag
             :isolation-id="props.isolationId"
             :index="props.index"
-            :tags="abstractData.album.tag"
+            :tags="abstractData.tags"
+            :is-favorite="abstractData.isFavorite"
+            :is-archived="abstractData.isArchived"
           />
         </v-list>
       </div>
@@ -85,7 +89,7 @@
 import { computed, watch, ref } from 'vue'
 import { useConstStore } from '@/store/constStore'
 
-import { AbstractData, IsolationId } from '@type/types'
+import { EnrichedUnifiedData, IsolationId } from '@type/types'
 
 import ItemExif from './ItemExif.vue'
 import ItemSize from './ItemSize.vue'
@@ -107,7 +111,7 @@ const props = defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
-  abstractData: AbstractData
+  abstractData: EnrichedUnifiedData
 }>()
 
 const showMetadata = computed(() => {
@@ -126,13 +130,8 @@ function toggleInfo() {
   void constStore.updateShowInfo(!constStore.showInfo)
 }
 
-function getUserDefinedDescription(abstractData: AbstractData): string {
-  if (abstractData.database) {
-    return abstractData.database.exif_vec._user_defined_description ?? ''
-  } else if (abstractData.album) {
-    return abstractData.album.userDefinedMetadata._user_defined_description?.[0] ?? ''
-  }
-  return ''
+function getUserDefinedDescription(abstractData: EnrichedUnifiedData): string {
+  return abstractData.description ?? ''
 }
 
 watch(

@@ -38,11 +38,14 @@ impl DataBaseTimestampReturn {
     ) -> Self {
         let timestamp = abstract_data.compute_timestamp(priority_list);
         let token = match &abstract_data {
-            AbstractData::Database(database) => {
-                ClaimsHash::new(database.hash, token_timestamp, allow_original).encode()
+            AbstractData::Image(img) => {
+                ClaimsHash::new(img.object.id, token_timestamp, allow_original).encode()
             }
-            AbstractData::Album(album) => {
-                if let Some(cover_hash) = album.cover {
+            AbstractData::Video(vid) => {
+                ClaimsHash::new(vid.object.id, token_timestamp, allow_original).encode()
+            }
+            AbstractData::Album(alb) => {
+                if let Some(cover_hash) = alb.metadata.cover {
                     ClaimsHash::new(cover_hash, token_timestamp, allow_original).encode()
                 } else {
                     String::new()

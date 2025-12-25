@@ -1,7 +1,7 @@
 use crate::operations::open_db::open_data_table;
 use crate::router::{AppResult, GuardResult};
 use crate::{
-    public::structure::database_struct::database::definition::Database,
+    public::structure::abstract_data::AbstractData,
     router::fairing::guard_auth::GuardAuth,
 };
 use redb::ReadableTable;
@@ -11,13 +11,13 @@ use serde::Serialize;
 #[derive(Debug, Serialize)]
 pub struct ExportEntry {
     key: String,
-    value: Database,
+    value: AbstractData,
 }
 
 #[get("/get/get-export")]
 pub async fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;
-    let data_table = open_data_table()?;
+    let data_table = open_data_table();
     let byte_stream = ByteStream! {
         // Open DB and prepare to iterate
         let iter = match data_table.iter() {

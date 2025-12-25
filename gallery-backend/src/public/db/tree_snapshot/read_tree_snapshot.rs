@@ -1,10 +1,10 @@
 use super::TreeSnapshot;
-use crate::public::structure::reduced_data::ReducedData;
+use crate::public::structure::response::reduced_data::ReducedData;
 use anyhow::Context;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use dashmap::mapref::one::Ref;
-use redb::{ReadOnlyTable, ReadableTableMetadata, TableDefinition};
+use redb::{ReadOnlyTable, ReadableDatabase, ReadableTableMetadata, TableDefinition};
 
 impl TreeSnapshot {
     pub fn read_tree_snapshot(&'static self, timestamp: &u128) -> Result<MyCow> {

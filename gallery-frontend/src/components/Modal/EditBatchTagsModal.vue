@@ -91,8 +91,7 @@ const modalStore = useModalStore('mainId')
 const collectionStore = useCollectionStore(isolationId)
 const tagStore = useTagStore('mainId')
 
-const specialTag = (t: string) => t === '_archived' || t === '_favorite' || t === '_trashed'
-const availableTags = computed(() => tagStore.tags.map((t) => t.tag).filter((t) => !specialTag(t)))
+const availableTags = computed(() => tagStore.tags.map((t) => t.tag))
 
 const addTagsRule = (arr: string[]) =>
   arr.every((t) => !changedTags.value.remove.includes(t)) ||
