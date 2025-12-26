@@ -3,6 +3,7 @@ extern crate rocket;
 use anyhow::Result;
 // --- Make sure all your modules are declared ---
 
+mod migration;
 mod operations;
 mod process;
 mod public;
@@ -48,6 +49,13 @@ async fn build_rocket() -> rocket::Rocket<rocket::Build> {
 }
 
 fn main() -> Result<()> {
+    // Perform Migration Check and Execution
+    if let Err(e) = migration::migrate() {
+        eprintln!("Error during migration:\n{:?}", e);
+        eprintln!("Migration failed. Please check the logs above.");
+        std::process::exit(1);
+    }
+
     let worker_handle = thread::spawn(|| {
         INDEX_RUNTIME.block_on(async {
             let rx = initialize();
