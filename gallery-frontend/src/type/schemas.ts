@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { fixedBigRowHeight } from '@/type/constants'
 
-// --- 基礎組件 ---
 export const AliasSchema = z.object({
   file: z.string(),
   modified: z.number(),
@@ -30,9 +29,6 @@ export const rowWithOffsetSchema = z.object({
   windowWidth: z.number()
 })
 
-// --- 新的資料結構：Object + Image/Video/Album ---
-
-// 定義後端回傳的 Common 欄位
 const BaseObjectRaw = z.object({
   id: z.string(),
   pending: z.boolean(),
@@ -105,7 +101,7 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   isTrashed: data.isTrashed
 }))
 
-// 3. Album Schema (新結構)
+// 3. Album Schema
 const AlbumSchemaRaw = BaseObjectRaw.extend({
   type: z.literal('album'),
   title: z.string().nullable(),
@@ -136,10 +132,7 @@ const AlbumSchemaRaw = BaseObjectRaw.extend({
   shareList: data.shareList
 }))
 
-// 這是 Worker 解析後端資料時使用的 Schema
 export const BackendDataParser = z.union([ImageSchemaRaw, VideoSchemaRaw, AlbumSchemaRaw])
-
-// --- 其他 Schemas ---
 
 export const prefetchSchema = z.object({
   timestamp: z.number(),
@@ -199,7 +192,6 @@ export const albumInfoSchema = z
     displayName: albumData.albumName ?? 'Untitled'
   }))
 
-// 後端直接回傳 Image/Video/Album (使用 serde tag="type")
 export const databaseTimestampSchema = z.object({
   abstractData: BackendDataParser,
   timestamp: z.number(),
