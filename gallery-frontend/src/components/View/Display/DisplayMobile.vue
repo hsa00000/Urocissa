@@ -53,7 +53,7 @@
             <ViewPageDisplayDatabase
               v-if="
                 abstractData &&
-                (abstractData.type === 'image' || abstractData.type === 'video') &&
+                ['image', 'video'].includes(abstractData.type) &&
                 !configStore.disableImg
               "
               :index="index"
@@ -63,9 +63,9 @@
               :enable-watch="false"
             />
             <ViewPageDisplayAlbum
-              v-if="abstractData && abstractData.type === 'album' && !configStore.disableImg"
+              v-if="abstractData && ['album'].includes(abstractData.type) && !configStore.disableImg"
               :index="index"
-              :album="abstractData"
+              :album="abstractData as unknown as GalleryAlbum"
             />
           </div>
         </div>
@@ -144,7 +144,7 @@
           <ViewPageDisplayDatabase
             v-if="
               abstractData &&
-              (abstractData.type === 'image' || abstractData.type === 'video') &&
+              ['image', 'video'].includes(abstractData.type) &&
               !configStore.disableImg
             "
             :index="index"
@@ -154,9 +154,9 @@
             :enable-watch="true"
           />
           <ViewPageDisplayAlbum
-            v-if="abstractData && abstractData.type === 'album' && !configStore.disableImg"
+            v-if="abstractData && ['album'].includes(abstractData.type) && !configStore.disableImg"
             :index="index"
-            :album="abstractData"
+            :album="abstractData as GalleryAlbum"
           />
         </div>
       </swiper-slide>
@@ -200,7 +200,7 @@ import 'swiper/css'
 import 'swiper/css/manipulation'
 import 'swiper/css/zoom'
 import type { Swiper as SwiperType } from 'swiper'
-import type { EnrichedUnifiedData, IsolationId } from '@type/types'
+import type { EnrichedUnifiedData, IsolationId, GalleryAlbum } from '@type/types'
 import { Swiper, SwiperSlide } from 'swiper/vue'
 
 const props = defineProps<{

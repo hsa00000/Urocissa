@@ -105,7 +105,7 @@ async function fetchData(
 ): Promise<{
   result: Map<
     number,
-    { abstractData: UnifiedData & { thumbhashUrl: string | null }; hashToken: string }
+    { abstractData: UnifiedData & { thumbhashUrl: string | null; timestamp: number }; hashToken: string }
   >
   startIndex: number
   endIndex: number
@@ -137,7 +137,7 @@ async function fetchData(
 
   const data = new Map<
     number,
-    { abstractData: UnifiedData & { thumbhashUrl: string | null }; hashToken: string }
+    { abstractData: UnifiedData & { thumbhashUrl: string | null; timestamp: number }; hashToken: string }
   >()
 
   for (let i = 0; i < databaseTimestampArray.length; i++) {

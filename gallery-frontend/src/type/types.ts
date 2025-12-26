@@ -7,14 +7,9 @@ import {
   rowSchema,
   rowWithOffsetSchema,
   prefetchSchema,
-  AlbumSchema,
-  DataBaseSchema,
-  AbstractDataSchema,
   SubRowSchema,
   albumInfoSchema,
-  PublicConfigSchema,
   prefetchReturnSchema,
-  tokenReturnSchema,
   ShareSchema,
   ResolvedShareSchema,
   TokenResponseSchema,
@@ -32,8 +27,6 @@ export type RowWithOffset = z.infer<typeof rowWithOffsetSchema>
 export type Prefetch = z.infer<typeof prefetchSchema>
 export type PrefetchReturn = z.infer<typeof prefetchReturnSchema>
 export type SubRow = z.infer<typeof SubRowSchema>
-export type PublicConfig = z.infer<typeof PublicConfigSchema>
-export type TokenReturn = z.infer<typeof tokenReturnSchema>
 export type Share = z.infer<typeof ShareSchema>
 export type ResolvedShare = z.infer<typeof ResolvedShareSchema>
 export type TokenResponse = z.infer<typeof TokenResponseSchema>
@@ -45,7 +38,7 @@ export type GalleryVideo = Extract<UnifiedData, { type: 'video' }>
 export type GalleryAlbum = Extract<UnifiedData, { type: 'album' }>
 
 // 帶有 thumbhashUrl 的資料類型
-export type EnrichedUnifiedData = UnifiedData & { thumbhashUrl: string | null }
+export type EnrichedUnifiedData = UnifiedData & { thumbhashUrl: string | null; timestamp: number }
 
 // 供列表使用的數據結構 - 使用扁平化結構
 export interface SlicedData {
@@ -53,16 +46,6 @@ export interface SlicedData {
   data: EnrichedUnifiedData
   hashToken: string
 }
-
-// 相容型別別名（減少重構破壞面）
-export type AlbumLegacy = z.infer<typeof AlbumSchema>
-export type DatabaseLegacy = z.infer<typeof DataBaseSchema>
-export type AbstractDataLegacy = z.infer<typeof AbstractDataSchema>
-
-// 保持舊名稱相容性
-export type Album = z.infer<typeof AlbumSchema>
-export type Database = z.infer<typeof DataBaseSchema>
-export type AbstractData = z.infer<typeof AbstractDataSchema>
 
 // 其他共用型別
 export type Sorting = 'ascending' | 'descending' | 'random' | 'similar'

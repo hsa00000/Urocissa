@@ -16,8 +16,10 @@
 import { GalleryImage, GalleryVideo } from '@type/types'
 import { dater } from '@utils/dater'
 
+type DatabaseWithTimestamp = (GalleryImage | GalleryVideo) & { timestamp: number }
+
 const props = defineProps<{
-  database: GalleryImage | GalleryVideo
+  database: DatabaseWithTimestamp
 }>()
 
 function timer(timestamp: number): string {
