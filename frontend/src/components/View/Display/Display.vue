@@ -9,7 +9,7 @@
     />
 
     <DisplayMobile
-      v-if="configStore.isMobile"
+      v-if="settingsStore.isMobile"
       :isolation-id="isolationId"
       :hash="hash"
       :index="index"
@@ -21,7 +21,7 @@
     />
 
     <DisplayDesktop
-      v-if="!configStore.isMobile"
+      v-if="!settingsStore.isMobile"
       :isolation-id="isolationId"
       :hash="hash"
       :index="index"
@@ -54,7 +54,7 @@ import { EnrichedUnifiedData, IsolationId } from '@type/types'
 import DisplayMobile from './DisplayMobile.vue'
 import DisplayDesktop from './DisplayDesktop.vue'
 import delay from 'delay'
-import { useConfigStore } from '@/store/configStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import { useShareStore } from '@/store/shareStore'
 import { useTokenStore } from '@/store/tokenStore'
 
@@ -65,7 +65,7 @@ const props = defineProps<{
   abstractData: EnrichedUnifiedData | undefined
 }>()
 
-const configStore = useConfigStore(props.isolationId)
+const settingsStore = useSettingsStore(props.isolationId)
 const prefetchStore = usePrefetchStore(props.isolationId)
 const workerStore = useWorkerStore(props.isolationId)
 const queueStore = useQueueStore(props.isolationId)
@@ -171,7 +171,7 @@ async function checkAndFetch(index: number): Promise<boolean> {
 }
 
 async function prefetch(index: number, isolationId: IsolationId) {
-  if (configStore.disableImg) return
+  if (settingsStore.disableImg) return
 
   for (let i = 1; i <= 10; i++) {
     const nextIndex = index + i
@@ -198,7 +198,7 @@ watch(
   [() => props.index, () => initializedStore.initialized],
   async () => {
     if (initializedStore.initialized) {
-      if (configStore.disableImg) return
+      if (settingsStore.disableImg) return
       await checkAndFetch(props.index)
       await prefetch(props.index, props.isolationId)
     }

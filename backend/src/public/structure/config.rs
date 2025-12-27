@@ -2,9 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+// Refactor: Renamed AppSettings to AppConfig
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct AppSettings {
+pub struct AppConfig {
     /// 管理員密碼 (明文)
     pub password: String,
     /// 需要監聽/同步的資料夾路徑
@@ -21,7 +22,7 @@ pub struct AppSettings {
     pub upload_limit_mb: u64,
 }
 
-impl Default for AppSettings {
+impl Default for AppConfig {
     fn default() -> Self {
         Self {
             password: "admin".to_string(),

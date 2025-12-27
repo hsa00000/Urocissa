@@ -6,7 +6,7 @@
     @drop.prevent
   >
     <v-main class="h-screen">
-      <DropZoneModal v-if="!configStore.isMobile" />
+      <DropZoneModal v-if="!settingsStore.isMobile" />
       <router-view v-slot="{ Component }" :key="routeKey">
         <component :is="Component" />
       </router-view> </v-main
@@ -30,7 +30,7 @@ import { useMessageStore } from '@/store/messageStore'
 import DropZoneModal from './Modal/DropZoneModal.vue'
 import { useConstStore } from '@/store/constStore'
 import isMobile from 'is-mobile'
-import { useConfigStore } from '@/store/configStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import EditTagsModal from '@/components/Modal/EditTagsModal.vue'
 import EditBatchTagsModal from '@/components/Modal/EditBatchTagsModal.vue'
 import UploadModal from '@/components/Modal/UploadModal.vue'
@@ -46,7 +46,7 @@ const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
 const rerenderStore = useRerenderStore('mainId')
 const messageStore = useMessageStore('mainId')
 const constStore = useConstStore('mainId')
-const configStore = useConfigStore('mainId')
+const settingsStore = useSettingsStore('mainId')
 const route = useRoute()
 
 // The routeKey is used to ensure that the router-view reloads the Home.vue component properly.
@@ -67,7 +67,7 @@ onBeforeMount(async () => {
   await constStore.loadShowInfo()
   await constStore.loadConcurrencyNumber()
   await constStore.loadShowFilenameChip()
-  configStore.isMobile = isMobile()
+  settingsStore.isMobile = isMobile()
 })
 </script>
 

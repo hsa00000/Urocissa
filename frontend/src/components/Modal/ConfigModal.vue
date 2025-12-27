@@ -187,7 +187,7 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
 import { useModalStore } from '@/store/modalStore'
-import { getSettings, updateSettings, type AppSettings } from '@/api/settings'
+import { getConfig, updateConfig, type AppConfig } from '@/api/config'
 
 const modalStore = useModalStore('mainId')
 const tab = ref('general')
@@ -195,7 +195,7 @@ const loading = ref(false)
 const valid = ref(false)
 const showPassword = ref(false)
 
-const settings = reactive<AppSettings>({
+const settings = reactive<AppConfig>({
   readOnlyMode: false,
   disableImg: false,
   password: '',
@@ -215,7 +215,7 @@ const fetchData = async () => {
   try {
     console.log('try here')
 
-    const data = await getSettings()
+    const data = await getConfig()
     Object.assign(settings, data)
   } catch (e) {
     console.error('Failed to load settings', e)
@@ -241,7 +241,7 @@ const removePath = (path: string) => {
 const save = async () => {
   loading.value = true
   try {
-    await updateSettings(settings)
+    await updateConfig(settings)
     modalStore.showConfigModal = false
   } catch (e) {
     console.error('Failed to save settings', e)

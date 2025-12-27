@@ -69,7 +69,7 @@ import { useScrollTopStore } from '@/store/scrollTopStore'
 import MainBlock from './FunctionalComponent/MainBlock'
 import DesktopHoverIcon from './FunctionalComponent/DesktopHoverIcon'
 import HoverGradientDiv from './FunctionalComponent/HoverGradientDiv'
-import { useConfigStore } from '@/store/configStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import { useConstStore } from '@/store/constStore'
 import { useThemeClasses } from '@/style/useThemeClasses'
 const props = defineProps<{
@@ -80,7 +80,7 @@ const props = defineProps<{
 const router = useRouter()
 const route = useRoute()
 const constStore = useConstStore('mainId')
-const configStore = useConfigStore('mainId')
+const settingsStore = useSettingsStore('mainId')
 const { placeholderBgClass } = useThemeClasses()
 const prefetchStore = usePrefetchStore(props.isolationId)
 const collectionStore = useCollectionStore(props.isolationId)
@@ -93,7 +93,7 @@ const pressTimer = ref<number | null>(null) // 定時器 ID
 const scrollingTimer = ref<number | null>(null)
 const isScrolling = ref(false)
 
-const mobile = configStore.isMobile
+const mobile = settingsStore.isMobile
 
 // Prevent accidental touches while scrolling
 watch(

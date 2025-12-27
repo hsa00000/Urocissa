@@ -21,6 +21,7 @@ use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::looper::start_expire_check_loop;
 
+// Refactor: Use CONFIG_TABLE
 use public::constant::redb::DATA_TABLE;
 use public::db::tree::TREE;
 use public::structure::abstract_data::AbstractData;
@@ -28,7 +29,7 @@ use redb::{ReadableTable, ReadableTableMetadata};
 use rocket::fs::FileServer;
 use router::fairing::cache_control_fairing::cache_control_fairing;
 use router::fairing::generate_fairing_routes;
-use router::generate_settings_routes;
+use router::generate_config_routes;
 use router::{
     delete::generate_delete_routes, get::generate_get_routes, post::generate_post_routes,
     put::generate_put_routes,
@@ -45,7 +46,7 @@ async fn build_rocket() -> rocket::Rocket<rocket::Build> {
         .mount("/", generate_put_routes())
         .mount("/", generate_delete_routes())
         .mount("/", generate_fairing_routes())
-        .mount("/", generate_settings_routes())
+        .mount("/", generate_config_routes())
 }
 
 fn main() -> Result<()> {

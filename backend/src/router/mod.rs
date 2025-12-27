@@ -1,23 +1,24 @@
 pub mod claims;
+pub mod config;
 pub mod delete;
 pub mod fairing;
 pub mod get;
 pub mod post;
 pub mod put;
-pub mod settings;
+use rocket::Route;
 use rocket::http::{ContentType, Status};
 use rocket::request::Request;
 use rocket::response::{self, Responder, Response};
-use rocket::Route;
 use serde_json::json;
 use std::io::Cursor;
 
-pub fn generate_settings_routes() -> Vec<Route> {
+// Refactor: Function name changed
+pub fn generate_config_routes() -> Vec<Route> {
     routes![
-        settings::get_settings,
-        settings::update_settings,
-        settings::export_settings,
-        settings::import_settings,
+        config::get_config_handler,
+        config::update_config_handler,
+        config::export_config_handler,
+        config::import_config_handler,
     ]
 }
 

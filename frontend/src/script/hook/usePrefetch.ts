@@ -5,7 +5,7 @@ import { IsolationId, PrefetchReturn } from '@type/types'
 import { prefetch } from '@/api/fetchPrefetch'
 import axios from 'axios'
 import { PublicConfigSchema } from '@type/schemas'
-import { useConfigStore } from '@/store/configStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useTagStore } from '@/store/tagStore'
@@ -57,7 +57,7 @@ async function handlePrefetchReturn(
   isolationId: IsolationId,
   route: RouteLocationNormalizedLoadedGeneric
 ) {
-  const configStore = useConfigStore(isolationId)
+  const settingsStore = useSettingsStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
   const initializedStore = useInitializedStore(isolationId)
   const tokenStore = useTokenStore(isolationId)
@@ -68,7 +68,7 @@ async function handlePrefetchReturn(
   await tryWithMessageStore(isolationId, async () => {
     const response = await axios.get('/get/get-config.json')
     const publicConfig = PublicConfigSchema.parse(response.data)
-    configStore.disableImg = publicConfig.disableImg
+    settingsStore.disableImg = publicConfig.disableImg
   })
 
   const prefetch = prefetchReturn.prefetch
