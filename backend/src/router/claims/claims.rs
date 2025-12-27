@@ -57,8 +57,12 @@ impl Claims {
     }
 
     pub fn encode(&self) -> String {
-        use crate::router::post::authenticate::get_jwt_secret_key;
-        self.encode_with_key(&get_jwt_secret_key())
+        // 引入 APP_CONFIG
+        use crate::public::structure::config::APP_CONFIG;
+        
+        // 獲取 ReadGuard 並呼叫方法
+        let config = APP_CONFIG.get().unwrap().read().unwrap();
+        self.encode_with_key(&config.get_jwt_secret_key())
     }
 
     pub fn encode_with_key(&self, key: &[u8]) -> String {

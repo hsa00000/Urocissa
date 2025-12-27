@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
+// 新增引入
+use rand::{TryRngCore, rngs::OsRng};
+use std::sync::{LazyLock, OnceLock, RwLock};
 
 // Refactor: Renamed AppSettings to AppConfig
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -32,6 +35,26 @@ impl Default for AppConfig {
             read_only_mode: false,
             disable_img: false,
             upload_limit_mb: 2048, // 預設 2GB
+        }
+    }
+}
+
+pub static APP_CONFIG: OnceLock<RwLock<AppConfig>> = OnceLock::new();
+
+static FALLBACK_SECRET_KEY: LazyLock<Vec<u8>> = LazyLock::new(|| {
+    let mut secret = vec![0u8; 32];
+    OsRng
+        .try_fill_bytes(&mut secret)
+        .expect("Failed to generate random secret key");
+    secret
+});
+
+impl AppConfig {
+    /// 獲取 JWT Secret Key (實例方法)
+    pub fn get_jwt_secret_key(&self) -> Vec<u8> {
+        match self.auth_key.as_ref() {
+            Some(auth_key) => auth_key.as_bytes().to_vec(),
+            None => FALLBACK_SECRET_KEY.clone(),
         }
     }
 }

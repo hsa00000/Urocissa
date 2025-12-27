@@ -2,8 +2,10 @@ use crate::public::constant::redb::DATA_TABLE;
 use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::{ResolvedShare, Share};
+// 引入 APP_CONFIG
+use crate::public::structure::config::APP_CONFIG;
 use crate::router::claims::claims::Claims;
-use crate::router::post::authenticate::get_jwt_secret_key;
+// 移除舊的 get_jwt_secret_key 引入
 use anyhow::Error;
 use anyhow::Result;
 use anyhow::anyhow;
@@ -47,9 +49,12 @@ pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {
 
 /// Decode JWT token with given claims type and validation
 pub fn my_decode_token<T: DeserializeOwned>(token: &str, validation: &Validation) -> Result<T> {
+    // 獲取 Secret Key
+    let secret_key = APP_CONFIG.get().unwrap().read().unwrap().get_jwt_secret_key();
+
     match decode::<T>(
         token,
-        &DecodingKey::from_secret(&get_jwt_secret_key()),
+        &DecodingKey::from_secret(&secret_key),
         validation,
     ) {
         Ok(token_data) => Ok(token_data.claims),

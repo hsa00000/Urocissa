@@ -4,7 +4,7 @@ use redb::ReadableDatabase;
 use std::{
     fs::{self, File},
     path::PathBuf,
-    sync::{OnceLock, RwLock},
+    sync::RwLock,
 };
 
 // Refactor: Update imports to use CONFIG_TABLE and CONFIG_DB
@@ -13,20 +13,10 @@ use crate::public::db::config::CONFIG_DB;
 // 保留 TREE 以便進行遷移 (Migration from old index.redb)
 use crate::public::db::tree::TREE;
 // Refactor: Use AppConfig
-use crate::public::structure::config::AppConfig;
+use crate::public::structure::config::{APP_CONFIG, AppConfig};
 
-// 全域設定儲存區
-pub static CONFIG: OnceLock<RwLock<AppConfig>> = OnceLock::new();
-
-/// 獲取當前設定的快照 (Clone)
-pub fn get_config() -> AppConfig {
-    CONFIG
-        .get()
-        .expect("Config not initialized")
-        .read()
-        .unwrap()
-        .clone()
-}
+// 移除 pub static CONFIG ...
+// 移除 pub fn get_config() ...
 
 /// 初始化設定系統
 pub fn init_config() {
@@ -57,7 +47,7 @@ pub fn init_config() {
             .in_disk
             .begin_read()
             .expect("Failed to begin read txn for old db");
-        
+
         if let Ok(table) = read_txn_old.open_table(OLD_SETTINGS_TABLE) {
             if let Ok(Some(value)) = table.get("app_settings") {
                 // 嘗試將舊的 AppSettings (結構可能相同) 反序列化為新的 AppConfig
@@ -82,11 +72,11 @@ pub fn init_config() {
         save_to_db(&config).expect("Failed to save migrated config to DB");
     }
 
-    // 3. 設定到全域記憶體
-    CONFIG
+    // 3. 設定到全域記憶體 APP_CONFIG
+    APP_CONFIG
         .set(RwLock::new(config))
         .expect("Config already initialized");
-    println!("CONFIG is {:?}", CONFIG)
+    println!("APP_CONFIG is {:?}", APP_CONFIG)
 }
 
 /// 更新設定並觸發副作用
@@ -98,7 +88,8 @@ pub fn update_config(new_config: AppConfig) -> anyhow::Result<()> {
 
     // 2. 更新記憶體
     {
-        let mut w = CONFIG.get().unwrap().write().unwrap();
+        // 使用 APP_CONFIG
+        let mut w = APP_CONFIG.get().unwrap().write().unwrap();
         *w = new_config.clone();
     }
 

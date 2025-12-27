@@ -1,4 +1,4 @@
-use crate::public::config::get_config;
+use crate::public::structure::config::APP_CONFIG;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::TagInfo;
 use crate::public::structure::album::Share;
@@ -21,7 +21,7 @@ pub struct PublicConfigResponse {
 #[get("/get/get-config.json")]
 pub fn get_public_config(auth: GuardResult<GuardShare>) -> AppResult<Json<PublicConfigResponse>> {
     let _ = auth?;
-    let config = get_config();
+    let config = APP_CONFIG.get().unwrap().read().unwrap();
     Ok(Json(PublicConfigResponse {
         read_only_mode: config.read_only_mode,
         disable_img: config.disable_img,

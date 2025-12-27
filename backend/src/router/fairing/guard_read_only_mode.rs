@@ -1,4 +1,4 @@
-use crate::public::config::get_config;
+use crate::public::structure::config::APP_CONFIG;
 use anyhow::Error;
 use anyhow::anyhow;
 use rocket::Request;
@@ -11,7 +11,7 @@ pub struct GuardReadOnlyMode;
 impl<'r> FromRequest<'r> for GuardReadOnlyMode {
     type Error = Error;
     async fn from_request(_req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        if get_config().read_only_mode {
+        if APP_CONFIG.get().unwrap().read().unwrap().read_only_mode {
             return Outcome::Error((
                 Status::InternalServerError,
                 anyhow!("Read-only mode is enabled").into(),

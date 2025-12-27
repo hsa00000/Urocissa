@@ -1,31 +1,18 @@
-use rand::{TryRngCore, rngs::OsRng};
 use rocket::post;
 use rocket::serde::json::Json;
-use std::sync::LazyLock;
+// 移除 rand, LazyLock, get_config 等舊引入
 
-use crate::public::config::get_config;
+use crate::public::structure::config::APP_CONFIG;
 use crate::router::AppResult;
 use crate::router::claims::claims::Claims;
-
-static FALLBACK_SECRET_KEY: LazyLock<Vec<u8>> = LazyLock::new(|| {
-    let mut secret = vec![0u8; 32];
-    OsRng
-        .try_fill_bytes(&mut secret)
-        .expect("Failed to generate random secret key");
-    secret
-});
-
-pub fn get_jwt_secret_key() -> Vec<u8> {
-    match get_config().auth_key.as_ref() {
-        Some(auth_key) => auth_key.as_bytes().to_vec(),
-        None => FALLBACK_SECRET_KEY.clone(),
-    }
-}
 
 #[post("/post/authenticate", data = "<password>")]
 pub async fn authenticate(password: Json<String>) -> AppResult<Json<String>> {
     let input_password = password.into_inner();
-    if input_password == get_config().password {
+
+    let current_password = APP_CONFIG.get().unwrap().read().unwrap().password.clone();
+
+    if input_password == current_password {
         let token = Claims::new_admin().encode();
         Ok(Json(token))
     } else {

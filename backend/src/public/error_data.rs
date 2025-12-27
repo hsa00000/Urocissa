@@ -3,11 +3,11 @@ use anyhow::Error;
 use reqwest::blocking::Client;
 use serde_json::json;
 
-use crate::public::config::get_config;
+use crate::public::structure::config::APP_CONFIG;
 
 pub fn handle_error(error: Error) -> Error {
     error!("{:?}", error);
-    if let Some(url) = &get_config().discord_hook_url {
+    if let Some(url) = &APP_CONFIG.get().unwrap().read().unwrap().discord_hook_url {
         send_discord_webhook(url, &error);
     }
     error

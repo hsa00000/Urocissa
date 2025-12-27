@@ -3,14 +3,14 @@ use rocket::http::{ContentType, Status};
 use rocket::serde::json::Json;
 use rocket::{get, post, put};
 
-use crate::public::config::{get_config, update_config};
-use crate::public::structure::config::AppConfig;
+use crate::public::config::update_config;
+use crate::public::structure::config::{AppConfig, APP_CONFIG};
 use crate::router::fairing::guard_auth::GuardAuth;
 
 // Refactor: Route path changed to /get/config
 #[get("/get/config")]
 pub fn get_config_handler(_auth: GuardAuth) -> Json<AppConfig> {
-    Json(get_config())
+    Json(APP_CONFIG.get().unwrap().read().unwrap().clone())
 }
 
 // Refactor: Route path changed to /put/config
@@ -28,8 +28,8 @@ pub fn update_config_handler(_auth: GuardAuth, config: Json<AppConfig>) -> Resul
 // Refactor: Route path changed to /get/config/export
 #[get("/get/config/export")]
 pub fn export_config_handler(_auth: GuardAuth) -> (ContentType, String) {
-    let config = get_config();
-    let json = serde_json::to_string_pretty(&config).unwrap_or_default();
+    let config = APP_CONFIG.get().unwrap().read().unwrap();
+    let json = serde_json::to_string_pretty(&*config).unwrap_or_default();
     (ContentType::JSON, json)
 }
 

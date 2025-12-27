@@ -8,7 +8,7 @@ use rocket::serde::json::Json;
 use crate::router::claims::claims_hash::ClaimsHash;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::VALIDATION;
-use crate::router::post::authenticate::get_jwt_secret_key;
+use crate::public::structure::config::APP_CONFIG;
 use crate::router::{AppResult, GuardError};
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
@@ -140,7 +140,7 @@ pub async fn renew_hash_token(
         let expired_hash_token = token_request.into_inner().expired_hash_token;
         let token_data = match decode::<ClaimsHash>(
             &expired_hash_token,
-            &DecodingKey::from_secret(&get_jwt_secret_key()),
+            &DecodingKey::from_secret(&APP_CONFIG.get().unwrap().read().unwrap().get_jwt_secret_key()),
             &VALIDATION_ALLOW_EXPIRED,
         ) {
             Ok(data) => data,
