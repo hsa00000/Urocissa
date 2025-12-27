@@ -37,10 +37,7 @@ use std::time::Instant;
 async fn build_rocket() -> rocket::Rocket<rocket::Build> {
     rocket::build()
         .attach(cache_control_fairing())
-        .mount(
-            "/assets",
-            FileServer::from("../gallery-frontend/dist/assets"),
-        )
+        .mount("/assets", FileServer::from("../frontend/dist/assets"))
         .mount("/", generate_get_routes())
         .mount("/", generate_post_routes())
         .mount("/", generate_put_routes())

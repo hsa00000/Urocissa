@@ -6,19 +6,19 @@ cleanup.sh
 .vscode/
 
 # User-specific configuration files, added to .gitignore to avoid overwriting during collaboration
-gallery-backend/config.json
-gallery-backend/Rocket.toml
-gallery-frontend/config.ts
+backend/config.json
+backend/Rocket.toml
+frontend/config.ts
 .env
 
 # Ignore build and generated files that should not be version-controlled
-gallery-frontend/dist
-gallery-frontend/node_modules
-gallery-frontend/dev-dist
-gallery-backend/target
-gallery-backend/test
-gallery-backend/db
-gallery-backend/object
+frontend/dist
+frontend/node_modules
+frontend/dev-dist
+backend/target
+backend/test
+backend/db
+backend/object
 
-# gallery-backend/upload: A user-specific folder for media uploads, should not be tracked
-gallery-backend/upload
+# backend/upload: A user-specific folder for media uploads, should not be tracked
+backend/upload

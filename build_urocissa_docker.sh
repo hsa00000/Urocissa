@@ -55,7 +55,7 @@ debug_log() {
 }
 
 get_rust_build_profiles() {
-    local cargo_toml="./gallery-backend/Cargo.toml"
+    local cargo_toml="./backend/Cargo.toml"
     if [[ ! -f "$cargo_toml" ]]; then
         echo "Cargo.toml not found at $cargo_toml"
         return 1

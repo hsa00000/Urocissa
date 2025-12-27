@@ -93,19 +93,19 @@ setup_environment() {
 
     debug_log "Script directory set to $SCRIPT_DIR"
 
-    ENV_FILE="./gallery-backend/.env"
+    ENV_FILE="./backend/.env"
 
     # Initialize arrays
     PREDEFINED_VOLUMES=()
     DYNAMIC_VOLUMES=()
 
     # Ensure config files exist and mount them
-    ensure_config_file "./gallery-backend/Rocket.default.toml" "./gallery-backend/Rocket.toml" "${UROCISSA_PATH}/gallery-backend/Rocket.toml"
-    ensure_config_file "./gallery-backend/config.default.json" "./gallery-backend/config.json" "${UROCISSA_PATH}/gallery-backend/config.json"
-    ensure_config_file "./gallery-backend/.env.default" "$ENV_FILE" "${UROCISSA_PATH}/gallery-backend/.env"
+    ensure_config_file "./backend/Rocket.default.toml" "./backend/Rocket.toml" "${UROCISSA_PATH}/backend/Rocket.toml"
+    ensure_config_file "./backend/config.default.json" "./backend/config.json" "${UROCISSA_PATH}/backend/config.json"
+    ensure_config_file "./backend/.env.default" "$ENV_FILE" "${UROCISSA_PATH}/backend/.env"
 
     # Ensure the upload folder exists
-    UPLOAD_DIR="./gallery-backend/upload"
+    UPLOAD_DIR="./backend/upload"
     if [ ! -d "$UPLOAD_DIR" ]; then
         mkdir -p "$UPLOAD_DIR"
         debug_log "Created upload directory at $UPLOAD_DIR"
@@ -122,7 +122,7 @@ setup_environment() {
 
 prepare_volumes() {
     # Process SYNC_PATH for dynamic volume mounts
-    SYNC_PATH=$(grep -E '^SYNC_PATH\s*=\s*' ./gallery-backend/.env | sed 's/^SYNC_PATH\s*=\s*//')
+    SYNC_PATH=$(grep -E '^SYNC_PATH\s*=\s*' ./backend/.env | sed 's/^SYNC_PATH\s*=\s*//')
     if [[ -n "$SYNC_PATH" ]]; then
         SYNC_PATH="${SYNC_PATH%\"}"
         SYNC_PATH="${SYNC_PATH#\"}"
@@ -134,7 +134,7 @@ prepare_volumes() {
             if [[ "$trimmed_path" = /* ]]; then
                 abs_path=$(realpath -m "$trimmed_path")
             else
-                abs_path=$(realpath -m "$(dirname "./gallery-backend/.env")/$trimmed_path")
+                abs_path=$(realpath -m "$(dirname "./backend/.env")/$trimmed_path")
             fi
 
             # Panic if the path does not exist
@@ -149,8 +149,8 @@ prepare_volumes() {
         debug_log "Warning: SYNC_PATH variable not found or is empty in .env. Skipping dynamic volume mounts."
     fi
 
-    PREDEFINED_VOLUMES+=( "./gallery-backend/db:${UROCISSA_PATH}/gallery-backend/db" )
-    PREDEFINED_VOLUMES+=( "./gallery-backend/object:${UROCISSA_PATH}/gallery-backend/object" )
+    PREDEFINED_VOLUMES+=( "./backend/db:${UROCISSA_PATH}/backend/db" )
+    PREDEFINED_VOLUMES+=( "./backend/object:${UROCISSA_PATH}/backend/object" )
 
     debug_log "Predefined volumes: ${PREDEFINED_VOLUMES[*]}"
     debug_log "Dynamic volumes: ${DYNAMIC_VOLUMES[*]}"
@@ -158,7 +158,7 @@ prepare_volumes() {
 
 run_container() {
     # Extract port from Rocket.toml
-    ROCKET_PORT=$(grep -E '^port\s*=\s*' ./gallery-backend/Rocket.toml | sed -E 's/^port\s*=\s*"?([0-9]+)"?/\1/' | tr -d '[:space:]')
+    ROCKET_PORT=$(grep -E '^port\s*=\s*' ./backend/Rocket.toml | sed -E 's/^port\s*=\s*"?([0-9]+)"?/\1/' | tr -d '[:space:]')
     ROCKET_PORT=${ROCKET_PORT:-4000}
     debug_log "Using port: $ROCKET_PORT"
 

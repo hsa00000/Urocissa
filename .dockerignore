@@ -1,41 +1,48 @@
 # Ignore everything
-**
+
+\*\*
 
 # Include the parent directories
-!gallery-frontend/
-!gallery-backend/
+
+!frontend/
+!backend/
 
 # Ignore everything inside the included directories
-gallery-frontend/**
-gallery-backend/**
+
+frontend/**
+backend/**
 
 # Include specific subdirectories
-!gallery-frontend/public/
-!gallery-frontend/src/
-!gallery-backend/src/
-!gallery-backend/lib/
+
+!frontend/public/
+!frontend/src/
+!backend/src/
+!backend/lib/
 
 # Include all files and subdirectories within the included subdirectories
-!gallery-frontend/public/**
-!gallery-frontend/src/**
-!gallery-backend/src/**
-!gallery-backend/lib/**
 
-# Include specific files in gallery-frontend
-!gallery-frontend/package.json
-!gallery-frontend/index.html
-!gallery-frontend/package-lock.json
-!gallery-frontend/tsconfig.json
-!gallery-frontend/tsconfig.node.json
-!gallery-frontend/tsconfig.tsbuildinfo
-!gallery-frontend/vite.config.ts
+!frontend/public/**
+!frontend/src/**
+!backend/src/**
+!backend/lib/**
 
-# Include specific files in gallery-backend
-!gallery-backend/config.json
-!gallery-backend/Rocket.toml
-!gallery-backend/Cargo.lock
-!gallery-backend/Cargo.toml
-!gallery-backend/.env.default
-!gallery-backend/.env
-!gallery-backend/Rocket.default.toml
-!gallery-backend/Rocket.toml
+# Include specific files in frontend
+
+!frontend/package.json
+!frontend/index.html
+!frontend/package-lock.json
+!frontend/tsconfig.json
+!frontend/tsconfig.node.json
+!frontend/tsconfig.tsbuildinfo
+!frontend/vite.config.ts
+
+# Include specific files in backend
+
+!backend/config.json
+!backend/Rocket.toml
+!backend/Cargo.lock
+!backend/Cargo.toml
+!backend/.env.default
+!backend/.env
+!backend/Rocket.default.toml
+!backend/Rocket.toml

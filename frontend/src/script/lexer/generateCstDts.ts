@@ -11,7 +11,7 @@
  * This prevents module resolution errors during the generation process.
  *
  * 2. Run the generation script:
- * cd gallery-frontend
+ * cd frontend
  * npm run generateLexer
  * This executes "ts-node-esm ./src/script/lexer/generateCstDts.ts",
  * which generates a new MyParserCst.d.ts file in the src/type/ directory.
