@@ -1,4 +1,5 @@
 ![螢幕擷取畫面 2024-10-17 213036](https://github.com/user-attachments/assets/b8de7937-1916-4b73-9c31-667c7eb1a23d)
+
 # Urocissa
 
 Urocissa is a self-hosted gallery designed to serve massive collections, capable of handling millions of images and videos. It is built using Rust and Vue.
@@ -44,7 +45,7 @@ Both demos are currently in read-only mode, and uploading files or editing tags 
 
 - **Infinite Photo Stream**: Experience endless scrolling without pagination. No lazy loading needed. Urocissa uses advanced virtual scrolling to serve one million photos, overcoming the DOM height limit of 33,554,400px (see [TanStack/virtual#616](https://github.com/TanStack/virtual/issues/616)).
 
-- **Instant Data Search**: Use boolean operators such as 'and', 'or', or 'not' to search your data instantly. Find examples of search queries [here](https://github.com/hsa00000/Urocissa/blob/main/SEARCH.md).
+- **Instant Data Search**: Use boolean operators such as 'and', 'or', or 'not' to search your data instantly. Find examples of search queries [here](docs/SEARCH.md).
 
 ## Limitations
 
@@ -77,7 +78,7 @@ Both demos are currently in read-only mode, and uploading files or editing tags 
 Urocissa uses an in-memory cached database to ensure instant access and blazing-fast search. Based on real-world measurements, the following table estimates the RAM needed to handle large numbers of photos:
 
 | Photo Count | Estimated RAM Usage |
-|-------------|---------------------|
+| ----------- | ------------------- |
 | 1 million   | ~1.2 GiB            |
 | 2 million   | ~2.4 GiB            |
 | 3 million   | ~3.6 GiB            |
@@ -90,6 +91,7 @@ Urocissa uses an in-memory cached database to ensure instant access and blazing-
 These values are based on actual runtime RSS (resident memory) usage of the `urocissa` process, measured during full data generation. In-memory usage may vary slightly depending on runtime allocator behavior, indexing options, or memory reuse patterns, but the scaling is approximately linear.
 
 ## Quick Setup
+
 To instantly set up and try Urocissa using Docker on Linux, follow these steps:
 
 ### Quick Setup with Docker
@@ -115,19 +117,19 @@ To instantly set up and try Urocissa using Docker on Linux, follow these steps:
    Execute the `run_urocissa_docker.sh` script to launch Urocissa:
 
    ```bash
-   bash run_urocissa_docker.sh
+   bash docker/run_urocissa_docker.sh
    ```
 
 This script will launch Urocissa. You can access the app using the following link:
 
 [http://127.0.0.1:5673](http://127.0.0.1:5673)
 
-The default login password is `password`. If you want to change the default port or password, refer to the [Configuration Guide](https://github.com/hsa00000/Urocissa/blob/main/LINUX.md#3-configure-backend-settings).
+The default login password is `password`. If you want to change the default port or password, refer to the [Configuration Guide](docs/LINUX.md#3-configure-backend-settings).
 
 ### Quick Update with Docker
 
 1. Navigate to the project directory and pull the latest updates:
-   
+
    ```bash
    git pull
    ```
@@ -138,16 +140,17 @@ The default login password is `password`. If you want to change the default port
    docker pull hsa00000/urocissa:latest
    ```
 
-2. Run the Docker script:
+1. Run the Docker script:
 
    ```bash
-   bash run_urocissa_docker.sh
+   bash docker/run_urocissa_docker.sh
    ```
-This will update and launch Urocissa.
+
+   This will update and launch Urocissa.
 
 ## Build from Source (Without Using Docker)
 
 If you prefer to build and install Urocissa from source, follow the relevant guide for your operating system:
 
-- **Linux Users**: Refer to the instructions in [this guide](https://github.com/hsa00000/Urocissa/blob/main/LINUX.md).
-- **Windows Users**: Check out the instructions in [this guide](https://github.com/hsa00000/Urocissa/blob/main/WINDOWS.md).
+- **Linux Users**: Refer to the instructions in [this guide](docs/LINUX.md).
+- **Windows Users**: Check out the instructions in [this guide](docs/WINDOWS.md).

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Change to project root directory (one level up from docker/)
+cd "$(dirname "$0")/.." || exit 1
+
 # ============================================================
 # Function Definitions
 # ============================================================
@@ -146,6 +149,7 @@ build_docker_image() {
     IMAGE_TAG="hsa00000/urocissa:latest-$ARCH"
 
     DOCKER_BUILD_COMMAND="docker build \
+        -f docker/Dockerfile \
         --build-arg BUILD_TYPE=${BUILD_TYPE}"
 
     if [ "${NO_CACHE}" = true ]; then

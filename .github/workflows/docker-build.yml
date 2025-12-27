@@ -6,11 +6,11 @@ on:
       - main
     # Ignore commits that only change README files (any level, any extension)
     paths-ignore:
-      - '**/README*'
-      - '**/readme*'
+      - "**/README*"
+      - "**/readme*"
     # Ignore all tag pushes/updates
     tags-ignore:
-      - '**'
+      - "**"
 
 jobs:
   # Job for building amd64 image on ubuntu-latest
@@ -27,10 +27,10 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Make build script executable
-        run: chmod +x ./build_urocissa_docker.sh
+        run: chmod +x ./docker/build_urocissa_docker.sh
 
       - name: Build amd64 Image
-        run: ./build_urocissa_docker.sh --arch amd64
+        run: ./docker/build_urocissa_docker.sh --arch amd64
 
       - name: Upload amd64 Image Tag info
         run: echo "AMD64_IMAGE_TAG=hsa00000/urocissa:latest-amd64" >> $GITHUB_ENV
@@ -49,10 +49,10 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Make build script executable
-        run: chmod +x ./build_urocissa_docker.sh
+        run: chmod +x ./docker/build_urocissa_docker.sh
 
       - name: Build arm64 Image
-        run: ./build_urocissa_docker.sh --arch arm64
+        run: ./docker/build_urocissa_docker.sh --arch arm64
 
       - name: Upload arm64 Image Tag info
         run: echo "ARM64_IMAGE_TAG=hsa00000/urocissa:latest-arm64" >> $GITHUB_ENV

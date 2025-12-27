@@ -1,6 +1,6 @@
 ## Steps to Set Up and Use the App (Linux Version)
 
-Follow these steps to set up and run the Urocissa app on Linux-based systems. For instructions on setting up the app on Windows, please refer to [this guide](https://github.com/hsa00000/Urocissa/blob/main/WINDOWS.md).
+Follow these steps to set up and run the Urocissa app on Linux-based systems. For instructions on setting up the app on Windows, please refer to [this guide](WINDOWS.md).
 
 ### 1. Clone the Repository
 

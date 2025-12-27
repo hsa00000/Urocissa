@@ -88,10 +88,14 @@ parse_arguments() {
 }
 
 setup_environment() {
-    SCRIPT_DIR=$(dirname "$(realpath "$0")")
-    UROCISSA_PATH="$SCRIPT_DIR"
+    # Get script directory (docker/) and change to project root
+    SCRIPT_DIR_REL=$(dirname "$(realpath "$0")")
+    cd "$SCRIPT_DIR_REL/.." || exit 1
 
-    debug_log "Script directory set to $SCRIPT_DIR"
+    # UROCISSA_PATH is set to project root's absolute path
+    UROCISSA_PATH=$(pwd)
+
+    debug_log "Project root set to $UROCISSA_PATH"
 
     ENV_FILE="./backend/.env"
 
