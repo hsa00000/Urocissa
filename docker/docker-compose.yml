@@ -1,99 +1,72 @@
 # =============================================================================
-# Urocissa Docker Compose Configuration
-# =============================================================================
-# This file serves multiple purposes:
-# 1. End users: Run with `docker compose up` to start Urocissa
-# 2. Developers: Build locally with `docker compose build`
-# 3. GitHub Actions: CI/CD builds for main and dev branches
-#
-# For detailed usage instructions, see: docs/DOCKER.md
+# Urocissa Docker Compose (多模式整合版)
 # =============================================================================
 
+# 1. 定義共用設定 (Base Config)
+# 這裡使用 YAML 的錨點 (&base-config) 來避免重複寫一大堆 volumes 設定
+x-base-config: &base-config
+  restart: unless-stopped
+  
+  # 固定容器內路徑
+  environment:
+    - UROCISSA_PATH=/urocissa
+  
+  # 讀取後端設定檔
+  env_file:
+    - ../backend/.env
+
+  # 連接埠 (預設 5673)
+  ports:
+    - "5673:5673"
+
+  # 掛載目錄
+  volumes:
+    # --- 核心設定檔 ---
+    - ../backend/.env:/urocissa/backend/.env:ro
+    - ../backend/Rocket.toml:/urocissa/backend/Rocket.toml:ro
+    - ../backend/config.json:/urocissa/backend/config.json:ro
+    
+    # --- 資料儲存 ---
+    - ../backend/db:/urocissa/backend/db
+    - ../backend/object:/urocissa/backend/object
+
+    # =======================================================================
+    # [使用者設定區] 請在這邊加入您的照片路徑
+    # =======================================================================
+    # - /path/to/your/photos:/path/to/your/photos:ro
+
+
 services:
-  urocissa:
-    image: ${UROCISSA_IMAGE:-hsa00000/urocissa:latest}
+  # ===========================================================================
+  # 模式 1: 穩定版 (Stable)
+  # 使用指令: docker compose up stable
+  # ===========================================================================
+  stable:
+    <<: *base-config            # 繼承上方的共用設定
+    image: hsa00000/urocissa:latest
+    container_name: urocissa-stable
+    profiles: ["stable"]        # 加入 profile 防止直接 up 全部啟動
+
+  # ===========================================================================
+  # 模式 2: 開發版 (Dev) - 這是您目前想測試的版本
+  # 使用指令: docker compose up dev
+  # ===========================================================================
+  dev:
+    <<: *base-config
+    image: hsa00000/urocissa:dev
+    container_name: urocissa-dev
+    profiles: ["dev"]
+
+  # ===========================================================================
+  # 模式 3: 本地編譯 (Local Build) - 修改程式碼後使用
+  # 使用指令: docker compose up local
+  # ===========================================================================
+  local:
+    <<: *base-config
     build:
       context: ..
       dockerfile: docker/Dockerfile
       args:
-        BUILD_TYPE: ${BUILD_TYPE:-release}
-    container_name: urocissa
-    restart: unless-stopped
-
-    environment:
-      # UROCISSA_PATH: The base path inside the container where Urocissa operates
-      # This is set to a fixed path inside the container
-      - UROCISSA_PATH=/urocissa
-
-    env_file:
-      - ../backend/.env
-
-    ports:
-      # Map container port to host port
-      # Default: 5673 (as defined in Rocket.default.toml)
-      # Format: "HOST_PORT:CONTAINER_PORT"
-      - "${UROCISSA_PORT:-5673}:${UROCISSA_PORT:-5673}"
-
-    volumes:
-      # =======================================================================
-      # Core Configuration Files (Required)
-      # =======================================================================
-
-      # Environment variables file
-      - ../backend/.env:/urocissa/backend/.env:ro
-
-      # Rocket web server configuration
-      - ../backend/Rocket.toml:/urocissa/backend/Rocket.toml:ro
-
-      # Application configuration
-      - ../backend/config.json:/urocissa/backend/config.json:ro
-
-      # =======================================================================
-      # Persistent Data Storage (Required)
-      # =======================================================================
-
-      # Database files - stores all metadata and indexes
-      - ../backend/db:/urocissa/backend/db
-
-      # Object storage - stores compressed images, thumbnails, etc.
-      - ../backend/object:/urocissa/backend/object
-
-      # =======================================================================
-      # Photo Library Paths (SYNC_PATH) - User Must Configure
-      # =======================================================================
-      # Add your photo directories here. These should match the paths in your
-      # .env file's SYNC_PATH variable.
-      #
-      # Format: - /host/path/to/photos:/host/path/to/photos
-      #
-      # IMPORTANT: The container path should match the host path exactly
-      # because SYNC_PATH references the original file locations.
-      #
-      # Examples:
-      # - /home/user/Photos:/home/user/Photos
-      # - /mnt/nas/gallery:/mnt/nas/gallery
-      # - D:\Pictures:D:\Pictures  # Windows example
-      # =======================================================================
-      # Uncomment and modify the following line(s) according to your setup:
-      # - /path/to/your/photos:/path/to/your/photos:ro
-
-# =============================================================================
-# Usage Examples
-# =============================================================================
-#
-# 1. Run with pre-built image (recommended for end users):
-#    docker compose up -d
-#
-# 2. Build and run locally:
-#    docker compose up -d --build
-#
-# 3. Build with debug profile:
-#    BUILD_TYPE=debug docker compose up -d --build
-#
-# 4. Use dev image:
-#    UROCISSA_IMAGE=hsa00000/urocissa:dev docker compose up -d
-#
-# 5. Custom port:
-#    UROCISSA_PORT=8080 docker compose up -d
-#
-# =============================================================================
+        BUILD_TYPE: debug      # 這裡已經幫您寫死用 debug 模式編譯
+    container_name: urocissa-local
+    profiles: ["local"]
