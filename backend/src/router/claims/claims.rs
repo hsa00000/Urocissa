@@ -57,14 +57,8 @@ impl Claims {
     }
 
     pub fn encode(&self) -> String {
-        // For backward compatibility, get key dynamically
         use crate::router::post::authenticate::get_jwt_secret_key;
-        encode(
-            &Header::default(),
-            &self,
-            &EncodingKey::from_secret(&get_jwt_secret_key()),
-        )
-        .expect("Failed to generate token")
+        self.encode_with_key(&get_jwt_secret_key())
     }
 
     pub fn encode_with_key(&self, key: &[u8]) -> String {

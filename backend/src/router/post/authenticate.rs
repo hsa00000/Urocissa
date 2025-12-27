@@ -26,7 +26,7 @@ pub fn get_jwt_secret_key() -> Vec<u8> {
 pub async fn authenticate(password: Json<String>) -> AppResult<Json<String>> {
     let input_password = password.into_inner();
     if input_password == get_config().password {
-        let token = Claims::new_admin().encode_with_key(&get_jwt_secret_key());
+        let token = Claims::new_admin().encode();
         Ok(Json(token))
     } else {
         Err(anyhow::anyhow!("Invalid password")
