@@ -20,5 +20,7 @@ backend/test
 backend/db
 backend/object
 
+docker/docker-compose.override.yml
+
 # backend/upload: A user-specific folder for media uploads, should not be tracked
 backend/upload

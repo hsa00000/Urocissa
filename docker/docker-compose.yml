@@ -1,0 +1,86 @@
+# =============================================================================
+# Urocissa Docker Compose (多模式整合版)
+# =============================================================================
+
+# 1. 定義共用設定 (Base Config)
+# 這裡使用 YAML 的錨點 (&base-config) 來避免重複寫一大堆 volumes 設定
+x-base-config: &base-config
+  restart: unless-stopped
+
+  # 固定容器內路徑
+  environment:
+    - UROCISSA_PATH=/urocissa
+
+  # 讀取後端設定檔
+  env_file:
+    - ../backend/.env
+
+  # 連接埠
+  ports:
+    - "5673:5673"
+
+  # 掛載目錄 (全部改為 Long Syntax)
+  volumes:
+    # --- 核心設定檔 (檔案類型：嚴格檢查，若缺少會報錯) ---
+    - type: bind
+      source: ../backend/.env
+      target: /urocissa/backend/.env
+      read_only: true
+
+    - type: bind
+      source: ../backend/Rocket.toml
+      target: /urocissa/backend/Rocket.toml
+      read_only: true
+
+    - type: bind
+      source: ../backend/config.json
+      target: /urocissa/backend/config.json
+      read_only: true
+
+    # --- 資料儲存 (資料夾類型) ---
+    # 改用 Long Syntax 後，如果本機 ../backend/db 不存在，啟動也會報錯。
+    # 這強迫你要確保資料夾存在，而不是讓 Docker 默默建立。
+    - type: bind
+      source: ../backend/db
+      target: /urocissa/backend/db
+      read_only: false
+
+    - type: bind
+      source: ../backend/object
+      target: /urocissa/backend/object
+      read_only: false
+
+services:
+  # ===========================================================================
+  # 模式 1: 穩定版 (Stable)
+  # 使用指令: docker compose up stable
+  # ===========================================================================
+  stable:
+    <<: *base-config # 繼承上方的共用設定
+    image: hsa00000/urocissa:latest
+    container_name: urocissa-stable
+    profiles: ["stable"] # 加入 profile 防止直接 up 全部啟動
+
+  # ===========================================================================
+  # 模式 2: 開發版 (Dev) - 這是您目前想測試的版本
+  # 使用指令: docker compose up dev
+  # ===========================================================================
+  dev:
+    <<: *base-config
+    image: hsa00000/urocissa:dev
+    container_name: urocissa-dev
+    profiles: ["dev"]
+
+  # ===========================================================================
+  # 模式 3: 本地編譯 (Local Build) - 修改程式碼後使用
+  # 使用指令: docker compose up local
+  # ===========================================================================
+  local:
+    <<: *base-config
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        BUILD_TYPE: debug # 這裡已經幫您寫死用 debug 模式編譯
+    container_name: urocissa-local
+    profiles: ["local"]

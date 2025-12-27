@@ -3,64 +3,83 @@ name: Build and Push Urocissa Docker Images (Dev Branch)
 on:
   push:
     branches:
-      - dev # Trigger: push to dev branch
-    paths-ignore:
-      - "**/README*"
-      - "**/readme*"
+      - "dev/docker-build"
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: hsa00000/urocissa
+  TAG_BASE: dev
 
 jobs:
   build-amd64-dev:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Make build script executable
-        run: chmod +x ./docker/build_urocissa_docker.sh
-
-      # === Explicitly specify tag-base as dev ===
-      - name: Build amd64 Image (Dev)
-        run: ./docker/build_urocissa_docker.sh --arch amd64 --tag-base dev
+      - name: Build and Push amd64 Image (Dev)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }}-amd64
+          build-args: |
+            BUILD_TYPE=debug
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   build-arm64-dev:
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Make build script executable
-        run: chmod +x ./docker/build_urocissa_docker.sh
-
-      # === Explicitly specify tag-base as dev ===
-      - name: Build arm64 Image (Dev)
-        run: ./docker/build_urocissa_docker.sh --arch arm64 --tag-base dev
+      - name: Build and Push arm64 Image (Dev)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }}-arm64
+          build-args: |
+            BUILD_TYPE=debug
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   create-manifest-dev:
     runs-on: ubuntu-latest
     needs: [build-amd64-dev, build-arm64-dev]
     steps:
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Create and Push Manifest (Dev)
         run: |
-          # Create hsa00000/urocissa:dev pointing to dev-amd64 and dev-arm64
-          docker manifest create hsa00000/urocissa:dev \
-            --amend hsa00000/urocissa:dev-amd64 \
-            --amend hsa00000/urocissa:dev-arm64
-          docker manifest push hsa00000/urocissa:dev
+          docker manifest create ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }} \
+            --amend ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }}-amd64 \
+            --amend ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }}-arm64
+          docker manifest push ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }}

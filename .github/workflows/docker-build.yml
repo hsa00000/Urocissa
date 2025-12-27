@@ -4,73 +4,134 @@ on:
   push:
     branches:
       - main
-    # Ignore commits that only change README files (any level, any extension)
+    tags:
+      # 修改處：這裡改成監聽數字開頭的 Tag (例如 0.20.1)
+      # 或者簡單寫成 - '*' 代表所有 Tag 都觸發
+      - "[0-9]*"
     paths-ignore:
       - "**/README*"
       - "**/readme*"
-    # Ignore all tag pushes/updates
-    tags-ignore:
-      - "**"
+      - "docs/**"
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: hsa00000/urocissa
 
 jobs:
-  # Job for building amd64 image on ubuntu-latest
   build-amd64:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Make build script executable
-        run: chmod +x ./docker/build_urocissa_docker.sh
+      # 計算 Tag 變數 (無 v 版本)
+      - name: Calculate Tag
+        id: tag_calc
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # 這行指令會把 'refs/tags/0.20.1' 變成 '0.20.1'
+            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+            echo "IS_RELEASE=true" >> $GITHUB_ENV
+          else
+            echo "TAG_NAME=edge" >> $GITHUB_ENV
+            echo "IS_RELEASE=false" >> $GITHUB_ENV
+          fi
 
-      - name: Build amd64 Image
-        run: ./docker/build_urocissa_docker.sh --arch amd64 --tag-base latest
+      - name: Build and Push amd64 Image (Manual)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}-amd64
+          build-args: |
+            BUILD_TYPE=release
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Upload amd64 Image Tag info
-        run: echo "AMD64_IMAGE_TAG=hsa00000/urocissa:latest-amd64" >> $GITHUB_ENV
-
-  # Job for building arm64 image on self-hosted runner
   build-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Make build script executable
-        run: chmod +x ./docker/build_urocissa_docker.sh
+      - name: Calculate Tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          else
+            echo "TAG_NAME=edge" >> $GITHUB_ENV
+          fi
 
-      - name: Build arm64 Image
-        run: ./docker/build_urocissa_docker.sh --arch arm64 --tag-base latest
+      - name: Build and Push arm64 Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}-arm64
+          build-args: |
+            BUILD_TYPE=release
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Upload arm64 Image Tag info
-        run: echo "ARM64_IMAGE_TAG=hsa00000/urocissa:latest-arm64" >> $GITHUB_ENV
-
-  # Job to create and push the multi-arch manifest
   create-manifest:
     runs-on: ubuntu-latest
     needs: [build-amd64, build-arm64]
     steps:
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Create and Push Manifest
+      - name: Calculate Tag
         run: |
-          docker manifest create hsa00000/urocissa:latest \
-            --amend hsa00000/urocissa:latest-amd64 \
-            --amend hsa00000/urocissa:latest-arm64
-          docker manifest push hsa00000/urocissa:latest
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+            echo "IS_RELEASE=true" >> $GITHUB_ENV
+          else
+            echo "TAG_NAME=edge" >> $GITHUB_ENV
+            echo "IS_RELEASE=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create and Push Manifest (Versioned/Edge)
+        run: |
+          # 建立主要標籤的 Manifest (例如 0.20.1 或 edge)
+          docker manifest create ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }} \
+            --amend ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}-amd64 \
+            --amend ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}-arm64
+
+          docker manifest push ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}
+
+      - name: Create and Push Manifest (Latest)
+        # 只有在發布 Tag 版本時，才更新 latest
+        if: env.IS_RELEASE == 'true'
+        run: |
+          docker manifest create ${{ env.IMAGE_NAME }}:latest \
+            --amend ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}-amd64 \
+            --amend ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}-arm64
+
+          docker manifest push ${{ env.IMAGE_NAME }}:latest
