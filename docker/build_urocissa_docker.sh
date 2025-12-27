@@ -133,6 +133,14 @@ parse_arguments() {
             validate_arch "$ARCH"
             shift 2
             ;;
+        --tag-base)
+            TAG_BASE="$2"
+            if [[ -z "$TAG_BASE" ]]; then
+                echo "Error: Tag base is required."
+                exit 1
+            fi
+            shift 2
+            ;;
         *)
             echo "Error: Unknown option $1"
             exit 1
@@ -143,10 +151,10 @@ parse_arguments() {
 
 build_docker_image() {
     debug_log "Setting up environment for multiarch builds..."
-    debug_log "Building Docker image with BUILD_TYPE=$BUILD_TYPE for ARCH=$ARCH"
+    debug_log "Building Docker image with BUILD_TYPE=$BUILD_TYPE for ARCH=$ARCH, TAG_BASE=$TAG_BASE"
 
     # Tag includes architecture suffix so we don't overwrite images
-    IMAGE_TAG="hsa00000/urocissa:latest-$ARCH"
+    IMAGE_TAG="hsa00000/urocissa:${TAG_BASE}-$ARCH"
 
     DOCKER_BUILD_COMMAND="docker build \
         -f docker/Dockerfile \
@@ -186,6 +194,7 @@ main() {
     BUILD_TYPE="release"
     NO_CACHE=false
     ARCH=""
+    TAG_BASE="latest" # Default value for local runs; CI will explicitly override this
 
     parse_arguments "$@"
     build_docker_image
