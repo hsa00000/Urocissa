@@ -50,10 +50,32 @@ not(model: "outdated")
 
 Search for data that does **not** have the **outdated** model.
 
-### 7. Complex Combination
+### 7. Search by Status (Favorite, Archived, Trashed)
+
+With the new flags update, you can explicitly search for item statuses using boolean values (`true` or `false`).
 
 ```
-and(type: "image", not(tag: "private"), or(any: "sony", any: "samsung"))
+favorite: true
 ```
 
-Search for **image type** data, excluding items tagged as **private**, and including items that have **sony** or **samsung** in any field.
+Search for data marked as **favorite**.
+
+```
+trashed: false
+```
+
+Search for data that is **not** in the trash.
+
+```
+archived: true
+```
+
+Search for data that is **archived**.
+
+### 8. Complex Combination
+
+```
+and(type: "image", trashed: false, or(any: "sony", any: "samsung"))
+```
+
+Search for **image type** data that is **not in the trash**, and includes items that have **sony** or **samsung** in any field.
