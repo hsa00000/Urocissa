@@ -1,0 +1,99 @@
+# =============================================================================
+# Urocissa Docker Compose Configuration
+# =============================================================================
+# This file serves multiple purposes:
+# 1. End users: Run with `docker compose up` to start Urocissa
+# 2. Developers: Build locally with `docker compose build`
+# 3. GitHub Actions: CI/CD builds for main and dev branches
+#
+# For detailed usage instructions, see: docs/DOCKER.md
+# =============================================================================
+
+services:
+  urocissa:
+    image: ${UROCISSA_IMAGE:-hsa00000/urocissa:latest}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        BUILD_TYPE: ${BUILD_TYPE:-release}
+    container_name: urocissa
+    restart: unless-stopped
+
+    environment:
+      # UROCISSA_PATH: The base path inside the container where Urocissa operates
+      # This is set to a fixed path inside the container
+      - UROCISSA_PATH=/urocissa
+
+    env_file:
+      - ../backend/.env
+
+    ports:
+      # Map container port to host port
+      # Default: 5673 (as defined in Rocket.default.toml)
+      # Format: "HOST_PORT:CONTAINER_PORT"
+      - "${UROCISSA_PORT:-5673}:${UROCISSA_PORT:-5673}"
+
+    volumes:
+      # =======================================================================
+      # Core Configuration Files (Required)
+      # =======================================================================
+
+      # Environment variables file
+      - ../backend/.env:/urocissa/backend/.env:ro
+
+      # Rocket web server configuration
+      - ../backend/Rocket.toml:/urocissa/backend/Rocket.toml:ro
+
+      # Application configuration
+      - ../backend/config.json:/urocissa/backend/config.json:ro
+
+      # =======================================================================
+      # Persistent Data Storage (Required)
+      # =======================================================================
+
+      # Database files - stores all metadata and indexes
+      - ../backend/db:/urocissa/backend/db
+
+      # Object storage - stores compressed images, thumbnails, etc.
+      - ../backend/object:/urocissa/backend/object
+
+      # =======================================================================
+      # Photo Library Paths (SYNC_PATH) - User Must Configure
+      # =======================================================================
+      # Add your photo directories here. These should match the paths in your
+      # .env file's SYNC_PATH variable.
+      #
+      # Format: - /host/path/to/photos:/host/path/to/photos
+      #
+      # IMPORTANT: The container path should match the host path exactly
+      # because SYNC_PATH references the original file locations.
+      #
+      # Examples:
+      # - /home/user/Photos:/home/user/Photos
+      # - /mnt/nas/gallery:/mnt/nas/gallery
+      # - D:\Pictures:D:\Pictures  # Windows example
+      # =======================================================================
+      # Uncomment and modify the following line(s) according to your setup:
+      # - /path/to/your/photos:/path/to/your/photos:ro
+
+# =============================================================================
+# Usage Examples
+# =============================================================================
+#
+# 1. Run with pre-built image (recommended for end users):
+#    docker compose up -d
+#
+# 2. Build and run locally:
+#    docker compose up -d --build
+#
+# 3. Build with debug profile:
+#    BUILD_TYPE=debug docker compose up -d --build
+#
+# 4. Use dev image:
+#    UROCISSA_IMAGE=hsa00000/urocissa:dev docker compose up -d
+#
+# 5. Custom port:
+#    UROCISSA_PORT=8080 docker compose up -d
+#
+# =============================================================================

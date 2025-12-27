@@ -4,58 +4,76 @@ on:
   push:
     branches:
       - main
-    # Ignore commits that only change README files (any level, any extension)
+    # Ignore commits that only change README or documentation files
     paths-ignore:
       - "**/README*"
       - "**/readme*"
+      - "docs/**"
     # Ignore all tag pushes/updates
     tags-ignore:
       - "**"
 
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: hsa00000/urocissa
+  TAG_BASE: latest
+
 jobs:
-  # Job for building amd64 image on ubuntu-latest
+  # Job for building amd64 image
   build-amd64:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Make build script executable
-        run: chmod +x ./docker/build_urocissa_docker.sh
+      - name: Build and Push amd64 Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }}-amd64
+          build-args: |
+            BUILD_TYPE=release
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Build amd64 Image
-        run: ./docker/build_urocissa_docker.sh --arch amd64 --tag-base latest
-
-      - name: Upload amd64 Image Tag info
-        run: echo "AMD64_IMAGE_TAG=hsa00000/urocissa:latest-amd64" >> $GITHUB_ENV
-
-  # Job for building arm64 image on self-hosted runner
+  # Job for building arm64 image
   build-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Make build script executable
-        run: chmod +x ./docker/build_urocissa_docker.sh
-
-      - name: Build arm64 Image
-        run: ./docker/build_urocissa_docker.sh --arch arm64 --tag-base latest
-
-      - name: Upload arm64 Image Tag info
-        run: echo "ARM64_IMAGE_TAG=hsa00000/urocissa:latest-arm64" >> $GITHUB_ENV
+      - name: Build and Push arm64 Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }}-arm64
+          build-args: |
+            BUILD_TYPE=release
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # Job to create and push the multi-arch manifest
   create-manifest:
@@ -63,14 +81,14 @@ jobs:
     needs: [build-amd64, build-arm64]
     steps:
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Create and Push Manifest
         run: |
-          docker manifest create hsa00000/urocissa:latest \
-            --amend hsa00000/urocissa:latest-amd64 \
-            --amend hsa00000/urocissa:latest-arm64
-          docker manifest push hsa00000/urocissa:latest
+          docker manifest create ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }} \
+            --amend ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }}-amd64 \
+            --amend ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }}-arm64
+          docker manifest push ${{ env.IMAGE_NAME }}:${{ env.TAG_BASE }}
