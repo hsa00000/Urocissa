@@ -3,7 +3,7 @@ name: Build and Push Urocissa Docker Images (Dev Branch)
 on:
   push:
     branches:
-      - dev
+      - "dev/docker-build"
     paths-ignore:
       - "**/README*"
       - "**/readme*"
