@@ -1,7 +1,6 @@
 //! Database Migration Module
 //!
-//! This module handles the migration from redb 2.6.x to redb 3.1.x.
-//! It reads from the old database format and converts data to the new AbstractData format.
+//! Handles the migration from redb 2.6.x (Old Schema) to redb 3.1.x (New AbstractData Schema).
 
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
@@ -12,10 +11,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{self, Write};
 use std::path::Path;
 
-// Import old redb's ReadableTable trait
 use redb_old::{ReadableTable as OldReadableTable, ReadableTableMetadata};
 
-// Import current schema
 use crate::public::constant::redb::DATA_TABLE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::{
@@ -27,7 +24,7 @@ use crate::public::structure::object::{ObjectSchema, ObjectType};
 use crate::public::structure::video::{combined::VideoCombined, metadata::VideoMetadata};
 
 // ==================================================================================
-// Old Data Structures (for redb 2.6.x)
+// Old Data Structures (Snapshot for redb 2.6.x)
 // ==================================================================================
 
 mod old_structure {
@@ -63,7 +60,7 @@ mod old_structure {
         where
             Self: 'a,
         {
-            bitcode::decode(data).expect("Failed to decode OldDatabase")
+            bitcode::decode(data).expect("Corrupt Data: Failed to decode OldDatabase via bitcode")
         }
 
         fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a> {
@@ -129,7 +126,7 @@ mod old_structure {
         where
             Self: 'a,
         {
-            bitcode::decode(data).expect("Failed to decode OldAlbum")
+            bitcode::decode(data).expect("Corrupt Data: Failed to decode OldAlbum via bitcode")
         }
 
         fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a> {
@@ -167,18 +164,17 @@ const NEW_DB_PATH: &str = "./db/index_new.redb";
 const BATCH_SIZE: usize = 5000;
 const USER_DEFINED_DESCRIPTION: &str = "_user_defined_description";
 
-/// Transform old Database (Image/Video) to new AbstractData
 fn transform_database_to_abstract_data(old_data: OldDatabase) -> AbstractData {
-    // 1. Extract description from exif_vec
     let description = old_data.exif_vec.get(USER_DEFINED_DESCRIPTION).cloned();
 
-    // 2. Process tags - remove special tags and convert to flags
+    // Business Logic:
+    // Legacy tags starting with "_" (e.g., _favorite) were used as pseudo-flags.
+    // We convert them to explicit boolean fields and remove them from the generic tag list.
     let mut tags = old_data.tag.clone();
     let is_favorite = tags.remove("_favorite");
     let is_archived = tags.remove("_archived");
     let is_trashed = tags.remove("_trashed");
 
-    // 3. Convert alias
     let alias: Vec<FileModify> = old_data
         .alias
         .iter()
@@ -189,13 +185,16 @@ fn transform_database_to_abstract_data(old_data: OldDatabase) -> AbstractData {
         })
         .collect();
 
-    // 4. Create exif_vec without the description key
     let mut exif_vec = old_data.exif_vec.clone();
     exif_vec.remove(USER_DEFINED_DESCRIPTION);
 
-    // 5. Determine object type and create appropriate AbstractData
+    let thumbhash = if old_data.thumbhash.is_empty() {
+        None
+    } else {
+        Some(old_data.thumbhash)
+    };
+
     if old_data.ext_type == "video" {
-        // Video
         let duration = old_data
             .exif_vec
             .get("duration")
@@ -206,11 +205,7 @@ fn transform_database_to_abstract_data(old_data: OldDatabase) -> AbstractData {
             id: old_data.hash,
             obj_type: ObjectType::Video,
             pending: old_data.pending,
-            thumbhash: if old_data.thumbhash.is_empty() {
-                None
-            } else {
-                Some(old_data.thumbhash)
-            },
+            thumbhash,
             description,
             tags,
             is_favorite,
@@ -232,16 +227,17 @@ fn transform_database_to_abstract_data(old_data: OldDatabase) -> AbstractData {
 
         AbstractData::Video(VideoCombined { object, metadata })
     } else {
-        // Image
+        let phash = if old_data.phash.is_empty() {
+            None
+        } else {
+            Some(old_data.phash)
+        };
+
         let object = ObjectSchema {
             id: old_data.hash,
             obj_type: ObjectType::Image,
             pending: old_data.pending,
-            thumbhash: if old_data.thumbhash.is_empty() {
-                None
-            } else {
-                Some(old_data.thumbhash)
-            },
+            thumbhash,
             description,
             tags,
             is_favorite,
@@ -255,11 +251,7 @@ fn transform_database_to_abstract_data(old_data: OldDatabase) -> AbstractData {
             width: old_data.width,
             height: old_data.height,
             ext: old_data.ext,
-            phash: if old_data.phash.is_empty() {
-                None
-            } else {
-                Some(old_data.phash)
-            },
+            phash,
             albums: old_data.album,
             exif_vec,
             alias,
@@ -269,40 +261,38 @@ fn transform_database_to_abstract_data(old_data: OldDatabase) -> AbstractData {
     }
 }
 
-/// Transform old Album to new AbstractData::Album
 fn transform_album_to_abstract_data(old_album: OldAlbum) -> AbstractData {
-    // 1. Extract description from user_defined_metadata
     let description = old_album
         .user_defined_metadata
         .get(USER_DEFINED_DESCRIPTION)
         .and_then(|v| v.first())
         .cloned();
 
-    // 2. Process tags - remove special tags and convert to flags
+    // Business Logic: Convert legacy tag-flags to boolean fields
     let mut tags = old_album.tag.clone();
     let is_favorite = tags.remove("_favorite");
     let is_archived = tags.remove("_archived");
     let is_trashed = tags.remove("_trashed");
 
-    // 3. Convert share_list
     let share_list: HashMap<ArrayString<64>, NewShare> = old_album
         .share_list
         .into_iter()
         .map(|(key, old_share)| {
-            let new_share = NewShare {
-                url: old_share.url,
-                description: old_share.description,
-                password: old_share.password,
-                show_metadata: old_share.show_metadata,
-                show_download: old_share.show_download,
-                show_upload: old_share.show_upload,
-                exp: old_share.exp,
-            };
-            (key, new_share)
+            (
+                key,
+                NewShare {
+                    url: old_share.url,
+                    description: old_share.description,
+                    password: old_share.password,
+                    show_metadata: old_share.show_metadata,
+                    show_download: old_share.show_download,
+                    show_upload: old_share.show_upload,
+                    exp: old_share.exp,
+                },
+            )
         })
         .collect();
 
-    // 4. Create ObjectSchema
     let object = ObjectSchema {
         id: old_album.id,
         obj_type: ObjectType::Album,
@@ -315,7 +305,6 @@ fn transform_album_to_abstract_data(old_album: OldAlbum) -> AbstractData {
         is_trashed,
     };
 
-    // 5. Create AlbumMetadata
     let metadata = AlbumMetadata {
         id: old_album.id,
         title: old_album.title,
@@ -332,33 +321,53 @@ fn transform_album_to_abstract_data(old_album: OldAlbum) -> AbstractData {
     AbstractData::Album(AlbumCombined { object, metadata })
 }
 
-/// Check if the old database exists and needs migration
+/// Checks if a migration is required.
+///
+/// Strategy:
+/// 1. Try opening with the NEW driver (v3.1). If successful, no migration needed.
+/// 2. If step 1 fails, try opening with the OLD driver (v2.6) to confirm it is a valid legacy DB.
 fn needs_migration() -> bool {
     if !Path::new(OLD_DB_PATH).exists() {
         return false;
     }
 
-    // Try to open with old redb version to see if it's an old format database
-    match redb_old::Database::open(OLD_DB_PATH) {
-        Ok(db) => {
-            // Check if it has the old table structure
+    if redb::Database::open(OLD_DB_PATH).is_ok() {
+        println!("[INFO] DB is compatible with current driver. No migration needed.");
+        return false;
+    }
+
+    // Defensive: Use catch_unwind as a safety net against potential FFI/panic issues
+    // when the old driver encounters a corrupted or unrecognized file format.
+    let result = std::panic::catch_unwind(|| redb_old::Database::open(OLD_DB_PATH));
+
+    match result {
+        Ok(Ok(db)) => {
             if let Ok(txn) = db.begin_read() {
-                let has_old_database_table = txn
-                    .open_table(redb_old::TableDefinition::<&str, OldDatabase>::new("database"))
+                // Check for existence of legacy tables
+                let has_db_table = txn
+                    .open_table(redb_old::TableDefinition::<&str, OldDatabase>::new(
+                        "database",
+                    ))
                     .is_ok();
-                let has_old_album_table = txn
+                let has_album_table = txn
                     .open_table(redb_old::TableDefinition::<&str, OldAlbum>::new("album"))
                     .is_ok();
-                has_old_database_table || has_old_album_table
+
+                has_db_table || has_album_table
             } else {
                 false
             }
         }
-        Err(_) => false,
+        _ => false,
     }
 }
 
-/// Main migration function
+/// Executes the migration from redb 2.6 to 3.1.
+///
+/// This process involves:
+/// 1. Verifying migration necessity.
+/// 2. Creating a backup of the old database.
+/// 3. Transforming all data records to the new `AbstractData` format.
 pub fn migrate() -> Result<()> {
     if !needs_migration() {
         return Ok(());
@@ -368,6 +377,7 @@ pub fn migrate() -> Result<()> {
     println!(" DETECTED OLD DATABASE (redb 2.6.x) at {}", OLD_DB_PATH);
     println!(" A MIGRATION IS REQUIRED TO UPGRADE TO VERSION 0.19+");
     println!("========================================================");
+
     println!(" Please ensure you have BACKED UP your './db' folder.");
     println!(" The migration will read from the old DB and create a new one.");
     println!("Type 'yes' to start migration:");
@@ -377,33 +387,29 @@ pub fn migrate() -> Result<()> {
     io::stdin().read_line(&mut input)?;
 
     if input.trim() != "yes" {
-        println!("Migration cancelled. Exiting.");
+        println!("Migration cancelled.");
         std::process::exit(0);
     }
 
     println!("Starting migration...");
 
-    // Open the old database
     let old_db =
         redb_old::Database::open(OLD_DB_PATH).context("Failed to open old database file.")?;
     let read_txn = old_db.begin_read()?;
 
-    // Open old tables
     let old_data_table = read_txn.open_table(
         redb_old::TableDefinition::<&str, OldDatabase>::new("database"),
     )?;
     let old_album_table =
         read_txn.open_table(redb_old::TableDefinition::<&str, OldAlbum>::new("album"))?;
 
-    // Create new database
-    let new_db = redb::Database::create(NEW_DB_PATH)
-        .context("Failed to create new database file.")?;
+    let new_db =
+        redb::Database::create(NEW_DB_PATH).context("Failed to create new database file.")?;
     let write_txn = new_db.begin_write()?;
 
-    // ==========================================
-    // 1. Migrate DATA (Images/Videos)
-    // ==========================================
+    // Migrating DATA (Images/Videos)
     {
+        println!("Migrating Data...");
         let mut data_table = write_txn.open_table(DATA_TABLE)?;
 
         let total_items = old_data_table.len()?;
@@ -413,16 +419,15 @@ pub fn migrate() -> Result<()> {
         let mut batch_buffer: Vec<OldDatabase> = Vec::with_capacity(BATCH_SIZE);
 
         let mut commit_batch = |batch: Vec<OldDatabase>| -> Result<()> {
-            // Transform in parallel
+            // Performance: Use parallel iterator as struct transformation and bitcode decoding
+            // are CPU-bound operations.
             let transformed_batch: Vec<AbstractData> = batch
                 .into_par_iter()
-                .map(|old_data| transform_database_to_abstract_data(old_data))
+                .map(transform_database_to_abstract_data)
                 .collect();
 
-            // Write sequentially
             for abstract_data in transformed_batch {
-                let hash = abstract_data.hash();
-                data_table.insert(hash.as_str(), &abstract_data)?;
+                data_table.insert(abstract_data.hash().as_str(), &abstract_data)?;
             }
             Ok(())
         };
@@ -433,24 +438,24 @@ pub fn migrate() -> Result<()> {
 
             if batch_buffer.len() >= BATCH_SIZE {
                 commit_batch(std::mem::take(&mut batch_buffer))?;
+
                 processed_count += BATCH_SIZE;
                 println!("Migrated {} / {} items...", processed_count, total_items);
             }
         }
 
-        // Process remaining items
         if !batch_buffer.is_empty() {
             let len = batch_buffer.len();
             commit_batch(batch_buffer)?;
             processed_count += len;
         }
+
         println!("Data migration completed. Total: {}", processed_count);
     }
 
-    // ==========================================
-    // 2. Migrate ALBUMS
-    // ==========================================
+    // Migrating ALBUMS
     {
+        println!("Migrating Albums...");
         let mut data_table = write_txn.open_table(DATA_TABLE)?;
 
         let total_albums = old_album_table.len()?;
@@ -460,38 +465,35 @@ pub fn migrate() -> Result<()> {
 
         for result in old_album_table.iter()? {
             let (_, value) = result?;
-            let old_album: OldAlbum = value.value();
-
-            let abstract_data = transform_album_to_abstract_data(old_album);
-            let hash = abstract_data.hash();
-            data_table.insert(hash.as_str(), &abstract_data)?;
+            let abstract_data = transform_album_to_abstract_data(value.value());
+            data_table.insert(abstract_data.hash().as_str(), &abstract_data)?;
 
             processed_count += 1;
             if processed_count % 100 == 0 {
                 println!("Migrated {} / {} albums...", processed_count, total_albums);
             }
         }
+
         println!("Album migration completed. Total: {}", processed_count);
     }
 
-    // Commit the transaction
     write_txn.commit()?;
+
     println!("Migration completed successfully.");
 
-    // Close old database before renaming
+    // Explicitly drop handles to release file locks before renaming
     drop(read_txn);
     drop(old_db);
 
-    // Rename old database to backup
     let backup_path = format!("{}.bak", OLD_DB_PATH);
     std::fs::rename(OLD_DB_PATH, &backup_path)
         .context(format!("Failed to rename old DB to {}", backup_path))?;
     println!("Old database renamed to {}", backup_path);
 
-    // Rename new database to the original path
     std::fs::rename(NEW_DB_PATH, OLD_DB_PATH)
         .context("Failed to rename new DB to original path")?;
     println!("New database moved to {}", OLD_DB_PATH);
 
+    println!("SUCCESS: Migration completed. Backup at {}", backup_path);
     Ok(())
 }
