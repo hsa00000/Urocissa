@@ -1,4 +1,4 @@
-use crate::public::config::{PUBLIC_CONFIG, PublicConfig};
+use crate::public::config::get_config;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::TagInfo;
 use crate::public::structure::album::Share;
@@ -11,10 +11,21 @@ use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicConfigResponse {
+    pub read_only_mode: bool,
+    pub disable_img: bool,
+}
+
 #[get("/get/get-config.json")]
-pub async fn get_config(auth: GuardResult<GuardShare>) -> AppResult<Json<&'static PublicConfig>> {
+pub fn get_public_config(auth: GuardResult<GuardShare>) -> AppResult<Json<PublicConfigResponse>> {
     let _ = auth?;
-    Ok(Json(&*PUBLIC_CONFIG))
+    let config = get_config();
+    Ok(Json(PublicConfigResponse {
+        read_only_mode: config.read_only_mode,
+        disable_img: config.disable_img,
+    }))
 }
 
 #[get("/get/get-tags")]

@@ -1,5 +1,4 @@
 use crate::public::structure::album::ResolvedShare;
-use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
 use jsonwebtoken::{EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -58,11 +57,18 @@ impl Claims {
     }
 
     pub fn encode(&self) -> String {
+        // For backward compatibility, get key dynamically
+        use crate::router::post::authenticate::get_jwt_secret_key;
         encode(
             &Header::default(),
             &self,
-            &EncodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+            &EncodingKey::from_secret(&get_jwt_secret_key()),
         )
         .expect("Failed to generate token")
+    }
+
+    pub fn encode_with_key(&self, key: &[u8]) -> String {
+        encode(&Header::default(), &self, &EncodingKey::from_secret(key))
+            .expect("Failed to generate token")
     }
 }

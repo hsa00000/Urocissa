@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::VALIDATION;
-use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
+use crate::router::post::authenticate::get_jwt_secret_key;
 use crate::router::{AppResult, GuardError, GuardResult};
 
 use super::VALIDATION_ALLOW_EXPIRED;
@@ -89,7 +89,7 @@ pub async fn renew_timestamp_token(
         let token = token_request.into_inner().token;
         let token_data = match decode::<ClaimsTimestamp>(
             &token,
-            &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+            &DecodingKey::from_secret(&get_jwt_secret_key()),
             &VALIDATION_ALLOW_EXPIRED,
         ) {
             Ok(data) => data,

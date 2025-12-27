@@ -1,10 +1,9 @@
+use crate::public::config::get_config;
 use crate::public::constant::runtime::INDEX_RUNTIME;
 use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
-use crate::{
-    public::config::PRIVATE_CONFIG, public::error_data::handle_error, workflow::index_for_watch,
-};
+use crate::{public::error_data::handle_error, workflow::index_for_watch};
 use anyhow::Result;
-use log::info;
+use log::{error, info};
 use mini_executor::BatchTask;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
@@ -33,26 +32,52 @@ pub struct StartWatcherTask;
 impl BatchTask for StartWatcherTask {
     fn batch_run(_: Vec<Self>) -> impl Future<Output = ()> + Send {
         async move {
-            if let Err(e) = start_watcher_task() {
+            if let Err(e) = start_watcher_task_internal() {
                 handle_error(e);
             }
         }
     }
 }
 
-fn start_watcher_task() -> Result<()> {
+/// Reload watcher with new paths from config
+pub fn reload_watcher() {
+    info!("Reloading watcher...");
+
+    // 1. 停止舊的 watcher
+    {
+        let mut guard = WATCHER_HANDLE.lock().unwrap();
+        *guard = None; // Drop old watcher
+    }
+
+    // Reset the flag so we can start again
+    IS_WATCHING.store(false, Ordering::SeqCst);
+
+    // 2. 重新啟動
+    if let Err(e) = start_watcher_task_internal() {
+        error!("Failed to reload watcher: {}", e);
+    }
+}
+
+fn start_watcher_task_internal() -> Result<()> {
     // Fast-path: already running.
     if IS_WATCHING.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
 
+    // Get paths from config system
+    let sync_paths = get_config().sync_paths;
+
     // Build the watcher.
     let mut watcher = new_watcher()?;
-    for path in &PRIVATE_CONFIG.sync_path {
-        watcher
-            .watch(path, RecursiveMode::Recursive)
-            .map_err(|e| anyhow::anyhow!("Failed to watch path {:?}: {}", path, e))?;
-        info!("Watching path {:?}", path);
+    for path in &sync_paths {
+        if path.exists() {
+            watcher
+                .watch(path, RecursiveMode::Recursive)
+                .map_err(|e| anyhow::anyhow!("Failed to watch path {:?}: {}", path, e))?;
+            info!("Watching path {:?}", path);
+        } else {
+            error!("Path not found, skipped: {:?}", path);
+        }
     }
 
     // Store it globally to keep it alive.

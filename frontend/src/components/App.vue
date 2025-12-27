@@ -17,6 +17,7 @@
     <EditBatchAlbumsModal v-if="modalStore.showBatchEditAlbumsModal" />
     <UploadModal v-if="modalStore.showUploadModal" />
     <SettingModal v-if="modalStore.showSettingModal" />
+    <ConfigModal v-if="modalStore.showConfigModal" />
   </v-app>
 </template>
 
@@ -36,6 +37,7 @@ import UploadModal from '@/components/Modal/UploadModal.vue'
 import EditAlbumsModal from '@/components/Modal/EditAlbumsModal.vue'
 import EditBatchAlbumsModal from '@/components/Modal/EditBatchAlbumsModal.vue'
 import SettingModal from '@/components/Modal/SettingModal.vue'
+import ConfigModal from '@/components/Modal/ConfigModal.vue'
 import { useModalStore } from '@/store/modalStore'
 
 const modalStore = useModalStore('mainId')

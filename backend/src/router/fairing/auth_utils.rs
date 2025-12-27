@@ -3,7 +3,7 @@ use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::{ResolvedShare, Share};
 use crate::router::claims::claims::Claims;
-use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
+use crate::router::post::authenticate::get_jwt_secret_key;
 use anyhow::Error;
 use anyhow::Result;
 use anyhow::anyhow;
@@ -49,7 +49,7 @@ pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {
 pub fn my_decode_token<T: DeserializeOwned>(token: &str, validation: &Validation) -> Result<T> {
     match decode::<T>(
         token,
-        &DecodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+        &DecodingKey::from_secret(&get_jwt_secret_key()),
         validation,
     ) {
         Ok(token_data) => Ok(token_data.claims),

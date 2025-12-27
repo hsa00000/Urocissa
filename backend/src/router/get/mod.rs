@@ -9,7 +9,7 @@ pub mod get_prefetch;
 
 pub fn generate_get_routes() -> Vec<Route> {
     routes![
-        get_list::get_config,
+        get_list::get_public_config,
         get_list::get_tags,
         get_list::get_albums,
         get_data::get_data,

@@ -12,6 +12,7 @@ mod tasks;
 mod workflow;
 
 use crate::process::initialization::initialize;
+use crate::public::config::init_config;
 use crate::public::constant::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
 use crate::public::error_data::handle_error;
 use crate::public::tui::{DASHBOARD, tui_task};
@@ -27,6 +28,7 @@ use redb::{ReadableTable, ReadableTableMetadata};
 use rocket::fs::FileServer;
 use router::fairing::cache_control_fairing::cache_control_fairing;
 use router::fairing::generate_fairing_routes;
+use router::generate_settings_routes;
 use router::{
     delete::generate_delete_routes, get::generate_get_routes, post::generate_post_routes,
     put::generate_put_routes,
@@ -43,6 +45,7 @@ async fn build_rocket() -> rocket::Rocket<rocket::Build> {
         .mount("/", generate_put_routes())
         .mount("/", generate_delete_routes())
         .mount("/", generate_fairing_routes())
+        .mount("/", generate_settings_routes())
 }
 
 fn main() -> Result<()> {
@@ -56,6 +59,7 @@ fn main() -> Result<()> {
     let worker_handle = thread::spawn(|| {
         INDEX_RUNTIME.block_on(async {
             let rx = initialize();
+            init_config();
             let start_time = Instant::now();
             let txn = TREE.in_disk.begin_write().unwrap();
             {

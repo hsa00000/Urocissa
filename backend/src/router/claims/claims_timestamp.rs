@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::public::structure::album::ResolvedShare;
-use crate::router::post::authenticate::JSON_WEB_TOKEN_SECRET_KEY;
+use crate::router::post::authenticate::get_jwt_secret_key;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +32,7 @@ impl ClaimsTimestamp {
         encode(
             &Header::default(),
             &self,
-            &EncodingKey::from_secret(&*JSON_WEB_TOKEN_SECRET_KEY),
+            &EncodingKey::from_secret(&get_jwt_secret_key()),
         )
         .expect("Failed to generate token")
     }
