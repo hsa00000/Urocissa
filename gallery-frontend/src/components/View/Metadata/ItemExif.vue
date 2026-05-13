@@ -5,26 +5,30 @@
         <v-icon>mdi-camera-iris</v-icon>
       </v-avatar>
     </template>
-    <v-list-item-title class="text-wrap">{{
-      generateExifMake(props.database.exif)
-    }}</v-list-item-title>
-    <v-list-item-subtitle class="text-wrap">
-      <v-row>
-        <v-col cols="auto">{{ formatExifData(props.database.exif).FNumber }}</v-col>
-        <v-col cols="auto">{{ formatExifData(props.database.exif).ExposureTime }}</v-col>
-        <v-col cols="auto">{{ formatExifData(props.database.exif).FocalLength }}</v-col>
-        <v-col cols="auto">{{ formatExifData(props.database.exif).PhotographicSensitivity }}</v-col>
-      </v-row>
+    <v-list-item-title :class="metadataTextClass">{{ exifMake }}</v-list-item-title>
+    <v-list-item-subtitle>
+      <div class="d-flex flex-wrap ga-2">
+        <span>{{ formattedExif.FNumber }}</span>
+        <span>{{ formattedExif.ExposureTime }}</span>
+        <span>{{ formattedExif.FocalLength }}</span>
+        <span>{{ formattedExif.PhotographicSensitivity }}</span>
+      </div>
     </v-list-item-subtitle>
   </v-list-item>
 </template>
 
 <script setup lang="ts">
-import { GalleryImage, GalleryVideo } from '@type/types'
+import { computed } from 'vue'
+import type { GalleryImage, GalleryVideo } from '@type/types'
+import { useMetadataItemLayout } from './useMetadataItemLayout'
 
 const props = defineProps<{
   database: GalleryImage | GalleryVideo
 }>()
+
+const { metadataTextClass } = useMetadataItemLayout()
+const formattedExif = computed(() => formatExifData(props.database.exif))
+const exifMake = computed(() => generateExifMake(props.database.exif))
 
 function generateExifMake(exifData: Record<string, string>): string {
   let make_formated = ''

@@ -21,7 +21,6 @@
             :index="index - 1"
             :hash="previousHash"
             :isolation-id="isolationId"
-            compact
           />
         </div>
       </swiper-slide>
@@ -34,7 +33,6 @@
             :index="index"
             :hash="hash"
             :isolation-id="isolationId"
-            compact
           />
         </div>
       </swiper-slide>
@@ -47,7 +45,6 @@
             :index="index + 1"
             :hash="nextHash"
             :isolation-id="isolationId"
-            compact
           />
         </div>
       </swiper-slide>
@@ -56,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Swiper, SwiperSlide } from 'swiper/vue'
 import { Manipulation } from 'swiper/modules'
@@ -79,24 +76,14 @@ const route = useRoute()
 const router = useRouter()
 
 const modules = [Manipulation]
-const swiperInstance = ref<SwiperType | null>(null)
+const swiperInstance = shallowRef<SwiperType | null>(null)
 
 const nextAbstractData = computed(() => dataStore.data.get(props.index + 1))
 const previousAbstractData = computed(() => dataStore.data.get(props.index - 1))
 
-const nextHash = computed(() => {
-  const nextData = nextAbstractData.value
-  if (nextData?.type === 'image' || nextData?.type === 'video') return nextData.id
-  if (nextData?.type === 'album') return nextData.id
-  return undefined
-})
+const nextHash = computed(() => nextAbstractData.value?.id)
 
-const previousHash = computed(() => {
-  const prevData = previousAbstractData.value
-  if (prevData?.type === 'image' || prevData?.type === 'video') return prevData.id
-  if (prevData?.type === 'album') return prevData.id
-  return undefined
-})
+const previousHash = computed(() => previousAbstractData.value?.id)
 
 const currentSlideIndex = computed(() => (previousHash.value !== undefined ? 1 : 0))
 
@@ -161,21 +148,17 @@ watch(
   height: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 :deep(.swiper) {
   width: 100%;
   height: 100%;
-  overflow: hidden;
 }
 
 :deep(.swiper-slide) {
   background: transparent;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
 }
 </style>

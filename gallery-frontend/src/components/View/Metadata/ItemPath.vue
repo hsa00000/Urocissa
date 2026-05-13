@@ -5,19 +5,24 @@
         <v-icon>mdi-folder</v-icon>
       </v-avatar>
     </template>
-    <v-list-item-title class="text-wrap">{{ filePath }}</v-list-item-title>
-    <v-list-item-subtitle class="text-wrap">{{ `${filePathComplete}` }}</v-list-item-subtitle>
+    <v-list-item-title :class="metadataTextClass">{{ filePath }}</v-list-item-title>
+    <v-list-item-subtitle :class="metadataTextClass">{{
+      `${filePathComplete}`
+    }}</v-list-item-subtitle>
   </v-list-item>
 </template>
 
 <script setup lang="ts">
-import { GalleryImage, GalleryVideo } from '@type/types'
+import type { GalleryImage, GalleryVideo } from '@type/types'
 import { computed } from 'vue'
 import * as upath from 'upath'
+import { useMetadataItemLayout } from './useMetadataItemLayout'
 
 const props = defineProps<{
   database: GalleryImage | GalleryVideo
 }>()
+
+const { metadataTextClass } = useMetadataItemLayout()
 
 const filePathComplete = computed(() => {
   return props.database.alias[0]?.file
