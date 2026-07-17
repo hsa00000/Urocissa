@@ -2,6 +2,7 @@ use std::{error::Error, sync::atomic::Ordering};
 
 use super::QuerySnapshot;
 use crate::public::db::{query_snapshot::Prefetch, tree::VERSION_COUNT_TIMESTAMP};
+use crate::storage::codec;
 
 use redb::{ReadableDatabase, TableDefinition};
 
@@ -18,12 +19,13 @@ impl QuerySnapshot {
 
         let count_version = VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed).to_string();
 
-        let table_definition: TableDefinition<u64, Prefetch> = TableDefinition::new(&count_version);
+        let table_definition: TableDefinition<u64, &[u8]> = TableDefinition::new(&count_version);
 
         let table = read_txn.open_table(table_definition)?;
 
-        let timestamp = table.get(query_hash)?;
-
-        Ok(timestamp.map(|inner_value| inner_value.value()))
+        let Some(value) = table.get(query_hash)? else {
+            return Ok(None);
+        };
+        Ok(Some(codec::decode(value.value())?))
     }
 }

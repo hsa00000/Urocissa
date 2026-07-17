@@ -1,5 +1,5 @@
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
-use crate::public::structure::response::reduced_data::ReducedData;
+use crate::storage::codec;
 use mini_executor::BatchTask;
 use redb::TableDefinition;
 use std::time::Instant;
@@ -41,7 +41,7 @@ fn flush_tree_snapshot_task() {
                     break;
                 }
             };
-            let table_definition: TableDefinition<u64, ReducedData> =
+            let table_definition: TableDefinition<u64, &[u8]> =
                 TableDefinition::new(&timestamp_str);
 
             {
@@ -55,7 +55,16 @@ fn flush_tree_snapshot_task() {
                     }
                 };
                 for (index, data) in entry_ref.iter().enumerate() {
-                    if let Err(e) = table.insert(index as u64, data) {
+                    let bytes = match codec::encode(data) {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            handle_error(anyhow::anyhow!(
+                                "FlushTreeSnapshotTask: Failed to encode data at index {index} for timestamp {timestamp}: {e}"
+                            ));
+                            continue;
+                        }
+                    };
+                    if let Err(e) = table.insert(index as u64, bytes.as_slice()) {
                         handle_error(anyhow::anyhow!(
                             "FlushTreeSnapshotTask: Failed to insert data at index {index} for timestamp {timestamp}: {e}"
                         ));

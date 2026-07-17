@@ -1,5 +1,4 @@
 // src/router/fairing/auth_utils.rs
-use crate::public::constant::redb::DATA_TABLE;
 use crate::public::db::tree::TREE;
 use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::abstract_data::AbstractData;
@@ -11,7 +10,6 @@ use arrayvec::ArrayString;
 use chrono::Utc;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use log::info;
-use redb::ReadableDatabase;
 use rocket::Request;
 use serde::de::DeserializeOwned;
 
@@ -136,29 +134,23 @@ fn resolve_share_internal(
     share_id: &str,
     req: &Request<'_>,
 ) -> Result<Option<Claims>, AppError> {
-    let read_txn = TREE.in_disk.begin_read().map_err(|e| {
-        AppError::from_err(ErrorKind::Database, e.into())
-            .context("Failed to begin read transaction")
+    let table = TREE.store.reader().map_err(|e| {
+        AppError::from_err(ErrorKind::Database, e).context("Failed to open data table")
     })?;
 
-    let table = read_txn.open_table(DATA_TABLE).map_err(|e| {
-        AppError::from_err(ErrorKind::Database, e.into()).context("Failed to open data table")
-    })?;
-
-    let data_guard = table
+    let abstract_data = table
         .get(album_id)
         .map_err(|e| {
-            AppError::from_err(ErrorKind::Database, e.into())
-                .context("Failed to get data from table")
+            AppError::from_err(ErrorKind::Database, e).context("Failed to get data from table")
         })?
         .ok_or_else(|| {
             AppError::new(
                 ErrorKind::NotFound,
                 format!("Album not found for id '{album_id}'"),
             )
-        })?;
+        })?
+        .value();
 
-    let abstract_data = data_guard.value();
     let AbstractData::Album(mut album) = abstract_data else {
         return Err(AppError::new(
             ErrorKind::InvalidInput,
@@ -224,8 +216,7 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>,
 pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
     if let Some(album_id) = req.headers().get_one("x-album-id")
         && let Some(share_id) = req.headers().get_one("x-share-id")
-        && let Ok(read_txn) = TREE.in_disk.begin_read()
-        && let Ok(table) = read_txn.open_table(DATA_TABLE)
+        && let Ok(table) = TREE.store.reader()
         && let Ok(Some(data_guard)) = table.get(album_id)
         && let AbstractData::Album(mut album) = data_guard.value()
         && let Some(share) = album.metadata.share_list.remove(share_id)

@@ -1,13 +1,12 @@
 #![allow(clippy::struct_excessive_bools)]
 use arrayvec::ArrayString;
-use bitcode::{Decode, Encode};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ObjectType {
     Image,
@@ -38,7 +37,7 @@ impl FromStr for ObjectType {
 }
 
 /// Common object schema shared between Image, Video, and Album
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectSchema {
     pub id: ArrayString<64>,

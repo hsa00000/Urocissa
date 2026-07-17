@@ -28,7 +28,7 @@ use std::mem;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Decode, Encode)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Encode, Decode)]
 #[serde(rename_all = "camelCase")]
 pub struct Prefetch {
     pub timestamp: i64,
@@ -46,7 +46,7 @@ impl Prefetch {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Decode, Encode)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrefetchReturn {
     pub prefetch: Prefetch,

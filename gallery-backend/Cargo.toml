@@ -24,7 +24,7 @@ lto = false
 anyhow = "1.0.102"
 arrayvec = { version = "0.7.6", features = ["serde"] }
 atomic_float = "1.1.0"
-bitcode = { version = "0.6.9", features = ["arrayvec"] }
+bitcode = { version = "=0.6.9", features = ["arrayvec"] }
 blake3 = "1.8.5"
 bytesize = "2.3.1"
 chrono = "0.4.44"
@@ -49,7 +49,6 @@ path-clean = "1.0.1"
 rand = "0.10.1"
 rayon = "1.12.0"
 redb = "4.1"
-redb-old = { package = "redb", version = "2.6.3" }
 regex = "1.12.3"
 reqwest = { version = "0.13.3", default-features = false, features = [
     "json",
@@ -78,6 +77,9 @@ webbrowser = { version = "1.2.1", optional = true }
 rust-embed = "8.11.0"
 mime_guess = "2.0.5"
 ubyte = "0.10.4"
+
+[dev-dependencies]
+tempfile = "3.23.0"
 
 [features]
 embed-frontend = []

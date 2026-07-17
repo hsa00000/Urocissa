@@ -1,12 +1,11 @@
 use arrayvec::ArrayString;
-use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::share::Share;
 
 /// Album-specific metadata
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumMetadata {
     pub id: ArrayString<64>,

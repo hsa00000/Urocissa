@@ -4,9 +4,9 @@ use crate::public::{
         abstract_data::AbstractData, response::database_timestamp::DataBaseTimestampReturn,
     },
 };
+use crate::storage::store::RecordReader;
 use anyhow::Result;
 use arrayvec::ArrayString;
-use redb::ReadOnlyTable;
 
 pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
     if index >= tree_snapshot.len() {
@@ -17,10 +17,10 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
 }
 
 pub fn hash_to_abstract_data(
-    data_table: &ReadOnlyTable<&'static str, AbstractData>,
+    data_table: &RecordReader,
     hash: ArrayString<64>,
 ) -> Result<AbstractData> {
-    if let Some(data) = data_table.get(&*hash)? {
+    if let Some(data) = data_table.get(hash.as_str())? {
         Ok(data.value())
     } else {
         Err(anyhow::anyhow!("No data found for hash: {hash}"))

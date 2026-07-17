@@ -1,12 +1,11 @@
 use arrayvec::ArrayString;
-use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
 use crate::public::structure::common::FileModify;
 
 /// Video-specific metadata
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoMetadata {
     pub id: ArrayString<64>,

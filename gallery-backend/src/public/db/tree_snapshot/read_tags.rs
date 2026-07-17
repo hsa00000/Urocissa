@@ -3,7 +3,6 @@ use crate::{operations::open_db::open_data_table, public::db::tree::read_tags::T
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
-use redb::ReadableTable;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 impl TreeSnapshot {
@@ -11,13 +10,13 @@ impl TreeSnapshot {
         // Concurrent counter for each tag
         let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
-        // Begin read‑only transaction and open the DATA_TABLE
+        // Open the durable records table through the storage repository.
         let data_table = open_data_table();
 
         // Walk the table in parallel; stop on first error
         data_table
             .iter()
-            .context("Create iterator over DATA_TABLE failed")?
+            .context("Create iterator over records table failed")?
             .par_bridge()
             .try_for_each(|entry| -> Result<()> {
                 let (_, data) = entry.context("Read table row failed")?;

@@ -1,6 +1,4 @@
-use crate::public::{
-    db::tree_snapshot::TREE_SNAPSHOT, structure::response::reduced_data::ReducedData,
-};
+use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use anyhow::Result;
 use mini_executor::Task;
 use redb::TableDefinition;
@@ -29,7 +27,7 @@ impl Task for RemoveTask {
 fn remove_task(timestamp: i64) {
     let write_txn = TREE_SNAPSHOT.in_disk.begin_write().unwrap();
     let binding = timestamp.to_string();
-    let table_definition: TableDefinition<u64, ReducedData> = TableDefinition::new(&binding);
+    let table_definition: TableDefinition<u64, &[u8]> = TableDefinition::new(&binding);
 
     match write_txn.delete_table(table_definition) {
         Ok(true) => {

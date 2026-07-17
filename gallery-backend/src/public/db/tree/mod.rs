@@ -2,10 +2,11 @@ pub mod new;
 pub mod read_tags;
 
 use crate::public::structure::response::database_timestamp::DatabaseTimestamp;
+use crate::storage::DataStore;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicI64};
 
 pub struct Tree {
-    pub in_disk: &'static redb::Database,
+    pub store: &'static DataStore,
     pub in_memory: &'static Arc<RwLock<Vec<DatabaseTimestamp>>>,
 }
 

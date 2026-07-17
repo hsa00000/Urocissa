@@ -1,15 +1,14 @@
 #![allow(clippy::struct_field_names)]
-use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Encode, Decode)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DisplayElement {
     pub display_width: u32,
     pub display_height: u32,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Encode, Decode)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Row {
     pub start: usize,

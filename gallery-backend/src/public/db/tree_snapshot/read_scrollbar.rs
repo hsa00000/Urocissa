@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use super::TreeSnapshot;
+use crate::storage::codec;
 use crate::{
     public::db::tree_snapshot::read_tree_snapshot::MyCow,
     public::structure::response::row::ScrollBarData,
@@ -43,7 +44,11 @@ impl TreeSnapshot {
                     .enumerate()
                     .for_each(|(index, result)| {
                         let (_key, value) = result.unwrap();
-                        let data = value.value();
+                        let Ok(data) = codec::decode::<
+                            crate::public::structure::response::reduced_data::ReducedData,
+                        >(value.value()) else {
+                            return;
+                        };
                         let datetime = Utc.timestamp_millis_opt(data.date).unwrap();
                         let year = datetime.year();
                         let month = datetime.month();

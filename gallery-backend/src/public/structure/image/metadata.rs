@@ -1,12 +1,11 @@
 use arrayvec::ArrayString;
-use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
 use crate::public::structure::common::FileModify;
 
 /// Image-specific metadata
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageMetadata {
     pub id: ArrayString<64>,

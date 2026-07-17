@@ -4,7 +4,6 @@ use crate::router::{AppResult, GuardResult};
 use crate::{
     public::structure::abstract_data::AbstractData, router::fairing::guard_auth::GuardAuth,
 };
-use redb::ReadableTable;
 use rocket::get;
 use rocket::response::stream::ByteStream;
 use serde::Serialize;

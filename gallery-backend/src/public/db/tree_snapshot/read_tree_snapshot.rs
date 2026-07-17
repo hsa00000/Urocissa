@@ -1,5 +1,6 @@
 use super::TreeSnapshot;
 use crate::public::structure::response::reduced_data::ReducedData;
+use crate::storage::codec;
 use anyhow::Context;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -15,7 +16,7 @@ impl TreeSnapshot {
         let read_txn = self.in_disk.begin_read()?;
 
         let binding = timestamp.to_string();
-        let table_definition: TableDefinition<u64, ReducedData> = TableDefinition::new(&binding);
+        let table_definition: TableDefinition<u64, &[u8]> = TableDefinition::new(&binding);
 
         let table = read_txn.open_table(table_definition)?;
         Ok(MyCow::Redb(table))
@@ -25,7 +26,7 @@ impl TreeSnapshot {
 #[derive(Debug)]
 pub enum MyCow {
     DashMap(Ref<'static, i64, Vec<ReducedData>>),
-    Redb(ReadOnlyTable<u64, ReducedData>),
+    Redb(ReadOnlyTable<u64, &'static [u8]>),
 }
 
 impl MyCow {
@@ -44,12 +45,10 @@ impl MyCow {
                 Ok((data.width, data.height))
             }
             MyCow::Redb(table) => {
-                let data = &table
-                    .get(index as u64)?
-                    .context(format!(
-                        "Fail to find with and height in tree snapshots for index {index}"
-                    ))?
-                    .value();
+                let guard = table.get(index as u64)?.context(format!(
+                    "Fail to find with and height in tree snapshots for index {index}"
+                ))?;
+                let data: ReducedData = codec::decode(guard.value())?;
 
                 Ok((data.width, data.height))
             }
@@ -63,12 +62,10 @@ impl MyCow {
                 Ok(data.hash)
             }
             MyCow::Redb(table) => {
-                let data = table
-                    .get(index as u64)?
-                    .context(format!(
-                        "Fail to find hash in tree snapshots for index {index}"
-                    ))?
-                    .value();
+                let guard = table.get(index as u64)?.context(format!(
+                    "Fail to find hash in tree snapshots for index {index}"
+                ))?;
+                let data: ReducedData = codec::decode(guard.value())?;
                 Ok(data.hash)
             }
         }

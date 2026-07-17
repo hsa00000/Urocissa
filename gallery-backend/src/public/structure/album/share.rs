@@ -1,8 +1,7 @@
 use arrayvec::ArrayString;
-use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Share {
     pub url: ArrayString<64>,
@@ -14,7 +13,7 @@ pub struct Share {
     pub exp: i64,
 }
 
-#[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedShare {
     pub share: Share,

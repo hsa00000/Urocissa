@@ -7,7 +7,6 @@ use chrono::Utc;
 use mini_executor::BatchTask;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use rayon::prelude::ParallelSliceMut;
-use redb::ReadableTable;
 use std::collections::HashSet;
 use std::sync::LazyLock;
 use std::time::Instant;

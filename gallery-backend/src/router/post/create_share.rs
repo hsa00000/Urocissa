@@ -5,12 +5,11 @@ use crate::public::structure::album::Share;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::{public::constant::redb::DATA_TABLE, router::GuardResult};
+use crate::{router::GuardResult, storage::store::RecordWriter};
 
 use arrayvec::ArrayString;
 use rand::RngExt;
 use rand::distr::Alphanumeric;
-use redb::{ReadableTable, WriteTransaction};
 use rocket::post;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -37,31 +36,19 @@ pub async fn create_share(
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let create_share = create_share.into_inner();
-        let txn = TREE
-            .in_disk
-            .begin_write()
-            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        match create_and_insert_share(&txn, create_share) {
-            Ok(link) => {
-                txn.commit()
-                    .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-                Ok(link)
-            }
-            Err(err) => Err(err),
-        }
+        TREE.store
+            .write(|data_table| create_and_insert_share(data_table, create_share))
     })
     .await
     .map_err(|e| AppError::from_err(ErrorKind::Internal, e.into()))?
 }
 
-fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) -> AppResult<String> {
-    let mut data_table = txn
-        .open_table(DATA_TABLE)
-        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-
+fn create_and_insert_share(
+    data_table: &mut RecordWriter<'_>,
+    create_share: CreateShare,
+) -> AppResult<String> {
     let album_opt = data_table
-        .get(&*create_share.album_id)
-        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
+        .get(create_share.album_id.as_str())?
         .and_then(|guard| {
             let abstract_data = guard.value();
             match abstract_data {
@@ -90,9 +77,7 @@ fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) ->
                 exp: create_share.exp,
             };
             album.metadata.share_list.insert(share_id, share);
-            data_table
-                .insert(&*create_share.album_id, AbstractData::Album(album))
-                .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+            data_table.insert_at(create_share.album_id.as_str(), &AbstractData::Album(album))?;
             Ok(link)
         }
         None => Err(AppError::new(ErrorKind::NotFound, "Album not found")),

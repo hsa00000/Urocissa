@@ -3352,15 +3352,6 @@ dependencies = [
 
 [[package]]
 name = "redb"
-version = "2.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8eca1e9d98d5a7e9002d0013e18d5a9b000aee942eb134883a82f06ebffb6c01"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "redb"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e925444704b5f17d32bf42f5b6e2df050bceebc3dcd6e71cc73dafe8092e839"
@@ -4826,8 +4817,7 @@ dependencies = [
  "path-clean",
  "rand 0.10.1",
  "rayon",
- "redb 2.6.3",
- "redb 4.1.0",
+ "redb",
  "regex",
  "reqwest",
  "rocket",
@@ -4836,6 +4826,7 @@ dependencies = [
  "serde",
  "serde_json",
  "superconsole",
+ "tempfile",
  "terminal_size",
  "thumbhash",
  "tokio",

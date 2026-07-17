@@ -1,3 +1,4 @@
+use crate::storage::store::RecordReader;
 use crate::{
     operations::transitor::{hash_to_abstract_data, index_to_hash},
     public::{
@@ -5,11 +6,10 @@ use crate::{
     },
 };
 use anyhow::{Result, anyhow};
-use redb::ReadOnlyTable;
 
 pub fn index_to_abstract_data(
     tree_snapshot: &MyCow,
-    data_table: &ReadOnlyTable<&'static str, AbstractData>,
+    data_table: &RecordReader,
     index: usize,
 ) -> Result<AbstractData> {
     let hash = index_to_hash(tree_snapshot, index)

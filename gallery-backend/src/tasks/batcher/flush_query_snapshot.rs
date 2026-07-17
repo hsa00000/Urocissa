@@ -1,6 +1,6 @@
 use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
-use crate::router::get::get_prefetch::Prefetch;
+use crate::storage::codec;
 
 use mini_executor::BatchTask;
 use redb::TableDefinition;
@@ -46,8 +46,7 @@ fn flush_query_snapshot_task() {
                 }
             };
             let count_version = &VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed).to_string();
-            let table_definition: TableDefinition<u64, Prefetch> =
-                TableDefinition::new(count_version);
+            let table_definition: TableDefinition<u64, &[u8]> = TableDefinition::new(count_version);
 
             {
                 let mut table = match txn.open_table(table_definition) {
@@ -59,7 +58,16 @@ fn flush_query_snapshot_task() {
                         break;
                     }
                 };
-                if let Err(e) = table.insert(expression_hashed, ref_data) {
+                let bytes = match codec::encode(ref_data) {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        handle_error(anyhow::anyhow!(
+                            "FlushQuerySnapshotTask: Failed to encode data for expression_hashed {expression_hashed}: {e}"
+                        ));
+                        break;
+                    }
+                };
+                if let Err(e) = table.insert(expression_hashed, bytes.as_slice()) {
                     handle_error(anyhow::anyhow!(
                         "FlushQuerySnapshotTask: Failed to insert data for expression_hashed {expression_hashed}: {e}"
                     ));

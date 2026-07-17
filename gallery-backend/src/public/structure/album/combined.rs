@@ -1,5 +1,4 @@
 use arrayvec::ArrayString;
-use bitcode::{Decode, Encode};
 use chrono::Utc;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -10,7 +9,7 @@ use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::object::ObjectSchema;
 
 /// Combined Album data with Object and Metadata
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumCombined {
     #[serde(flatten)]

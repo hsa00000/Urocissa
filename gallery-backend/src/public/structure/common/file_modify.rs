@@ -1,10 +1,9 @@
-use bitcode::{Decode, Encode};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use std::{cmp::Ordering, path::Path};
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, Decode, Encode)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileModify {
     pub file: String,

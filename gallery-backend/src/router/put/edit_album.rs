@@ -1,6 +1,5 @@
 use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
 use crate::process::transitor::index_to_abstract_data;
-use crate::public::constant::redb::DATA_TABLE;
 use crate::public::db::tree::TREE;
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::abstract_data::AbstractData;
@@ -15,7 +14,6 @@ use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use futures::{StreamExt, TryStreamExt, stream};
-use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
 use std::collections::HashSet;
@@ -139,18 +137,9 @@ pub async fn set_album_cover(
         let album_id = set_album_cover_inner.album_id;
         let cover_hash = set_album_cover_inner.cover_hash;
 
-        let txn = TREE
-            .in_disk
-            .begin_write()
-            .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
-        {
-            let mut data_table = txn
-                .open_table(DATA_TABLE)
-                .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
-
+        TREE.store.write(|data_table| {
             let album = data_table
-                .get(&*album_id)
-                .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
+                .get(album_id.as_str())?
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?
                 .value();
             let AbstractData::Album(mut album) = album else {
@@ -160,18 +149,14 @@ pub async fn set_album_cover(
                 ));
             };
             let database = data_table
-                .get(&*cover_hash)
-                .or_raise(|| (ErrorKind::Database, "Failed to get cover image"))?
+                .get(cover_hash.as_str())?
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Cover image not found"))?
                 .value();
 
             album.set_cover(&database);
-            data_table
-                .insert(&*album_id, AbstractData::Album(album))
-                .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
-        }
-        txn.commit()
-            .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+            data_table.insert_at(album_id.as_str(), &AbstractData::Album(album))?;
+            Ok::<(), AppError>(())
+        })?;
         Ok(())
     })
     .await
@@ -206,18 +191,9 @@ pub async fn set_album_title(
         let set_album_title_inner = set_album_title.into_inner();
         let album_id = set_album_title_inner.album_id;
 
-        let txn = TREE
-            .in_disk
-            .begin_write()
-            .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
-        {
-            let mut data_table = txn
-                .open_table(DATA_TABLE)
-                .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
-
+        TREE.store.write(|data_table| {
             let album = data_table
-                .get(&*album_id)
-                .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
+                .get(album_id.as_str())?
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?
                 .value();
             let AbstractData::Album(mut album) = album else {
@@ -228,12 +204,9 @@ pub async fn set_album_title(
             };
 
             album.metadata.title = set_album_title_inner.title;
-            data_table
-                .insert(&*album_id, AbstractData::Album(album))
-                .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
-        }
-        txn.commit()
-            .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+            data_table.insert_at(album_id.as_str(), &AbstractData::Album(album))?;
+            Ok::<(), AppError>(())
+        })?;
         Ok(())
     })
     .await

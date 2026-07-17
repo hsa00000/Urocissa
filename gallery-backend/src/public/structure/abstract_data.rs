@@ -7,7 +7,6 @@ use std::time::UNIX_EPOCH;
 
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
-use bitcode::{Decode, Encode};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use rand::RngExt;
 use regex::Regex;
@@ -29,7 +28,7 @@ use super::{
 };
 
 /// `AbstractData` enum with Image, Video, and Album variants
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AbstractData {
     Image(ImageCombined),

@@ -2,15 +2,14 @@ use crate::public::db::tree::TREE;
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Share;
+use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::{public::constant::redb::DATA_TABLE, router::AppResult};
 
 use arrayvec::ArrayString;
-use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,38 +27,20 @@ pub async fn edit_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-        let txn = TREE
-            .in_disk
-            .begin_write()
-            .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
-        {
-            let mut data_table = txn
-                .open_table(DATA_TABLE)
-                .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
-
+        TREE.store.write(|data_table| {
             let album_opt = data_table
-                .get(json_data.album_id.as_str())
-                .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
-                .and_then(|guard| {
-                    let abstract_data = guard.value();
-                    match abstract_data {
-                        AbstractData::Album(album) => Some(album),
-                        _ => None,
-                    }
-                });
+                .get(json_data.album_id.as_str())?
+                .map(|guard| guard.value());
 
-            if let Some(mut album) = album_opt {
+            if let Some(AbstractData::Album(mut album)) = album_opt {
                 album
                     .metadata
                     .share_list
                     .insert(json_data.share.url, json_data.share.clone());
-                data_table
-                    .insert(json_data.album_id.as_str(), AbstractData::Album(album))
-                    .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
+                data_table.insert_at(json_data.album_id.as_str(), &AbstractData::Album(album))?;
             }
-        }
-        txn.commit()
-            .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+            Ok::<(), AppError>(())
+        })?;
         Ok(())
     })
     .await
@@ -87,35 +68,17 @@ pub async fn delete_share(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-        let txn = TREE
-            .in_disk
-            .begin_write()
-            .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
-        {
-            let mut data_table = txn
-                .open_table(DATA_TABLE)
-                .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
-
+        TREE.store.write(|data_table| {
             let album_opt = data_table
-                .get(json_data.album_id.as_str())
-                .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
-                .and_then(|guard| {
-                    let abstract_data = guard.value();
-                    match abstract_data {
-                        AbstractData::Album(album) => Some(album),
-                        _ => None,
-                    }
-                });
+                .get(json_data.album_id.as_str())?
+                .map(|guard| guard.value());
 
-            if let Some(mut album) = album_opt {
+            if let Some(AbstractData::Album(mut album)) = album_opt {
                 album.metadata.share_list.remove(&json_data.share_id);
-                data_table
-                    .insert(json_data.album_id.as_str(), AbstractData::Album(album))
-                    .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
+                data_table.insert_at(json_data.album_id.as_str(), &AbstractData::Album(album))?;
             }
-        }
-        txn.commit()
-            .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+            Ok::<(), AppError>(())
+        })?;
         Ok(())
     })
     .await

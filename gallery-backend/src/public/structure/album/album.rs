@@ -2,7 +2,6 @@ use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 
 use arrayvec::ArrayString;
-use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 use super::combined::AlbumCombined;
@@ -11,7 +10,7 @@ use super::share::Share;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::object::{ObjectSchema, ObjectType};
 
-#[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Album {
     pub id: ArrayString<64>,

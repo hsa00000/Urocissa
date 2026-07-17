@@ -1,7 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{
-    public::constant::redb::DATA_TABLE,
     public::error::{AppError, ErrorKind, ResultExt}, // Import AppError stuff
     public::structure::{abstract_data::AbstractData, album::AlbumCombined},
 };
@@ -9,7 +8,6 @@ use anyhow::Result; // Use standard Result or alias? Standard Result<T, E> is fi
 // But we want to return Result<Vec<...>, AppError>
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
-use redb::{ReadableDatabase, ReadableTable};
 use serde::{Deserialize, Serialize};
 
 use super::Tree;
@@ -54,16 +52,16 @@ impl Tree {
     }
 
     pub fn read_albums(&self) -> Result<Vec<AlbumCombined>, AppError> {
-        self.in_disk
-            .begin_read()
-            .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?
-            .open_table(DATA_TABLE)
-            .or_raise(|| (ErrorKind::Database, "Failed to open DATA_TABLE"))?
+        let data_table = self
+            .store
+            .reader()
+            .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?;
+        data_table
             .iter()
             .or_raise(|| {
                 (
                     ErrorKind::Database,
-                    "Failed to create iterator over DATA_TABLE",
+                    "Failed to create iterator over records table",
                 )
             })?
             .par_bridge()

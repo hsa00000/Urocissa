@@ -2,7 +2,6 @@ use anyhow::Result;
 // use anyhow::anyhow;
 use arrayvec::ArrayString;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use redb::ReadOnlyTable;
 use rocket::post;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -21,6 +20,7 @@ use crate::public::structure::album::Album;
 use crate::router::AppResult;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::storage::store::RecordReader;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -120,7 +120,7 @@ async fn create_album_elements(
 
 pub fn index_edit_album_insert(
     tree_snapshot: &MyCow,
-    data_table: &ReadOnlyTable<&'static str, AbstractData>,
+    data_table: &RecordReader,
     index: usize,
     album_id: ArrayString<64>,
 ) -> Result<AbstractData, AppError> {

@@ -1,6 +1,6 @@
 use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
-use crate::router::get::get_prefetch::Prefetch;
+use crate::storage::codec;
 use crate::{public::db::expire::EXPIRE, tasks::INDEX_COORDINATOR};
 
 use crate::tasks::actor::remove_tree_snapshot::RemoveTask;
@@ -35,8 +35,7 @@ fn expire_check_task() {
                 && EXPIRE.expired_check(timestamp)
             {
                 let binding = timestamp.to_string();
-                let table_definition: TableDefinition<u64, Prefetch> =
-                    TableDefinition::new(&binding);
+                let table_definition: TableDefinition<u64, &[u8]> = TableDefinition::new(&binding);
 
                 let read_txn = QUERY_SNAPSHOT.in_disk.begin_read().unwrap();
                 let table = read_txn.open_table(table_definition).unwrap();
@@ -48,10 +47,23 @@ fn expire_check_task() {
                             .iter()
                             .unwrap()
                             .par_bridge()
-                            .map(|result| {
-                                let (_, guard) = result.unwrap();
-                                let prefetch_return = guard.value();
-                                prefetch_return.timestamp
+                            .filter_map(|result| {
+                                let (_, guard) = match result {
+                                    Ok(value) => value,
+                                    Err(err) => {
+                                        error!("Failed to read query cache entry: {err}");
+                                        return None;
+                                    }
+                                };
+                                match codec::decode::<crate::router::get::get_prefetch::Prefetch>(
+                                    guard.value(),
+                                ) {
+                                    Ok(prefetch) => Some(prefetch.timestamp),
+                                    Err(err) => {
+                                        error!("Failed to decode query cache entry: {err}");
+                                        None
+                                    }
+                                }
                             })
                             .collect();
 

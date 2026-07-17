@@ -1,7 +1,8 @@
 use mini_executor::BatchTask;
 
+use crate::public::error_data::handle_error;
 use crate::{
-    public::{constant::redb::DATA_TABLE, db::tree::TREE, structure::abstract_data::AbstractData},
+    public::{db::tree::TREE, structure::abstract_data::AbstractData},
     tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
 
@@ -39,19 +40,18 @@ impl BatchTask for FlushTreeTask {
 }
 
 fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
-    let write_txn = TREE.in_disk.begin_write().unwrap();
-    {
-        let mut data_table = write_txn.open_table(DATA_TABLE).unwrap();
-
+    if let Err(error) = TREE.store.write(|data_table| {
         for abstract_data in insert_list {
-            let hash = abstract_data.hash();
-            data_table.insert(&*hash, abstract_data).unwrap();
+            data_table.insert(abstract_data)?;
         }
         for abstract_data in remove_list {
             let hash = abstract_data.hash();
-            data_table.remove(&*hash).unwrap();
+            data_table.remove(hash.as_str())?;
         }
-    };
-    write_txn.commit().unwrap();
+        Ok(())
+    }) {
+        handle_error(error);
+        return;
+    }
     BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
 }
