@@ -6,7 +6,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use redb::{Durability, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition};
+use redb::{
+    Database, DatabaseError, Durability, ReadOnlyDatabase, ReadableDatabase, ReadableTable,
+    ReadableTableMetadata, TableDefinition,
+};
 
 use super::{legacy_v5::LegacyAbstractData, store::DataStore, v6::V6AbstractData};
 use crate::public::constant::storage::get_data_path;
@@ -60,12 +63,21 @@ fn prepare_storage_at(db_dir: &Path) -> Result<()> {
 }
 
 fn migrate_v5(source_path: &Path, migrating_path: &Path, current_path: &Path) -> Result<()> {
-    let result = (|| {
-        let old_db = redb::Database::builder()
-            .open_read_only(source_path)
-            .with_context(|| format!("failed to open V5 database {}", source_path.display()))?;
-        migrate_v5_from_database(&old_db, migrating_path, current_path)
-    })();
+    let result = match ReadOnlyDatabase::open(source_path) {
+        Ok(old_db) => migrate_v5_from_database(&old_db, migrating_path, current_path),
+        Err(DatabaseError::RepairAborted) => {
+            warn!("V5 database requires repair; repairing index_v5.redb in place");
+            let repaired_db = Database::open(source_path).with_context(|| {
+                format!(
+                    "failed to repair V5 database in place {}",
+                    source_path.display()
+                )
+            })?;
+            migrate_v5_from_database(&repaired_db, migrating_path, current_path)
+        }
+        Err(error) => Err(error)
+            .with_context(|| format!("failed to open V5 database {}", source_path.display())),
+    };
 
     if result.is_err()
         && migrating_path.exists()
@@ -179,10 +191,14 @@ fn remove_file(path: &Path, description: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashSet};
+    use std::{
+        collections::{BTreeMap, HashSet},
+        env,
+        process::Command,
+    };
 
     use arrayvec::ArrayString;
-    use redb::Database;
+    use redb::{Database, Durability};
     use tempfile::tempdir;
 
     use super::*;
@@ -323,6 +339,63 @@ mod tests {
 
         let store = DataStore::open(&path)?;
         assert!(store.read(|reader| reader.len()).is_err());
+        Ok(())
+    }
+    const UNCLEAN_V5_FIXTURE_PATH_ENV: &str = "UROCISSA_TEST_UNCLEAN_V5_PATH";
+
+    #[test]
+    fn repairs_unclean_v5_in_place_before_migrating() -> Result<()> {
+        if let Some(path) = env::var_os(UNCLEAN_V5_FIXTURE_PATH_ENV) {
+            let (id, value) = legacy_image_fixture();
+            let database = Database::create(Path::new(&path))?;
+            let transaction = database.begin_write()?;
+            {
+                let mut table = transaction
+                    .open_table(TableDefinition::<&str, LegacyAbstractData>::new(
+                        LEGACY_TABLE_NAME,
+                    ))?;
+                table.insert(id.as_str(), value)?;
+            }
+            transaction.commit()?;
+
+            let mut dirty_transaction = database.begin_write()?;
+            dirty_transaction.set_durability(Durability::None)?;
+            {
+                let mut table = dirty_transaction
+                    .open_table(TableDefinition::<&str, &str>::new("dirty-marker"))?;
+                table.insert("marker", "unclean")?;
+            }
+            dirty_transaction.commit()?;
+            std::process::exit(0);
+        }
+
+        let directory = tempdir()?;
+        let source = directory.path().join(V5_DB_NAME);
+        let status = Command::new(env::current_exe()?)
+            .arg("--exact")
+            .arg("storage::migration::tests::repairs_unclean_v5_in_place_before_migrating")
+            .arg("--nocapture")
+            .env(UNCLEAN_V5_FIXTURE_PATH_ENV, &source)
+            .status()?;
+        assert!(status.success());
+
+        assert!(matches!(
+            ReadOnlyDatabase::open(&source),
+            Err(DatabaseError::RepairAborted)
+        ));
+
+        prepare_storage_at(directory.path())?;
+
+        assert!(source.exists());
+        assert!(!directory.path().join(MIGRATING_DB_NAME).exists());
+        assert!(ReadOnlyDatabase::open(&source).is_ok());
+        let (id, _) = legacy_image_fixture();
+        let store = DataStore::open(&directory.path().join(V6_DB_NAME))?;
+        let value = store
+            .read(|reader| reader.get(id.as_str()))?
+            .expect("migrated image")
+            .value();
+        assert_eq!(value.hash(), id);
         Ok(())
     }
 }
