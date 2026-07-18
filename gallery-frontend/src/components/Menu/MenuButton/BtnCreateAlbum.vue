@@ -1,5 +1,10 @@
 <template>
-  <v-btn icon="mdi-book-plus" :loading="loading" @click="createEmptyAlbumWithLoading()" />
+  <v-btn
+    icon="mdi-book-plus"
+    aria-label="Create album"
+    :loading="loading"
+    @click="createEmptyAlbumWithLoading()"
+  />
 </template>
 
 <script setup lang="ts">

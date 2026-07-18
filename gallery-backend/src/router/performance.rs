@@ -10,6 +10,7 @@ mod enabled {
     };
     use crate::public::error::{AppError, ErrorKind};
     use crate::public::structure::abstract_data::AbstractData;
+    use crate::public::structure::album::share::Share;
     use crate::router::AppResult;
     use crate::tasks::batcher::update_tree::update_tree_task;
     use rocket::Request;
@@ -92,8 +93,60 @@ mod enabled {
         pub database_bytes: u64,
     }
 
+    #[derive(Debug, Clone, Deserialize, Default)]
+    #[serde(crate = "rocket::serde", rename_all = "camelCase")]
+    pub struct AuditRequest {
+        pub item_id: Option<String>,
+        pub album_id: Option<String>,
+        pub marker_tag: Option<String>,
+        pub share_id: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[serde(crate = "rocket::serde", rename_all = "camelCase")]
+    pub struct AuditItemSummary {
+        pub id: String,
+        pub description: Option<String>,
+        pub tags: Vec<String>,
+        pub albums: Vec<String>,
+        pub is_favorite: bool,
+        pub is_archived: bool,
+        pub is_trashed: bool,
+    }
+
+    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[serde(crate = "rocket::serde", rename_all = "camelCase")]
+    pub struct AuditAlbumSummary {
+        pub id: String,
+        pub title: Option<String>,
+        pub cover: Option<String>,
+        pub item_count: usize,
+        pub scanned_member_count: usize,
+        pub share_count: usize,
+        pub share: Option<Share>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Default, PartialEq, Eq)]
+    #[serde(crate = "rocket::serde", rename_all = "camelCase")]
+    pub struct AuditMarkerSummary {
+        pub total: usize,
+        pub favorite: usize,
+        pub archived: usize,
+        pub trashed: usize,
+        pub album_members: usize,
+    }
+
+    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[serde(crate = "rocket::serde", rename_all = "camelCase")]
+    pub struct AuditSummary {
+        pub disk_count: usize,
+        pub item: Option<AuditItemSummary>,
+        pub album: Option<AuditAlbumSummary>,
+        pub marker: AuditMarkerSummary,
+    }
+
     pub fn routes() -> Vec<Route> {
-        routes![fixture, delete_fixture, status, phase, barrier]
+        routes![fixture, delete_fixture, status, phase, barrier, audit]
     }
 
     #[post("/__perf/fixture", format = "json", data = "<request>")]
@@ -169,6 +222,19 @@ mod enabled {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
+    }
+
+    #[post("/__perf/audit", format = "json", data = "<request>")]
+    pub async fn audit(
+        _token: PerfToken,
+        request: Json<AuditRequest>,
+    ) -> AppResult<Json<AuditSummary>> {
+        ensure_perf_root()?;
+        let request = request.into_inner();
+        let result = tokio::task::spawn_blocking(move || audit_sync(&request))
+            .await
+            .map_err(|error| AppError::new(ErrorKind::Internal, error.to_string()))??;
+        Ok(Json(result))
     }
 
     fn create_fixture(request: FixtureRequest) -> Result<FixtureSummary, AppError> {
@@ -302,6 +368,108 @@ mod enabled {
         }
     }
 
+    fn audit_sync(request: &AuditRequest) -> Result<AuditSummary, AppError> {
+        let records = open_data_table()
+            .iter()
+            .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?
+            .map(|entry| {
+                let (_, value) =
+                    entry.map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
+                Ok::<_, AppError>(value.value())
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+        Ok(build_audit(&records, request))
+    }
+
+    fn build_audit(records: &[AbstractData], request: &AuditRequest) -> AuditSummary {
+        let album_id = request.album_id.as_deref();
+        let marker_tag = request.marker_tag.as_deref();
+        let mut marker = AuditMarkerSummary::default();
+
+        for record in records {
+            if marker_tag.is_some_and(|tag| record.tag().contains(tag)) {
+                marker.total += 1;
+                marker.favorite += usize::from(record.is_favorite());
+                marker.archived += usize::from(record.is_archived());
+                marker.trashed += usize::from(record.is_trashed());
+                marker.album_members += usize::from(album_id.is_some_and(|id| {
+                    record
+                        .albums()
+                        .is_some_and(|albums| albums.iter().any(|album| album.as_str() == id))
+                }));
+            }
+        }
+
+        let item = request.item_id.as_deref().and_then(|id| {
+            records
+                .iter()
+                .find(|record| record.hash().as_str() == id)
+                .map(audit_item)
+        });
+        let album = album_id.and_then(|id| {
+            records.iter().find_map(|record| match record {
+                AbstractData::Album(album) if album.object.id.as_str() == id => {
+                    let scanned_member_count = records
+                        .iter()
+                        .filter(|record| {
+                            record.albums().is_some_and(|albums| {
+                                albums.iter().any(|album_id| album_id.as_str() == id)
+                            })
+                        })
+                        .count();
+                    let share = request.share_id.as_deref().and_then(|share_id| {
+                        album
+                            .metadata
+                            .share_list
+                            .iter()
+                            .find(|(id, _)| id.as_str() == share_id)
+                            .map(|(_, share)| share.clone())
+                    });
+                    Some(AuditAlbumSummary {
+                        id: album.object.id.to_string(),
+                        title: album.metadata.title.clone(),
+                        cover: album.metadata.cover.map(|cover| cover.to_string()),
+                        item_count: album.metadata.item_count,
+                        scanned_member_count,
+                        share_count: album.metadata.share_list.len(),
+                        share,
+                    })
+                }
+                _ => None,
+            })
+        });
+
+        AuditSummary {
+            disk_count: records.len(),
+            item,
+            album,
+            marker,
+        }
+    }
+
+    fn audit_item(record: &AbstractData) -> AuditItemSummary {
+        let description = match record {
+            AbstractData::Image(data) => data.object.description.clone(),
+            AbstractData::Video(data) => data.object.description.clone(),
+            AbstractData::Album(data) => data.object.description.clone(),
+        };
+        let mut tags = record.tag().iter().cloned().collect::<Vec<_>>();
+        tags.sort_unstable();
+        let mut albums = record.albums().map_or_else(Vec::new, |albums| {
+            albums.iter().map(ToString::to_string).collect::<Vec<_>>()
+        });
+        albums.sort_unstable();
+        AuditItemSummary {
+            id: record.hash().to_string(),
+            description,
+            tags,
+            albums,
+            is_favorite: record.is_favorite(),
+            is_archived: record.is_archived(),
+            is_trashed: record.is_trashed(),
+        }
+    }
+
     fn ensure_perf_root() -> Result<(), AppError> {
         let root = get_data_path();
         if root.join(".urocissa-performance-root").is_file() {
@@ -316,6 +484,102 @@ mod enabled {
 
     fn elapsed_ns(start: Instant) -> u64 {
         start.elapsed().as_nanos().min(u64::MAX as u128) as u64
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{AuditRequest, build_audit};
+        use crate::public::structure::abstract_data::AbstractData;
+        use crate::public::structure::album::{album::Album, share::Share};
+        use arrayvec::ArrayString;
+
+        #[test]
+        fn audit_reports_marker_item_album_and_share_state() {
+            let album_id = ArrayString::<64>::from("performance-album").unwrap();
+            let share_id = ArrayString::<64>::from("performance-share").unwrap();
+            let mut first = AbstractData::generate_performance_data(1, 7);
+            let mut second = AbstractData::generate_performance_data(2, 7);
+            first.tag_mut().insert("benchmark-marker".to_string());
+            second.tag_mut().insert("benchmark-marker".to_string());
+            first.albums_mut().unwrap().insert(album_id);
+            if let AbstractData::Image(data) = &mut first {
+                data.object.description = Some("benchmark-description".to_string());
+                data.object.is_favorite = true;
+                data.object.is_archived = false;
+                data.object.is_trashed = false;
+            } else if let AbstractData::Video(data) = &mut first {
+                data.object.description = Some("benchmark-description".to_string());
+                data.object.is_favorite = true;
+                data.object.is_archived = false;
+                data.object.is_trashed = false;
+            }
+            if let AbstractData::Image(data) = &mut second {
+                data.object.is_favorite = false;
+                data.object.is_archived = true;
+                data.object.is_trashed = true;
+            } else if let AbstractData::Video(data) = &mut second {
+                data.object.is_favorite = false;
+                data.object.is_archived = true;
+                data.object.is_trashed = true;
+            }
+
+            let item_id = first.hash().to_string();
+            let mut album =
+                Album::new(album_id, Some("Benchmark Album".to_string())).into_abstract_data();
+            if let AbstractData::Album(data) = &mut album {
+                data.metadata.item_count = 1;
+                data.metadata.cover = Some(first.hash());
+                data.metadata.share_list.insert(
+                    share_id,
+                    Share {
+                        url: share_id,
+                        description: "updated share".to_string(),
+                        show_download: true,
+                        ..Share::default()
+                    },
+                );
+            }
+
+            let summary = build_audit(
+                &[first, second, album],
+                &AuditRequest {
+                    item_id: Some(item_id.clone()),
+                    album_id: Some(album_id.to_string()),
+                    marker_tag: Some("benchmark-marker".to_string()),
+                    share_id: Some(share_id.to_string()),
+                },
+            );
+
+            assert_eq!(summary.disk_count, 3);
+            assert_eq!(summary.marker.total, 2);
+            assert_eq!(summary.marker.favorite, 1);
+            assert_eq!(summary.marker.archived, 1);
+            assert_eq!(summary.marker.trashed, 1);
+            assert_eq!(summary.marker.album_members, 1);
+            assert_eq!(summary.item.unwrap().id, item_id);
+            let album = summary.album.unwrap();
+            assert_eq!(album.title.as_deref(), Some("Benchmark Album"));
+            assert_eq!(album.scanned_member_count, 1);
+            assert_eq!(album.share_count, 1);
+            assert_eq!(album.share.unwrap().description, "updated share");
+        }
+
+        #[test]
+        fn audit_returns_empty_optional_records_for_unknown_ids() {
+            let records = vec![AbstractData::generate_performance_data(1, 7)];
+            let summary = build_audit(
+                &records,
+                &AuditRequest {
+                    item_id: Some("missing-item".to_string()),
+                    album_id: Some("missing-album".to_string()),
+                    marker_tag: Some("missing-tag".to_string()),
+                    share_id: Some("missing-share".to_string()),
+                },
+            );
+            assert!(summary.item.is_none());
+            assert!(summary.album.is_none());
+            assert_eq!(summary.marker.total, 0);
+        }
     }
 }
 

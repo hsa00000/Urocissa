@@ -17,6 +17,7 @@
       <v-btn
         v-if="abstractData && (abstractData.type === 'image' || abstractData.type === 'video')"
         :icon="abstractData.isFavorite ? 'mdi-star' : 'mdi-star-outline'"
+        aria-label="Toggle favorite"
         @click="setFavorite([index], !abstractData.isFavorite, isolationId)"
       ></v-btn>
       <v-btn
@@ -26,6 +27,7 @@
             ? 'mdi-archive-arrow-up-outline'
             : 'mdi-archive-arrow-down-outline'
         "
+        aria-label="Toggle archive"
         @click="setArchived([index], !abstractData.isArchived, isolationId)"
       ></v-btn>
     </template>

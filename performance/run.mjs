@@ -22,6 +22,26 @@ const defaultSeed = 20260718n
 const defaultCount = 100_000
 const defaultSamples = 3
 const viewport = { width: 1440, height: 900 }
+const editMarkers = Object.freeze({
+  albumTitle: 'Urocissa Performance Album',
+  singleTag: 'urocissa-perf-single-edit',
+  batchTag: 'urocissa-perf-batch-edit',
+  description: 'Urocissa performance benchmark description',
+  shareCreated: 'Urocissa performance share',
+  shareUpdated: 'Urocissa performance share updated'
+})
+const editWorkload = Object.freeze({
+  scope: 'metadata-and-state',
+  batchSelection: 'all-visible-items',
+  mediaObjects: 'stubbed-transparent-png',
+  operations: [
+    'album-create-title-cover',
+    'share-create-update-delete',
+    'description',
+    'single-tags-albums-flags-trash',
+    'batch-tags-albums-flags-trash'
+  ]
+})
 
 const args = process.argv.slice(2)
 const command = args.shift() ?? 'smoke'
@@ -82,7 +102,7 @@ async function ensureBuilds() {
 async function runSuite({ resultDir, count, samples, seed, headed }) {
   await mkdir(join(resultDir, 'samples'), { recursive: true })
   const summary = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: new Date().toISOString(),
     source: sourceIdentity(),
     environment: {
@@ -92,7 +112,8 @@ async function runSuite({ resultDir, count, samples, seed, headed }) {
       viewport,
       browser: 'chromium',
       buildProfile: 'release',
-      fixture: { count, samples, seed: seed.toString() }
+      fixture: { count, samples, seed: seed.toString() },
+      workload: editWorkload
     },
     samples: [],
     correctness: { ok: true, errors: [] }
@@ -140,7 +161,7 @@ async function runSample({ sampleDir, count, seed, sampleIndex, headed }) {
       limits: { json: '10MiB', file: '10GiB', 'data-form': '10GiB' },
       syncPaths: [],
       readOnlyMode: false,
-      disableImg: true
+      disableImg: false
     },
     private: { password: 'urocissa-performance-password', authKey: randomBytes(32).toString('hex'), discordHookUrl: null }
   }
@@ -171,7 +192,14 @@ async function runSample({ sampleDir, count, seed, sampleIndex, headed }) {
     const startup = await waitForStatus(port, token, (value) => value.disk_count === count && value.memory_count === count)
     const startupWallMs = Date.now() - startupStart
 
-    const browser = await runBrowserJourney({ port, token, sampleDir, sampleIndex, headed })
+    const browser = await runBrowserJourney({
+      port,
+      token,
+      sampleDir,
+      sampleIndex,
+      headed,
+      expectedHome: seedResponse.expected_home
+    })
 
     await setPhase(port, token, 'delete')
     const deleteStart = Date.now()
@@ -212,11 +240,18 @@ async function runSample({ sampleDir, count, seed, sampleIndex, headed }) {
   }
 }
 
-async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }) {
+async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, expectedHome }) {
   const baseUrl = `http://localhost:${port}`
   const browser = await chromium.launch({ headless: !headed })
   const context = await browser.newContext({
     viewport
+  })
+  const transparentPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  )
+  await context.route('**/object/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'image/png', body: transparentPng })
   })
   const page = await context.newPage()
   const responses = []
@@ -224,13 +259,21 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }
   let authComplete = false
   let currentPhase = 'startup'
   const requestStarts = new WeakMap()
+  const inFlightApiRequests = new Set()
+  let lastApiActivityAt = Date.now()
   page.on('request', (request) => {
-    if (request.url().includes('/get/') || request.url().includes('/post/')) requestStarts.set(request, Date.now())
+    if (isApplicationApi(request.url())) {
+      requestStarts.set(request, Date.now())
+      inFlightApiRequests.add(request)
+      lastApiActivityAt = Date.now()
+    }
   })
   page.on('response', (response) => {
-    if (response.url().includes('/get/') || response.url().includes('/post/')) {
+    if (isApplicationApi(response.url())) {
       const request = response.request()
       const started = requestStarts.get(request)
+      inFlightApiRequests.delete(request)
+      lastApiActivityAt = Date.now()
       responses.push({
         url: response.url(),
         status: response.status(),
@@ -241,7 +284,14 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }
     }
     if (response.status() >= 400 && (authComplete || response.status() !== 401)) errors.push(`HTTP ${response.status()} ${response.url()}`)
   })
-  page.on('requestfailed', (request) => errors.push(`REQUEST ${request.url()} ${request.failure()?.errorText ?? 'failed'}`))
+  page.on('requestfailed', (request) => {
+    if (isApplicationApi(request.url())) {
+      inFlightApiRequests.delete(request)
+      lastApiActivityAt = Date.now()
+    }
+    const errorText = request.failure()?.errorText ?? 'failed'
+    if (errorText !== 'net::ERR_ABORTED') errors.push(`REQUEST ${request.url()} ${errorText}`)
+  })
   page.on('pageerror', (error) => { if (!error.message.includes('status code 401')) errors.push(`PAGE ${error.message}`) })
   page.on('console', (message) => {
     const text = message.text()
@@ -249,7 +299,13 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }
   })
 
   await context.addInitScript(() => {
-    const state = { longTasks: [], paints: [], frameGaps: [], lastFrame: null }
+    const state = {
+      longTasks: [],
+      paints: [],
+      frameGaps: [],
+      lastFrame: null,
+      heapStartBytes: null
+    }
     window.__urocissaPerf = state
     if (typeof PerformanceObserver !== 'undefined') {
       try {
@@ -277,6 +333,7 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }
     await setPhase(port, token, name)
     currentPhase = name
     const beforeResponses = responses.length
+    await resetBrowserMetrics(page)
     const start = Date.now()
     let payload
     try {
@@ -287,11 +344,23 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }
       errors.push(message)
       throw new Error(message, { cause: error })
     }
-    await waitForRequestQuiet(page, 350)
+    await waitForApiQuiet({ inFlightApiRequests, lastActivity: () => lastApiActivityAt, quietMs: 350 })
     await perfFetch(port, token, '/__perf/barrier', { method: 'POST' })
     const browserMetrics = await readBrowserMetrics(page)
     phases.push({ name, wallMs: Date.now() - start, responseCount: responses.length - beforeResponses, browserMetrics, payload })
     return payload
+  }
+  const navigateToCollection = async (url) => {
+    const prefetch = page.waitForResponse((response) => {
+      return response.status() === 200 && new URL(response.url()).pathname === '/get/prefetch'
+    })
+    await page.goto(url, { waitUntil: 'domcontentloaded' })
+    await prefetch
+    await waitForApiQuiet({
+      inFlightApiRequests,
+      lastActivity: () => lastApiActivityAt,
+      quietMs: 350
+    })
   }
 
   await phase('login', async () => {
@@ -336,11 +405,381 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }
     for (let index = 0; index < 2; index += 1) await page.mouse.wheel(0, -900)
   })
 
+  const audit = (request) => perfFetch(port, token, '/__perf/audit', {
+    method: 'POST',
+    body: JSON.stringify(request),
+    headers: { 'content-type': 'application/json' }
+  })
+
+  let albumId = null
+  let shareId = null
+  let itemId = null
+  let initialItem = null
+
+  await phase('edit-album-create', async () => {
+    await navigateToCollection(`${baseUrl}/home`)
+    await page.locator('#image-container').waitFor({ state: 'visible' })
+    const response = await performAndWaitForApiResponse(
+      page,
+      'POST',
+      '/post/create_empty_album',
+      () => page.getByRole('button', { name: 'Create album' }).click()
+    )
+    albumId = await response.text()
+    await page.waitForURL(`**/albums/view/${albumId}/read`)
+    return { albumId }
+  })
+  assertBenchmark(typeof albumId === 'string' && albumId.length > 0, 'album creation did not return an id')
+  let albumAudit = await audit({ albumId })
+  assertBenchmark(albumAudit.album?.id === albumId, 'created album is missing from audit')
+
+  await phase('edit-album-title', async () => {
+    const input = page
+      .locator(
+        '.album-title-field input, input[placeholder="Add Title"], input[placeholder="Untitled"]',
+      )
+      .first()
+    await input.waitFor({ state: 'visible' })
+    await performAndWaitForApiResponse(page, 'PUT', '/put/set_album_title', async () => {
+      await input.fill(editMarkers.albumTitle)
+      await input.press('Tab')
+    })
+  })
+  albumAudit = await audit({ albumId })
+  assertBenchmark(albumAudit.album?.title === editMarkers.albumTitle, 'album title was not persisted')
+
+  await phase('edit-share-create', async () => {
+    await page.getByRole('button', { name: 'Share album' }).click()
+    const dialog = page.getByRole('dialog').filter({ hasText: 'Share Settings' })
+    await dialog.getByLabel('Link Description').fill(editMarkers.shareCreated)
+    const response = await performAndWaitForApiResponse(
+      page,
+      'POST',
+      '/post/create_share',
+      () => dialog.getByRole('button', { name: 'Create Link' }).click()
+    )
+    shareId = await response.text()
+    await dialog.getByRole('button', { name: 'Copy' }).waitFor({ state: 'visible' })
+    return { shareId }
+  })
+  assertBenchmark(typeof shareId === 'string' && shareId.length > 0, 'share creation did not return an id')
+  let shareAudit = await audit({ albumId, shareId })
+  assertBenchmark(shareAudit.album?.share?.description === editMarkers.shareCreated, 'created share is missing from audit')
+
+  await phase('edit-share-update', async () => {
+    const dialog = page.getByRole('dialog').filter({ hasText: 'Share Settings' })
+    await dialog.getByLabel('Link Description').fill(editMarkers.shareUpdated)
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/edit_share',
+      () => dialog.getByRole('button', { name: 'Save Changes' }).click()
+    )
+  })
+  shareAudit = await audit({ albumId, shareId })
+  assertBenchmark(shareAudit.album?.share?.description === editMarkers.shareUpdated, 'share update was not persisted')
+  await page.getByRole('button', { name: 'Close dialog' }).click()
+
+  await phase('edit-share-delete', async () => {
+    await page.goto(`${baseUrl}/links`, { waitUntil: 'domcontentloaded' })
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    const deleteButton = page.getByRole('button', { name: 'Delete share' })
+    await deleteButton.waitFor({ state: 'visible' })
+    await deleteButton.click()
+    const dialog = page.locator('#delete-share-modal')
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/delete_share',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+  })
+  shareAudit = await audit({ albumId, shareId })
+  assertBenchmark(shareAudit.album?.shareCount === 0 && shareAudit.album.share == null, 'share deletion was not persisted')
+
+  await phase('edit-open-single', async () => {
+    await navigateToCollection(`${baseUrl}/home`)
+    await page.locator('#image-container').waitFor({ state: 'visible' })
+    // The benchmark album is the newest Home item; choose the next item so
+    // the single-item journey always targets fixture media.
+    const firstItem = page.getByTestId('gallery-item').nth(1)
+    await firstItem.waitFor({ state: 'visible' })
+    await firstItem.getByTestId('open-item').dispatchEvent('click')
+    await page.waitForURL('**/home/view/*')
+    itemId = new URL(page.url()).pathname.split('/').at(-1)
+    return { itemId }
+  })
+  assertBenchmark(typeof itemId === 'string' && itemId.length > 0, 'single-item navigation did not expose an id')
+  initialItem = (await audit({ itemId })).item
+  assertBenchmark(initialItem?.id === itemId, 'single-item audit did not find the selected media')
+
+  await phase('edit-single-description', async () => {
+    await page.getByRole('button', { name: 'Show info' }).click()
+    const description = page
+      .locator(
+        '[data-testid="edit-description"] textarea:not([readonly]), textarea[data-testid="edit-description"]:not([readonly]), .v-textarea textarea:not([readonly])',
+      )
+      .first()
+    await description.waitFor({ state: 'visible' })
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/set_user_defined_description',
+      async () => {
+        await description.fill(editMarkers.description)
+        await description.press('Tab')
+      }
+    )
+  })
+  let itemAudit = await audit({ itemId })
+  assertBenchmark(itemAudit.item?.description === editMarkers.description, 'description was not persisted')
+
+  await phase('edit-single-tag-add', async () => {
+    await openAction(page, 'Media actions', 'Edit Tags')
+    const dialog = page.locator('#edit-tag-overlay')
+    await addComboboxValue(dialog.getByLabel('Tags'), editMarkers.singleTag)
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/edit_tag',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+  })
+  itemAudit = await audit({ itemId, markerTag: editMarkers.singleTag })
+  assertBenchmark(itemAudit.item?.tags.includes(editMarkers.singleTag), 'single tag add was not persisted')
+
+  await phase('edit-single-tag-remove', async () => {
+    await openAction(page, 'Media actions', 'Edit Tags')
+    const dialog = page.locator('#edit-tag-overlay')
+    await removeChip(dialog, editMarkers.singleTag)
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/edit_tag',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+  })
+  itemAudit = await audit({ itemId, markerTag: editMarkers.singleTag })
+  assertBenchmark(!itemAudit.item?.tags.includes(editMarkers.singleTag) && itemAudit.marker.total === 0, 'single tag remove was not persisted')
+
+  await phase('edit-single-album-add', async () => {
+    await openAction(page, 'Media actions', 'Edit Albums')
+    const dialog = page.locator('#edit-album-overlay')
+    await selectComboboxOption(page, dialog.getByLabel('Albums'), editMarkers.albumTitle)
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/edit_album',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+  })
+  itemAudit = await audit({ itemId, albumId })
+  assertBenchmark(itemAudit.item?.albums.includes(albumId), 'single album add was not persisted')
+
+  await phase('edit-single-album-remove', async () => {
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.getByRole('button', { name: 'Media actions' }).waitFor({ state: 'visible' })
+    await openAction(page, 'Media actions', 'Edit Albums')
+    const dialog = page.locator('#edit-album-overlay')
+    await removeChip(dialog, editMarkers.albumTitle)
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/edit_album',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+  })
+  itemAudit = await audit({ itemId, albumId })
+  assertBenchmark(!itemAudit.item?.albums.includes(albumId), 'single album remove was not persisted')
+
+  await phase('edit-single-flags', async () => {
+    for (const name of ['Toggle favorite', 'Toggle favorite', 'Toggle archive', 'Toggle archive']) {
+      await performAndWaitForApiResponse(
+        page,
+        'PUT',
+        '/put/edit_flags',
+        () => page.getByRole('button', { name }).click()
+      )
+    }
+  })
+  itemAudit = await audit({ itemId })
+  assertBenchmark(
+    itemAudit.item?.isFavorite === initialItem.isFavorite &&
+      itemAudit.item?.isArchived === initialItem.isArchived,
+    'single favorite/archive flags were not restored'
+  )
+
+  await phase('edit-single-trash-restore', async () => {
+    await performActionAndWaitForApiResponse(page, 'Media actions', 'Delete', 'PUT', '/put/edit_flags')
+    await performActionAndWaitForApiResponse(page, 'Media actions', 'Restore', 'PUT', '/put/edit_flags')
+  })
+  itemAudit = await audit({ itemId })
+  assertBenchmark(itemAudit.item?.isTrashed === initialItem.isTrashed, 'single trash flag was not restored')
+
+  const expectedEditedHome = expectedHome + 1
+  const selectedHome = await phase('edit-batch-select-all', async () => {
+    await navigateToCollection(`${baseUrl}/home`)
+    return selectAllVisibleItems(page, expectedEditedHome)
+  })
+  assertBenchmark(
+    selectedHome === expectedEditedHome,
+    `home select-all chose ${selectedHome}; expected ${expectedEditedHome}`
+  )
+
+  await phase('edit-batch-tag-add', async () => {
+    await openAction(page, 'Batch actions', 'Batch Edit Tags')
+    const dialog = page.locator('#batch-edit-tag-overlay')
+    await addComboboxValue(dialog.getByLabel('Add Tags'), editMarkers.batchTag)
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/edit_tag',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+  })
+  let batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  assertBenchmark(batchAudit.marker.total === selectedHome, `batch tag add reached ${batchAudit.marker.total}; expected ${selectedHome}`)
+
+  await phase('edit-batch-favorite', async () => {
+    await performActionAndWaitForApiResponse(page, 'Batch actions', 'Favorite', 'PUT', '/put/edit_flags')
+  })
+  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  assertBenchmark(batchAudit.marker.favorite === selectedHome, 'batch favorite did not update every marked item')
+
+  await phase('edit-batch-archive', async () => {
+    await performActionAndWaitForApiResponse(page, 'Batch actions', 'Archive', 'PUT', '/put/edit_flags')
+  })
+  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  assertBenchmark(batchAudit.marker.archived === selectedHome, 'batch archive did not update every marked item')
+
+  await phase('edit-batch-flags-clear', async () => {
+    await openAction(page, 'Batch actions', 'Batch Edit Tags')
+    const dialog = page.locator('#batch-edit-tag-overlay')
+    const field = dialog.getByLabel('Remove Tags')
+    await selectComboboxOption(page, field, 'Favorite')
+    await selectComboboxOption(page, field, 'Archived')
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/edit_flags',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+  })
+  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  assertBenchmark(batchAudit.marker.favorite === 0 && batchAudit.marker.archived === 0, 'batch flags were not cleared')
+
+  await phase('edit-batch-album-add', async () => {
+    await openAction(page, 'Batch actions', 'Batch Edit Albums')
+    const dialog = page.locator('#batch-edit-album-overlay')
+    await selectComboboxOption(
+      page,
+      dialog.getByRole('combobox', { name: 'Add to Albums', exact: true }),
+      editMarkers.albumTitle
+    )
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/edit_album',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+  })
+  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  const expectedAlbumMembers = selectedHome - 1
+  assertBenchmark(
+    batchAudit.marker.albumMembers === expectedAlbumMembers &&
+      batchAudit.album?.scannedMemberCount === expectedAlbumMembers &&
+      batchAudit.album.itemCount === expectedAlbumMembers,
+    `batch album add did not update membership and album metadata: ${JSON.stringify(batchAudit)}; selected=${selectedHome}`
+  )
+
+  await phase('edit-album-cover', async () => {
+    await navigateToCollection(`${baseUrl}/albums/view/${albumId}/read`)
+    await selectFirstItem(page)
+    await performActionAndWaitForApiResponse(page, 'Batch actions', 'Set as Cover', 'PUT', '/put/set_album_cover')
+  })
+  albumAudit = await audit({ albumId })
+  assertBenchmark(albumAudit.album?.cover != null, 'album cover was not persisted')
+
+  await phase('edit-batch-album-remove', async () => {
+    await navigateToCollection(`${baseUrl}/home`)
+    await selectAllVisibleItems(page, expectedEditedHome)
+    await openAction(page, 'Batch actions', 'Batch Edit Albums')
+    const dialog = page.locator('#batch-edit-album-overlay')
+    await selectComboboxOption(
+      page,
+      dialog.getByRole('combobox', { name: 'Remove from Albums', exact: true }),
+      editMarkers.albumTitle
+    )
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/edit_album',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+  })
+  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  assertBenchmark(
+    batchAudit.marker.albumMembers === 0 &&
+      batchAudit.album?.scannedMemberCount === 0 &&
+      batchAudit.album.itemCount === 0,
+    'batch album remove left membership behind'
+  )
+
+  await phase('edit-batch-trash', async () => {
+    await performActionAndWaitForApiResponse(page, 'Batch actions', 'Delete', 'PUT', '/put/edit_flags')
+  })
+  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  assertBenchmark(batchAudit.marker.trashed === selectedHome, 'batch trash did not update every marked item')
+
+  await phase('edit-batch-restore', async () => {
+    await navigateToCollection(`${baseUrl}/trashed`)
+    await selectAllVisibleItems(page)
+    await performActionAndWaitForApiResponse(page, 'Batch actions', 'Restore', 'PUT', '/put/edit_flags')
+  })
+  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  assertBenchmark(batchAudit.marker.trashed === 0, 'batch restore left marked items trashed')
+
+  await phase('edit-batch-tag-remove', async () => {
+    await navigateToCollection(`${baseUrl}/home`)
+    await selectAllVisibleItems(page)
+    await openAction(page, 'Batch actions', 'Batch Edit Tags')
+    const dialog = page.locator('#batch-edit-tag-overlay')
+    await addComboboxValue(dialog.getByLabel('Remove Tags'), editMarkers.batchTag)
+    await performAndWaitForApiResponse(
+      page,
+      'PUT',
+      '/put/edit_tag',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+  })
+  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  assertBenchmark(batchAudit.marker.total === 0, 'batch tag remove left marker tags behind')
+
   await phase('warm-reload', async () => {
     const prefetch = page.waitForResponse((response) => response.url().includes('/get/prefetch') && response.status() === 200)
     await page.reload({ waitUntil: 'domcontentloaded' })
     return await (await prefetch).json()
   })
+
+  const finalAudit = await audit({ itemId, albumId, markerTag: editMarkers.batchTag, shareId })
+  assertBenchmark(finalAudit.diskCount > 0, 'final audit did not read the edited fixture')
+  assertBenchmark(finalAudit.item?.description === editMarkers.description, 'description was lost after reload')
+  assertBenchmark(
+    !finalAudit.item?.tags.includes(editMarkers.singleTag) &&
+      !finalAudit.item?.tags.includes(editMarkers.batchTag) &&
+      !finalAudit.item?.albums.includes(albumId),
+    'single tag or album membership returned after reload'
+  )
+  assertBenchmark(
+    finalAudit.item?.isFavorite === initialItem.isFavorite &&
+      finalAudit.item?.isArchived === initialItem.isArchived &&
+      finalAudit.item?.isTrashed === initialItem.isTrashed,
+    'single flags were not restored after reload'
+  )
+  assertBenchmark(finalAudit.album?.title === editMarkers.albumTitle, 'album title was lost after reload')
+  assertBenchmark(finalAudit.album?.shareCount === 0, 'deleted share returned after reload')
+  assertBenchmark(finalAudit.album?.scannedMemberCount === 0, 'album membership returned after reload')
+  assertBenchmark(finalAudit.marker.total === 0, 'batch marker returned after reload')
 
   const navigation = await page.evaluate(() => {
     const navigationEntry = performance.getEntriesByType('navigation')[0]
@@ -351,27 +790,129 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }
     } : null
   })
   await page.screenshot({ path: join(sampleDir, `browser-${sampleIndex}.png`), fullPage: false })
-  return { phases, navigation, responses, errors }
+  return { phases, navigation, responses, errors, finalAudit }
   } finally {
     await context.close().catch(() => {})
     await browser.close().catch(() => {})
   }
 }
 
+async function performAndWaitForApiResponse(page, method, path, action) {
+  const [response] = await Promise.all([
+    page.waitForResponse((candidate) => {
+      const request = candidate.request()
+      return request.method() === method && new URL(candidate.url()).pathname === path
+    }),
+    action()
+  ])
+  if (!response.ok()) throw new Error(`${method} ${path} returned ${response.status()}`)
+  return response
+}
+
+async function performActionAndWaitForApiResponse(page, menuName, actionName, method, path) {
+  return performAndWaitForApiResponse(
+    page,
+    method,
+    path,
+    () => openAction(page, menuName, actionName)
+  )
+}
+
+async function openAction(page, menuName, actionName) {
+  await page.getByRole('button', { name: menuName }).click()
+  const overlay = page.locator('.v-overlay--active').last()
+  const action = overlay.getByText(actionName, { exact: true }).last()
+  await action.waitFor({ state: 'visible' })
+  await action.click()
+}
+
+async function addComboboxValue(field, value) {
+  await field.click()
+  await field.fill(value)
+  await field.press('Enter')
+}
+
+async function selectComboboxOption(page, field, value) {
+  await field.press('ArrowDown')
+  const overlay = page.locator('.v-overlay--active').last()
+  const option = overlay.getByText(value, { exact: true }).last()
+  await option.waitFor({ state: 'visible' })
+  await option.dispatchEvent('click')
+}
+
+async function removeChip(dialog, value) {
+  const chip = dialog.locator('.v-chip').filter({ hasText: value }).last()
+  await chip.waitFor({ state: 'visible' })
+  await chip.locator('.v-chip__close').click()
+}
+
+async function selectFirstItem(page) {
+  const imageContainer = page.locator('#image-container').last()
+  await imageContainer.waitFor({ state: 'visible' })
+  const firstItem = imageContainer.getByTestId('gallery-item').first()
+  await firstItem.waitFor({ state: 'visible' })
+  await firstItem.getByTestId('select-item').dispatchEvent('click')
+  await page.getByText('1 items', { exact: true }).waitFor({ state: 'visible' })
+}
+
+async function selectAllVisibleItems(page, expected = null) {
+  await selectFirstItem(page)
+  const selectAll = page.getByRole('button', { name: 'Select all' })
+  if (await selectAll.count()) await selectAll.click()
+  const selectedText = page.getByText(/^\d+ items$/, { exact: true }).last()
+  await selectedText.waitFor({ state: 'visible' })
+  const selected = Number.parseInt((await selectedText.innerText()).split(' ', 1)[0], 10)
+  if (expected != null) {
+    assertBenchmark(selected === expected, `select-all chose ${selected}; expected ${expected}`)
+  }
+  return selected
+}
+
+function assertBenchmark(condition, message) {
+  if (!condition) throw new Error(`benchmark correctness: ${message}`)
+}
+
+function isApplicationApi(url) {
+  const path = new URL(url).pathname
+  return /^\/(?:get|post|put|delete)\//.test(path) || path === '/upload'
+}
+
+async function resetBrowserMetrics(page) {
+  await page.evaluate(() => {
+    const state = window.__urocissaPerf
+    if (!state) return
+    state.longTasks.length = 0
+    state.paints.length = 0
+    state.frameGaps.length = 0
+    state.lastFrame = null
+    state.heapStartBytes = performance.memory?.usedJSHeapSize ?? null
+  })
+}
+
 async function readBrowserMetrics(page) {
   return page.evaluate(() => {
-    const state = window.__urocissaPerf ?? { longTasks: [], paints: [], frameGaps: [] }
+    const state = window.__urocissaPerf ?? {
+      longTasks: [],
+      paints: [],
+      frameGaps: [],
+      heapStartBytes: null
+    }
     const sortedGaps = [...state.frameGaps].sort((a, b) => a - b)
     const percentile = (values, p) => values.length ? values[Math.min(values.length - 1, Math.floor(values.length * p))] : 0
+    const heapUsedBytes = performance.memory?.usedJSHeapSize ?? null
     return {
       longTaskCount: state.longTasks.length,
       longTaskTotalMs: state.longTasks.reduce((sum, value) => sum + value, 0),
       longTaskMaxMs: Math.max(0, ...state.longTasks),
+      paintCount: state.paints.length,
       paintEntries: state.paints,
       frameCount: state.frameGaps.length,
       frameGapP95Ms: percentile(sortedGaps, 0.95),
       frameGapMaxMs: Math.max(0, ...state.frameGaps),
-      heapUsedBytes: performance.memory?.usedJSHeapSize ?? null
+      heapUsedBytes,
+      heapDeltaBytes: heapUsedBytes == null || state.heapStartBytes == null
+        ? null
+        : heapUsedBytes - state.heapStartBytes
     }
   })
 }
@@ -385,7 +926,14 @@ async function readEvents(path) {
 function aggregateSamples(samples) {
   const values = new Map()
   for (const sample of samples) {
-    for (const phase of sample.browser?.phases ?? []) addValue(values, `browser.${phase.name}.wallMs`, phase.wallMs)
+    for (const phase of sample.browser?.phases ?? []) {
+      addValue(values, `browser.${phase.name}.wallMs`, phase.wallMs)
+      for (const [metric, value] of Object.entries(phase.browserMetrics ?? {})) {
+        if (typeof value === 'number') {
+          addValue(values, `browser.phase.${phase.name}.metrics.${metric}`, value)
+        }
+      }
+    }
     for (const response of sample.browser?.responses ?? []) {
       if (response.durationMs == null) continue
       const route = new URL(response.url).pathname.replaceAll('/', '_').replace(/^_/, '')
@@ -429,11 +977,19 @@ function compareSummaries(baseline, current) {
 function renderReport(summary, comparison = null) {
   const lines = [`# Urocissa performance report`, '', `- Generated: ${summary.generatedAt}`, `- Samples: ${summary.samples.length}`, `- Fixture: ${summary.environment.fixture.count} records`, `- Correctness: ${summary.correctness.ok ? 'PASS' : 'FAIL'}`, '']
   if (summary.correctness.errors.length) lines.push('## Correctness errors', '', ...summary.correctness.errors.map((error) => `- ${error}`), '')
-  lines.push('## Aggregate timings', '', '| Metric | Median | P95 | Max |', '|---|---:|---:|---:|')
-  for (const [key, value] of Object.entries(summary.aggregates ?? {})) lines.push(`| ${key} | ${formatMs(value.median)} | ${formatMs(value.p95)} | ${formatMs(value.max)} |`)
+  lines.push('## Aggregate metrics', '', '| Metric | Median | P95 | Max |', '|---|---:|---:|---:|')
+  for (const [key, value] of Object.entries(summary.aggregates ?? {})) {
+    lines.push(
+      `| ${key} | ${formatMetric(key, value.median)} | ${formatMetric(key, value.p95)} | ${formatMetric(key, value.max)} |`
+    )
+  }
   if (comparison) {
     lines.push('', '## Baseline comparison', '', '| Metric | Baseline | Current | Delta |', '|---|---:|---:|---:|')
-    for (const [key, value] of Object.entries(comparison.metrics)) lines.push(`| ${key} | ${formatMs(value.baseline)} | ${formatMs(value.current)} | ${formatDelta(value.delta, value.relative)} |`)
+    for (const [key, value] of Object.entries(comparison.metrics)) {
+      lines.push(
+        `| ${key} | ${formatMetric(key, value.baseline)} | ${formatMetric(key, value.current)} | ${formatMetricDelta(key, value.delta, value.relative)} |`
+      )
+    }
     lines.push('', `Notable regressions: ${comparison.notableRegressions.length || 'none'}`)
   }
   return `${lines.join('\n')}\n`
@@ -450,6 +1006,12 @@ function checkCorrectness({ count, seedResponse, startup, browser, deleteSummary
   if (seedResponse?.inserted !== count) errors.push(`inserted ${seedResponse?.inserted ?? 'unknown'} of ${count}`)
   if (startup?.disk_count !== count || startup?.memory_count !== count) errors.push('restart readiness count mismatch')
   if (!browser || browser.errors?.length) errors.push(...(browser?.errors ?? ['browser journey did not complete']))
+  if (browser?.finalAudit?.diskCount !== count + 1) {
+    errors.push(`post-edit disk count mismatch: expected ${count + 1} got ${browser?.finalAudit?.diskCount ?? 'unknown'}`)
+  }
+  if (deleteSummary?.found !== count + 1) {
+    errors.push(`fixture deletion found ${deleteSummary?.found ?? 'unknown'} records; expected ${count + 1}`)
+  }
   if (deleteSummary?.remaining !== 0 || finalStatus?.disk_count !== 0 || finalStatus?.memory_count !== 0) errors.push('fixture deletion left rows behind')
   if (rootExists) errors.push('temporary benchmark root was not removed')
   if (seedResponse?.seed?.toString() !== seed.toString()) errors.push(`seed mismatch: expected ${seed} got ${seedResponse?.seed}`)
@@ -471,8 +1033,18 @@ function percentile(values, p) {
   return values[Math.min(values.length - 1, Math.floor(values.length * p))]
 }
 
-function formatMs(value) { return value == null ? '-' : `${value.toFixed(3)} ms` }
-function formatDelta(delta, relative) { return delta == null ? '-' : `${delta >= 0 ? '+' : ''}${delta.toFixed(3)} ms (${(relative * 100).toFixed(1)}%)` }
+function formatMetric(key, value) {
+  if (value == null) return '-'
+  if (key.endsWith('Bytes')) return `${Math.round(value).toLocaleString('en-US')} B`
+  if (key.endsWith('Count')) return Number.isInteger(value) ? String(value) : value.toFixed(3)
+  return `${value.toFixed(3)} ms`
+}
+
+function formatMetricDelta(key, delta, relative) {
+  if (delta == null) return '-'
+  const sign = delta >= 0 ? '+' : ''
+  return `${sign}${formatMetric(key, delta)} (${(relative * 100).toFixed(1)}%)`
+}
 function timestamp() { return new Date().toISOString().replaceAll(':', '').replaceAll('.', '') }
 function sourceIdentity() { return { sha: runCommandSync('git', ['rev-parse', 'HEAD'], repoRoot), dirty: runCommandSync('git', ['status', '--porcelain'], repoRoot) !== '' } }
 
@@ -538,12 +1110,13 @@ async function setPhase(port, token, name) {
   await perfFetch(port, token, '/__perf/phase', { method: 'POST', body: JSON.stringify({ name }), headers: { 'content-type': 'application/json' } })
 }
 
-async function waitForRequestQuiet(page, quietMs) {
-  let last = Date.now()
-  const listener = (response) => { if (response.url().includes('/get/')) last = Date.now() }
-  page.on('response', listener)
-  while (Date.now() - last < quietMs) await sleep(50)
-  page.off('response', listener)
+async function waitForApiQuiet({ inFlightApiRequests, lastActivity, quietMs }) {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    if (inFlightApiRequests.size === 0 && Date.now() - lastActivity() >= quietMs) return
+    await sleep(50)
+  }
+  throw new Error(`application API did not become quiet; ${inFlightApiRequests.size} request(s) still active`)
 }
 
 async function freePort() {

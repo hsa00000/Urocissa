@@ -1,5 +1,5 @@
 <template>
-  <v-btn icon="mdi-information-outline" @click="toggle"></v-btn>
+  <v-btn icon="mdi-information-outline" aria-label="Show info" @click="toggle"></v-btn>
   
 </template>
 <script setup lang="ts">

@@ -82,8 +82,20 @@
         <!-- Actions -->
         <template #[`item.actions`]="{ item }">
           <div class="d-flex flex-row justify-center ga-1">
-            <v-btn icon="mdi-delete" variant="text" size="small" @click="openDeleteConfirm(item)" />
-            <v-btn icon="mdi-pencil" variant="text" size="small" @click="clickEditShare(item)" />
+            <v-btn
+              icon="mdi-delete"
+              aria-label="Delete share"
+              variant="text"
+              size="small"
+              @click="openDeleteConfirm(item)"
+            />
+            <v-btn
+              icon="mdi-pencil"
+              aria-label="Edit share"
+              variant="text"
+              size="small"
+              @click="clickEditShare(item)"
+            />
             <v-btn
               icon="mdi-open-in-new"
               variant="text"

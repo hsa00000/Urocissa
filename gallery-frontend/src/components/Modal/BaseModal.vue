@@ -21,6 +21,7 @@
             <v-btn
               v-if="!hideClose"
               icon="mdi-close"
+              aria-label="Close dialog"
               variant="text"
               density="comfortable"
               :disabled="loading"

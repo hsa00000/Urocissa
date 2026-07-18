@@ -10,6 +10,10 @@ const DesktopHoverIcon: FunctionalComponent<DesktopIconWrapperProps> = (props) =
     'div',
     {
       class: 'child',
+      role: 'button',
+      tabindex: 0,
+      'aria-label': 'Select item',
+      'data-testid': 'select-item',
       style: {
         position: 'relative'
       },

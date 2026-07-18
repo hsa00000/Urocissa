@@ -8,6 +8,7 @@
           <v-card-title>
             <v-text-field
               class="album-title-field"
+              data-testid="album-title"
               v-model="titleModel"
               variant="plain"
               @blur="editTitle(props.album, titleModel)"
@@ -42,8 +43,16 @@
           </v-card-text>
         </v-card>
         <v-spacer></v-spacer>
-        <v-btn icon="mdi-share-variant" @click="modalStore.showShareModal = true"> </v-btn>
-        <v-btn icon="mdi-image-plus" @click="modalStore.showHomeTempModal = true"> </v-btn>
+        <v-btn
+          icon="mdi-share-variant"
+          aria-label="Share album"
+          @click="modalStore.showShareModal = true"
+        ></v-btn>
+        <v-btn
+          icon="mdi-image-plus"
+          aria-label="Add album items"
+          @click="modalStore.showHomeTempModal = true"
+        ></v-btn>
       </v-toolbar>
 
       <EditBar v-if="collectionStore.editModeOn" />

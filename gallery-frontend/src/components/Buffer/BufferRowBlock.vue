@@ -3,6 +3,8 @@
     <div
       v-for="(data, subIndex) in row.displayElements"
       :key="`${row.start}-${subIndex}-${prefetchStore.timestamp}`"
+      data-testid="gallery-item"
+      :data-item-index="row.start + subIndex"
       :style="{
         width: `${data.displayWidth}px`,
         height: `${data.displayHeight}px`
@@ -43,6 +45,9 @@
         />
         <div
           id="grey-background-placeholder"
+          data-testid="open-item"
+          role="button"
+          aria-label="Open item"
           class="w-100 h-100 bg-placeholder position-absolute"
           :style="{
             zIndex: 0

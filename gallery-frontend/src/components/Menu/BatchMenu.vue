@@ -2,7 +2,7 @@
 <template>
   <v-menu>
     <template #activator="{ props: MenuBtn }">
-      <v-btn v-bind="MenuBtn" icon="mdi-dots-vertical"></v-btn>
+      <v-btn v-bind="MenuBtn" icon="mdi-dots-vertical" aria-label="Batch actions"></v-btn>
     </template>
     <v-list>
       <!-- Conditional Set as Cover -->

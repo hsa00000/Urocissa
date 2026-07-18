@@ -12,6 +12,7 @@
       <v-card-item v-if="!isShareMode || userDefinedDescriptionModel">
         <v-textarea
           v-model="userDefinedDescriptionModel"
+          data-testid="edit-description"
           :variant="isShareMode ? 'plain' : 'underlined'"
           :readonly="isShareMode"
           rows="1"
