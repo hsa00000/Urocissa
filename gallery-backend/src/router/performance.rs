@@ -4,7 +4,6 @@ use rocket::Route;
 mod enabled {
     use crate::operations::open_db::open_data_table;
     use crate::performance;
-    use crate::public::constant::redb::DATA_TABLE;
     use crate::public::constant::storage::get_data_path;
     use crate::public::db::{
         query_snapshot::QUERY_SNAPSHOT, tree::TREE, tree_snapshot::TREE_SNAPSHOT,
@@ -13,7 +12,6 @@ mod enabled {
     use crate::public::structure::abstract_data::AbstractData;
     use crate::router::AppResult;
     use crate::tasks::batcher::update_tree::update_tree_task;
-    use redb::{ReadableTable, ReadableTableMetadata};
     use rocket::Request;
     use rocket::Route;
     use rocket::http::Status;
@@ -201,24 +199,14 @@ mod enabled {
         let expected_trashed = data.iter().filter(|item| item.is_trashed()).count();
 
         let insert_start = Instant::now();
-        let transaction = TREE
-            .in_disk
-            .begin_write()
-            .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
-        {
-            let mut table = transaction
-                .open_table(DATA_TABLE)
-                .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
+        TREE.store.write(|writer| {
             for item in &data {
-                let hash = item.hash();
-                table
-                    .insert(&*hash, item)
+                writer
+                    .insert(item)
                     .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
             }
-        }
-        transaction
-            .commit()
-            .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
+            Ok::<(), AppError>(())
+        })?;
         let insert_ns = elapsed_ns(insert_start);
 
         let rebuild_start = Instant::now();
@@ -259,30 +247,24 @@ mod enabled {
         let data = open_data_table()
             .iter()
             .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?
-            .filter_map(Result::ok)
-            .map(|(_, value)| value.value())
-            .collect::<Vec<_>>();
+            .map(|entry| {
+                let (_, value) =
+                    entry.map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
+                Ok::<_, AppError>(value.value())
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
         let scan_ns = elapsed_ns(scan_start);
 
         let delete_start = Instant::now();
-        let transaction = TREE
-            .in_disk
-            .begin_write()
-            .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
-        {
-            let mut table = transaction
-                .open_table(DATA_TABLE)
-                .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
+        TREE.store.write(|writer| {
             for item in &data {
                 let hash = item.hash();
-                table
-                    .remove(&*hash)
+                writer
+                    .remove(hash.as_str())
                     .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
             }
-        }
-        transaction
-            .commit()
-            .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
+            Ok::<(), AppError>(())
+        })?;
         let delete_ns = elapsed_ns(delete_start);
 
         let rebuild_start = Instant::now();
@@ -309,7 +291,7 @@ mod enabled {
             .and_then(|value| usize::try_from(value).ok())
             .unwrap_or(0);
         let memory_count = TREE.in_memory.read().map_or(0, |value| value.len());
-        let database_bytes = std::fs::metadata(get_data_path().join("db/index_v5.redb"))
+        let database_bytes = std::fs::metadata(get_data_path().join("db/index_v6.redb"))
             .map_or(0, |metadata| metadata.len());
         StatusSummary {
             disk_count,
