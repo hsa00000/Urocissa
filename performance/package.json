@@ -1,0 +1,14 @@
+{
+  "name": "urocissa-performance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "baseline": "node run.mjs baseline",
+    "compare": "node run.mjs compare",
+    "smoke": "node run.mjs smoke",
+    "install-browser": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}

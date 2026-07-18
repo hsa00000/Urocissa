@@ -13,7 +13,6 @@ use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::router::fairing::guard_timestamp::GuardTimestamp;
 use crate::router::{AppResult, GuardResult};
 use anyhow::Result;
-use log::info;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::serde::json::Json;
 use std::time::Instant;
@@ -69,8 +68,11 @@ pub async fn get_data(
             })
             .collect();
 
-        let duration = format!("{:?}", start_time.elapsed());
-        info!(duration = &*duration; "Get data: {start} ~ {end}");
+        crate::perf_timing!(
+            "get_data.read_range",
+            start_time,
+            "Get data: {start} ~ {end}"
+        );
         Ok(Json(database_timestamp_return_list?))
     })
     .await
@@ -89,8 +91,11 @@ pub async fn get_rows(
         let filtered_rows = TREE_SNAPSHOT
             .read_row(index, timestamp)
             .or_raise(|| (ErrorKind::Database, "Failed to read row from snapshot"))?;
-        let duration = format!("{:?}", start_time.elapsed());
-        info!(duration = &*duration; "Read rows: index = {index}");
+        crate::perf_timing!(
+            "get_data.read_rows",
+            start_time,
+            "Read rows: index = {index}"
+        );
         Ok(Json(filtered_rows))
     })
     .await

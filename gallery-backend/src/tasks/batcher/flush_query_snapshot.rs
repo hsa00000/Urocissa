@@ -72,8 +72,9 @@ fn flush_query_snapshot_task() {
                 ));
                 break;
             }
-            info!(
-                duration = &*format!("{:?}", timer_start.elapsed());
+            crate::perf_timing!(
+                "query_snapshot.flush_disk",
+                timer_start,
                 "Write query cache into disk"
             );
 

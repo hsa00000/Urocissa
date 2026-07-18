@@ -80,7 +80,7 @@ async fn create_album_internal(title: Option<String>) -> Result<ArrayString<64>,
         .await
         .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
 
-    info!(duration = &*format!("{:?}", start_time.elapsed()); "Create album");
+    crate::perf_timing!("album.create", start_time, "Create album");
     Ok(album_id)
 }
 

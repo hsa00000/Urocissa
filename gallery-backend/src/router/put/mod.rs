@@ -7,7 +7,6 @@ pub mod edit_description;
 pub mod edit_flags;
 pub mod edit_share;
 pub mod edit_tag;
-pub mod random;
 pub mod regenerate_thumbnail;
 pub mod reindex;
 pub mod rotate_image;
@@ -21,7 +20,6 @@ pub fn generate_put_routes() -> Vec<Route> {
         edit_share::edit_share,
         edit_share::delete_share,
         edit_tag::edit_tag,
-        random::generate_random_data,
         regenerate_thumbnail::regenerate_thumbnail_with_frame,
         reindex::reindex,
         edit_config::update_config_handler,

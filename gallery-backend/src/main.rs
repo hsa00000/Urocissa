@@ -5,6 +5,7 @@ use std::thread;
 use std::time::Instant;
 
 mod operations;
+mod performance;
 mod process;
 mod public;
 mod router;
@@ -50,6 +51,7 @@ fn migration() {
 fn main() {
     // Initialize logger first thing
     let tui_events_rx = initialize_logger();
+    performance::initialize();
 
     migration();
 
@@ -84,10 +86,12 @@ fn main() {
 
                 let media_count = usize::try_from(total_count).unwrap_or(0) - album_count;
 
-                info!(
-                    duration = &*format!("{:?}", start_time.elapsed());
+                crate::perf_timing!(
+                    "startup.read_database_count",
+                    start_time,
                     "Read {} photos/videos and {} albums from database.",
-                    media_count, album_count
+                    media_count,
+                    album_count
                 );
             }
 

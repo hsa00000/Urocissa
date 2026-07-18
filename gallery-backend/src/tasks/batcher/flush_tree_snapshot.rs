@@ -70,8 +70,9 @@ fn flush_tree_snapshot_task() {
                 break;
             }
 
-            info!(
-                duration = &*format!("{:?}", timer_start.elapsed());
+            crate::perf_timing!(
+                "tree_snapshot.flush_disk",
+                timer_start,
                 "Write in-memory cache into disk"
             );
             timestamp

@@ -3,6 +3,7 @@ pub mod claims;
 pub mod delete;
 pub mod fairing;
 pub mod get;
+pub mod performance;
 pub mod post;
 pub mod put;
 pub use crate::public::error::{AppError, ErrorKind};

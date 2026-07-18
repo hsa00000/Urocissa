@@ -62,7 +62,11 @@ impl TreeSnapshot {
                     });
             }
         }
-        info!(duration = &*format!("{:?}", start_time.elapsed()); "Generate scrollbar");
+        crate::perf_timing!(
+            "tree_snapshot.generate_scrollbar",
+            start_time,
+            "Generate scrollbar"
+        );
         scroll_bar_data_vec
     }
 }

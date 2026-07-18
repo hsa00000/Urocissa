@@ -147,6 +147,7 @@ pub fn build_rocket_with_config(app_config: AppConfig) -> rocket::Rocket<rocket:
         .mount("/", generate_put_routes())
         .mount("/", generate_delete_routes())
         .mount("/", generate_fairing_routes())
+        .mount("/", super::performance::generate_performance_routes())
 }
 
 #[cfg(test)]

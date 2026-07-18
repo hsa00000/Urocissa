@@ -40,6 +40,7 @@ pub fn initialize_logger() -> UnboundedReceiver<String> {
         // Always include ANSI codes so StyledContent can reset itself
         .write_style(WriteStyle::Always)
         .format(|buf, record| {
+            crate::performance::record_log(record);
             // Colorize timestamp in dark grey
             let ts = buf.timestamp().to_string().dark_grey();
 

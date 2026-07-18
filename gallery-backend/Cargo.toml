@@ -82,6 +82,7 @@ ubyte = "0.10.4"
 [features]
 embed-frontend = []
 auto-open-browser = ["dep:webbrowser"]
+performance-test = []
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

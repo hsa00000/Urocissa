@@ -17,6 +17,11 @@ pub fn get_config_path() -> PathBuf {
 
 pub fn get_data_path() -> &'static PathBuf {
     DATA_PATH.get_or_init(|| {
+        #[cfg(feature = "performance-test")]
+        if let Some(perf_root) = std::env::var_os("UROCISSA_PERF_ROOT") {
+            return PathBuf::from(perf_root);
+        }
+
         // 1. Check for portable marker or existing directories
         // The user said: "first check portable db and object"
 

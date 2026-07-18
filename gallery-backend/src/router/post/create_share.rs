@@ -8,8 +8,8 @@ use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::{public::constant::redb::DATA_TABLE, router::GuardResult};
 
 use arrayvec::ArrayString;
-use rand::distr::Alphanumeric;
 use rand::RngExt;
+use rand::distr::Alphanumeric;
 use redb::{ReadableTable, WriteTransaction};
 use rocket::post;
 use rocket::serde::json::Json;

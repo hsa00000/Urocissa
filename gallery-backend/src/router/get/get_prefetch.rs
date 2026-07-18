@@ -19,7 +19,6 @@ use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 use anyhow::Result;
 use bitcode::{Decode, Encode};
 use chrono::Utc;
-use log::info;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -91,8 +90,11 @@ fn check_query_cache(
 
     // Check cache first
     if let Ok(Some(prefetch)) = QUERY_SNAPSHOT.read_query_snapshot(query_hash) {
-        let duration = format!("{:?}", find_cache_start_time.elapsed());
-        info!(duration = &*duration; "Query cache found");
+        crate::perf_timing!(
+            "prefetch.query_cache_lookup",
+            find_cache_start_time,
+            "Query cache found"
+        );
         let claims = ClaimsTimestamp::new(mem::take(resolved_share_option), prefetch.timestamp);
         return Some(Json(PrefetchReturn::new(
             prefetch,
@@ -101,8 +103,11 @@ fn check_query_cache(
         )));
     }
 
-    let duration = format!("{:?}", find_cache_start_time.elapsed());
-    info!(duration = &*duration; "Query cache not found. Generate a new one.");
+    crate::perf_timing!(
+        "prefetch.query_cache_lookup",
+        find_cache_start_time,
+        "Query cache not found. Generate a new one."
+    );
     None
 }
 
@@ -146,8 +151,11 @@ fn filter_items(
             .collect(),
     };
 
-    let duration = format!("{:?}", filter_items_start_time.elapsed());
-    info!(duration = &*duration; "Filter items");
+    crate::perf_timing!(
+        "prefetch.filter_items",
+        filter_items_start_time,
+        "Filter items"
+    );
 
     Ok(reduced_data_vector)
 }
@@ -165,8 +173,11 @@ fn compute_locate(
             .position_first(|reduced| reduced.hash.as_str() == hash)
     });
 
-    let duration = format!("{:?}", layout_start_time.elapsed());
-    info!(duration = &*duration; "Compute layout");
+    crate::perf_timing!(
+        "prefetch.compute_layout",
+        layout_start_time,
+        "Compute layout"
+    );
 
     locate_to_index
 }
@@ -182,8 +193,11 @@ fn build_cache_key(expression_option: Option<&Expression>, locate_option: Option
     locate_option.hash(&mut hasher);
     let query_hash = hasher.finish();
 
-    let duration = format!("{:?}", cache_key_start_time.elapsed());
-    info!(duration = &*duration; "Build cache key");
+    crate::perf_timing!(
+        "prefetch.build_cache_key",
+        cache_key_start_time,
+        "Build cache key"
+    );
 
     query_hash
 }
@@ -199,8 +213,11 @@ fn insert_data_into_tree_snapshot(reduced_data_vector: Vec<ReducedData>) -> (i64
         .insert(timestamp_millis, reduced_data_vector);
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeSnapshotTask);
 
-    let duration = format!("{:?}", db_start_time.elapsed());
-    info!(duration = &*duration; "Write cache into memory");
+    crate::perf_timing!(
+        "prefetch.write_snapshot_memory",
+        db_start_time,
+        "Write cache into memory"
+    );
 
     (timestamp_millis, reduced_data_vector_length)
 }
@@ -232,8 +249,11 @@ fn create_json_response(
         claims.resolved_share_opt,
     ));
 
-    let duration = format!("{:?}", json_start_time.elapsed());
-    info!(duration = &*duration; "Create JSON response");
+    crate::perf_timing!(
+        "prefetch.create_json",
+        json_start_time,
+        "Create JSON response"
+    );
 
     json
 }
@@ -278,8 +298,11 @@ fn execute_prefetch_logic(
     );
 
     // Total elapsed time
-    let duration = format!("{:?}", start_time.elapsed());
-    info!(duration = &*duration; "(total time) Get_data_length complete");
+    crate::perf_timing!(
+        "prefetch.total",
+        start_time,
+        "(total time) Get_data_length complete"
+    );
 
     Ok(json)
 }

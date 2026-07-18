@@ -33,3 +33,7 @@ gallery-backend/upload
 .opencode/oh-my-opencode.jsonc
 
 /**/.omc
+
+# Local performance benchmark artifacts and disposable baselines
+.performance/
+performance/node_modules/

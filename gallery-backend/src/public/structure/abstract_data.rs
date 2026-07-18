@@ -37,6 +37,36 @@ pub enum AbstractData {
     Album(AlbumCombined),
 }
 
+#[cfg(all(test, feature = "performance-test"))]
+mod performance_tests {
+    use super::AbstractData;
+
+    #[test]
+    fn performance_fixture_generation_is_deterministic_and_unique() {
+        let first = AbstractData::generate_performance_data(17, 20_260_718);
+        let repeat = AbstractData::generate_performance_data(17, 20_260_718);
+        let next = AbstractData::generate_performance_data(18, 20_260_718);
+
+        assert_eq!(first.hash(), repeat.hash());
+        assert_eq!(first.source_path_string(), repeat.source_path_string());
+        assert_ne!(first.hash(), next.hash());
+        assert!(first.source_path_string().starts_with("perf://"));
+    }
+
+    #[test]
+    fn performance_fixture_has_mixed_media_and_flags() {
+        let items = (0..1_000)
+            .map(|index| AbstractData::generate_performance_data(index, 20_260_718))
+            .collect::<Vec<_>>();
+
+        assert!(items.iter().any(AbstractData::is_image));
+        assert!(items.iter().any(AbstractData::is_video));
+        assert!(items.iter().any(AbstractData::is_favorite));
+        assert!(items.iter().any(AbstractData::is_archived));
+        assert!(items.iter().any(AbstractData::is_trashed));
+    }
+}
+
 impl AbstractData {
     /// Get the object hash/id
     pub fn hash(&self) -> ArrayString<64> {
@@ -257,6 +287,33 @@ impl AbstractData {
         matches!(self, AbstractData::Video(_))
     }
 
+    #[cfg(feature = "performance-test")]
+    pub fn is_favorite(&self) -> bool {
+        match self {
+            AbstractData::Image(data) => data.object.is_favorite,
+            AbstractData::Video(data) => data.object.is_favorite,
+            AbstractData::Album(data) => data.object.is_favorite,
+        }
+    }
+
+    #[cfg(feature = "performance-test")]
+    pub fn is_archived(&self) -> bool {
+        match self {
+            AbstractData::Image(data) => data.object.is_archived,
+            AbstractData::Video(data) => data.object.is_archived,
+            AbstractData::Album(data) => data.object.is_archived,
+        }
+    }
+
+    #[cfg(feature = "performance-test")]
+    pub fn is_trashed(&self) -> bool {
+        match self {
+            AbstractData::Image(data) => data.object.is_trashed,
+            AbstractData::Video(data) => data.object.is_trashed,
+            AbstractData::Album(data) => data.object.is_trashed,
+        }
+    }
+
     /// Create a new `AbstractData` from a file path and hash
     pub fn new(path: &Path, hash: ArrayString<64>) -> Result<Self> {
         let ext = path
@@ -305,45 +362,89 @@ impl AbstractData {
         }
     }
 
-    /// Generate random `AbstractData` (image) for testing
-    pub fn generate_random_data() -> Self {
-        use crate::operations::hash::generate_random_hash;
-        use rand::RngExt;
+    /// Generate deterministic, metadata-only benchmark data.
+    ///
+    /// The benchmark deliberately does not create media files. The resulting
+    /// records still exercise serialization, sorting, filtering, row layout,
+    /// and deletion with a stable distribution across revisions.
+    #[cfg(feature = "performance-test")]
+    pub fn generate_performance_data(index: u64, seed: u64) -> Self {
+        fn next(state: &mut u64) -> u64 {
+            *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut value = *state;
+            value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            value ^ (value >> 31)
+        }
 
-        let hash = generate_random_hash();
-        let width = rand::rng().random_range(300..=600);
-        let height = rand::rng().random_range(300..=600);
-
+        let mut state = seed ^ index.wrapping_mul(0xD6E8_FEB8_6659_FD93);
+        let hash = blake3::hash(format!("urocissa-perf:{seed}:{index}").as_bytes())
+            .to_hex()
+            .to_string();
+        let hash = ArrayString::<64>::from(&hash).expect("BLAKE3 hash must fit ArrayString");
+        let is_video = next(&mut state) % 10 == 0;
+        let object_type = if is_video {
+            ObjectType::Video
+        } else {
+            ObjectType::Image
+        };
+        let timestamp =
+            946_684_800_000_i64 + i64::try_from(next(&mut state) % 820_454_400_000).unwrap_or(0);
+        let width = 320 + u32::try_from(next(&mut state) % 1_920).unwrap_or(0);
+        let height = 240 + u32::try_from(next(&mut state) % 1_080).unwrap_or(0);
+        let tags = (0..usize::try_from(next(&mut state) % 5).unwrap_or(0))
+            .map(|tag_index| format!("perf-tag-{}", (next(&mut state) % 32) + tag_index as u64))
+            .collect::<HashSet<_>>();
+        let file_modify = FileModify {
+            file: format!("perf://{hash}"),
+            modified: timestamp,
+            scan_time: timestamp,
+        };
         let object = ObjectSchema {
             id: hash,
-            obj_type: ObjectType::Image,
+            obj_type: object_type,
             pending: false,
             thumbhash: None,
-            description: None,
-            tags: HashSet::new(),
-            is_favorite: false,
-            is_archived: false,
-            is_trashed: false,
-            update_at: Utc::now().timestamp_millis(),
+            description: (next(&mut state) % 5 == 0)
+                .then(|| format!("Performance fixture item {index}")),
+            tags,
+            is_favorite: next(&mut state) % 10 == 0,
+            is_archived: next(&mut state) % 20 == 0,
+            is_trashed: next(&mut state) % 50 == 0,
+            update_at: timestamp,
         };
 
-        let metadata = ImageMetadata {
-            id: hash,
-            size: 0,
-            width,
-            height,
-            ext: "jpg".to_string(),
-            phash: None,
-            albums: HashSet::new(),
-            exif_vec: BTreeMap::new(),
-            alias: vec![FileModify {
-                file: String::from("/"),
-                modified: 0,
-                scan_time: 0,
-            }],
-        };
-
-        AbstractData::Image(ImageCombined { object, metadata })
+        if is_video {
+            AbstractData::Video(VideoCombined {
+                object,
+                metadata: VideoMetadata {
+                    id: hash,
+                    size: 1_000 + next(&mut state) % 20_000_000,
+                    width,
+                    height,
+                    ext: "mp4".to_string(),
+                    duration: (next(&mut state) % 3_600) as f64 + 0.5,
+                    albums: HashSet::new(),
+                    exif_vec: BTreeMap::new(),
+                    alias: vec![file_modify],
+                },
+            })
+        } else {
+            AbstractData::Image(ImageCombined {
+                object,
+                metadata: ImageMetadata {
+                    id: hash,
+                    size: 1_000 + next(&mut state) % 20_000_000,
+                    width,
+                    height,
+                    ext: "jpg".to_string(),
+                    phash: None,
+                    albums: HashSet::new(),
+                    exif_vec: BTreeMap::new(),
+                    alias: vec![file_modify],
+                },
+            })
+        }
     }
 
     // Path helper methods

@@ -37,7 +37,7 @@ impl BatchTask for UpdateTreeTask {
     }
 }
 
-fn update_tree_task() {
+pub fn update_tree_task() {
     let start_time = Instant::now();
     let data_table = open_data_table();
 
@@ -65,6 +65,10 @@ fn update_tree_task() {
     BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
 
     let current_timestamp = Utc::now().timestamp_millis();
-    let duration = format!("{:?}", start_time.elapsed());
-    info!(duration = &*duration; "In-memory cache updated ({}).", current_timestamp);
+    crate::perf_timing!(
+        "tree.rebuild",
+        start_time,
+        "In-memory cache updated ({}).",
+        current_timestamp
+    );
 }
