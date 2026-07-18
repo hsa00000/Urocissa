@@ -46,6 +46,9 @@ pub async fn delete_data(
             .state
             .read()
             .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+        if state.structural_epoch() != resolved.structural_epoch {
+            return Err(AppError::new(ErrorKind::Conflict, "selection is stale"));
+        }
         resolved.targets.iter().any(|ordinal| {
             state
                 .get(ordinal)
@@ -53,19 +56,19 @@ pub async fn delete_data(
         })
     };
     if contains_media {
-        delete_durable_selection(resolved.targets).await
+        delete_durable_selection(resolved.targets, resolved.structural_epoch).await
     } else {
-        delete_logical_albums(resolved.targets).await
+        delete_logical_albums(resolved.targets, resolved.structural_epoch).await
     }
 }
 
-async fn delete_logical_albums(targets: TargetSet) -> AppResult<()> {
+async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> AppResult<()> {
     let reservation = {
         let state = TREE
             .state
             .read()
             .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-        if !targets.is_current(&state) {
+        if state.structural_epoch() != structural_epoch {
             return Err(AppError::new(
                 ErrorKind::Conflict,
                 "album selection is stale",
@@ -101,7 +104,7 @@ async fn delete_logical_albums(targets: TargetSet) -> AppResult<()> {
         WRITE_BEHIND.release_reservation(reservation);
         AppError::new(ErrorKind::Internal, "tree state lock poisoned")
     })?;
-    if !targets.is_current(&state) {
+    if state.structural_epoch() != structural_epoch {
         WRITE_BEHIND.release_reservation(reservation);
         return Err(AppError::new(
             ErrorKind::Conflict,
@@ -182,14 +185,14 @@ async fn delete_logical_albums(targets: TargetSet) -> AppResult<()> {
     Ok(())
 }
 
-async fn delete_durable_selection(targets: TargetSet) -> AppResult<()> {
+async fn delete_durable_selection(targets: TargetSet, structural_epoch: u64) -> AppResult<()> {
     tokio::task::spawn_blocking(move || -> AppResult<()> {
         let _persistence_guard = TREE.persistence_lock.lock().unwrap();
         let mut state = TREE
             .state
             .write()
             .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-        if !targets.is_current(&state) {
+        if state.structural_epoch() != structural_epoch {
             return Err(AppError::new(
                 ErrorKind::Conflict,
                 "selection became stale before durable delete",
@@ -248,7 +251,7 @@ async fn delete_durable_selection(targets: TargetSet) -> AppResult<()> {
                         let Some(value) = writer.get(member_id.as_str())? else {
                             continue;
                         };
-                        let mut data = value.value();
+                        let mut data = value.into_value();
                         if let Some(albums) = data.albums_mut() {
                             albums.remove(album_id);
                         }

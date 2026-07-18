@@ -39,6 +39,7 @@ const editWorkload = Object.freeze({
   softLimitMiB: 16,
   hardLimitMiB: 32,
   flushChunkRecords: 8192,
+  snapshotSchema: 6,
   mediaObjects: 'stubbed-transparent-png',
   operations: [
     'album-create-title-cover',
@@ -109,7 +110,7 @@ async function ensureBuilds() {
 async function runSuite({ resultDir, count, samples, seed, headed }) {
   await mkdir(join(resultDir, 'samples'), { recursive: true })
   const summary = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     generatedAt: new Date().toISOString(),
     source: sourceIdentity(),
     environment: {
@@ -735,35 +736,51 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
   assertBenchmark(batchAudit.marker.total === selectedHome, `batch tag add reached ${batchAudit.marker.total}; expected ${selectedHome}`)
 
   await phase('edit-batch-favorite', async () => {
+    await selectAllVisibleItems(page, expectedEditedHome)
     await performActionAndWaitForApiResponse(page, 'Batch actions', 'Favorite', 'PUT', '/put/edit_flags')
   })
   batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
   assertBenchmark(batchAudit.marker.favorite === selectedHome, 'batch favorite did not update every marked item')
 
-  await phase('edit-batch-archive', async () => {
-    await performActionAndWaitForApiResponse(page, 'Batch actions', 'Archive', 'PUT', '/put/edit_flags')
-  })
-  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
-  assertBenchmark(batchAudit.marker.archived === selectedHome, 'batch archive did not update every marked item')
-
   await phase('edit-batch-flags-clear', async () => {
+    await selectAllVisibleItems(page, expectedEditedHome)
     await openAction(page, 'Batch actions', 'Batch Edit Tags')
     const dialog = page.locator('#batch-edit-tag-overlay')
     const field = dialog.getByLabel('Remove Tags')
     await selectComboboxOption(page, field, 'Favorite')
-    await selectComboboxOption(page, field, 'Archived')
-    await performDialogAndWaitForApiResponse(
+    const selectedFlags = await field
+      .locator('xpath=ancestor::*[contains(@class,"v-input")][1]')
+      .locator('.v-chip')
+      .allTextContents()
+    assertBenchmark(
+      selectedFlags.some((value) => value.includes('Favorite')),
+      `batch flag clear selected unexpected chips: ${JSON.stringify(selectedFlags)}`
+    )
+    const response = await performDialogAndWaitForApiResponse(
       page,
       dialog,
       'PUT',
       '/put/edit_flags',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
     )
+    const payload = response.request().postDataJSON()
+    assertBenchmark(
+      payload.isFavorite === false && payload.isArchived === undefined,
+      `batch flag clear sent unexpected payload: ${JSON.stringify(payload)}`
+    )
+    assertBenchmark(
+      payload.selection?.mode === 'allExcept' && payload.selection.excludedIndices?.length === 0,
+      `batch flag clear sent unexpected selection: ${JSON.stringify(payload.selection)}`
+    )
   })
   batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
-  assertBenchmark(batchAudit.marker.favorite === 0 && batchAudit.marker.archived === 0, 'batch flags were not cleared')
+  assertBenchmark(
+    batchAudit.marker.favorite === 0,
+    `batch favorite was not cleared: favorite=${batchAudit.marker.favorite}`
+  )
 
   await phase('edit-batch-album-add', async () => {
+    await selectAllVisibleItems(page, expectedEditedHome)
     await openAction(page, 'Batch actions', 'Batch Edit Albums')
     const dialog = page.locator('#batch-edit-album-overlay')
     await selectComboboxOption(
@@ -823,6 +840,7 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
   )
 
   await phase('edit-batch-trash', async () => {
+    await selectAllVisibleItems(page, expectedEditedHome)
     await performActionAndWaitForApiResponse(page, 'Batch actions', 'Delete', 'PUT', '/put/edit_flags')
   })
   batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
@@ -835,6 +853,40 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
   })
   batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
   assertBenchmark(batchAudit.marker.trashed === 0, 'batch restore left marked items trashed')
+
+  await phase('edit-batch-archive', async () => {
+    await navigateToCollection(`${baseUrl}/home`)
+    await selectAllVisibleItems(page)
+    await performActionAndWaitForApiResponse(page, 'Batch actions', 'Archive', 'PUT', '/put/edit_flags')
+  })
+  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  assertBenchmark(batchAudit.marker.archived === selectedHome, 'batch archive did not update every marked item')
+
+  await phase('edit-batch-archive-clear', async () => {
+    await navigateToCollection(`${baseUrl}/archived`)
+    await selectAllVisibleItems(page)
+    await openAction(page, 'Batch actions', 'Batch Edit Tags')
+    const dialog = page.locator('#batch-edit-tag-overlay')
+    const field = dialog.getByLabel('Remove Tags')
+    await selectComboboxOption(page, field, 'Archived')
+    const response = await performDialogAndWaitForApiResponse(
+      page,
+      dialog,
+      'PUT',
+      '/put/edit_flags',
+      () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
+    )
+    const payload = response.request().postDataJSON()
+    assertBenchmark(
+      payload.isArchived === false,
+      `batch archive clear sent unexpected payload: ${JSON.stringify(payload)}`
+    )
+  })
+  batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
+  assertBenchmark(
+    batchAudit.marker.archived === 0,
+    `batch archive was not cleared: archived=${batchAudit.marker.archived}`
+  )
 
   await phase('edit-batch-tag-remove', async () => {
     await navigateToCollection(`${baseUrl}/home`)
@@ -964,15 +1016,29 @@ async function addComboboxValue(field, value) {
 }
 
 async function selectComboboxOption(page, field, value) {
+  const input = field.locator('xpath=ancestor::*[contains(@class,"v-input")][1]')
+  await input.locator('.v-field__input').click()
   await field.press('ArrowDown')
   const option = page
     .locator('.v-overlay--active .v-list-item')
     .filter({ has: page.getByText(value, { exact: true }) })
     .last()
   await option.waitFor({ state: 'visible' })
-  await option.dispatchEvent('click')
-  const input = field.locator('xpath=ancestor::*[contains(@class,"v-input")][1]')
-  await input.getByText(value, { exact: true }).last().waitFor({ state: 'visible' })
+  await option.click()
+  await input.locator('.v-chip').filter({ hasText: value }).last().waitFor({ state: 'visible' })
+  await field.evaluate((element) => {
+    const boundary = element.closest('.v-overlay__content')
+    if (!boundary) throw new Error('combobox dialog boundary is missing')
+    boundary.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key === 'Escape') event.stopPropagation()
+      },
+      { once: true }
+    )
+  })
+  await field.press('Escape')
+  await option.waitFor({ state: 'hidden' })
 }
 
 async function removeChip(dialog, value) {
@@ -991,6 +1057,8 @@ async function selectFirstItem(page) {
 }
 
 async function selectAllVisibleItems(page, expected = null) {
+  const clearSelection = page.getByRole('button', { name: 'Clear selection' })
+  if (await clearSelection.count()) await clearSelection.click()
   await selectFirstItem(page)
   const selectAll = page.getByRole('button', { name: 'Select all' })
   if (await selectAll.count()) await selectAll.click()

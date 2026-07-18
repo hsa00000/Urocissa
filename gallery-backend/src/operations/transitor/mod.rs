@@ -21,7 +21,7 @@ pub fn hash_to_abstract_data(
     hash: ArrayString<64>,
 ) -> Result<AbstractData> {
     if let Some(data) = data_table.get(hash.as_str())? {
-        Ok(data.value())
+        Ok(data.into_value())
     } else {
         Err(anyhow::anyhow!("No data found for hash: {hash}"))
     }

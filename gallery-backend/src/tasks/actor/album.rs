@@ -37,7 +37,7 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
         .write(|data_table| {
             let album_opt = data_table
                 .get(album_id.as_str())?
-                .map(|value| value.value())
+                .map(|value| value.into_value())
                 .and_then(|abstract_data| match abstract_data {
                     AbstractData::Album(album) => Some(album),
                     _ => None,
@@ -68,7 +68,7 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
                     let Some(value) = data_table.get(hash.as_str())? else {
                         continue;
                     };
-                    let mut abstract_data = value.value();
+                    let mut abstract_data = value.into_value();
                     if let Some(albums) = abstract_data.albums_mut() {
                         albums.remove(&*album_id);
                     }

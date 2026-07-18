@@ -27,6 +27,7 @@ impl SelectionDescriptor {
 pub struct ResolvedSelection {
     pub targets: TargetSet,
     pub len: usize,
+    pub structural_epoch: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -75,60 +76,74 @@ pub fn resolve_selection(
     let snapshot_len = snapshot.len();
     let normalized = normalize_selection(selection, snapshot_len)?;
 
-    let state = TREE
-        .state
-        .read()
-        .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-    let universe = state.arena.capacity();
-    let mut slots = Vec::new();
-    let mut len = 0;
-    let mut validate_identity = |index: usize, raw: u64| -> Result<(), AppError> {
-        let slot_ref = SlotRef::from_raw(raw);
-        state.get(slot_ref).ok_or_else(|| {
-            AppError::new(
-                ErrorKind::Conflict,
-                format!("selection index {index} has a stale generation"),
-            )
-        })?;
-        slots.push(slot_ref);
-        len += 1;
-        Ok(())
+    let (structural_epoch, universe) = {
+        let state = TREE
+            .state
+            .read()
+            .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+        (state.structural_epoch(), state.arena.capacity())
     };
-    if let NormalizedSelection::Explicit(indices) = &normalized {
-        for index in indices.iter().copied() {
-            let raw = snapshot.get_slot_ref(index).map_err(|error| {
+    let snapshot_epoch = snapshot.structural_epoch().map_err(|error| {
+        AppError::from_err(
+            ErrorKind::Conflict,
+            anyhow::anyhow!("stale selection snapshot {timestamp}: {error}"),
+        )
+    })?;
+    if snapshot_epoch != structural_epoch || snapshot.universe().unwrap_or(usize::MAX) != universe {
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            "selection snapshot belongs to an older structural epoch",
+        ));
+    }
+
+    let targets = match &normalized {
+        NormalizedSelection::Explicit(indices) => {
+            let slots = indices
+                .iter()
+                .copied()
+                .map(|index| {
+                    snapshot
+                        .get_slot_ref(index)
+                        .map(SlotRef::from_raw)
+                        .map_err(|error| {
+                            AppError::from_err(
+                                ErrorKind::Conflict,
+                                anyhow::anyhow!("stale selection index {index}: {error}"),
+                            )
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            TargetSet::from_unique_slot_refs(slots, universe)
+        }
+        NormalizedSelection::AllExcept(excluded) => {
+            let mut targets = snapshot.target_set().map_err(|error| {
                 AppError::from_err(
                     ErrorKind::Conflict,
-                    anyhow::anyhow!("stale selection index {index}: {error}"),
+                    anyhow::anyhow!("invalid selection target bitmap: {error}"),
                 )
             })?;
-            validate_identity(index, raw)?;
+            let excluded_targets = TargetSet::from_unique_slot_refs(
+                excluded
+                    .iter()
+                    .copied()
+                    .map(|index| snapshot.get_slot_ref(index).map(SlotRef::from_raw))
+                    .collect::<anyhow::Result<Vec<_>>>()?,
+                universe,
+            );
+            targets.subtract(&excluded_targets);
+            targets
         }
-    } else if let NormalizedSelection::AllExcept(excluded) = &normalized {
-        let mut excluded_cursor = 0;
-        snapshot
-            .for_each_slot_ref(|index, raw| {
-                if excluded.get(excluded_cursor) == Some(&index) {
-                    excluded_cursor += 1;
-                    Ok(())
-                } else {
-                    validate_identity(index, raw).map_err(anyhow::Error::new)
-                }
-            })
-            .map_err(|error| {
-                error
-                    .downcast::<AppError>()
-                    .unwrap_or_else(|error| AppError::from_err(ErrorKind::Conflict, error))
-            })?;
-    }
+    };
     let resolved = ResolvedSelection {
-        targets: TargetSet::from_slot_refs(slots, universe),
-        len,
+        len: targets.len(),
+        targets,
+        structural_epoch,
     };
     crate::perf_timing!(
         "selection.resolve",
         started,
-        "Resolve and validate selection"
+        "Resolve and validate {} selection targets",
+        resolved.len
     );
     Ok(resolved)
 }

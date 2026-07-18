@@ -34,24 +34,27 @@ impl BatchTask for UpdateTreeTask {
     }
 }
 
-pub fn update_tree_task() {
+pub fn update_tree_task() -> (usize, usize) {
     let start_time = Instant::now();
-    TREE.with_list_snapshot_update(|| {
+    let counts = TREE.with_list_snapshot_update(|| {
         let data_table = open_data_table();
 
         let records = data_table.iter().unwrap().map(|guard| {
             let (_, value) = guard.unwrap();
-            let mut abstract_data = value.value();
+            let mut abstract_data = value.into_value();
             // retain only necessary exif data used for query search
             if let Some(exif_vec) = abstract_data.exif_vec_mut() {
                 exif_vec.retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
             }
             abstract_data
         });
+        let state = TreeState::from_records(records);
+        let counts = (state.len(), state.albums.len());
         TREE.replace_tree_snapshot(
-            TreeState::from_records(records),
+            state,
             crate::public::db::tree::read_tags::TreeListSnapshot::default(),
         );
+        counts
     });
 
     BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
@@ -63,4 +66,5 @@ pub fn update_tree_task() {
         "In-memory cache updated ({}).",
         current_timestamp
     );
+    counts
 }

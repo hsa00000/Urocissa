@@ -70,7 +70,7 @@ pub async fn regenerate_thumbnail_with_frame(
             .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
             .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Hash not found"))?;
 
-        let mut abstract_data = access_guard.value();
+        let mut abstract_data = access_guard.into_value();
 
         let dyn_img = generate_dynamic_image(&abstract_data)
             .or_raise(|| (ErrorKind::Internal, "Failed to decode DynamicImage"))?;

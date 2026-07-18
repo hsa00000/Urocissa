@@ -22,7 +22,6 @@ use crate::tasks::batcher::update_tree::update_tree_task;
 use crate::tasks::looper::start_expire_check_loop;
 use public::db::tree::TREE;
 use public::db::write_behind::WRITE_BEHIND;
-use public::structure::abstract_data::AbstractData;
 use storage::migration::prepare_storage;
 
 fn main() {
@@ -56,36 +55,25 @@ fn main() {
     let worker_handle = thread::spawn(move || {
         INDEX_RUNTIME.block_on(async {
             let start_time = Instant::now();
-            let (total_count, album_count) = TREE
-                .store
-                .read(|table| {
-                    let total_count = table.len()?;
-                    let album_count = table.iter()?.try_fold(0_usize, |count, entry| {
-                        let (_, value) = entry?;
-                        Ok::<usize, anyhow::Error>(
-                            count + usize::from(matches!(value.value(), AbstractData::Album(_))),
-                        )
-                    })?;
-                    Ok::<(u64, usize), anyhow::Error>((total_count, album_count))
-                })
-                .unwrap();
-
-            let media_count = usize::try_from(total_count).unwrap_or(0) - album_count;
-
+            let total_count =
+                usize::try_from(TREE.store.record_count().unwrap()).unwrap_or(usize::MAX);
             crate::perf_timing!(
                 "startup.read_database_count",
                 start_time,
+                "Read {} object count from V6 table metadata.",
+                total_count
+            );
+
+            let (_, album_count) = update_tree_task();
+            let media_count = total_count.saturating_sub(album_count);
+            info!(
                 "Read {} photos/videos and {} albums from database.",
-                media_count,
-                album_count
+                media_count, album_count
             );
 
             #[cfg(feature = "performance-test")]
             eprintln!("performance startup: database count read");
 
-            // Build the first in-memory tree and list snapshot before Rocket
-            // starts accepting requests. Later rebuilds remain asynchronous.
-            update_tree_task();
             #[cfg(feature = "performance-test")]
             eprintln!("performance startup: logical tree ready");
             let write_behind_worker = INDEX_RUNTIME.spawn(WRITE_BEHIND.run_worker());

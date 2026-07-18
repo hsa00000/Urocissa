@@ -1,7 +1,8 @@
-use crate::public::db::tree_snapshot::{SCROLLBAR_METADATA_TABLE, TREE_SNAPSHOT};
+use crate::public::db::tree_snapshot::{
+    SCROLLBAR_METADATA_TABLE, TREE_SNAPSHOT, TREE_SNAPSHOT_TABLE,
+};
 use crate::storage::codec;
 use mini_executor::BatchTask;
-use redb::TableDefinition;
 use std::time::Instant;
 
 use crate::public::error_data::handle_error;
@@ -29,7 +30,21 @@ fn flush_tree_snapshot_task() {
             };
 
             let timestamp = *entry_ref.key();
-            let timestamp_str = timestamp.to_string();
+            let encode_start = Instant::now();
+            let (snapshot_bytes, layout) = match entry_ref.encode_with_layout() {
+                Ok(encoded) => encoded,
+                Err(e) => {
+                    handle_error(anyhow::anyhow!(
+                        "FlushTreeSnapshotTask: Failed to encode snapshot {timestamp}: {e}"
+                    ));
+                    break;
+                }
+            };
+            crate::perf_timing!(
+                "tree_snapshot.encode_compact",
+                encode_start,
+                "Encode compact ordinal snapshot"
+            );
             let scrollbar_bytes = match codec::encode(&entry_ref.scrollbar) {
                 Ok(bytes) => bytes,
                 Err(e) => {
@@ -50,8 +65,6 @@ fn flush_tree_snapshot_task() {
                     break;
                 }
             };
-            let table_definition: TableDefinition<u64, u64> = TableDefinition::new(&timestamp_str);
-
             {
                 let mut metadata = match txn.open_table(SCROLLBAR_METADATA_TABLE) {
                     Ok(t) => t,
@@ -71,21 +84,20 @@ fn flush_tree_snapshot_task() {
             }
 
             {
-                let mut table = match txn.open_table(table_definition) {
+                let mut table = match txn.open_table(TREE_SNAPSHOT_TABLE) {
                     Ok(t) => t,
                     Err(e) => {
                         handle_error(anyhow::anyhow!(
-                            "FlushTreeSnapshotTask: Failed to open table {timestamp_str}: {e}"
+                            "FlushTreeSnapshotTask: Failed to open snapshot table: {e}"
                         ));
                         break;
                     }
                 };
-                for (index, slot_ref) in entry_ref.slots.iter().copied().enumerate() {
-                    if let Err(e) = table.insert(index as u64, slot_ref) {
-                        handle_error(anyhow::anyhow!(
-                            "FlushTreeSnapshotTask: Failed to insert data at index {index} for timestamp {timestamp}: {e}"
-                        ));
-                    }
+                if let Err(e) = table.insert(timestamp, snapshot_bytes.as_slice()) {
+                    handle_error(anyhow::anyhow!(
+                        "FlushTreeSnapshotTask: Failed to insert snapshot {timestamp}: {e}"
+                    ));
+                    break;
                 }
             }
 
@@ -95,6 +107,7 @@ fn flush_tree_snapshot_task() {
                 ));
                 break;
             }
+            TREE_SNAPSHOT.verified_layouts.insert(timestamp, layout);
 
             crate::perf_timing!(
                 "tree_snapshot.flush_disk",

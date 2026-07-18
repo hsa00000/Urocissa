@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
+use std::time::Instant;
 
 use rocket::serde::{Deserialize, json::Json};
 
@@ -49,13 +50,14 @@ pub async fn edit_flags(
         archived: data.is_archived,
         trashed: data.is_trashed,
     };
+    let structural_epoch = resolved.structural_epoch;
     let targets = resolved.targets;
     let (affected_albums, reservation) = {
         let state = TREE
             .state
             .read()
             .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-        if !targets.is_current(&state) {
+        if state.structural_epoch() != structural_epoch {
             return Err(AppError::new(ErrorKind::Conflict, "selection is stale"));
         }
         let affected = if patch.trashed.is_some() {
@@ -115,7 +117,7 @@ pub async fn edit_flags(
             ));
         }
     };
-    if !targets.is_current(&state) {
+    if state.structural_epoch() != structural_epoch {
         WRITE_BEHIND.release_reservation(reservation);
         return Err(AppError::new(
             ErrorKind::Conflict,
@@ -148,12 +150,7 @@ pub async fn edit_flags(
     let universe = state.arena.capacity();
     let mut operations = Vec::with_capacity(3);
     if let Some(value) = patch.favorite {
-        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
-            targets
-                .iter()
-                .filter(|slot_ref| state.query.favorite.contains(slot_ref.index()) != value),
-            universe,
-        );
+        let changed = targets.changed_for_bitmap(&state.query.favorite, value, universe);
         if !changed.is_empty() {
             operations.push(DirtyOperation::Flags {
                 targets: changed,
@@ -164,12 +161,7 @@ pub async fn edit_flags(
         }
     }
     if let Some(value) = patch.archived {
-        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
-            targets
-                .iter()
-                .filter(|slot_ref| state.query.archived.contains(slot_ref.index()) != value),
-            universe,
-        );
+        let changed = targets.changed_for_bitmap(&state.query.archived, value, universe);
         if !changed.is_empty() {
             operations.push(DirtyOperation::Flags {
                 targets: changed,
@@ -180,12 +172,7 @@ pub async fn edit_flags(
         }
     }
     let (trash_changed, trash_value) = if let Some(value) = patch.trashed {
-        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
-            targets
-                .iter()
-                .filter(|slot_ref| state.query.trashed.contains(slot_ref.index()) != value),
-            universe,
-        );
+        let changed = targets.changed_for_bitmap(&state.query.trashed, value, universe);
         if !changed.is_empty() {
             operations.push(DirtyOperation::Flags {
                 targets: changed.clone(),
@@ -199,6 +186,7 @@ pub async fn edit_flags(
         (None, None)
     };
 
+    let logical_update_started = Instant::now();
     state.query.edit_flags(
         targets.ordinals(),
         FlagPatch {
@@ -206,6 +194,14 @@ pub async fn edit_flags(
             archived: patch.archived,
             trashed: None,
         },
+    );
+    crate::perf_timing!(
+        "edit_flags.logical_update",
+        logical_update_started,
+        "Apply flags to {} targets (favorite={}, archived={})",
+        targets.len(),
+        state.query.favorite.count(),
+        state.query.archived.count()
     );
     let album_patches = match (trash_changed, trash_value) {
         (Some(changed), Some(value)) if !changed.is_empty() => state.edit_flags_and_refresh(

@@ -53,14 +53,17 @@ pub async fn create_non_empty_album(
         tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, &selection))
             .await
             .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
-    create_album(data.title, Some(resolved.targets))
-        .await
-        .map(|id| id.to_string())
+    create_album(
+        data.title,
+        Some((resolved.targets, resolved.structural_epoch)),
+    )
+    .await
+    .map(|id| id.to_string())
 }
 
 async fn create_album(
     title: Option<String>,
-    members: Option<crate::public::db::tree::state::TargetSet>,
+    members: Option<(crate::public::db::tree::state::TargetSet, u64)>,
 ) -> AppResult<ArrayString<64>> {
     let started = Instant::now();
     let album_id = generate_random_hash();
@@ -69,7 +72,8 @@ async fn create_album(
         crate::public::structure::abstract_data::AbstractData::Album(album) => album.clone(),
         _ => unreachable!(),
     };
-    let mut membership_operation = members.map(|targets| DirtyOperation::Albums {
+    let selection_epoch = members.as_ref().map(|(_, epoch)| *epoch);
+    let mut membership_operation = members.map(|(targets, _)| DirtyOperation::Albums {
         targets,
         add: BTreeSet::from([album_id]),
         remove: BTreeSet::new(),
@@ -83,9 +87,7 @@ async fn create_album(
         WRITE_BEHIND.release_reservation(reservation);
         AppError::new(ErrorKind::Internal, "tree state lock poisoned")
     })?;
-    if membership_operation.as_ref().is_some_and(|operation| {
-        matches!(operation, DirtyOperation::Albums { targets, .. } if !targets.is_current(&state))
-    }) {
+    if selection_epoch.is_some_and(|epoch| state.structural_epoch() != epoch) {
         WRITE_BEHIND.release_reservation(reservation);
         return Err(AppError::new(
             ErrorKind::Conflict,

@@ -53,7 +53,7 @@ pub async fn get_data(
                 let durable = data_table
                     .get(hash.as_str())
                     .or_raise(|| (ErrorKind::Database, "Failed to read durable data"))?
-                    .map(|value| value.value());
+                    .map(|value| value.into_value());
                 let abstract_data = WRITE_BEHIND
                     .logical_record(hash.as_str(), durable)
                     .ok_or_else(|| {

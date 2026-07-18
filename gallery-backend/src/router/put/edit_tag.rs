@@ -44,6 +44,7 @@ pub async fn edit_tag(
     let mut add = data.add_tags_array.into_iter().collect::<BTreeSet<_>>();
     let remove = data.remove_tags_array.into_iter().collect::<BTreeSet<_>>();
     add.retain(|tag| !remove.contains(tag));
+    let structural_epoch = resolved.structural_epoch;
     let targets = resolved.targets;
     let worst_case_operations = add
         .iter()
@@ -74,7 +75,7 @@ pub async fn edit_tag(
             ));
         }
     };
-    if !targets.is_current(&state) {
+    if state.structural_epoch() != structural_epoch {
         WRITE_BEHIND.release_reservation(bytes);
         return Err(AppError::new(
             ErrorKind::Conflict,
@@ -85,7 +86,7 @@ pub async fn edit_tag(
     let mut operations = Vec::with_capacity(add.len() + remove.len());
     for tag in &add {
         let existing = state.query.tags.get(tag);
-        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
+        let changed = crate::public::db::tree::state::TargetSet::from_unique_slot_refs(
             targets
                 .iter()
                 .filter(|slot_ref| !existing.is_some_and(|set| set.contains(slot_ref.index()))),
@@ -101,7 +102,7 @@ pub async fn edit_tag(
     }
     for tag in &remove {
         let existing = state.query.tags.get(tag);
-        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
+        let changed = crate::public::db::tree::state::TargetSet::from_unique_slot_refs(
             targets
                 .iter()
                 .filter(|slot_ref| existing.is_some_and(|set| set.contains(slot_ref.index()))),

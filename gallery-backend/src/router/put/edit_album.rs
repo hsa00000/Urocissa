@@ -48,13 +48,14 @@ pub async fn edit_album(
         .into_iter()
         .collect::<BTreeSet<_>>();
     add.retain(|album| !remove.contains(album));
+    let structural_epoch = resolved.structural_epoch;
     let targets = resolved.targets;
     let reservation = {
         let state = TREE
             .state
             .read()
             .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-        if !targets.is_current(&state) {
+        if state.structural_epoch() != structural_epoch {
             return Err(AppError::new(ErrorKind::Conflict, "selection is stale"));
         }
         let membership_bytes = add
@@ -89,7 +90,7 @@ pub async fn edit_album(
             ));
         }
     };
-    if !targets.is_current(&state) {
+    if state.structural_epoch() != structural_epoch {
         WRITE_BEHIND.release_reservation(reservation);
         return Err(AppError::new(
             ErrorKind::Conflict,
@@ -111,7 +112,7 @@ pub async fn edit_album(
     let mut operations = Vec::with_capacity(add.len() + remove.len());
     for album_id in &add {
         let existing = state.query.albums.get(album_id);
-        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
+        let changed = crate::public::db::tree::state::TargetSet::from_unique_slot_refs(
             targets
                 .iter()
                 .filter(|slot_ref| !existing.is_some_and(|set| set.contains(slot_ref.index()))),
@@ -127,7 +128,7 @@ pub async fn edit_album(
     }
     for album_id in &remove {
         let existing = state.query.albums.get(album_id);
-        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
+        let changed = crate::public::db::tree::state::TargetSet::from_unique_slot_refs(
             targets
                 .iter()
                 .filter(|slot_ref| existing.is_some_and(|set| set.contains(slot_ref.index()))),

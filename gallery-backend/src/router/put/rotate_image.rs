@@ -43,7 +43,7 @@ pub async fn rotate_image(
                 .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Hash not found"))?;
 
-            let mut abstract_data = access_guard.value();
+            let mut abstract_data = access_guard.into_value();
 
             // Only rotate images, not videos or albums
             if !matches!(abstract_data, AbstractData::Image(_)) {
@@ -93,7 +93,7 @@ pub async fn rotate_image(
 
             for album_id in album_ids {
                 if let Ok(Some(access_guard)) = data_table.get(album_id.as_str()) {
-                    let mut album = access_guard.value();
+                    let mut album = access_guard.into_value();
                     album.update_update_at();
                     result_vec.push(album);
                 }

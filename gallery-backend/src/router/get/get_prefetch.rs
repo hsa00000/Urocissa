@@ -2,12 +2,12 @@ use crate::public::constant::runtime::QUERY_RAYON_POOL;
 use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
+use crate::public::db::tree::state::{SlotRef, TargetSet};
 use crate::public::db::tree_snapshot::read_scrollbar::build_scrollbar;
 use crate::public::db::tree_snapshot::{PendingTreeSnapshot, TREE_SNAPSHOT};
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::album::ResolvedShare;
 use crate::public::structure::expression::{AlbumFilterValue, Expression};
-use crate::public::structure::response::reduced_data::ReducedData;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
@@ -79,17 +79,30 @@ fn check_query_cache(
 
     // Check cache first
     if let Ok(Some(prefetch)) = QUERY_SNAPSHOT.read_query_snapshot(query_hash) {
-        crate::perf_timing!(
-            "prefetch.query_cache_lookup",
-            find_cache_start_time,
-            "Query cache found"
+        let snapshot_epoch = TREE_SNAPSHOT
+            .read_tree_snapshot(prefetch.timestamp)
+            .and_then(|snapshot| snapshot.structural_epoch());
+        let current_epoch = TREE.state.read().ok().map(|state| state.structural_epoch());
+        if snapshot_epoch
+            .ok()
+            .is_some_and(|epoch| Some(epoch) == current_epoch)
+        {
+            crate::perf_timing!(
+                "prefetch.query_cache_lookup",
+                find_cache_start_time,
+                "Query cache found"
+            );
+            let claims = ClaimsTimestamp::new(mem::take(resolved_share_option), prefetch.timestamp);
+            return Some(Json(PrefetchReturn::new(
+                prefetch,
+                claims.encode(),
+                claims.resolved_share_opt,
+            )));
+        }
+        log::warn!(
+            "ignoring query cache entry {} because its compact tree snapshot is stale or corrupt",
+            prefetch.timestamp
         );
-        let claims = ClaimsTimestamp::new(mem::take(resolved_share_option), prefetch.timestamp);
-        return Some(Json(PrefetchReturn::new(
-            prefetch,
-            claims.encode(),
-            claims.resolved_share_opt,
-        )));
     }
 
     crate::perf_timing!(
@@ -103,7 +116,8 @@ fn check_query_cache(
 fn filter_items(
     expression_option: Option<Expression>,
     resolved_share_option: Option<&ResolvedShare>,
-) -> Result<Vec<ReducedData>, AppError> {
+    locate_option: Option<&String>,
+) -> Result<(PendingTreeSnapshot, Option<usize>), AppError> {
     let filter_items_start_time = Instant::now();
 
     let tree_guard = TREE.state.read().map_err(|err| {
@@ -125,19 +139,18 @@ fn filter_items(
         "Compile query expression"
     );
 
-    let reduce = |slot_ref: &crate::public::db::tree::state::SlotRef| {
+    let reduce = |slot_ref: &SlotRef| {
         let record = tree_guard.get(*slot_ref)?;
         compiled_expression
             .as_ref()
             .is_none_or(|expression| expression.matches(record, slot_ref.index()))
-            .then(|| record.reduced(*slot_ref))
+            .then_some((*slot_ref, record.timestamp))
     };
-    let reduced_data_vector: Vec<ReducedData> =
-        if tree_guard.order.len() >= PARALLEL_FILTER_THRESHOLD {
-            QUERY_RAYON_POOL.install(|| tree_guard.order.par_iter().filter_map(reduce).collect())
-        } else {
-            tree_guard.order.iter().filter_map(reduce).collect()
-        };
+    let matches: Vec<(SlotRef, i64)> = if tree_guard.order.len() >= PARALLEL_FILTER_THRESHOLD {
+        QUERY_RAYON_POOL.install(|| tree_guard.order.par_iter().filter_map(reduce).collect())
+    } else {
+        tree_guard.order.iter().filter_map(reduce).collect()
+    };
 
     crate::perf_timing!(
         "prefetch.filter_items",
@@ -145,20 +158,18 @@ fn filter_items(
         "Filter items"
     );
 
-    Ok(reduced_data_vector)
-}
-
-fn compute_locate(
-    reduced_data_vector: &[ReducedData],
-    locate_option: Option<&String>,
-) -> Option<usize> {
     let layout_start_time = Instant::now();
-
-    // Find locate index if requested
-    let locate_to_index = locate_option.and_then(|hash| {
-        reduced_data_vector
-            .par_iter()
-            .position_first(|reduced| reduced.hash.as_str() == hash)
+    let locate_slot = locate_option.and_then(|hash| tree_guard.find(hash));
+    let locate_to_index = locate_slot.and_then(|target| {
+        if matches.len() >= PARALLEL_FILTER_THRESHOLD {
+            QUERY_RAYON_POOL.install(|| {
+                matches
+                    .par_iter()
+                    .position_first(|(slot_ref, _)| *slot_ref == target)
+            })
+        } else {
+            matches.iter().position(|(slot_ref, _)| *slot_ref == target)
+        }
     });
 
     crate::perf_timing!(
@@ -167,7 +178,33 @@ fn compute_locate(
         "Compute layout"
     );
 
-    locate_to_index
+    let snapshot_start = Instant::now();
+    // Keep the timestamp captured during matching. Re-reading the arena here
+    // follows display order rather than slot order and becomes a cache-miss
+    // heavy second random scan at one million records.
+    let scrollbar = build_scrollbar(matches.iter().map(|(_, timestamp)| *timestamp));
+    let universe = tree_guard.arena.capacity();
+    let targets =
+        TargetSet::from_unique_slot_refs(matches.iter().map(|(slot_ref, _)| *slot_ref), universe);
+    let ordinals = matches
+        .into_iter()
+        .map(|(slot_ref, _)| slot_ref.index())
+        .collect();
+    crate::perf_timing!(
+        "prefetch.build_compact_snapshot",
+        snapshot_start,
+        "Build compact snapshot order and target bitmap"
+    );
+    Ok((
+        PendingTreeSnapshot {
+            structural_epoch: tree_guard.structural_epoch(),
+            universe,
+            ordinals,
+            targets,
+            scrollbar,
+        },
+        locate_to_index,
+    ))
 }
 
 fn build_cache_key(expression_option: Option<&Expression>, locate_option: Option<&String>) -> u64 {
@@ -190,24 +227,13 @@ fn build_cache_key(expression_option: Option<&Expression>, locate_option: Option
     query_hash
 }
 
-fn insert_data_into_tree_snapshot(reduced_data_vector: Vec<ReducedData>) -> (i64, usize) {
+fn insert_data_into_tree_snapshot(snapshot: PendingTreeSnapshot) -> (i64, usize) {
     let db_start_time = Instant::now();
 
     // Persist to snapshot
     let timestamp_millis = Utc::now().timestamp_millis();
-    let reduced_data_vector_length = reduced_data_vector.len();
-    let scrollbar = build_scrollbar(reduced_data_vector.iter().map(|data| data.date));
-    let slot_refs = reduced_data_vector
-        .into_iter()
-        .map(|data| data.slot_ref)
-        .collect();
-    TREE_SNAPSHOT.in_memory.insert(
-        timestamp_millis,
-        PendingTreeSnapshot {
-            slots: slot_refs,
-            scrollbar,
-        },
-    );
+    let snapshot_length = snapshot.ordinals.len();
+    TREE_SNAPSHOT.in_memory.insert(timestamp_millis, snapshot);
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeSnapshotTask);
 
     crate::perf_timing!(
@@ -216,7 +242,7 @@ fn insert_data_into_tree_snapshot(reduced_data_vector: Vec<ReducedData>) -> (i64
         "Write cache into memory"
     );
 
-    (timestamp_millis, reduced_data_vector_length)
+    (timestamp_millis, snapshot_length)
 }
 
 fn create_json_response(
@@ -276,14 +302,14 @@ fn execute_prefetch_logic(
     }
 
     // Step 3: Filter items
-    let reduced_data_vector = filter_items(expression_option, resolved_share_option.as_ref())?;
-
-    // Step 4: Compute layout
-    let locate_to_index = compute_locate(&reduced_data_vector, locate_option);
+    let (snapshot, locate_to_index) = filter_items(
+        expression_option,
+        resolved_share_option.as_ref(),
+        locate_option,
+    )?;
 
     // Step 6: Insert data into TREE_SNAPSHOT
-    let (timestamp_millis, reduced_data_vector_length) =
-        insert_data_into_tree_snapshot(reduced_data_vector);
+    let (timestamp_millis, reduced_data_vector_length) = insert_data_into_tree_snapshot(snapshot);
 
     // Step 7: Create and return JSON response
     let json = create_json_response(

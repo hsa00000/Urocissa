@@ -48,7 +48,7 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
     // File already in persistent database
 
     if let Some(guard) = data_table.get(&*task.hash).unwrap() {
-        let mut data_exist = guard.value();
+        let mut data_exist = guard.into_value();
         if let Some(alias_mut) = abstract_data.alias_mut() {
             let file_modify = mem::take(&mut alias_mut[0]);
             if let Some(exist_alias) = data_exist.alias_mut() {

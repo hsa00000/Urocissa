@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::Arc;
-use std::time::Instant;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+use std::sync::{Arc, LazyLock};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use arrayvec::ArrayString;
 
@@ -10,6 +11,19 @@ use crate::public::structure::album::AlbumCombined;
 use crate::public::structure::expression::{AlbumFilterValue, Expression, FilterValue};
 use crate::public::structure::object::ObjectType;
 use crate::public::structure::response::reduced_data::ReducedData;
+
+static NEXT_STRUCTURAL_EPOCH: LazyLock<AtomicU64> = LazyLock::new(|| {
+    let time_seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(1, |duration| {
+            u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+        });
+    AtomicU64::new((time_seed ^ u64::from(std::process::id())).max(1))
+});
+
+fn next_structural_epoch() -> u64 {
+    NEXT_STRUCTURAL_EPOCH.fetch_add(1, AtomicOrdering::Relaxed)
+}
 
 /// A stable arena reference. Reusing a slot always changes its generation, so a
 /// reference captured by an old selection can never silently point at a new
@@ -262,6 +276,14 @@ pub struct DenseBitmap {
 }
 
 impl DenseBitmap {
+    fn from_words(mut words: Vec<u64>) -> Self {
+        while words.last() == Some(&0) {
+            words.pop();
+        }
+        let len = words.iter().map(|word| word.count_ones() as usize).sum();
+        Self { words, len }
+    }
+
     pub fn contains(&self, ordinal: u32) -> bool {
         let word = ordinal as usize / 64;
         let bit = ordinal % 64;
@@ -459,6 +481,24 @@ impl OrdinalSet {
         }
     }
 
+    fn dense_words(&self, universe: usize) -> Vec<u64> {
+        let word_count = universe.saturating_add(63) / 64;
+        let mut words = vec![0_u64; word_count];
+        match self {
+            Self::Sparse(items) => {
+                for ordinal in items {
+                    let ordinal = *ordinal as usize;
+                    words[ordinal / 64] |= 1_u64 << (ordinal % 64);
+                }
+            }
+            Self::Dense(bitmap) => {
+                let copy_len = bitmap.words.len().min(words.len());
+                words[..copy_len].copy_from_slice(&bitmap.words[..copy_len]);
+            }
+        }
+        words
+    }
+
     pub fn subtract(&mut self, removed: &Self, universe: usize) {
         self.subtract_with(removed, universe, |_| {});
     }
@@ -627,6 +667,77 @@ impl TargetSet {
             .map(|slot_ref| (slot_ref.index(), slot_ref.generation()))
             .collect();
         let ordinals = OrdinalSet::from_ordinals(slots.into_iter().map(SlotRef::index), universe);
+        Self {
+            ordinals,
+            generation_overrides,
+        }
+    }
+
+    pub fn from_unique_slot_refs(
+        slot_refs: impl IntoIterator<Item = SlotRef>,
+        universe: usize,
+    ) -> Self {
+        let mut bitmap = DenseBitmap::default();
+        let mut generation_overrides = Vec::new();
+        for slot_ref in slot_refs {
+            if bitmap.set(slot_ref.index(), true) && slot_ref.generation() != 1 {
+                generation_overrides.push((slot_ref.index(), slot_ref.generation()));
+            }
+        }
+        generation_overrides.sort_unstable_by_key(|(ordinal, _)| *ordinal);
+        let mut ordinals = OrdinalSet::Dense(bitmap);
+        ordinals.rebalance(universe);
+        Self {
+            ordinals,
+            generation_overrides,
+        }
+    }
+
+    pub fn from_dense_parts(words: Vec<u64>, generation_overrides: Vec<(u32, u32)>) -> Self {
+        Self {
+            ordinals: OrdinalSet::Dense(DenseBitmap::from_words(words)),
+            generation_overrides,
+        }
+    }
+
+    pub fn dense_parts(&self, universe: usize) -> (Vec<u64>, &[(u32, u32)]) {
+        (
+            self.ordinals.dense_words(universe),
+            &self.generation_overrides,
+        )
+    }
+
+    pub fn slot_ref_for_ordinal(&self, ordinal: u32) -> Option<SlotRef> {
+        if !self.ordinals.contains(ordinal) {
+            return None;
+        }
+        let generation = self
+            .generation_overrides
+            .binary_search_by_key(&ordinal, |(index, _)| *index)
+            .ok()
+            .map_or(1, |index| self.generation_overrides[index].1);
+        Some(SlotRef::new(ordinal, generation))
+    }
+
+    pub fn changed_for_bitmap(
+        &self,
+        bitmap: &DenseBitmap,
+        new_value: bool,
+        universe: usize,
+    ) -> Self {
+        let mut words = self.ordinals.dense_words(universe);
+        for (index, word) in words.iter_mut().enumerate() {
+            let current = bitmap.words.get(index).copied().unwrap_or(0);
+            *word &= if new_value { !current } else { current };
+        }
+        let mut ordinals = OrdinalSet::Dense(DenseBitmap::from_words(words));
+        ordinals.rebalance(universe);
+        let generation_overrides = self
+            .generation_overrides
+            .iter()
+            .copied()
+            .filter(|(ordinal, _)| ordinals.contains(*ordinal))
+            .collect();
         Self {
             ordinals,
             generation_overrides,
@@ -812,16 +923,23 @@ impl QueryIndexes {
     }
 
     pub fn edit_flags(&mut self, targets: &OrdinalSet, patch: FlagPatch) {
-        for ordinal in targets.iter() {
-            if let Some(value) = patch.favorite {
-                self.favorite.set(ordinal, value);
+        let apply = |bitmap: &mut DenseBitmap, value| match targets {
+            OrdinalSet::Sparse(ordinals) => {
+                for ordinal in ordinals {
+                    bitmap.set(*ordinal, value);
+                }
             }
-            if let Some(value) = patch.archived {
-                self.archived.set(ordinal, value);
-            }
-            if let Some(value) = patch.trashed {
-                self.trashed.set(ordinal, value);
-            }
+            OrdinalSet::Dense(targets) if value => bitmap.union_with(targets, |_| {}),
+            OrdinalSet::Dense(targets) => bitmap.subtract_with(targets, |_| {}),
+        };
+        if let Some(value) = patch.favorite {
+            apply(&mut self.favorite, value);
+        }
+        if let Some(value) = patch.archived {
+            apply(&mut self.archived, value);
+        }
+        if let Some(value) = patch.trashed {
+            apply(&mut self.trashed, value);
         }
     }
 
@@ -934,13 +1052,27 @@ fn object_flags(data: &AbstractData) -> (bool, bool, bool) {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct TreeState {
     pub arena: RecordArena<CacheRecord>,
     pub id_index: IdIndex,
     pub order: Arc<Vec<SlotRef>>,
     pub query: QueryIndexes,
     pub albums: HashMap<ArrayString<64>, AlbumCombined>,
+    structural_epoch: u64,
+}
+
+impl Default for TreeState {
+    fn default() -> Self {
+        Self {
+            arena: RecordArena::default(),
+            id_index: IdIndex::default(),
+            order: Arc::default(),
+            query: QueryIndexes::default(),
+            albums: HashMap::default(),
+            structural_epoch: next_structural_epoch(),
+        }
+    }
 }
 
 impl TreeState {
@@ -969,6 +1101,14 @@ impl TreeState {
         self.arena.len()
     }
 
+    pub fn structural_epoch(&self) -> u64 {
+        self.structural_epoch
+    }
+
+    fn bump_structural_epoch(&mut self) {
+        self.structural_epoch = next_structural_epoch();
+    }
+
     pub fn is_empty(&self) -> bool {
         self.arena.is_empty()
     }
@@ -986,7 +1126,7 @@ impl TreeState {
     }
 
     pub fn media_targets(&self, targets: &TargetSet) -> TargetSet {
-        TargetSet::from_slot_refs(
+        TargetSet::from_unique_slot_refs(
             targets.iter().filter(|slot_ref| {
                 self.get(*slot_ref)
                     .is_some_and(|record| record.object_type != ObjectType::Album)
@@ -1019,6 +1159,7 @@ impl TreeState {
             .binary_search_by(|probe| compare_slots(&self.arena, *probe, slot_ref))
             .unwrap_or_else(std::convert::identity);
         Arc::make_mut(&mut self.order).insert(position, slot_ref);
+        self.bump_structural_epoch();
         slot_ref
     }
 
@@ -1029,10 +1170,17 @@ impl TreeState {
             .remove_record(slot_ref.index(), self.arena.capacity());
         self.albums.remove(&id);
         Arc::make_mut(&mut self.order).retain(|candidate| *candidate != slot_ref);
-        self.arena.remove(slot_ref)
+        let removed = self.arena.remove(slot_ref);
+        if removed.is_some() {
+            self.bump_structural_epoch();
+        }
+        removed
     }
 
     pub fn remove_targets(&mut self, targets: &TargetSet) {
+        if targets.is_empty() {
+            return;
+        }
         let universe = self.arena.capacity();
         self.query.remove_targets(targets.ordinals(), universe);
         for slot_ref in targets.iter() {
@@ -1050,6 +1198,7 @@ impl TreeState {
             .filter(|slot_ref| !targets.contains(*slot_ref))
             .collect();
         self.order = Arc::new(next_order);
+        self.bump_structural_epoch();
     }
 
     pub fn replace_static(&mut self, slot_ref: SlotRef, data: &AbstractData) -> Option<()> {
@@ -1076,6 +1225,7 @@ impl TreeState {
                 .collect();
             sort_and_merge(&self.arena, &mut order, vec![slot_ref]);
             self.order = Arc::new(order);
+            self.bump_structural_epoch();
         }
         Some(())
     }
@@ -1156,6 +1306,7 @@ impl TreeState {
             }
         }
 
+        let structural_changed = !removed_slots.is_empty() || !additions.is_empty();
         if !removed_slots.is_empty() || !rekeyed.is_empty() || !additions.is_empty() {
             additions.sort_unstable();
             additions.dedup();
@@ -1167,6 +1318,9 @@ impl TreeState {
                 .collect::<Vec<_>>();
             sort_and_merge(&self.arena, &mut next_order, additions);
             self.order = Arc::new(next_order);
+        }
+        if structural_changed {
+            self.bump_structural_epoch();
         }
     }
 
@@ -1926,6 +2080,95 @@ mod tests {
         assert!(targets.contains(SlotRef::new(7, 3)));
         assert!(!targets.contains(SlotRef::new(7, 2)));
         assert!(targets.contains(SlotRef::new(90, 1)));
+    }
+
+    #[test]
+    fn target_set_changed_bitmap_is_wordwise_and_preserves_generations() {
+        let targets = TargetSet::from_unique_slot_refs(
+            [SlotRef::new(1, 1), SlotRef::new(7, 2), SlotRef::new(65, 1)],
+            128,
+        );
+        let mut current = DenseBitmap::default();
+        current.set(1, true);
+        current.set(65, true);
+
+        let enabling = targets.changed_for_bitmap(&current, true, 128);
+        assert_eq!(
+            enabling.iter().collect::<Vec<_>>(),
+            vec![SlotRef::new(7, 2)]
+        );
+        let disabling = targets.changed_for_bitmap(&current, false, 128);
+        assert_eq!(
+            disabling.iter().collect::<Vec<_>>(),
+            vec![SlotRef::new(1, 1), SlotRef::new(65, 1)]
+        );
+    }
+
+    #[test]
+    fn dense_target_flag_round_trip_reports_every_changed_ordinal() {
+        let universe = 1_024;
+        let targets = TargetSet::from_unique_slot_refs(
+            (0..938).map(|ordinal| SlotRef::new(ordinal, 1)),
+            universe,
+        );
+        assert!(matches!(targets.ordinals(), OrdinalSet::Dense(_)));
+        let mut indexes = QueryIndexes::default();
+
+        let enabling = targets.changed_for_bitmap(&indexes.favorite, true, universe);
+        assert_eq!(enabling.len(), targets.len());
+        indexes.edit_flags(
+            targets.ordinals(),
+            FlagPatch {
+                favorite: Some(true),
+                ..FlagPatch::default()
+            },
+        );
+        assert_eq!(indexes.favorite.count(), targets.len());
+
+        let disabling = targets.changed_for_bitmap(&indexes.favorite, false, universe);
+        assert_eq!(disabling.len(), targets.len());
+        indexes.edit_flags(
+            targets.ordinals(),
+            FlagPatch {
+                favorite: Some(false),
+                ..FlagPatch::default()
+            },
+        );
+        assert_eq!(indexes.favorite.count(), 0);
+    }
+
+    #[cfg(feature = "performance-test")]
+    #[test]
+    fn structural_epoch_changes_only_for_structural_tree_mutations() {
+        let mut records = (0..4)
+            .map(|index| AbstractData::generate_performance_data(index, 19))
+            .collect::<Vec<_>>();
+        let mut state = TreeState::from_records(records.iter().cloned());
+        let initial_epoch = state.structural_epoch();
+        let targets = OrdinalSet::from_ordinals([0, 1], state.arena.capacity());
+        state.query.edit_flags(
+            &targets,
+            FlagPatch {
+                favorite: Some(true),
+                ..FlagPatch::default()
+            },
+        );
+        assert_eq!(state.structural_epoch(), initial_epoch);
+
+        let rekeyed = state.find(records[0].hash().as_str()).unwrap();
+        records[0].alias_mut().unwrap()[0].modified += 1;
+        state.replace_static(rekeyed, &records[0]).unwrap();
+        let rekeyed_epoch = state.structural_epoch();
+        assert_ne!(rekeyed_epoch, initial_epoch);
+
+        let inserted = state.insert(&AbstractData::generate_performance_data(100, 19));
+        let inserted_epoch = state.structural_epoch();
+        assert_ne!(inserted_epoch, rekeyed_epoch);
+        state.remove_targets(&TargetSet::from_slot_refs(
+            [inserted],
+            state.arena.capacity(),
+        ));
+        assert_ne!(state.structural_epoch(), inserted_epoch);
     }
 
     #[test]

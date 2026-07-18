@@ -43,7 +43,7 @@ pub fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>
             // Build the ExportEntry
             let export = ExportEntry {
                 key: key.value().to_string(),
-                value: value.value().clone(),
+                value: value.into_value(),
             };
 
             // Convert it to JSON

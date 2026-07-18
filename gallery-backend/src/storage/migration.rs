@@ -295,7 +295,7 @@ mod tests {
         let value = store
             .read(|reader| reader.get(id.as_str()))?
             .expect("migrated image")
-            .value();
+            .into_value();
         assert_eq!(value.hash(), id);
         Ok(())
     }
@@ -409,7 +409,7 @@ mod tests {
         let value = store
             .read(|reader| reader.get(id.as_str()))?
             .expect("migrated image")
-            .value();
+            .into_value();
         assert_eq!(value.hash(), id);
         Ok(())
     }

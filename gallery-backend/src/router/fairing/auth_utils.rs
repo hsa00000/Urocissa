@@ -140,7 +140,7 @@ fn resolve_share_internal(
         .read(|table| {
             table
                 .get(album_id)
-                .map(|value| value.map(|value| value.value()))
+                .map(|value| value.map(|value| value.into_value()))
         })
         .map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
     let abstract_data = WRITE_BEHIND
@@ -220,7 +220,7 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
         && let Ok(durable) = TREE.store.read(|table| {
             table
                 .get(album_id)
-                .map(|value| value.map(|value| value.value()))
+                .map(|value| value.map(|value| value.into_value()))
         })
         && let Some(AbstractData::Album(mut album)) = WRITE_BEHIND.logical_record(album_id, durable)
         && let Some(share) = album.metadata.share_list.remove(share_id)

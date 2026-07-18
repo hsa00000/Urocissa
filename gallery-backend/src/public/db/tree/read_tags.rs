@@ -142,7 +142,7 @@ impl Tree {
             let album = self.store.read(|data_table| {
                 data_table
                     .get(album_id)
-                    .map(|value| value.map(|value| value.value()))
+                    .map(|value| value.map(|value| value.into_value()))
             })?;
 
             let mut next_snapshot = (*current_snapshot).clone();

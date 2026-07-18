@@ -7,7 +7,7 @@ use crate::public::constant::storage::get_data_path;
 
 static QUERY_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     let db_directory = get_data_path().join("db");
-    let path = db_directory.join("cache_db_v5.redb");
+    let path = db_directory.join("cache_db_v6.redb");
     if let Some(parent) = path.parent() {
         if !parent.exists() {
             std::fs::create_dir_all(parent).unwrap();
@@ -18,6 +18,7 @@ static QUERY_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     for legacy_path in [
         db_directory.join("cache_db.redb"),
         db_directory.join("cache_db_v4.redb"),
+        db_directory.join("cache_db_v5.redb"),
     ] {
         if legacy_path.exists()
             && let Err(error) = std::fs::remove_file(&legacy_path)

@@ -596,7 +596,7 @@ mod enabled {
             .map(|entry| {
                 let (_, value) =
                     entry.map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
-                Ok::<_, AppError>(value.value())
+                Ok::<_, AppError>(value.into_value())
             });
         build_audit(records, request)
     }
@@ -668,7 +668,7 @@ mod enabled {
             .as_deref()
             .map(|id| {
                 TREE.store.read(|reader| {
-                    let durable = reader.get(id)?.map(|value| value.value());
+                    let durable = reader.get(id)?.map(|value| value.into_value());
                     Ok::<_, anyhow::Error>(WRITE_BEHIND.logical_record(id, durable))
                 })
             })

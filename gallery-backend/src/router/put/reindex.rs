@@ -40,6 +40,7 @@ pub async fn reindex(
         tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, &selection))
             .await
             .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
+    let structural_epoch = resolved.structural_epoch;
     let targets = resolved.targets;
     tokio::task::spawn_blocking(move || -> AppResult<()> {
         let _persistence_guard = TREE.persistence_lock.lock().unwrap();
@@ -48,7 +49,7 @@ pub async fn reindex(
                 .state
                 .read()
                 .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-            if !targets.is_current(&state) {
+            if state.structural_epoch() != structural_epoch {
                 return Err(AppError::new(
                     ErrorKind::Conflict,
                     "selection became stale before reindex",
@@ -76,7 +77,7 @@ pub async fn reindex(
             let updated = TREE.store.read(|reader| {
                 let mut updated = Vec::with_capacity(pairs.len());
                 for (slot_ref, id) in &pairs {
-                    let durable = reader.get(id.as_str())?.map(|value| value.value());
+                    let durable = reader.get(id.as_str())?.map(|value| value.into_value());
                     let Some(mut data) =
                         WRITE_BEHIND.logical_record_for_slot(Some(*slot_ref), id.as_str(), durable)
                     else {

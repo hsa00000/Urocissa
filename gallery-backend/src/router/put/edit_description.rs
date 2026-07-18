@@ -47,6 +47,7 @@ pub async fn set_user_defined_description(
         ));
     }
     let target = resolved.targets.iter().next().expect("one resolved target");
+    let structural_epoch = resolved.structural_epoch;
     let operation = DirtyOperation::Description {
         target,
         value: data.description,
@@ -57,7 +58,7 @@ pub async fn set_user_defined_description(
         WRITE_BEHIND.release_reservation(bytes);
         AppError::new(ErrorKind::Internal, "tree state lock poisoned")
     })?;
-    if state.get(target).is_none() {
+    if state.structural_epoch() != structural_epoch {
         WRITE_BEHIND.release_reservation(bytes);
         return Err(AppError::new(
             ErrorKind::Conflict,

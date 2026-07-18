@@ -35,8 +35,8 @@ impl RecordKey {
 }
 
 impl RecordValue {
-    pub fn value(&self) -> AbstractData {
-        self.0.clone()
+    pub fn into_value(self) -> AbstractData {
+        self.0
     }
 }
 
@@ -189,6 +189,15 @@ impl RecordWriter<'_> {
             .into_domain()
             .with_context(|| format!("failed to convert V6 record {key}"))?;
         Ok(Some(RecordValue(value)))
+    }
+
+    pub fn get_v6(&self, key: &str) -> Result<Option<V6AbstractData>> {
+        let Some(value) = self.table.get(key)? else {
+            return Ok(None);
+        };
+        let value = catch_unwind(AssertUnwindSafe(|| value.value()))
+            .map_err(|_| anyhow!("failed to decode V6 record {key}: bitcode payload is invalid"))?;
+        Ok(Some(value))
     }
 
     pub fn insert(&mut self, value: &AbstractData) -> Result<()> {

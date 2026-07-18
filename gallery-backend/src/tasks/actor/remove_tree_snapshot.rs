@@ -1,7 +1,9 @@
-use crate::public::db::tree_snapshot::{SCROLLBAR_METADATA_TABLE, TREE_SNAPSHOT};
+use crate::public::db::tree_snapshot::{
+    SCROLLBAR_METADATA_TABLE, TREE_SNAPSHOT, TREE_SNAPSHOT_TABLE,
+};
 use anyhow::Result;
 use mini_executor::Task;
-use redb::TableDefinition;
+use redb::ReadableTableMetadata;
 use tokio::task::spawn_blocking;
 pub struct RemoveTask {
     pub timestamp: i64,
@@ -26,23 +28,15 @@ impl Task for RemoveTask {
 /// Removes a tree cache table by its timestamp.
 fn remove_task(timestamp: i64) {
     TREE_SNAPSHOT.in_memory.remove(&timestamp);
+    TREE_SNAPSHOT.verified_layouts.remove(&timestamp);
     let write_txn = TREE_SNAPSHOT.in_disk.begin_write().unwrap();
-    let binding = timestamp.to_string();
-    let table_definition: TableDefinition<u64, u64> = TableDefinition::new(&binding);
-
-    match write_txn.delete_table(table_definition) {
-        Ok(true) => {
-            info!("Delete tree cache table: {:?}", timestamp);
-        }
-        Ok(false) => {
-            error!("Failed to delete tree cache table: {:?}", timestamp);
-        }
-        Err(err) => {
-            error!(
-                "Failed to delete tree cache table: {:?}, error: {:#?}",
-                timestamp, err
-            );
-        }
+    match write_txn.open_table(TREE_SNAPSHOT_TABLE) {
+        Ok(mut table) => match table.remove(timestamp) {
+            Ok(Some(_)) => info!("Delete tree cache snapshot: {timestamp}"),
+            Ok(None) => error!("Tree cache snapshot did not exist: {timestamp}"),
+            Err(err) => error!("Failed to delete tree cache snapshot {timestamp}: {err:#?}"),
+        },
+        Err(err) => error!("Failed to open tree cache snapshot table: {err:#?}"),
     }
 
     match write_txn.open_table(SCROLLBAR_METADATA_TABLE) {
@@ -56,10 +50,11 @@ fn remove_task(timestamp: i64) {
         }
     }
 
-    info!(
-        "{} items remaining in disk tree cache",
-        write_txn.list_tables().unwrap().count()
-    );
+    let remaining = match write_txn.open_table(TREE_SNAPSHOT_TABLE) {
+        Ok(table) => table.len().unwrap_or(0),
+        Err(_) => 0,
+    };
+    info!("{remaining} items remaining in disk tree cache");
 
     write_txn.commit().unwrap();
 }

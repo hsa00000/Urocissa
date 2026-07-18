@@ -15,6 +15,7 @@ use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::AlbumCombined;
 use crate::public::structure::config::{APP_CONFIG, WriteBehindConfig};
+use crate::storage::v6::V6AbstractData;
 
 pub const FLUSH_CHUNK_SIZE: usize = 8_192;
 const CAPACITY_WAIT: Duration = Duration::from_secs(30);
@@ -995,10 +996,10 @@ fn persist_target_records(
         before_flush_commit()?;
         TREE.store.write(|writer| {
             for (slot_ref, id) in &records {
-                let mut record = writer.get(id.as_str())?.map(|value| value.value());
-                apply_overlay(&mut record, Some(*slot_ref), id.as_str(), &batch.operations);
+                let mut record = writer.get_v6(id.as_str())?;
+                apply_v6_overlay(&mut record, Some(*slot_ref), id.as_str(), &batch.operations);
                 if let Some(record) = record {
-                    writer.insert_at(id.as_str(), &record)?;
+                    writer.insert_v6_at(id.as_str(), &record)?;
                 }
             }
             Ok::<(), anyhow::Error>(())
@@ -1032,10 +1033,10 @@ fn persist_structural_albums(
         before_flush_commit()?;
         TREE.store.write(|writer| {
             for (album_id, slot_ref) in &slots {
-                let mut record = writer.get(album_id.as_str())?.map(|value| value.value());
-                apply_overlay(&mut record, *slot_ref, album_id.as_str(), &batch.operations);
+                let mut record = writer.get_v6(album_id.as_str())?;
+                apply_v6_overlay(&mut record, *slot_ref, album_id.as_str(), &batch.operations);
                 if let Some(record) = record {
-                    writer.insert_at(album_id.as_str(), &record)?;
+                    writer.insert_v6_at(album_id.as_str(), &record)?;
                 } else {
                     writer.remove(album_id.as_str())?;
                 }
@@ -1089,6 +1090,84 @@ fn apply_record_operation(data: &mut AbstractData, operation: &DirtyOperation) {
         DirtyOperation::AlbumCreate(_)
         | DirtyOperation::AlbumReplace(_)
         | DirtyOperation::AlbumDelete(_) => {}
+    }
+}
+
+fn apply_v6_record_operation(data: &mut V6AbstractData, operation: &DirtyOperation) {
+    match operation {
+        DirtyOperation::Tags { add, remove, .. } => {
+            let tags = &mut data.object_mut().tags;
+            tags.extend(add.iter().cloned());
+            for tag in remove {
+                tags.remove(tag);
+            }
+        }
+        DirtyOperation::Albums { add, remove, .. } => {
+            if let Some(albums) = data.albums_mut() {
+                albums.extend(add.iter().copied());
+                for album in remove {
+                    albums.remove(album);
+                }
+            }
+        }
+        DirtyOperation::Flags {
+            favorite,
+            archived,
+            trashed,
+            ..
+        } => {
+            let object = data.object_mut();
+            if let Some(value) = favorite {
+                object.is_favorite = *value;
+            }
+            if let Some(value) = archived {
+                object.is_archived = *value;
+            }
+            if let Some(value) = trashed {
+                object.is_trashed = *value;
+            }
+        }
+        DirtyOperation::Description { value, .. } => {
+            data.object_mut().description.clone_from(value);
+        }
+        DirtyOperation::AlbumCreate(_)
+        | DirtyOperation::AlbumReplace(_)
+        | DirtyOperation::AlbumDelete(_) => {}
+    }
+}
+
+fn apply_v6_overlay(
+    record: &mut Option<V6AbstractData>,
+    slot_ref: Option<crate::public::db::tree::state::SlotRef>,
+    id: &str,
+    operations: &[DirtyOperation],
+) {
+    for operation in operations {
+        match operation {
+            DirtyOperation::AlbumCreate(album) | DirtyOperation::AlbumReplace(album)
+                if album.object.id.as_str() == id =>
+            {
+                *record = Some(V6AbstractData::from(&AbstractData::Album(album.clone())));
+            }
+            DirtyOperation::AlbumDelete(album_id) if album_id.as_str() == id => {
+                *record = None;
+            }
+            DirtyOperation::Tags { targets, .. }
+            | DirtyOperation::Albums { targets, .. }
+            | DirtyOperation::Flags { targets, .. }
+                if slot_ref.is_some_and(|slot_ref| targets.contains(slot_ref)) =>
+            {
+                if let Some(data) = record {
+                    apply_v6_record_operation(data, operation);
+                }
+            }
+            DirtyOperation::Description { target, .. } if slot_ref == Some(*target) => {
+                if let Some(data) = record {
+                    apply_v6_record_operation(data, operation);
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -1299,16 +1378,17 @@ mod tests {
         let slot = SlotRef::new(1, 1);
         let target_set = TargetSet::from_slot_refs([slot], 64);
 
-        apply_record_operation(
-            &mut data,
+        let mut stored = V6AbstractData::from(&data);
+        apply_v6_record_operation(
+            &mut stored,
             &DirtyOperation::Tags {
                 targets: target_set.clone(),
                 add: BTreeSet::from(["new-tag".to_owned()]),
                 remove: BTreeSet::new(),
             },
         );
-        apply_record_operation(
-            &mut data,
+        apply_v6_record_operation(
+            &mut stored,
             &DirtyOperation::Flags {
                 targets: target_set,
                 favorite: Some(true),
@@ -1316,14 +1396,15 @@ mod tests {
                 trashed: Some(false),
             },
         );
-        apply_record_operation(
-            &mut data,
+        apply_v6_record_operation(
+            &mut stored,
             &DirtyOperation::Description {
                 target: slot,
                 value: Some("patched".to_owned()),
             },
         );
 
+        let data = stored.into_domain().unwrap();
         assert_eq!(data.exif_vec().unwrap(), &exif);
         assert_eq!(data.alias(), aliases);
         assert_eq!(data.width(), width);
@@ -1423,7 +1504,7 @@ mod tests {
                 store
                     .write(|writer| {
                         for id in chunk {
-                            let mut data = writer.get(id.as_str())?.unwrap().value();
+                            let mut data = writer.get(id.as_str())?.unwrap().into_value();
                             if add {
                                 data.tag_mut().insert(tag.to_owned());
                             } else {

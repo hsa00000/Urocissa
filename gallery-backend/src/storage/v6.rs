@@ -312,6 +312,22 @@ impl V6AbstractData {
         }
     }
 
+    pub fn object_mut(&mut self) -> &mut V6ObjectSchema {
+        match self {
+            Self::Image(value) => &mut value.object,
+            Self::Video(value) => &mut value.object,
+            Self::Album(value) => &mut value.object,
+        }
+    }
+
+    pub fn albums_mut(&mut self) -> Option<&mut HashSet<ArrayString<64>>> {
+        match self {
+            Self::Image(value) => Some(&mut value.metadata.albums),
+            Self::Video(value) => Some(&mut value.metadata.albums),
+            Self::Album(_) => None,
+        }
+    }
+
     pub fn into_domain(self) -> Result<AbstractData> {
         match self {
             Self::Image(value) => {
