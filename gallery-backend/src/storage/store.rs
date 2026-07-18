@@ -93,6 +93,11 @@ impl DataStore {
         Ok(RecordReader { table })
     }
 
+    /// Return redb's authoritative O(1) record count without decoding records.
+    pub fn record_count(&self) -> Result<u64> {
+        self.read(|reader| reader.len())
+    }
+
     pub fn write<R, E>(
         &self,
         operation: impl FnOnce(&mut RecordWriter<'_>) -> std::result::Result<R, E>,

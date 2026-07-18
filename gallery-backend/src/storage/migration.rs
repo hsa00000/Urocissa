@@ -130,7 +130,7 @@ fn migrate_v5_from_database(
         bail!("V6 migration count mismatch: processed {processed}, expected {expected_count}");
     }
 
-    let destination_count = store.read(|reader| reader.len())?;
+    let destination_count = store.record_count()?;
     if destination_count != expected_count {
         bail!("V6 destination count mismatch: {destination_count}, expected {expected_count}");
     }
@@ -262,7 +262,22 @@ mod tests {
         prepare_storage_at(directory.path())?;
         let current = directory.path().join(V6_DB_NAME);
         let store = DataStore::open(&current)?;
-        assert_eq!(store.read(|reader| reader.len())?, 0);
+        assert_eq!(store.record_count()?, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn v6_table_len_is_the_authoritative_record_count() -> Result<()> {
+        let directory = tempdir()?;
+        let store = DataStore::initialize_empty(&directory.path().join(V6_DB_NAME))?;
+        let (id, legacy) = legacy_image_fixture();
+        let value = V6AbstractData::from_v5(legacy)?.into_domain()?;
+
+        assert_eq!(store.record_count()?, 0);
+        store.write(|writer| writer.insert(&value))?;
+        assert_eq!(store.record_count()?, 1);
+        store.write(|writer| writer.remove(id.as_str()))?;
+        assert_eq!(store.record_count()?, 0);
         Ok(())
     }
 
