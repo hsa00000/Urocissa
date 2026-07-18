@@ -11,12 +11,14 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import axios from 'axios'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
+import type { SelectionInput } from '@/type/selection'
+import { normalizeSelection } from '@/type/selection'
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const prefetchStore = usePrefetchStore(isolationId)
 const messageStore = useMessageStore('mainId')
 const props = defineProps<{
-  indexList: number[]
+  indexList: SelectionInput
 }>()
 
 const deleteData = async () => {
@@ -25,7 +27,7 @@ const deleteData = async () => {
 
   await tryWithMessageStore('mainId', async () => {
     await axios.delete('/delete/delete-data', {
-      data: { deleteList: props.indexList, timestamp }
+      data: { selection: normalizeSelection(props.indexList), timestamp }
     })
     messageStore.success('Successfully deleted data.')
   })

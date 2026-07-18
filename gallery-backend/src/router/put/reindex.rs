@@ -1,32 +1,26 @@
-use arrayvec::ArrayString;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::http::Status;
-
-use crate::operations::open_db::open_data_table;
-use crate::process::info::regenerate_metadata_for_image;
-use crate::process::info::regenerate_metadata_for_video;
-use crate::public::constant::PROCESS_BATCH_NUMBER;
-use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
-use crate::public::error::{ErrorKind, ResultExt};
-use crate::public::structure::abstract_data::AbstractData;
-use crate::router::AppResult;
-use crate::router::GuardResult;
-use crate::router::fairing::guard_auth::GuardAuth;
-use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::INDEX_COORDINATOR;
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
-
-use log::{error, info};
 use rocket::serde::json::Json;
 use serde::Deserialize;
+
+use crate::process::info::{regenerate_metadata_for_image, regenerate_metadata_for_video};
+use crate::public::db::tree::{TREE, state::TargetSet};
+use crate::public::db::write_behind::WRITE_BEHIND;
+use crate::public::error::{AppError, ErrorKind};
+use crate::public::structure::abstract_data::AbstractData;
+use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::router::selection::{SelectionDescriptor, resolve_selection};
+use crate::router::{AppResult, GuardResult};
+use std::collections::{BTreeSet, HashSet};
+use std::sync::atomic::Ordering;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegenerateData {
+    #[serde(default)]
     index_array: Vec<usize>,
+    #[serde(default)]
+    selection: Option<SelectionDescriptor>,
     timestamp: i64,
 }
 
@@ -38,58 +32,90 @@ pub async fn reindex(
 ) -> AppResult<Status> {
     let _ = auth?;
     let _ = read_only_mode?;
-    let json_data = json_data.into_inner();
-    tokio::task::spawn_blocking(move || {
-        let data_table = open_data_table();
-        let reduced_data_vec = TREE_SNAPSHOT
-            .read_tree_snapshot(json_data.timestamp)
-            .unwrap();
-        let hash_vec: Vec<ArrayString<64>> = json_data
-            .index_array
-            .par_iter()
-            .map(|index| reduced_data_vec.get_hash(*index).unwrap())
-            .collect();
-        let total_batches = hash_vec.len().div_ceil(PROCESS_BATCH_NUMBER);
-
-        for (i, batch) in hash_vec.chunks(PROCESS_BATCH_NUMBER).enumerate() {
-            info!("Processing batch {}/{}", i + 1, total_batches);
-
-            let data_list: Vec<_> = batch
-                .into_par_iter()
-                .filter_map(|&hash| {
-                    if let Some(guard) = data_table.get(&*hash).unwrap() {
-                        let mut abstract_data = guard.value();
-                        match &abstract_data {
-                            AbstractData::Image(_) => {
-                                match regenerate_metadata_for_image(&mut abstract_data) {
-                                    Ok(()) => Some(abstract_data),
-                                    Err(_) => None,
-                                }
-                            }
-                            AbstractData::Video(_) => {
-                                match regenerate_metadata_for_video(&mut abstract_data) {
-                                    Ok(()) => Some(abstract_data),
-                                    Err(_) => None,
-                                }
-                            }
-                            AbstractData::Album(_) => {
-                                // album_self_update already will commit
-                                INDEX_COORDINATOR.execute_detached(AlbumSelfUpdateTask::new(hash));
-                                None
-                            }
-                        }
-                    } else {
-                        error!("Reindex failed: cannot find data with hash/id: {hash}");
-                        None
-                    }
-                })
-                .collect();
-            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(data_list));
+    let data = json_data.into_inner();
+    let selection = data
+        .selection
+        .unwrap_or_else(|| SelectionDescriptor::explicit(data.index_array));
+    let resolved =
+        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, &selection))
+            .await
+            .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
+    let targets = resolved.targets;
+    tokio::task::spawn_blocking(move || -> AppResult<()> {
+        let _persistence_guard = TREE.persistence_lock.lock().unwrap();
+        {
+            let state = TREE
+                .state
+                .read()
+                .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+            if !targets.is_current(&state) {
+                return Err(AppError::new(
+                    ErrorKind::Conflict,
+                    "selection became stale before reindex",
+                ));
+            }
         }
+
+        let mut slots = targets.iter();
+        loop {
+            let chunk = slots.by_ref().take(4_096).collect::<Vec<_>>();
+            if chunk.is_empty() {
+                break;
+            }
+            // Keep the logical mutation lock from overlay read through delta
+            // retirement. New edits cannot be accidentally absorbed by this
+            // reindex after its durable record has been assembled.
+            let mut state = TREE
+                .state
+                .write()
+                .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+            let pairs = chunk
+                .iter()
+                .filter_map(|slot_ref| state.get(*slot_ref).map(|record| (*slot_ref, record.id)))
+                .collect::<Vec<_>>();
+            let updated = TREE.store.read(|reader| {
+                let mut updated = Vec::with_capacity(pairs.len());
+                for (slot_ref, id) in &pairs {
+                    let durable = reader.get(id.as_str())?.map(|value| value.value());
+                    let Some(mut data) =
+                        WRITE_BEHIND.logical_record_for_slot(Some(*slot_ref), id.as_str(), durable)
+                    else {
+                        continue;
+                    };
+                    match &data {
+                        AbstractData::Image(_) => regenerate_metadata_for_image(&mut data)
+                            .map_err(|error| AppError::from_err(ErrorKind::IO, error))?,
+                        AbstractData::Video(_) => regenerate_metadata_for_video(&mut data)
+                            .map_err(|error| AppError::from_err(ErrorKind::IO, error))?,
+                        AbstractData::Album(_) => continue,
+                    }
+                    updated.push((*slot_ref, data));
+                }
+                Ok::<_, AppError>(updated)
+            })?;
+            TREE.store
+                .write(|writer| {
+                    for (_, data) in &updated {
+                        writer.insert(data)?;
+                    }
+                    Ok::<(), anyhow::Error>(())
+                })
+                .map_err(|error| AppError::from_err(ErrorKind::Database, error))?;
+            let updated_targets = TargetSet::from_slot_refs(
+                updated.iter().map(|(slot_ref, _)| *slot_ref),
+                state.arena.capacity(),
+            );
+            WRITE_BEHIND.cancel_targets(&updated_targets, &BTreeSet::new());
+            let updated_records = updated
+                .into_iter()
+                .map(|(_, data)| data)
+                .collect::<Vec<_>>();
+            state.apply_batch(&updated_records, &HashSet::new());
+        }
+        crate::public::db::tree::VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     })
     .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?;
-
-    BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
+    .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
     Ok(Status::Ok)
 }

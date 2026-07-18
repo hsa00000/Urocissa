@@ -5,7 +5,6 @@ use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::album::ResolvedShare;
 use crate::public::structure::expression::{AlbumFilterValue, Expression};
-use crate::public::structure::response::database_timestamp::DatabaseTimestamp;
 use crate::public::structure::response::reduced_data::ReducedData;
 use crate::router::AppResult;
 use crate::router::GuardResult;
@@ -19,7 +18,7 @@ use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 use anyhow::Result;
 use bitcode::{Decode, Encode};
 use chrono::Utc;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::hash::Hasher;
@@ -65,20 +64,6 @@ impl PrefetchReturn {
 }
 
 // -----------------------------------------------------------------------------
-// Convenience: &DatabaseTimestamp → ReducedData
-// -----------------------------------------------------------------------------
-impl From<&DatabaseTimestamp> for ReducedData {
-    fn from(source: &DatabaseTimestamp) -> Self {
-        Self {
-            hash: source.abstract_data.hash(),
-            width: source.abstract_data.width(),
-            height: source.abstract_data.height(),
-            date: source.timestamp,
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
 // ── Helper functions for each step ──────────────────────────────────────────
 // -----------------------------------------------------------------------------
 
@@ -117,39 +102,26 @@ fn filter_items(
 ) -> Result<Vec<ReducedData>, AppError> {
     let filter_items_start_time = Instant::now();
 
-    let tree_guard = TREE.in_memory.read().map_err(|err| {
+    let tree_guard = TREE.state.read().map_err(|err| {
         AppError::new(
             ErrorKind::Internal,
             format!("Failed to read tree in memory: {err:?}"),
         )
     })?;
-    let reduced_data_vector: Vec<ReducedData> = match (expression_option, resolved_share_option) {
-        // If we have a resolved share then it must have a filter expression
-        (Some(expr), Some(resolved_share)) => {
-            let filter_fn = if resolved_share.share.show_metadata {
-                expr.generate_filter()
-            } else {
-                expr.generate_filter_hide_metadata(resolved_share.album_id)
-            };
-            tree_guard
-                .par_iter()
-                .filter(|db_ts| filter_fn(&db_ts.abstract_data))
-                .map(std::convert::Into::into)
-                .collect()
-        }
-        (Some(expr), None) => {
-            let filter_fn = expr.generate_filter();
-            tree_guard
-                .par_iter()
-                .filter(|database_timestamp| filter_fn(&database_timestamp.abstract_data))
-                .map(std::convert::Into::into)
-                .collect()
-        }
-        (None, _) => tree_guard
-            .par_iter()
-            .map(std::convert::Into::into)
-            .collect(),
-    };
+    let hidden_album = resolved_share_option
+        .filter(|share| !share.share.show_metadata)
+        .map(|share| share.album_id);
+    let reduced_data_vector: Vec<ReducedData> = tree_guard
+        .order
+        .iter()
+        .filter_map(|slot_ref| {
+            let record = tree_guard.get(*slot_ref)?;
+            expression_option
+                .as_ref()
+                .is_none_or(|expression| tree_guard.matches(*slot_ref, expression, hidden_album))
+                .then(|| record.reduced(*slot_ref))
+        })
+        .collect();
 
     crate::perf_timing!(
         "prefetch.filter_items",
@@ -208,9 +180,11 @@ fn insert_data_into_tree_snapshot(reduced_data_vector: Vec<ReducedData>) -> (i64
     // Persist to snapshot
     let timestamp_millis = Utc::now().timestamp_millis();
     let reduced_data_vector_length = reduced_data_vector.len();
-    TREE_SNAPSHOT
-        .in_memory
-        .insert(timestamp_millis, reduced_data_vector);
+    let slot_refs = reduced_data_vector
+        .into_iter()
+        .map(|data| data.slot_ref)
+        .collect();
+    TREE_SNAPSHOT.in_memory.insert(timestamp_millis, slot_refs);
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeSnapshotTask);
 
     crate::perf_timing!(

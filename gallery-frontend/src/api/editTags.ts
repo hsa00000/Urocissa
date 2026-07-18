@@ -6,9 +6,11 @@ import { IsolationId, TagInfo } from '@/type/types'
 import axios from 'axios'
 import { z } from 'zod'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
+import type { SelectionInput } from '@/type/selection'
+import { normalizeSelection } from '@/type/selection'
 
 export async function editTags(
-  indexArray: number[],
+  selectionInput: SelectionInput,
   addTagsArray: string[],
   removeTagsArray: string[],
   isolationId: IsolationId
@@ -17,6 +19,7 @@ export async function editTags(
   const timestamp = prefetchStore.timestamp
   const messageStore = useMessageStore('mainId')
   const optimisticStore = useOptimisticStore(isolationId)
+  const selection = normalizeSelection(selectionInput)
 
   if (timestamp === null) {
     messageStore.error('Cannot edit tags because timestamp is missing.')
@@ -24,7 +27,7 @@ export async function editTags(
   }
 
   const payload = {
-    indexSet: new Set(indexArray),
+    selection,
     addTagsArray: [...addTagsArray],
     removeTagsArray: [...removeTagsArray],
     timestamp: timestamp
@@ -33,7 +36,7 @@ export async function editTags(
 
   await tryWithMessageStore('mainId', async () => {
     const axiosResponse = await axios.put<TagInfo[]>('/put/edit_tag', {
-      indexArray,
+      selection,
       addTagsArray,
       removeTagsArray,
       timestamp

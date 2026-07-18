@@ -214,7 +214,16 @@ export const PublicConfigSchema = z.object({
   syncPaths: z.array(z.string()), // HashSet<PathBuf> deserializes to array
   discordHookUrl: z.string().nullable().optional(),
   readOnlyMode: z.boolean(),
-  disableImg: z.boolean()
+  disableImg: z.boolean(),
+  writeBehind: z
+    .object({
+      flushIntervalMs: z.number().int().min(100).max(60_000),
+      softLimitMiB: z.number().int().positive(),
+      hardLimitMiB: z.number().int().max(256)
+    })
+    .refine((value) => value.softLimitMiB < value.hardLimitMiB, {
+      message: 'Soft write-behind limit must be below hard limit'
+    })
 })
 
 

@@ -3,13 +3,14 @@ import { useRouter, isNavigationFailure, NavigationFailureType } from 'vue-route
 import { createNonEmptyAlbum } from '@utils/createAlbums'
 import { navigateToAlbum } from '@/route/navigator'
 import type { IsolationId } from '@type/types'
+import type { SelectionInput } from '@/type/selection'
 
 export function useCreateAlbumAction() {
   const loading = ref(false)
   const router = useRouter()
 
   const createAndNavigate = async (
-    elementsIndex: number[],
+    elementsIndex: SelectionInput,
     isolationId: IsolationId,
     onSuccess: () => void
   ) => {

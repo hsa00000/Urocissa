@@ -4,7 +4,7 @@
     <v-card
       variant="flat"
       class="w-100"
-      :title="`${collectionStore.editModeCollection.size} items`"
+      :title="`${collectionStore.selectedCount(prefetchStore.dataLength)} items`"
     >
     </v-card>
     <v-spacer></v-spacer>
@@ -12,7 +12,7 @@
     <SelectAll
       v-if="
         prefetchStore.dataLength === 0 ||
-        prefetchStore.dataLength !== collectionStore.editModeCollection.size
+        prefetchStore.dataLength !== collectionStore.selectedCount(prefetchStore.dataLength)
       "
       :isolation-id="isolationId"
     />

@@ -167,10 +167,8 @@ const submit = ref<(() => Promise<void>) | undefined>()
 
 onMounted(() => {
   submit.value = async () => {
-    const hashArray = Array.from(collectionStore.editModeCollection)
-
     await editAlbums(
-      hashArray,
+      collectionStore.descriptor(),
       changedAlbums.value.add.map((a) => a.albumId),
       changedAlbums.value.remove.map((a) => a.albumId),
       isolationId
@@ -181,7 +179,7 @@ onMounted(() => {
 })
 
 const createNonEmptyAlbumWithLoading = async () => {
-  await createAndNavigate([...collectionStore.editModeCollection], isolationId, () => {
+  await createAndNavigate(collectionStore.descriptor(), isolationId, () => {
     modalStore.showBatchEditAlbumsModal = false
     collectionStore.editModeOn = false
   })

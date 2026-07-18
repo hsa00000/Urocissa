@@ -4,7 +4,7 @@
     <v-card
       variant="flat"
       class="w-100"
-      :title="`${collectionStore.editModeCollection.size} items`"
+      :title="`${collectionStore.selectedCount(prefetchStore.dataLength)} items`"
     >
     </v-card>
     <v-spacer></v-spacer>
@@ -12,12 +12,12 @@
     <SelectAll
       v-if="
         prefetchStore.dataLength === 0 ||
-        prefetchStore.dataLength !== collectionStore.editModeCollection.size
+        prefetchStore.dataLength !== collectionStore.selectedCount(prefetchStore.dataLength)
       "
       :isolation-id="isolationId"
     />
     <SelectClear v-else :isolation-id="isolationId" />
-    <BtnDownload :index-list="editModeList" />
+    <BtnDownload :index-list="selection" />
   </v-toolbar>
 </template>
 
@@ -35,7 +35,7 @@ import { computed } from 'vue'
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const collectionStore = useCollectionStore(isolationId)
-const editModeList = computed(() => Array.from(collectionStore.editModeCollection))
+const selection = computed(() => collectionStore.descriptor())
 
 const prefetchStore = usePrefetchStore(isolationId)
 </script>

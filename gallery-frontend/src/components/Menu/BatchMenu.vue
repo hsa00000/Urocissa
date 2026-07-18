@@ -11,27 +11,27 @@
       <v-divider v-if="shouldShowSetAsCover"></v-divider>
 
       <!-- Archive and Favorite Actions -->
-      <ItemArchive :index-list="editModeList" />
-      <ItemFavorite :index-list="editModeList" />
+      <ItemArchive :index-list="selection" />
+      <ItemFavorite :index-list="selection" />
       <ItemBatchEditTags />
       <ItemBatchEditAlbums v-if="!isInAlbumsPage" />
 
       <v-divider></v-divider>
 
       <!-- Download Action -->
-      <ItemDownload :index-list="editModeList" />
+      <ItemDownload :index-list="selection" />
 
       <v-divider></v-divider>
 
       <!-- Delete or Permanently Delete Actions -->
-      <ItemDelete :index-list="editModeList" v-if="!isInTrashedPath" />
-      <ItemRestore :index-list="editModeList" v-if="isInTrashedPath" />
-      <ItemPermanentlyDelete :index-list="editModeList" v-if="isInTrashedPath" />
+      <ItemDelete :index-list="selection" v-if="!isInTrashedPath" />
+      <ItemRestore :index-list="selection" v-if="isInTrashedPath" />
+      <ItemPermanentlyDelete :index-list="selection" v-if="isInTrashedPath" />
 
       <v-divider></v-divider>
 
       <!-- Regenerate Action -->
-      <ItemRegenerateMetadata :index-list="editModeList" />
+      <ItemRegenerateMetadata :index-list="selection" />
     </v-list>
   </v-menu>
 </template>
@@ -40,6 +40,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
+import { usePrefetchStore } from '@/store/prefetchStore'
 
 import ItemSetAsCover from '@Menu/MenuItem/ItemSetAsCover.vue'
 import ItemArchive from '@Menu/MenuItem/ItemArchive.vue'
@@ -58,11 +59,13 @@ const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const collectionStore = useCollectionStore(isolationId)
 
-const editModeList = computed(() => Array.from(collectionStore.editModeCollection))
+const selection = computed(() => collectionStore.descriptor())
 
 const shouldShowSetAsCover = computed(
-  () => route.meta.level === 3 && collectionStore.editModeCollection.size === 1
+  () => route.meta.level === 3 && collectionStore.selectedCount(prefetchStore.dataLength) === 1
 )
+
+const prefetchStore = usePrefetchStore(isolationId)
 
 const isInTrashedPath = computed(() => route.meta.baseName === 'trashed')
 

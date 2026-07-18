@@ -1,14 +1,9 @@
 use std::time::Instant;
 
 use super::TreeSnapshot;
-use crate::storage::codec;
-use crate::{
-    public::db::tree_snapshot::read_tree_snapshot::MyCow,
-    public::structure::response::row::ScrollBarData,
-};
+use crate::public::structure::response::row::ScrollBarData;
 
 use chrono::{Datelike, TimeZone, Utc};
-use redb::ReadableTable;
 
 impl TreeSnapshot {
     pub fn read_scrollbar(&'static self, timestamp: i64) -> Vec<ScrollBarData> {
@@ -18,55 +13,25 @@ impl TreeSnapshot {
         let mut last_year = None;
         let mut last_month = None;
 
-        match tree_snapshot {
-            MyCow::DashMap(ref_data) => {
-                ref_data.iter().enumerate().for_each(|(index, data)| {
-                    let datetime = Utc.timestamp_millis_opt(data.date).unwrap();
-                    let year = datetime.year();
-                    let month = datetime.month();
-                    if last_year != Some(year) || last_month != Some(month) {
-                        last_year = Some(year);
-                        last_month = Some(month);
-                        let scrollbar_data = ScrollBarData {
-                            #[allow(clippy::cast_sign_loss)]
-                            year: year as usize,
-                            #[allow(clippy::cast_sign_loss)]
-                            month: month as usize,
-                            index,
-                        };
-                        scroll_bar_data_vec.push(scrollbar_data);
-                    }
-                });
-            }
-            MyCow::Redb(redb) => {
-                redb.iter()
-                    .unwrap()
-                    .enumerate()
-                    .for_each(|(index, result)| {
-                        let (_key, value) = result.unwrap();
-                        let Ok(data) = codec::decode::<
-                            crate::public::structure::response::reduced_data::ReducedData,
-                        >(value.value()) else {
-                            return;
-                        };
-                        let datetime = Utc.timestamp_millis_opt(data.date).unwrap();
-                        let year = datetime.year();
-                        let month = datetime.month();
-                        if last_year != Some(year) || last_month != Some(month) {
-                            last_year = Some(year);
-                            last_month = Some(month);
-                            let scrollbar_data = ScrollBarData {
-                                #[allow(clippy::cast_sign_loss)]
-                                year: year as usize,
-                                #[allow(clippy::cast_sign_loss)]
-                                month: month as usize,
-                                index,
-                            };
-                            scroll_bar_data_vec.push(scrollbar_data);
-                        }
+        tree_snapshot
+            .for_each_timestamp(|index, timestamp| {
+                let datetime = Utc.timestamp_millis_opt(timestamp).unwrap();
+                let year = datetime.year();
+                let month = datetime.month();
+                if last_year != Some(year) || last_month != Some(month) {
+                    last_year = Some(year);
+                    last_month = Some(month);
+                    scroll_bar_data_vec.push(ScrollBarData {
+                        #[allow(clippy::cast_sign_loss)]
+                        year: year as usize,
+                        #[allow(clippy::cast_sign_loss)]
+                        month: month as usize,
+                        index,
                     });
-            }
-        }
+                }
+                Ok(())
+            })
+            .unwrap();
         crate::perf_timing!(
             "tree_snapshot.generate_scrollbar",
             start_time,

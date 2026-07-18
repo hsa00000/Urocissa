@@ -12,7 +12,13 @@ use crate::router::fairing::guard_auth::GuardAuth;
 
 #[post("/post/config/import", data = "<file>")]
 pub fn import_config_handler(_auth: GuardAuth, file: Json<AppConfig>) -> AppResult<Status> {
-    match AppConfig::update(file.into_inner()) {
+    let config = file.into_inner();
+    config
+        .public
+        .write_behind
+        .validate()
+        .map_err(|error| AppError::from_err(ErrorKind::InvalidInput, error))?;
+    match AppConfig::update(config) {
         Ok(()) => Ok(Status::Ok),
         Err(e) => {
             error!("Import failed: {e}");

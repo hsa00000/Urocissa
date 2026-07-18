@@ -6,7 +6,10 @@ mod enabled {
     use crate::performance;
     use crate::public::constant::storage::get_data_path;
     use crate::public::db::{
-        query_snapshot::QUERY_SNAPSHOT, tree::TREE, tree_snapshot::TREE_SNAPSHOT,
+        query_snapshot::QUERY_SNAPSHOT,
+        tree::{TREE, VERSION_COUNT_TIMESTAMP, state::TargetSet},
+        tree_snapshot::TREE_SNAPSHOT,
+        write_behind::{DirtyOperation, WRITE_BEHIND},
     };
     use crate::public::error::{AppError, ErrorKind};
     use crate::public::structure::abstract_data::AbstractData;
@@ -19,10 +22,13 @@ mod enabled {
     use rocket::request::{FromRequest, Outcome};
     use rocket::serde::json::Json;
     use rocket::serde::{Deserialize, Serialize};
+    use std::collections::BTreeSet;
+    use std::sync::atomic::Ordering;
     use std::time::{Duration, Instant};
 
     const TOKEN_HEADER: &str = "x-urocissa-perf-token";
     const BARRIER_TIMEOUT: Duration = Duration::from_secs(30);
+    const DRAIN_TIMEOUT: Duration = Duration::from_secs(300);
 
     pub struct PerfToken;
 
@@ -91,6 +97,39 @@ mod enabled {
         pub tree_snapshot_pending: usize,
         pub query_snapshot_pending: usize,
         pub database_bytes: u64,
+        pub write_behind_pending_operations: usize,
+        pub write_behind_pending_bytes: usize,
+        pub write_behind_flush_failure_count: u64,
+        pub write_behind_flush_retry_count: u64,
+        pub write_behind_last_error: Option<String>,
+        pub backend_rss_bytes: u64,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(crate = "rocket::serde", rename_all = "camelCase")]
+    pub struct RestartProbeRequest {
+        pub marker_tag: String,
+        pub commits_before_failure: usize,
+        #[serde(default)]
+        pub target_limit: Option<usize>,
+    }
+
+    #[derive(Debug, Clone, Serialize)]
+    #[serde(crate = "rocket::serde", rename_all = "camelCase")]
+    pub struct RestartProbeSummary {
+        pub targets: usize,
+        pub expected_durable_min: usize,
+        pub expected_durable_max: usize,
+        pub failure_count_before: u64,
+        pub retry_count_before: u64,
+    }
+
+    #[derive(Debug, Clone, Copy, Deserialize, Default)]
+    #[serde(crate = "rocket::serde", rename_all = "camelCase")]
+    pub enum AuditView {
+        Logical,
+        #[default]
+        Disk,
     }
 
     #[derive(Debug, Clone, Deserialize, Default)]
@@ -100,6 +139,8 @@ mod enabled {
         pub album_id: Option<String>,
         pub marker_tag: Option<String>,
         pub share_id: Option<String>,
+        #[serde(default)]
+        pub view: AuditView,
     }
 
     #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -146,7 +187,16 @@ mod enabled {
     }
 
     pub fn routes() -> Vec<Route> {
-        routes![fixture, delete_fixture, status, phase, barrier, audit]
+        routes![
+            fixture,
+            delete_fixture,
+            status,
+            phase,
+            barrier,
+            drain,
+            restart_probe,
+            audit
+        ]
     }
 
     #[post("/__perf/fixture", format = "json", data = "<request>")]
@@ -179,6 +229,12 @@ mod enabled {
     #[delete("/__perf/fixture")]
     pub async fn delete_fixture(_token: PerfToken) -> AppResult<Json<DeleteSummary>> {
         ensure_perf_root()?;
+        if !WRITE_BEHIND.flush(DRAIN_TIMEOUT).await {
+            return Err(AppError::new(
+                ErrorKind::Internal,
+                "write-behind did not drain before fixture cleanup",
+            ));
+        }
         let result = tokio::task::spawn_blocking(delete_fixture_sync)
             .await
             .map_err(|error| AppError::new(ErrorKind::Internal, error.to_string()))??;
@@ -224,6 +280,122 @@ mod enabled {
         }
     }
 
+    #[post("/__perf/drain")]
+    pub async fn drain(_token: PerfToken) -> AppResult<Json<StatusSummary>> {
+        ensure_perf_root()?;
+        if !WRITE_BEHIND.flush(DRAIN_TIMEOUT).await {
+            return Err(AppError::new(
+                ErrorKind::Internal,
+                "performance write-behind drain timed out",
+            ));
+        }
+        performance::flush();
+        Ok(Json(status_sync()))
+    }
+
+    /// Publish a logical marker edit, then fail one flush transaction after
+    /// the requested number of successful chunk commits. The benchmark kills
+    /// this process after observing the failure and audits Redb after restart.
+    #[post("/__perf/restart-probe", format = "json", data = "<request>")]
+    pub async fn restart_probe(
+        _token: PerfToken,
+        request: Json<RestartProbeRequest>,
+    ) -> AppResult<Json<RestartProbeSummary>> {
+        ensure_perf_root()?;
+        let request = request.into_inner();
+        if request.marker_tag.is_empty() || request.marker_tag.len() > 128 {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "markerTag must contain between 1 and 128 bytes",
+            ));
+        }
+        if WRITE_BEHIND.status().pending_operations != 0 {
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                "write-behind must be drained before a restart probe",
+            ));
+        }
+
+        let targets = {
+            let state = TREE
+                .state
+                .read()
+                .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+            let slot_refs = state
+                .order
+                .iter()
+                .copied()
+                .filter(|slot_ref| {
+                    state.get(*slot_ref).is_some_and(|record| {
+                        record.object_type != crate::public::structure::object::ObjectType::Album
+                    })
+                })
+                .take(request.target_limit.unwrap_or(usize::MAX));
+            TargetSet::from_slot_refs(slot_refs, state.arena.capacity())
+        };
+        if targets.is_empty() {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "restart probe target set is empty",
+            ));
+        }
+        let operation = DirtyOperation::Tags {
+            targets: targets.clone(),
+            add: BTreeSet::from([request.marker_tag]),
+            remove: BTreeSet::new(),
+        };
+        let bytes = operation.estimated_bytes();
+        WRITE_BEHIND.reserve(bytes).await?;
+
+        let mut state = match TREE.state.write() {
+            Ok(state) => state,
+            Err(_) => {
+                WRITE_BEHIND.release_reservation(bytes);
+                return Err(AppError::new(
+                    ErrorKind::Internal,
+                    "tree state lock poisoned",
+                ));
+            }
+        };
+        if !targets.is_current(&state) {
+            WRITE_BEHIND.release_reservation(bytes);
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                "restart probe targets became stale before publication",
+            ));
+        }
+        let universe = state.arena.capacity();
+        if let DirtyOperation::Tags {
+            targets,
+            add,
+            remove,
+            ..
+        } = &operation
+        {
+            state
+                .query
+                .edit_tags(targets.ordinals(), add, remove, universe);
+        }
+        let status = WRITE_BEHIND.status();
+        WRITE_BEHIND.enqueue_reserved(operation, bytes);
+        WRITE_BEHIND.inject_flush_failure_after_commits(request.commits_before_failure);
+        VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
+        drop(state);
+        WRITE_BEHIND.wake();
+
+        let committed = request
+            .commits_before_failure
+            .saturating_mul(4_096)
+            .min(targets.len());
+        Ok(Json(RestartProbeSummary {
+            targets: targets.len(),
+            expected_durable_min: committed,
+            expected_durable_max: committed,
+            failure_count_before: status.flush_failure_count,
+            retry_count_before: status.flush_retry_count,
+        }))
+    }
+
     #[post("/__perf/audit", format = "json", data = "<request>")]
     pub async fn audit(
         _token: PerfToken,
@@ -239,41 +411,44 @@ mod enabled {
 
     fn create_fixture(request: FixtureRequest) -> Result<FixtureSummary, AppError> {
         let total_start = Instant::now();
-        let generation_start = Instant::now();
-        let data = (0..request.count as u64)
-            .map(|index| AbstractData::generate_performance_data(index, request.seed))
-            .collect::<Vec<_>>();
-        let generation_ns = elapsed_ns(generation_start);
+        let mut generation_ns = 0_u64;
+        let mut insert_ns = 0_u64;
+        let mut expected_home = 0_usize;
+        let mut expected_all = 0_usize;
+        let mut expected_videos = 0_usize;
+        let mut expected_favorites = 0_usize;
+        let mut expected_archived = 0_usize;
+        let mut expected_trashed = 0_usize;
+        let mut inserted = 0_usize;
+        let mut batch = Vec::with_capacity(4_096);
 
-        let expected_home = data
-            .iter()
-            .filter(|item| !item.is_archived() && !item.is_trashed())
-            .count();
-        let expected_all = data.iter().filter(|item| !item.is_trashed()).count();
-        let expected_videos = data
-            .iter()
-            .filter(|item| item.is_video() && !item.is_archived() && !item.is_trashed())
-            .count();
-        let expected_favorites = data
-            .iter()
-            .filter(|item| item.is_favorite() && !item.is_trashed())
-            .count();
-        let expected_archived = data
-            .iter()
-            .filter(|item| item.is_archived() && !item.is_trashed())
-            .count();
-        let expected_trashed = data.iter().filter(|item| item.is_trashed()).count();
-
-        let insert_start = Instant::now();
-        TREE.store.write(|writer| {
-            for item in &data {
-                writer
-                    .insert(item)
-                    .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
+        for index in 0..request.count as u64 {
+            let generation_start = Instant::now();
+            let item = AbstractData::generate_performance_data(index, request.seed);
+            generation_ns = generation_ns.saturating_add(elapsed_ns(generation_start));
+            expected_home += usize::from(!item.is_archived() && !item.is_trashed());
+            expected_all += usize::from(!item.is_trashed());
+            expected_videos +=
+                usize::from(item.is_video() && !item.is_archived() && !item.is_trashed());
+            expected_favorites += usize::from(item.is_favorite() && !item.is_trashed());
+            expected_archived += usize::from(item.is_archived() && !item.is_trashed());
+            expected_trashed += usize::from(item.is_trashed());
+            batch.push(item);
+            if batch.len() == 4_096 || index + 1 == request.count as u64 {
+                let insert_start = Instant::now();
+                TREE.store.write(|writer| {
+                    for item in &batch {
+                        writer.insert(item).map_err(|error| {
+                            AppError::new(ErrorKind::Database, error.to_string())
+                        })?;
+                    }
+                    Ok::<(), AppError>(())
+                })?;
+                insert_ns = insert_ns.saturating_add(elapsed_ns(insert_start));
+                inserted += batch.len();
+                batch.clear();
             }
-            Ok::<(), AppError>(())
-        })?;
-        let insert_ns = elapsed_ns(insert_start);
+        }
 
         let rebuild_start = Instant::now();
         update_tree_task();
@@ -291,7 +466,7 @@ mod enabled {
 
         Ok(FixtureSummary {
             requested: request.count,
-            inserted: data.len(),
+            inserted,
             seed: request.seed,
             generation_ns,
             insert_ns,
@@ -309,29 +484,37 @@ mod enabled {
 
     fn delete_fixture_sync() -> Result<DeleteSummary, AppError> {
         let total_start = Instant::now();
-        let scan_start = Instant::now();
-        let data = open_data_table()
-            .iter()
-            .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?
-            .map(|entry| {
-                let (_, value) =
-                    entry.map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
-                Ok::<_, AppError>(value.value())
-            })
-            .collect::<Result<Vec<_>, AppError>>()?;
-        let scan_ns = elapsed_ns(scan_start);
-
-        let delete_start = Instant::now();
-        TREE.store.write(|writer| {
-            for item in &data {
-                let hash = item.hash();
-                writer
-                    .remove(hash.as_str())
-                    .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
+        let mut scan_ns = 0_u64;
+        let mut delete_ns = 0_u64;
+        let mut found = 0_usize;
+        loop {
+            let scan_start = Instant::now();
+            let keys = TREE.store.read(|reader| {
+                reader
+                    .iter()?
+                    .take(4_096)
+                    .map(|entry| {
+                        let (key, _) = entry?;
+                        Ok::<_, anyhow::Error>(key.value().to_owned())
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })?;
+            scan_ns = scan_ns.saturating_add(elapsed_ns(scan_start));
+            if keys.is_empty() {
+                break;
             }
-            Ok::<(), AppError>(())
-        })?;
-        let delete_ns = elapsed_ns(delete_start);
+            found += keys.len();
+            let delete_start = Instant::now();
+            TREE.store.write(|writer| {
+                for key in &keys {
+                    writer
+                        .remove(key)
+                        .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
+                }
+                Ok::<(), AppError>(())
+            })?;
+            delete_ns = delete_ns.saturating_add(elapsed_ns(delete_start));
+        }
 
         let rebuild_start = Instant::now();
         update_tree_task();
@@ -339,8 +522,8 @@ mod enabled {
         let status = status_sync();
 
         Ok(DeleteSummary {
-            found: data.len(),
-            deleted: data.len().saturating_sub(status.disk_count),
+            found,
+            deleted: found.saturating_sub(status.disk_count),
             remaining: status.disk_count,
             scan_ns,
             delete_ns,
@@ -356,37 +539,147 @@ mod enabled {
             .ok()
             .and_then(|value| usize::try_from(value).ok())
             .unwrap_or(0);
-        let memory_count = TREE.in_memory.read().map_or(0, |value| value.len());
+        let memory_count = TREE.state.read().map_or(0, |value| value.len());
         let database_bytes = std::fs::metadata(get_data_path().join("db/index_v6.redb"))
             .map_or(0, |metadata| metadata.len());
+        let write_behind = WRITE_BEHIND.status();
         StatusSummary {
             disk_count,
             memory_count,
             tree_snapshot_pending: TREE_SNAPSHOT.in_memory.len(),
             query_snapshot_pending: QUERY_SNAPSHOT.in_memory.len(),
             database_bytes,
+            write_behind_pending_operations: write_behind.pending_operations,
+            write_behind_pending_bytes: write_behind.pending_bytes,
+            write_behind_flush_failure_count: write_behind.flush_failure_count,
+            write_behind_flush_retry_count: write_behind.flush_retry_count,
+            write_behind_last_error: write_behind.last_error,
+            backend_rss_bytes: process_rss_bytes(),
         }
     }
 
+    fn process_rss_bytes() -> u64 {
+        let pid = sysinfo::Pid::from_u32(std::process::id());
+        let mut system = sysinfo::System::new();
+        system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+        system.process(pid).map_or(0, sysinfo::Process::memory)
+    }
+
     fn audit_sync(request: &AuditRequest) -> Result<AuditSummary, AppError> {
-        let records = open_data_table()
+        if matches!(request.view, AuditView::Logical) {
+            return audit_logical(request);
+        }
+        let table = open_data_table();
+        let records = table
             .iter()
             .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?
             .map(|entry| {
                 let (_, value) =
                     entry.map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
                 Ok::<_, AppError>(value.value())
-            })
-            .collect::<Result<Vec<_>, AppError>>()?;
-        Ok(build_audit(&records, request))
+            });
+        build_audit(records, request)
     }
 
-    fn build_audit(records: &[AbstractData], request: &AuditRequest) -> AuditSummary {
+    fn audit_logical(request: &AuditRequest) -> Result<AuditSummary, AppError> {
+        let state = TREE
+            .state
+            .read()
+            .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+        let marker_members = request
+            .marker_tag
+            .as_deref()
+            .and_then(|tag| state.query.tags.get(tag));
+        let marker = marker_members.map_or_else(AuditMarkerSummary::default, |members| {
+            let album_members = request
+                .album_id
+                .as_deref()
+                .and_then(|id| arrayvec::ArrayString::<64>::from(id).ok())
+                .and_then(|id| state.query.albums.get(&id));
+            AuditMarkerSummary {
+                total: members.len(),
+                favorite: members
+                    .iter()
+                    .filter(|ordinal| state.query.favorite.contains(*ordinal))
+                    .count(),
+                archived: members
+                    .iter()
+                    .filter(|ordinal| state.query.archived.contains(*ordinal))
+                    .count(),
+                trashed: members
+                    .iter()
+                    .filter(|ordinal| state.query.trashed.contains(*ordinal))
+                    .count(),
+                album_members: members
+                    .iter()
+                    .filter(|ordinal| album_members.is_some_and(|album| album.contains(*ordinal)))
+                    .count(),
+            }
+        });
+        let album = request.album_id.as_deref().and_then(|id| {
+            let id = arrayvec::ArrayString::<64>::from(id).ok()?;
+            let album = state.albums.get(&id)?;
+            let share = request.share_id.as_deref().and_then(|share_id| {
+                album
+                    .metadata
+                    .share_list
+                    .iter()
+                    .find(|(id, _)| id.as_str() == share_id)
+                    .map(|(_, share)| share.clone())
+            });
+            Some(AuditAlbumSummary {
+                id: id.to_string(),
+                title: album.metadata.title.clone(),
+                cover: album.metadata.cover.map(|cover| cover.to_string()),
+                item_count: album.metadata.item_count,
+                scanned_member_count: state.query.albums.get(&id).map_or(0, |set| set.len()),
+                share_count: album.metadata.share_list.len(),
+                share,
+            })
+        });
+        let disk_count = open_data_table()
+            .len()
+            .ok()
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0);
+        let item_id = request.item_id.clone();
+        drop(state);
+        let item = item_id
+            .as_deref()
+            .map(|id| {
+                TREE.store.read(|reader| {
+                    let durable = reader.get(id)?.map(|value| value.value());
+                    Ok::<_, anyhow::Error>(WRITE_BEHIND.logical_record(id, durable))
+                })
+            })
+            .transpose()
+            .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?
+            .flatten()
+            .as_ref()
+            .map(audit_item);
+        Ok(AuditSummary {
+            disk_count,
+            item,
+            album,
+            marker,
+        })
+    }
+
+    fn build_audit(
+        records: impl IntoIterator<Item = Result<AbstractData, AppError>>,
+        request: &AuditRequest,
+    ) -> Result<AuditSummary, AppError> {
         let album_id = request.album_id.as_deref();
         let marker_tag = request.marker_tag.as_deref();
         let mut marker = AuditMarkerSummary::default();
+        let mut disk_count = 0_usize;
+        let mut item = None;
+        let mut album = None;
+        let mut scanned_member_count = 0_usize;
 
         for record in records {
+            let record = record?;
+            disk_count += 1;
             if marker_tag.is_some_and(|tag| record.tag().contains(tag)) {
                 marker.total += 1;
                 marker.favorite += usize::from(record.is_favorite());
@@ -398,53 +691,56 @@ mod enabled {
                         .is_some_and(|albums| albums.iter().any(|album| album.as_str() == id))
                 }));
             }
-        }
-
-        let item = request.item_id.as_deref().and_then(|id| {
-            records
-                .iter()
-                .find(|record| record.hash().as_str() == id)
-                .map(audit_item)
-        });
-        let album = album_id.and_then(|id| {
-            records.iter().find_map(|record| match record {
-                AbstractData::Album(album) if album.object.id.as_str() == id => {
-                    let scanned_member_count = records
-                        .iter()
-                        .filter(|record| {
-                            record.albums().is_some_and(|albums| {
-                                albums.iter().any(|album_id| album_id.as_str() == id)
-                            })
-                        })
-                        .count();
+            if album_id.is_some_and(|id| {
+                record
+                    .albums()
+                    .is_some_and(|albums| albums.iter().any(|candidate| candidate.as_str() == id))
+            }) {
+                scanned_member_count += 1;
+            }
+            if item.is_none()
+                && request
+                    .item_id
+                    .as_deref()
+                    .is_some_and(|id| record.hash().as_str() == id)
+            {
+                item = Some(audit_item(&record));
+            }
+            if album.is_none() {
+                if let AbstractData::Album(album_record) = &record {
+                    if !album_id.is_some_and(|id| album_record.object.id.as_str() == id) {
+                        continue;
+                    }
                     let share = request.share_id.as_deref().and_then(|share_id| {
-                        album
+                        album_record
                             .metadata
                             .share_list
                             .iter()
                             .find(|(id, _)| id.as_str() == share_id)
                             .map(|(_, share)| share.clone())
                     });
-                    Some(AuditAlbumSummary {
-                        id: album.object.id.to_string(),
-                        title: album.metadata.title.clone(),
-                        cover: album.metadata.cover.map(|cover| cover.to_string()),
-                        item_count: album.metadata.item_count,
-                        scanned_member_count,
-                        share_count: album.metadata.share_list.len(),
+                    album = Some(AuditAlbumSummary {
+                        id: album_record.object.id.to_string(),
+                        title: album_record.metadata.title.clone(),
+                        cover: album_record.metadata.cover.map(|cover| cover.to_string()),
+                        item_count: album_record.metadata.item_count,
+                        scanned_member_count: 0,
+                        share_count: album_record.metadata.share_list.len(),
                         share,
-                    })
+                    });
                 }
-                _ => None,
-            })
-        });
+            }
+        }
+        if let Some(album) = &mut album {
+            album.scanned_member_count = scanned_member_count;
+        }
 
-        AuditSummary {
-            disk_count: records.len(),
+        Ok(AuditSummary {
+            disk_count,
             item,
             album,
             marker,
-        }
+        })
     }
 
     fn audit_item(record: &AbstractData) -> AuditItemSummary {
@@ -541,14 +837,16 @@ mod enabled {
             }
 
             let summary = build_audit(
-                &[first, second, album],
+                [first, second, album].into_iter().map(Ok),
                 &AuditRequest {
                     item_id: Some(item_id.clone()),
                     album_id: Some(album_id.to_string()),
                     marker_tag: Some("benchmark-marker".to_string()),
                     share_id: Some(share_id.to_string()),
+                    ..AuditRequest::default()
                 },
-            );
+            )
+            .unwrap();
 
             assert_eq!(summary.disk_count, 3);
             assert_eq!(summary.marker.total, 2);
@@ -568,14 +866,16 @@ mod enabled {
         fn audit_returns_empty_optional_records_for_unknown_ids() {
             let records = vec![AbstractData::generate_performance_data(1, 7)];
             let summary = build_audit(
-                &records,
+                records.into_iter().map(Ok),
                 &AuditRequest {
                     item_id: Some("missing-item".to_string()),
                     album_id: Some("missing-album".to_string()),
                     marker_tag: Some("missing-tag".to_string()),
                     share_id: Some("missing-share".to_string()),
+                    ..AuditRequest::default()
                 },
-            );
+            )
+            .unwrap();
             assert!(summary.item.is_none());
             assert!(summary.album.is_none());
             assert_eq!(summary.marker.total, 0);

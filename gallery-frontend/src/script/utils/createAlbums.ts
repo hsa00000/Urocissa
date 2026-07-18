@@ -5,9 +5,11 @@ import { GalleryAlbum, IsolationId } from '@type/types'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { tryWithMessageStore } from './try_catch'
+import type { SelectionInput } from '@/type/selection'
+import { normalizeSelection } from '@/type/selection'
 
 export async function createNonEmptyAlbum(
-  elementsIndex: number[],
+  elementsIndex: SelectionInput,
   isolationId: IsolationId
 ): Promise<string | undefined> {
   const albumStore = useAlbumStore('mainId')
@@ -16,7 +18,7 @@ export async function createNonEmptyAlbum(
   return await tryWithMessageStore('mainId', async () => {
     const createNonEmptyAlbumData = {
       title: null,
-      elementsIndex: elementsIndex,
+      selection: normalizeSelection(elementsIndex),
       timestamp: prefetchStore.timestamp
     }
 

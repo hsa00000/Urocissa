@@ -25,16 +25,14 @@ pub struct TreeListSnapshot {
 }
 
 impl TreeListSnapshot {
-    pub fn from_records(records: &[DatabaseTimestamp]) -> Self {
+    pub fn from_abstract_records(records: &[AbstractData]) -> Self {
         let mut tag_counts = HashMap::<String, usize>::new();
         let mut albums = Vec::new();
 
-        for database_timestamp in records {
-            let abstract_data = &database_timestamp.abstract_data;
+        for abstract_data in records {
             for tag in abstract_data.tag() {
                 *tag_counts.entry(tag.clone()).or_default() += 1;
             }
-
             if let AbstractData::Album(album) = abstract_data {
                 albums.push(album.clone());
             }
@@ -45,9 +43,16 @@ impl TreeListSnapshot {
             .map(|(tag, number)| TagInfo { tag, number })
             .collect::<Vec<_>>();
         tags.sort_unstable_by(|left, right| left.tag.cmp(&right.tag));
-        albums.sort_unstable_by(|left, right| left.object.id.cmp(&right.object.id));
-
+        albums.sort_unstable_by_key(|album| album.object.id);
         Self { tags, albums }
+    }
+
+    pub fn from_records(records: &[DatabaseTimestamp]) -> Self {
+        let records = records
+            .iter()
+            .map(|record| record.abstract_data.clone())
+            .collect::<Vec<_>>();
+        Self::from_abstract_records(&records)
     }
 
     fn replace_album(&mut self, album: AlbumCombined) {
@@ -73,12 +78,17 @@ impl TreeListSnapshot {
 impl Tree {
     pub fn read_tags(&self) -> Vec<TagInfo> {
         let start_time = Instant::now();
-        let tags = self
-            .list_snapshot
-            .read()
-            .unwrap()
-            .as_ref()
-            .map_or_else(Vec::new, |snapshot| snapshot.tags.clone());
+        let state = self.state.read().unwrap();
+        let mut tags = state
+            .query
+            .tags
+            .iter()
+            .map(|(tag, members)| TagInfo {
+                tag: tag.clone(),
+                number: members.len(),
+            })
+            .collect::<Vec<_>>();
+        tags.sort_unstable_by(|left, right| left.tag.cmp(&right.tag));
         crate::perf_timing!(
             "get_list.read_tags",
             start_time,
@@ -90,12 +100,15 @@ impl Tree {
 
     pub fn read_albums(&self) -> Result<Vec<AlbumCombined>, AppError> {
         let start_time = Instant::now();
-        let albums = self
-            .list_snapshot
+        let mut albums = self
+            .state
             .read()
             .unwrap()
-            .as_ref()
-            .map_or_else(Vec::new, |snapshot| snapshot.albums.clone());
+            .albums
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        albums.sort_unstable_by_key(|album| album.object.id);
         crate::perf_timing!(
             "get_list.read_albums",
             start_time,
@@ -112,10 +125,10 @@ impl Tree {
 
     pub fn replace_tree_snapshot(
         &self,
-        records: Vec<DatabaseTimestamp>,
+        state: super::state::TreeState,
         list_snapshot: TreeListSnapshot,
     ) {
-        *self.in_memory.write().unwrap() = records;
+        *self.state.write().unwrap() = state;
         *self.list_snapshot.write().unwrap() = Some(Arc::new(list_snapshot));
     }
 
@@ -134,8 +147,20 @@ impl Tree {
 
             let mut next_snapshot = (*current_snapshot).clone();
             match album {
-                Some(AbstractData::Album(album)) => next_snapshot.replace_album(album),
-                _ => next_snapshot.remove_album(album_id),
+                Some(AbstractData::Album(album)) => {
+                    next_snapshot.replace_album(album.clone());
+                    self.state
+                        .write()
+                        .unwrap()
+                        .albums
+                        .insert(album.object.id, album);
+                }
+                _ => {
+                    next_snapshot.remove_album(album_id);
+                    if let Ok(album_id) = arrayvec::ArrayString::<64>::from(album_id) {
+                        self.state.write().unwrap().albums.remove(&album_id);
+                    }
+                }
             }
             *self.list_snapshot.write().unwrap() = Some(Arc::new(next_snapshot));
             Ok(())

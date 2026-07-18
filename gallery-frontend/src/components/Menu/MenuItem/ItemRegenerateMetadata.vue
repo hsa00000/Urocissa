@@ -11,9 +11,11 @@ import axios from 'axios'
 import { getIsolationIdByRoute } from '@utils/getter'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
+import type { SelectionInput } from '@/type/selection'
+import { normalizeSelection } from '@/type/selection'
 
 const props = defineProps<{
-  indexList: number[]
+  indexList: SelectionInput
 }>()
 
 const route = useRoute()
@@ -22,9 +24,8 @@ const prefetchStore = usePrefetchStore(isolationId)
 const messageStore = useMessageStore('mainId')
 
 const reindex = async () => {
-  const indexArray = props.indexList
   const regenerateData = {
-    indexArray: indexArray,
+    selection: normalizeSelection(props.indexList),
     timestamp: prefetchStore.timestamp
   }
   

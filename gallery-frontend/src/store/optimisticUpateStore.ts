@@ -2,16 +2,18 @@ import { EnrichedUnifiedData, IsolationId } from '@type/types'
 import { defineStore } from 'pinia'
 import { useDataStore } from './dataStore'
 import { useTagStore } from './tagStore'
+import type { SelectionDescriptor } from '@/type/selection'
+import { createSelectionMatcher } from '@/type/selection'
 
 export interface EditTagsPayload {
-  indexSet: Set<number>
+  selection: SelectionDescriptor
   addTagsArray: string[]
   removeTagsArray: string[]
   timestamp: number
 }
 
 export interface EditAlbumsPayload {
-  indexSet: Set<number>
+  selection: SelectionDescriptor
   addAlbumsArray: string[]
   removeAlbumsArray: string[]
   timestamp: number
@@ -36,14 +38,11 @@ export const useOptimisticStore = (isolationId: IsolationId) =>
       },
       optimisticUpdateTags(payload: EditTagsPayload, pushIntoQueue: boolean) {
         const dataStore = useDataStore(isolationId)
+        const isSelected = createSelectionMatcher(payload.selection)
         for (const index of dataStore.data.keys()) {
-          if (payload.indexSet.has(index)) {
-            const addTagsResult = dataStore.addTags(index, payload.addTagsArray)
-
-            const removeTagsResult = dataStore.removeTags(index, payload.removeTagsArray)
-            if (addTagsResult && removeTagsResult) {
-              payload.indexSet.delete(index)
-            }
+          if (isSelected(index)) {
+            dataStore.addTags(index, payload.addTagsArray)
+            dataStore.removeTags(index, payload.removeTagsArray)
           }
         }
 
@@ -59,34 +58,19 @@ export const useOptimisticStore = (isolationId: IsolationId) =>
           tagStore.tags.sort((a, b) => a.tag.localeCompare(b.tag))
         }
 
-        if (
-          pushIntoQueue && // only the new task should be pushed
-          payload.indexSet.size !== 0
-        ) {
-          // some data has not been fetched yet
-          this.queueTagsUpdate.push(payload)
-        }
+        void pushIntoQueue
       },
       optimisticUpdateAlbums(payload: EditAlbumsPayload, pushIntoQueue: boolean) {
         const dataStore = useDataStore(isolationId)
+        const isSelected = createSelectionMatcher(payload.selection)
         for (const index of dataStore.data.keys()) {
-          if (payload.indexSet.has(index)) {
-            const addTagsResult = dataStore.addAlbums(index, payload.addAlbumsArray)
-
-            const removeTagsResult = dataStore.removeAlbums(index, payload.removeAlbumsArray)
-            if (addTagsResult && removeTagsResult) {
-              payload.indexSet.delete(index)
-            }
+          if (isSelected(index)) {
+            dataStore.addAlbums(index, payload.addAlbumsArray)
+            dataStore.removeAlbums(index, payload.removeAlbumsArray)
           }
         }
 
-        if (
-          pushIntoQueue && // only the new task should be pushed
-          payload.indexSet.size !== 0
-        ) {
-          // some data has not been fetched yet
-          this.queueAlbumsUpdate.push(payload)
-        }
+        void pushIntoQueue
       },
       selfUpdate() {
         this.queueTagsUpdate.forEach((payload) => {

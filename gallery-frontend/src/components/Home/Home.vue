@@ -191,7 +191,7 @@ onBeforeUnmount(() => {
   prefetchStore.clearAll()
   queueStore.clearAll()
   filterStore.searchString = null
-  collectionStore.editModeCollection.clear()
+  collectionStore.clearSelection()
   imgStore.clearAll()
   offsetStore.clearAll()
   rowStore.clearAll()

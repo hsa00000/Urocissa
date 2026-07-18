@@ -14,7 +14,7 @@ const frontendDir = join(repoRoot, 'gallery-frontend')
 const backendBinary = join(
   backendDir,
   'target',
-  'release',
+  'dev-release',
   process.platform === 'win32' ? 'urocissa.exe' : 'urocissa'
 )
 const artifactRoot = join(repoRoot, '.performance')
@@ -33,13 +33,20 @@ const editMarkers = Object.freeze({
 const editWorkload = Object.freeze({
   scope: 'metadata-and-state',
   batchSelection: 'all-visible-items',
+  acknowledgement: 'ram-publish',
+  durability: 'periodic-redb-write-behind',
+  flushIntervalMs: 1000,
+  softLimitMiB: 16,
+  hardLimitMiB: 32,
+  flushChunkRecords: 4096,
   mediaObjects: 'stubbed-transparent-png',
   operations: [
     'album-create-title-cover',
     'share-create-update-delete',
     'description',
     'single-tags-albums-flags-trash',
-    'batch-tags-albums-flags-trash'
+    'batch-tags-albums-flags-trash',
+    'chunk-failure-and-restart-partial-persistence'
   ]
 })
 
@@ -92,7 +99,7 @@ async function main() {
 }
 
 async function ensureBuilds() {
-  await runCommand('cargo', ['build', '--release', '--features', 'performance-test'], backendDir)
+  await runCommand('cargo', ['build', '--profile', 'dev-release', '--features', 'performance-test'], backendDir)
   if (!existsSync(join(frontendDir, 'node_modules'))) {
     await runCommand('npm', ['ci'], frontendDir)
   }
@@ -102,7 +109,7 @@ async function ensureBuilds() {
 async function runSuite({ resultDir, count, samples, seed, headed }) {
   await mkdir(join(resultDir, 'samples'), { recursive: true })
   const summary = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     generatedAt: new Date().toISOString(),
     source: sourceIdentity(),
     environment: {
@@ -111,7 +118,7 @@ async function runSuite({ resultDir, count, samples, seed, headed }) {
       node: process.version,
       viewport,
       browser: 'chromium',
-      buildProfile: 'release',
+      buildProfile: 'dev-release',
       fixture: { count, samples, seed: seed.toString() },
       workload: editWorkload
     },
@@ -161,7 +168,8 @@ async function runSample({ sampleDir, count, seed, sampleIndex, headed }) {
       limits: { json: '10MiB', file: '10GiB', 'data-form': '10GiB' },
       syncPaths: [],
       readOnlyMode: false,
-      disableImg: false
+      disableImg: false,
+      writeBehind: { flushIntervalMs: 1000, softLimitMiB: 16, hardLimitMiB: 32 }
     },
     private: { password: 'urocissa-performance-password', authKey: randomBytes(32).toString('hex'), discordHookUrl: null }
   }
@@ -171,6 +179,7 @@ async function runSample({ sampleDir, count, seed, sampleIndex, headed }) {
   const firstLog = join(sampleDir, 'backend-seed.log')
   let first = null
   let second = null
+  let third = null
   try {
     first = await startServer({ port, token, root, events: firstEvents, logPath: firstLog })
     await setPhase(port, token, 'fixture.insert')
@@ -182,6 +191,7 @@ async function runSample({ sampleDir, count, seed, sampleIndex, headed }) {
     })
     const seedWallMs = Date.now() - seedStart
     await perfFetch(port, token, '/__perf/barrier', { method: 'POST' })
+    const fixtureStatus = await perfFetch(port, token, '/__perf/status')
     await stopServer(first)
     first = null
 
@@ -201,39 +211,116 @@ async function runSample({ sampleDir, count, seed, sampleIndex, headed }) {
       expectedHome: seedResponse.expected_home
     })
 
+    await setPhase(port, token, 'flush-failure-retry')
+    const retryMarker = `${editMarkers.batchTag}-retry-${sampleIndex}`
+    const retryProbe = await perfFetch(port, token, '/__perf/restart-probe', {
+      method: 'POST',
+      body: JSON.stringify({
+        markerTag: retryMarker,
+        commitsBeforeFailure: 0,
+        targetLimit: Math.min(count, 4_096)
+      }),
+      headers: { 'content-type': 'application/json' }
+    })
+    const retryFailedStatus = await waitForStatus(
+      port,
+      token,
+      (value) => value.write_behind_flush_failure_count > retryProbe.failureCountBefore
+    )
+    const retryDrainStatus = await perfFetch(port, token, '/__perf/drain', { method: 'POST' })
+    const retryAudit = await perfFetch(port, token, '/__perf/audit', {
+      method: 'POST',
+      body: JSON.stringify({ markerTag: retryMarker, view: 'disk' }),
+      headers: { 'content-type': 'application/json' }
+    })
+
+    await setPhase(port, token, 'restart-partial-persistence')
+    const restartMarker = `${editMarkers.batchTag}-restart-${sampleIndex}`
+    const commitsBeforeFailure = count > 4_096 ? 1 : 0
+    const restartProbe = await perfFetch(port, token, '/__perf/restart-probe', {
+      method: 'POST',
+      body: JSON.stringify({ markerTag: restartMarker, commitsBeforeFailure }),
+      headers: { 'content-type': 'application/json' }
+    })
+    const failedFlushStatus = await waitForStatus(
+      port,
+      token,
+      (value) => value.write_behind_flush_failure_count > restartProbe.failureCountBefore
+    )
+    await crashServer(second)
+    second = null
+
+    const thirdEvents = join(sampleDir, 'backend-restart.jsonl')
+    const thirdLog = join(sampleDir, 'backend-restart.log')
+    third = await startServer({ port, token, root, events: thirdEvents, logPath: thirdLog })
+    const restartStatus = await waitForStatus(
+      port,
+      token,
+      (value) => value.disk_count === count + 1 && value.memory_count === count + 1
+    )
+    const restartAudit = await perfFetch(port, token, '/__perf/audit', {
+      method: 'POST',
+      body: JSON.stringify({ markerTag: restartMarker, view: 'disk' }),
+      headers: { 'content-type': 'application/json' }
+    })
+
     await setPhase(port, token, 'delete')
     const deleteStart = Date.now()
     const deleteSummary = await perfFetch(port, token, '/__perf/fixture', { method: 'DELETE' })
     const deleteWallMs = Date.now() - deleteStart
     const finalStatus = await perfFetch(port, token, '/__perf/barrier', { method: 'POST' })
-    await stopServer(second)
-    second = null
+    await stopServer(third)
+    third = null
     await rm(root, { recursive: true, force: true })
 
+    const events = [
+      ...await readEvents(firstEvents),
+      ...await readEvents(secondEvents),
+      ...await readEvents(thirdEvents)
+    ]
     const correctness = checkCorrectness({
       count,
       seedResponse,
+      fixtureStatus,
       startup,
       browser,
       deleteSummary,
       finalStatus,
-      rootExists: existsSync(root)
+      rootExists: existsSync(root),
+      backendEvents: events,
+      restartProbe,
+      retryProbe,
+      retryFailedStatus,
+      retryDrainStatus,
+      retryAudit,
+      failedFlushStatus,
+      restartStatus,
+      restartAudit
     })
 
-    const events = [...await readEvents(firstEvents), ...await readEvents(secondEvents)]
     return {
       sampleIndex,
       seedWallMs,
       startupWallMs,
       fixture: seedResponse,
+      fixtureStatus,
       startup,
       browser,
       delete: { ...deleteSummary, wallMs: deleteWallMs },
       finalStatus,
+      restartProbe,
+      retryProbe,
+      retryFailedStatus,
+      retryDrainStatus,
+      retryAudit,
+      failedFlushStatus,
+      restartStatus,
+      restartAudit,
       backendEvents: events,
       correctness
     }
   } finally {
+    await stopServer(third)
     await stopServer(second)
     await stopServer(first)
     await rm(root, { recursive: true, force: true })
@@ -346,8 +433,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
     }
     await waitForApiQuiet({ inFlightApiRequests, lastActivity: () => lastApiActivityAt, quietMs: 350 })
     await perfFetch(port, token, '/__perf/barrier', { method: 'POST' })
+    const backendStatus = await perfFetch(port, token, '/__perf/status')
     const browserMetrics = await readBrowserMetrics(page)
-    phases.push({ name, wallMs: Date.now() - start, responseCount: responses.length - beforeResponses, browserMetrics, payload })
+    phases.push({ name, wallMs: Date.now() - start, responseCount: responses.length - beforeResponses, browserMetrics, backendStatus, payload })
     return payload
   }
   const navigateToCollection = async (url) => {
@@ -405,9 +493,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
     for (let index = 0; index < 2; index += 1) await page.mouse.wheel(0, -900)
   })
 
-  const audit = (request) => perfFetch(port, token, '/__perf/audit', {
+  const audit = (request, view = 'logical') => perfFetch(port, token, '/__perf/audit', {
     method: 'POST',
-    body: JSON.stringify(request),
+    body: JSON.stringify({ ...request, view }),
     headers: { 'content-type': 'application/json' }
   })
 
@@ -755,13 +843,36 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
   batchAudit = await audit({ albumId, markerTag: editMarkers.batchTag })
   assertBenchmark(batchAudit.marker.total === 0, 'batch tag remove left marker tags behind')
 
+  const drainStatus = await phase('write-behind-drain', async () => {
+    return perfFetch(port, token, '/__perf/drain', { method: 'POST' })
+  })
+  assertBenchmark(
+    drainStatus.write_behind_pending_operations === 0 && drainStatus.write_behind_pending_bytes === 0,
+    `write-behind drain left pending data: ${JSON.stringify(drainStatus)}`
+  )
+
+  const diskAfterDrain = await audit(
+    { itemId, albumId, markerTag: editMarkers.batchTag, shareId },
+    'disk'
+  )
+  assertBenchmark(
+    JSON.stringify(diskAfterDrain) === JSON.stringify(await audit(
+      { itemId, albumId, markerTag: editMarkers.batchTag, shareId },
+      'logical'
+    )),
+    'logical and disk audit diverged after drain'
+  )
+
   await phase('warm-reload', async () => {
     const prefetch = page.waitForResponse((response) => response.url().includes('/get/prefetch') && response.status() === 200)
     await page.reload({ waitUntil: 'domcontentloaded' })
     return await (await prefetch).json()
   })
 
-  const finalAudit = await audit({ itemId, albumId, markerTag: editMarkers.batchTag, shareId })
+  const finalAudit = await audit(
+    { itemId, albumId, markerTag: editMarkers.batchTag, shareId },
+    'disk'
+  )
   assertBenchmark(finalAudit.diskCount > 0, 'final audit did not read the edited fixture')
   assertBenchmark(finalAudit.item?.description === editMarkers.description, 'description was lost after reload')
   assertBenchmark(
@@ -933,6 +1044,8 @@ function aggregateSamples(samples) {
           addValue(values, `browser.phase.${phase.name}.metrics.${metric}`, value)
         }
       }
+      addValue(values, `backend.phase.${phase.name}.rssBytes`, phase.backendStatus?.backend_rss_bytes)
+      addValue(values, `backend.phase.${phase.name}.dirtyBytes`, phase.backendStatus?.write_behind_pending_bytes)
     }
     for (const response of sample.browser?.responses ?? []) {
       if (response.durationMs == null) continue
@@ -945,7 +1058,12 @@ function aggregateSamples(samples) {
     addValue(values, 'server.fixture.totalMs', sample.fixture?.total_ns / 1e6)
     addValue(values, 'server.fixture.insertMs', sample.fixture?.insert_ns / 1e6)
     addValue(values, 'server.fixture.rebuildMs', sample.fixture?.rebuild_ns / 1e6)
+    addValue(values, 'backend.stage.fixture.rssBytes', sample.fixtureStatus?.backend_rss_bytes)
     addValue(values, 'server.startup.wallMs', sample.startupWallMs)
+    addValue(values, 'backend.stage.startup.rssBytes', sample.startup?.backend_rss_bytes)
+    addValue(values, 'backend.stage.failedFlush.rssBytes', sample.failedFlushStatus?.backend_rss_bytes)
+    addValue(values, 'backend.stage.retry.rssBytes', sample.retryDrainStatus?.backend_rss_bytes)
+    addValue(values, 'backend.stage.restart.rssBytes', sample.restartStatus?.backend_rss_bytes)
     addValue(values, 'server.delete.totalMs', sample.delete?.total_ns / 1e6)
     for (const event of sample.backendEvents ?? []) {
       if (event.operation && event.duration_ns != null) {
@@ -1001,13 +1119,76 @@ function renderConsoleSummary(summary, comparison = null) {
   return lines.join('\n')
 }
 
-function checkCorrectness({ count, seedResponse, startup, browser, deleteSummary, finalStatus, rootExists }) {
+function checkCorrectness({
+  count,
+  seedResponse,
+  fixtureStatus,
+  startup,
+  browser,
+  deleteSummary,
+  finalStatus,
+  rootExists,
+  backendEvents,
+  restartProbe,
+  retryProbe,
+  retryFailedStatus,
+  retryDrainStatus,
+  retryAudit,
+  failedFlushStatus,
+  restartStatus,
+  restartAudit
+}) {
   const errors = []
   if (seedResponse?.inserted !== count) errors.push(`inserted ${seedResponse?.inserted ?? 'unknown'} of ${count}`)
   if (startup?.disk_count !== count || startup?.memory_count !== count) errors.push('restart readiness count mismatch')
   if (!browser || browser.errors?.length) errors.push(...(browser?.errors ?? ['browser journey did not complete']))
   if (browser?.finalAudit?.diskCount !== count + 1) {
     errors.push(`post-edit disk count mismatch: expected ${count + 1} got ${browser?.finalAudit?.diskCount ?? 'unknown'}`)
+  }
+  const phaseStatuses = browser?.phases?.map((phase) => phase.backendStatus) ?? []
+  const backendStatuses = [
+    fixtureStatus,
+    startup,
+    ...phaseStatuses,
+    retryFailedStatus,
+    retryDrainStatus,
+    failedFlushStatus,
+    restartStatus
+  ]
+  if (backendStatuses.some((status) => status?.write_behind_pending_bytes > 32 * 1024 * 1024)) {
+    errors.push('write-behind dirty bytes exceeded 32 MiB')
+  }
+  if (count >= 1_000_000 && backendStatuses.some((status) => status?.backend_rss_bytes >= 2.5 * 1024 ** 3)) {
+    errors.push('backend peak RSS reached the 2.5 GiB acceptance limit')
+  }
+  if ((backendEvents ?? []).some((event) => event.operation === 'tree.rebuild' && event.phase?.startsWith('edit-'))) {
+    errors.push('metadata edit phase triggered a full tree rebuild')
+  }
+  if (!failedFlushStatus?.write_behind_flush_failure_count) {
+    errors.push('write-behind chunk failure injection was not observed')
+  }
+  if (
+    !retryFailedStatus?.write_behind_last_error ||
+    retryDrainStatus?.write_behind_pending_operations !== 0 ||
+    retryDrainStatus?.write_behind_flush_retry_count <= retryProbe?.retryCountBefore ||
+    retryAudit?.marker?.total !== retryProbe?.targets
+  ) {
+    errors.push('write-behind did not retry and fully materialize the bounded failure probe')
+  }
+  if (!failedFlushStatus?.write_behind_last_error || !failedFlushStatus?.write_behind_pending_operations) {
+    errors.push('failed flush did not retain pending operations before the crash')
+  }
+  if (restartStatus?.disk_count !== count + 1 || restartStatus?.memory_count !== count + 1) {
+    errors.push('restart after the injected crash did not rebuild the complete durable tree')
+  }
+  const durableMarkerCount = restartAudit?.marker?.total
+  if (durableMarkerCount !== restartProbe?.expectedDurableMin || durableMarkerCount !== restartProbe?.expectedDurableMax) {
+    errors.push(
+      `restart partial persistence mismatch: expected ${restartProbe?.expectedDurableMin ?? 'unknown'}, got ${durableMarkerCount ?? 'unknown'}`
+    )
+  }
+  if (count > 4_096 && !(durableMarkerCount > 0 && durableMarkerCount < restartProbe?.targets)) {
+    errors.push('large-fixture restart probe did not preserve a strict partial chunk prefix')
   }
   if (deleteSummary?.found !== count + 1) {
     errors.push(`fixture deletion found ${deleteSummary?.found ?? 'unknown'} records; expected ${count + 1}`)
@@ -1079,6 +1260,27 @@ async function stopServer(server) {
     } else if (!exited) {
       try { server.child.kill('SIGKILL') } catch {}
     }
+  }
+  server.logStream.end()
+}
+
+async function crashServer(server) {
+  if (!server) return
+  if (server.child.exitCode === null) {
+    const closed = new Promise((resolveClose) => server.child.once('close', resolveClose))
+    if (process.platform === 'win32') {
+      try {
+        execFileSync('taskkill', ['/pid', String(server.child.pid), '/t', '/f'], {
+          stdio: 'ignore',
+          windowsHide: true
+        })
+      } catch {
+        if (server.child.exitCode === null) throw new Error('failed to terminate benchmark server')
+      }
+    } else {
+      server.child.kill('SIGKILL')
+    }
+    await Promise.race([closed, sleep(5_000)])
   }
   server.logStream.end()
 }

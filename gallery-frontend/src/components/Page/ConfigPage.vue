@@ -34,6 +34,7 @@
               v-model:read-only-mode="localSettings.readOnlyMode"
               v-model:disable-img="localSettings.disableImg"
               v-model:has-discord-hook="localSettings.hasDiscordHook"
+              v-model:write-behind="localSettings.writeBehind"
             />
           </v-row>
         </div>
@@ -73,7 +74,12 @@ const localSettings = reactive<AppConfig>({
   address: '',
 
   port: 0,
-  limits: {}
+  limits: {},
+  writeBehind: {
+    flushIntervalMs: 1000,
+    softLimitMiB: 16,
+    hardLimitMiB: 32
+  }
 })
 
 const syncLocalWithStore = () => {

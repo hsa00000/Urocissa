@@ -1,24 +1,26 @@
-// src/router/delete/delete_data.rs
-use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
-use crate::process::transitor::index_to_abstract_data;
-use crate::public::error::{AppError, ErrorKind, ResultExt};
+use std::collections::BTreeSet;
+use std::sync::atomic::Ordering;
+
+use rocket::serde::{Deserialize, json::Json};
+
+use crate::public::db::tree::state::TargetSet;
+use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
+use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
+use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::object::ObjectType;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::router::selection::{SelectionDescriptor, resolve_selection};
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
-use anyhow::Result;
-use arrayvec::ArrayString;
-use futures::future::try_join_all;
-use rocket::serde::{Deserialize, json::Json};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteList {
+    #[serde(default)]
     delete_list: Vec<usize>,
+    #[serde(default)]
+    selection: Option<SelectionDescriptor>,
     timestamp: i64,
 }
 
@@ -30,67 +32,263 @@ pub async fn delete_data(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-    let (abstract_data_to_remove, all_affected_album_ids) = tokio::task::spawn_blocking({
-        let delete_list = json_data.delete_list.clone();
-        let timestamp = json_data.timestamp;
-        move || process_deletes(delete_list, timestamp)
-    })
-    .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
+    let data = json_data.into_inner();
+    let selection = data
+        .selection
+        .unwrap_or_else(|| SelectionDescriptor::explicit(data.delete_list));
+    let resolved =
+        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, &selection))
+            .await
+            .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
 
-    BATCH_COORDINATOR
-        .execute_batch_waiting(FlushTreeTask::remove(abstract_data_to_remove))
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to execute flush tree task"))?;
+    let contains_media = {
+        let state = TREE
+            .state
+            .read()
+            .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+        resolved.targets.iter().any(|ordinal| {
+            state
+                .get(ordinal)
+                .is_some_and(|record| record.object_type != ObjectType::Album)
+        })
+    };
+    if contains_media {
+        delete_durable_selection(resolved.targets).await
+    } else {
+        delete_logical_albums(resolved.targets).await
+    }
+}
 
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to execute update tree task"))?;
-
-    try_join_all(
-        all_affected_album_ids
-            .into_iter()
-            .map(|album_id| async move {
-                INDEX_COORDINATOR
-                    .execute_waiting(AlbumSelfUpdateTask::new(album_id))
-                    .await
-            }),
-    )
-    .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to update affected albums"))?;
+async fn delete_logical_albums(targets: TargetSet) -> AppResult<()> {
+    let reservation = {
+        let state = TREE
+            .state
+            .read()
+            .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+        if !targets.is_current(&state) {
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                "album selection is stale",
+            ));
+        }
+        targets
+            .iter()
+            .filter_map(|slot_ref| state.get(slot_ref).map(|record| record.id))
+            .map(|album_id| {
+                let delete_bytes = DirtyOperation::AlbumDelete(album_id).estimated_bytes();
+                let membership_bytes = state
+                    .query
+                    .albums
+                    .get(&album_id)
+                    .map(|members| DirtyOperation::Albums {
+                        targets: TargetSet::from_slot_refs(
+                            members
+                                .iter()
+                                .filter_map(|ordinal| state.slot_for_ordinal(ordinal)),
+                            state.arena.capacity(),
+                        ),
+                        add: BTreeSet::new(),
+                        remove: BTreeSet::from([album_id]),
+                    })
+                    .map_or(0, |operation| operation.estimated_bytes());
+                delete_bytes + membership_bytes
+            })
+            .sum::<usize>()
+            .max(256)
+    };
+    WRITE_BEHIND.reserve(reservation).await?;
+    let mut state = TREE.state.write().map_err(|_| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::Internal, "tree state lock poisoned")
+    })?;
+    if !targets.is_current(&state) {
+        WRITE_BEHIND.release_reservation(reservation);
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            "album selection became stale",
+        ));
+    }
+    let album_slots = targets.iter().collect::<Vec<_>>();
+    let mut operations = Vec::new();
+    for slot_ref in &album_slots {
+        let Some(record) = state.get(*slot_ref) else {
+            WRITE_BEHIND.release_reservation(reservation);
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                "album selection became stale",
+            ));
+        };
+        if record.object_type != ObjectType::Album {
+            WRITE_BEHIND.release_reservation(reservation);
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "selection contains media",
+            ));
+        }
+        let album_id = record.id;
+        let members = state
+            .query
+            .albums
+            .get(&album_id)
+            .cloned()
+            .unwrap_or_default();
+        if !members.is_empty() {
+            operations.push(DirtyOperation::Albums {
+                targets: TargetSet::from_slot_refs(
+                    members
+                        .iter()
+                        .filter_map(|ordinal| state.slot_for_ordinal(ordinal)),
+                    state.arena.capacity(),
+                ),
+                add: BTreeSet::new(),
+                remove: BTreeSet::from([album_id]),
+            });
+        }
+        operations.push(DirtyOperation::AlbumDelete(album_id));
+    }
+    let actual_bytes = operations
+        .iter()
+        .map(DirtyOperation::estimated_bytes)
+        .sum::<usize>();
+    if actual_bytes > reservation {
+        WRITE_BEHIND.release_reservation(reservation);
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            "album membership changed before delete publication",
+        ));
+    }
+    for operation in &operations {
+        if let DirtyOperation::Albums {
+            targets, remove, ..
+        } = operation
+        {
+            let universe = state.arena.capacity();
+            state
+                .query
+                .edit_albums(targets.ordinals(), &BTreeSet::new(), remove, universe);
+        }
+    }
+    state.remove_targets(&targets);
+    if operations.is_empty() {
+        WRITE_BEHIND.release_reservation(reservation);
+    } else {
+        let mut reservation_left = reservation;
+        for operation in operations {
+            WRITE_BEHIND.enqueue_reserved(operation, reservation_left);
+            reservation_left = 0;
+        }
+    }
+    VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }
 
-fn process_deletes(
-    delete_list: Vec<usize>,
-    timestamp: i64,
-) -> Result<(Vec<AbstractData>, Vec<ArrayString<64>>), AppError> {
-    let data_table = open_data_table();
-    let tree_snapshot = open_tree_snapshot_table(timestamp)
-        .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
+async fn delete_durable_selection(targets: TargetSet) -> AppResult<()> {
+    tokio::task::spawn_blocking(move || -> AppResult<()> {
+        let _persistence_guard = TREE.persistence_lock.lock().unwrap();
+        let mut state = TREE
+            .state
+            .write()
+            .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+        if !targets.is_current(&state) {
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                "selection became stale before durable delete",
+            ));
+        }
 
-    let mut all_affected_album_ids = Vec::new();
-    let mut abstract_data_to_remove = Vec::new();
-
-    for index in delete_list {
-        let abstract_data =
-            index_to_abstract_data(&tree_snapshot, &data_table, index).or_raise(|| {
+        let selected_album_ids = targets
+            .iter()
+            .filter_map(|slot_ref| state.get(slot_ref))
+            .filter(|record| record.object_type == ObjectType::Album)
+            .map(|record| record.id)
+            .collect::<BTreeSet<_>>();
+        let selected_album_members = selected_album_ids
+            .iter()
+            .map(|album_id| {
                 (
-                    ErrorKind::Database,
-                    format!("Failed to retrieve data at index {index}"),
+                    *album_id,
+                    state
+                        .query
+                        .albums
+                        .get(album_id)
+                        .cloned()
+                        .unwrap_or_default(),
                 )
-            })?;
+            })
+            .collect::<Vec<_>>();
+        let affected_albums = state
+            .query
+            .albums
+            .iter()
+            .filter(|(album_id, members)| {
+                !selected_album_ids.contains(*album_id)
+                    && members
+                        .iter()
+                        .any(|ordinal| targets.ordinals().contains(ordinal))
+            })
+            .map(|(album_id, _)| *album_id)
+            .collect::<Vec<_>>();
+        let affected_album_patches = affected_albums
+            .into_iter()
+            .filter_map(|album_id| state.album_aggregate_excluding(album_id, &targets))
+            .collect::<Vec<_>>();
 
-        let affected_albums = match &abstract_data {
-            AbstractData::Image(img) => img.metadata.albums.iter().copied().collect(),
-            AbstractData::Video(vid) => vid.metadata.albums.iter().copied().collect(),
-            AbstractData::Album(alb) => vec![alb.object.id],
-        };
+        TREE.store
+            .write(|writer| {
+                // Album deletion removes durable reverse memberships first.
+                for (album_id, members) in &selected_album_members {
+                    for ordinal in members.iter() {
+                        let Some(member_id) = state
+                            .slot_for_ordinal(ordinal)
+                            .and_then(|slot_ref| state.get(slot_ref))
+                            .map(|record| record.id)
+                        else {
+                            continue;
+                        };
+                        let Some(value) = writer.get(member_id.as_str())? else {
+                            continue;
+                        };
+                        let mut data = value.value();
+                        if let Some(albums) = data.albums_mut() {
+                            albums.remove(album_id);
+                        }
+                        writer.insert_at(member_id.as_str(), &data)?;
+                    }
+                }
+                for slot_ref in targets.iter() {
+                    if let Some(id) = state.get(slot_ref).map(|record| record.id) {
+                        writer.remove(id.as_str())?;
+                    }
+                }
+                for album in &affected_album_patches {
+                    writer.insert_at(
+                        album.object.id.as_str(),
+                        &AbstractData::Album(album.clone()),
+                    )?;
+                }
+                Ok::<(), anyhow::Error>(())
+            })
+            .map_err(|error| AppError::from_err(ErrorKind::Database, error))?;
 
-        all_affected_album_ids.extend(affected_albums);
-        abstract_data_to_remove.push(abstract_data);
-    }
+        WRITE_BEHIND.cancel_targets(&targets, &selected_album_ids);
 
-    Ok((abstract_data_to_remove, all_affected_album_ids))
+        for (album_id, members) in &selected_album_members {
+            let universe = state.arena.capacity();
+            state.query.edit_albums(
+                members,
+                &BTreeSet::new(),
+                &BTreeSet::from([*album_id]),
+                universe,
+            );
+        }
+        state.remove_targets(&targets);
+        for album in affected_album_patches {
+            state.albums.insert(album.object.id, album);
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
+    VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
+    Ok(())
 }

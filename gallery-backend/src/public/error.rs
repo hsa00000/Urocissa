@@ -17,6 +17,7 @@ pub enum ErrorKind {
     Serialization,
     Auth,
     ReadOnlyMode,
+    Unavailable,
 }
 
 impl ErrorKind {
@@ -32,6 +33,7 @@ impl ErrorKind {
             ErrorKind::Serialization => "Serialization Error",
             ErrorKind::Auth => "Authentication Error",
             ErrorKind::ReadOnlyMode => "Read Only Mode",
+            ErrorKind::Unavailable => "Service Unavailable",
         }
     }
 }
@@ -107,6 +109,7 @@ impl AppError {
             ErrorKind::InvalidInput => Status::BadRequest,
             ErrorKind::Conflict => Status::Conflict,
             ErrorKind::ReadOnlyMode => Status::MethodNotAllowed,
+            ErrorKind::Unavailable => Status::ServiceUnavailable,
             _ => Status::InternalServerError,
         }
     }
@@ -148,10 +151,14 @@ impl<'r> Responder<'r, 'static> for AppError {
         // Also trigger the old handler for Discord notifications if needed
         crate::public::error_data::handle_app_error(&self);
 
+        let is_unavailable = self.kind == ErrorKind::Unavailable;
         rocket::serde::json::Json(self)
             .respond_to(req)
             .map(|mut res| {
                 res.set_status(status);
+                if is_unavailable {
+                    res.set_raw_header("Retry-After", "30");
+                }
                 res
             })
     }

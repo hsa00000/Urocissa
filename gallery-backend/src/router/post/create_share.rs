@@ -1,18 +1,18 @@
-use crate::public::db::tree::TREE;
-use crate::public::error::{AppError, ErrorKind};
-use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::Share;
-use crate::router::AppResult;
-use crate::router::fairing::guard_auth::GuardAuth;
-use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::{router::GuardResult, storage::store::RecordWriter};
+use std::sync::atomic::Ordering;
 
 use arrayvec::ArrayString;
 use rand::RngExt;
 use rand::distr::Alphanumeric;
-use rocket::post;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
+
+use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
+use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
+use crate::public::error::{AppError, ErrorKind};
+use crate::public::structure::album::Share;
+use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::router::{AppResult, GuardResult};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -34,56 +34,49 @@ pub async fn create_share(
 ) -> AppResult<String> {
     let _ = auth?;
     let _ = read_only_mode?;
-    tokio::task::spawn_blocking(move || {
-        let create_share = create_share.into_inner();
-        let album_id = create_share.album_id;
-        let result = TREE
-            .store
-            .write(|data_table| create_and_insert_share(data_table, create_share))?;
-        TREE.refresh_album_snapshot(album_id.as_str())?;
-        Ok::<String, AppError>(result)
-    })
-    .await
-    .map_err(|e| AppError::from_err(ErrorKind::Internal, e.into()))?
-}
-
-fn create_and_insert_share(
-    data_table: &mut RecordWriter<'_>,
-    create_share: CreateShare,
-) -> AppResult<String> {
-    let album_opt = data_table
-        .get(create_share.album_id.as_str())?
-        .and_then(|guard| {
-            let abstract_data = guard.value();
-            match abstract_data {
-                AbstractData::Album(album) => Some(album),
-                _ => None,
-            }
-        });
-
-    match album_opt {
-        Some(mut album) => {
-            let link: String = rand::rng()
-                .sample_iter(&Alphanumeric)
-                .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
-                .take(64)
-                .map(char::from)
-                .collect();
-            let share_id = ArrayString::<64>::from(&link)
-                .map_err(|_| AppError::new(ErrorKind::Internal, "Failed to create share ID"))?;
-            let share = Share {
-                url: share_id,
-                description: create_share.description,
-                password: create_share.password,
-                show_metadata: create_share.show_metadata,
-                show_download: create_share.show_download,
-                show_upload: create_share.show_upload,
-                exp: create_share.exp,
-            };
-            album.metadata.share_list.insert(share_id, share);
-            data_table.insert_at(create_share.album_id.as_str(), &AbstractData::Album(album))?;
-            Ok(link)
-        }
-        None => Err(AppError::new(ErrorKind::NotFound, "Album not found")),
-    }
+    let data = create_share.into_inner();
+    let link = rand::rng()
+        .sample_iter(&Alphanumeric)
+        .filter(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+        .take(64)
+        .map(char::from)
+        .collect::<String>();
+    let share_id = ArrayString::<64>::from(&link)
+        .map_err(|_| AppError::new(ErrorKind::Internal, "failed to create share ID"))?;
+    let share = Share {
+        url: share_id,
+        description: data.description,
+        password: data.password,
+        show_metadata: data.show_metadata,
+        show_download: data.show_download,
+        show_upload: data.show_upload,
+        exp: data.exp,
+    };
+    let reservation = {
+        let state = TREE
+            .state
+            .read()
+            .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+        let mut preview = state
+            .albums
+            .get(&data.album_id)
+            .cloned()
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "album not found"))?;
+        preview.metadata.share_list.insert(share_id, share.clone());
+        DirtyOperation::AlbumReplace(preview).estimated_bytes() + 1_024
+    };
+    WRITE_BEHIND.reserve(reservation).await?;
+    let mut state = TREE.state.write().map_err(|_| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::Internal, "tree state lock poisoned")
+    })?;
+    let album = state.albums.get_mut(&data.album_id).ok_or_else(|| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::NotFound, "album not found")
+    })?;
+    album.metadata.share_list.insert(share_id, share);
+    let album = album.clone();
+    WRITE_BEHIND.enqueue_reserved(DirtyOperation::AlbumReplace(album), reservation);
+    VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
+    Ok(link)
 }

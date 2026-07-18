@@ -1,16 +1,16 @@
-use crate::public::db::tree::TREE;
-use crate::public::error::{AppError, ErrorKind, ResultExt};
-use crate::public::structure::abstract_data::AbstractData;
-use crate::public::structure::album::Share;
-use crate::router::AppResult;
-use crate::router::GuardResult;
-use crate::router::fairing::guard_auth::GuardAuth;
-use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use std::sync::atomic::Ordering;
 
 use arrayvec::ArrayString;
 use rocket::serde::{Deserialize, json::Json};
+
+use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
+use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
+use crate::public::error::{AppError, ErrorKind};
+use crate::public::structure::album::Share;
+use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::router::{AppResult, GuardResult};
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditShare {
@@ -26,30 +26,15 @@ pub async fn edit_share(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-        TREE.store.write(|data_table| {
-            let album_opt = data_table
-                .get(json_data.album_id.as_str())?
-                .map(|guard| guard.value());
-
-            if let Some(AbstractData::Album(mut album)) = album_opt {
-                album
-                    .metadata
-                    .share_list
-                    .insert(json_data.share.url, json_data.share.clone());
-                data_table.insert_at(json_data.album_id.as_str(), &AbstractData::Album(album))?;
-            }
-            Ok::<(), AppError>(())
-        })?;
+    let data = json_data.into_inner();
+    let extra_bytes = data.share.description.capacity()
+        + data.share.password.as_ref().map_or(0, String::capacity)
+        + std::mem::size_of::<Share>();
+    publish_share_change(data.album_id, extra_bytes, |album| {
+        album.metadata.share_list.insert(data.share.url, data.share);
         Ok(())
     })
     .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
-    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,25 +52,46 @@ pub async fn delete_share(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-        TREE.store.write(|data_table| {
-            let album_opt = data_table
-                .get(json_data.album_id.as_str())?
-                .map(|guard| guard.value());
-
-            if let Some(AbstractData::Album(mut album)) = album_opt {
-                album.metadata.share_list.remove(&json_data.share_id);
-                data_table.insert_at(json_data.album_id.as_str(), &AbstractData::Album(album))?;
-            }
-            Ok::<(), AppError>(())
-        })?;
+    let data = json_data.into_inner();
+    publish_share_change(data.album_id, 0, |album| {
+        if album.metadata.share_list.remove(&data.share_id).is_none() {
+            return Err(AppError::new(ErrorKind::NotFound, "share not found"));
+        }
         Ok(())
     })
     .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+}
+
+async fn publish_share_change(
+    album_id: ArrayString<64>,
+    extra_bytes: usize,
+    mutate: impl FnOnce(&mut crate::public::structure::album::AlbumCombined) -> AppResult<()>,
+) -> AppResult<()> {
+    let reservation = TREE
+        .state
+        .read()
+        .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?
+        .albums
+        .get(&album_id)
+        .map(|album| {
+            DirtyOperation::AlbumReplace(album.clone()).estimated_bytes() + extra_bytes + 1_024
+        })
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "album not found"))?;
+    WRITE_BEHIND.reserve(reservation).await?;
+    let mut state = TREE.state.write().map_err(|_| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::Internal, "tree state lock poisoned")
+    })?;
+    let album = state.albums.get_mut(&album_id).ok_or_else(|| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::NotFound, "album not found")
+    })?;
+    if let Err(error) = mutate(album) {
+        WRITE_BEHIND.release_reservation(reservation);
+        return Err(error);
+    }
+    let album = album.clone();
+    WRITE_BEHIND.enqueue_reserved(DirtyOperation::AlbumReplace(album), reservation);
+    VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }

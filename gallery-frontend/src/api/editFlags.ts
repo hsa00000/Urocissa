@@ -4,9 +4,11 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import { IsolationId } from '@/type/types'
 import axios from 'axios'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
+import type { SelectionInput } from '@/type/selection'
+import { createSelectionMatcher, normalizeSelection } from '@/type/selection'
 
 export interface EditFlagsPayload {
-  indexArray: number[]
+  selection: ReturnType<typeof normalizeSelection>
   timestamp: number
   isFavorite?: boolean
   isArchived?: boolean
@@ -22,7 +24,7 @@ export interface EditFlagsPayload {
  * then split the result at submit time: real tags → editTags, flags → editFlags.
  */
 export async function editFlags(
-  indexArray: number[],
+  selectionInput: SelectionInput,
   flags: { isFavorite?: boolean; isArchived?: boolean; isTrashed?: boolean },
   isolationId: IsolationId
 ) {
@@ -30,6 +32,7 @@ export async function editFlags(
   const timestamp = prefetchStore.timestamp
   const messageStore = useMessageStore('mainId')
   const dataStore = useDataStore(isolationId)
+  const selection = normalizeSelection(selectionInput)
 
   if (timestamp === null) {
     messageStore.error('Cannot edit flags because timestamp is missing.')
@@ -37,9 +40,9 @@ export async function editFlags(
   }
 
   // Optimistic update
-  for (const index of indexArray) {
-    const data = dataStore.data.get(index)
-    if (data) {
+  const isSelected = createSelectionMatcher(selection)
+  for (const [index, data] of dataStore.data) {
+    if (isSelected(index)) {
       if (flags.isFavorite !== undefined) {
         data.isFavorite = flags.isFavorite
       }
@@ -54,7 +57,7 @@ export async function editFlags(
 
   await tryWithMessageStore('mainId', async () => {
     await axios.put('/put/edit_flags', {
-      indexArray,
+      selection,
       timestamp,
       ...flags
     })
@@ -64,14 +67,14 @@ export async function editFlags(
 }
 
 // Convenience functions
-export async function setFavorite(indexArray: number[], value: boolean, isolationId: IsolationId) {
-  await editFlags(indexArray, { isFavorite: value }, isolationId)
+export async function setFavorite(selection: SelectionInput, value: boolean, isolationId: IsolationId) {
+  await editFlags(selection, { isFavorite: value }, isolationId)
 }
 
-export async function setArchived(indexArray: number[], value: boolean, isolationId: IsolationId) {
-  await editFlags(indexArray, { isArchived: value }, isolationId)
+export async function setArchived(selection: SelectionInput, value: boolean, isolationId: IsolationId) {
+  await editFlags(selection, { isArchived: value }, isolationId)
 }
 
-export async function setTrashed(indexArray: number[], value: boolean, isolationId: IsolationId) {
-  await editFlags(indexArray, { isTrashed: value }, isolationId)
+export async function setTrashed(selection: SelectionInput, value: boolean, isolationId: IsolationId) {
+  await editFlags(selection, { isTrashed: value }, isolationId)
 }

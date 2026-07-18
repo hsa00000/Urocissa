@@ -6,7 +6,7 @@
         <v-card
           variant="flat"
           class="w-100"
-          :title="`Add ${collectionStore.editModeCollection.size} items to ${album.title?.trim() || 'Untitled'}`"
+          :title="`Add ${collectionStore.selectedCount(prefetchStore.dataLength)} items to ${album.title?.trim() || 'Untitled'}`"
         >
         </v-card>
         <v-spacer></v-spacer>
@@ -15,13 +15,13 @@
           isolation-id="tempId"
           v-if="
             prefetchStore.dataLength === 0 ||
-            prefetchStore.dataLength !== collectionStore.editModeCollection.size
+            prefetchStore.dataLength !== collectionStore.selectedCount(prefetchStore.dataLength)
           "
         />
         <SelectClear v-else isolation-id="tempId" />
         <v-btn
           :loading="waiting"
-          :disabled="collectionStore.editModeCollection.size === 0"
+          :disabled="!collectionStore.hasSelection(prefetchStore.dataLength)"
           color="teal-accent-4"
           variant="flat"
           class="ma-2 button button-submit"
@@ -61,11 +61,10 @@ const waiting = ref(false)
 
 const submit = async () => {
   waiting.value = true
-  const indexArray = Array.from(collectionStore.editModeCollection)
   const timestamp = prefetchStore.timestamp
   if (timestamp !== null) {
     await axios.put('/put/edit_album', {
-      indexArray: indexArray,
+      selection: collectionStore.descriptor(),
       addAlbumsArray: [props.album.id],
       removeAlbumsArray: [],
       timestamp: timestamp

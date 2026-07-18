@@ -17,7 +17,7 @@ export function useHandleClick(
         let allInCollection = true
 
         for (let i = start; i <= end; i++) {
-          if (!collectionStore.editModeCollection.has(i)) {
+          if (!collectionStore.isSelected(i)) {
             allInCollection = false
             break
           }
@@ -34,7 +34,7 @@ export function useHandleClick(
           collectionStore.lastClick = currentIndex
         }
       } else {
-        if (collectionStore.editModeCollection.has(currentIndex)) {
+        if (collectionStore.isSelected(currentIndex)) {
           collectionStore.deleteApi(currentIndex)
           collectionStore.lastClick = null
         } else {
@@ -66,7 +66,7 @@ export function useHandleClick(
         console.warn(`abstractData with index ${currentIndex} is not fetched.`)
       }
     }
-    if (collectionStore.editModeCollection.size === 0) {
+    if (!collectionStore.allSelected && collectionStore.selectionSet.size === 0) {
       collectionStore.editModeOn = false
     }
   }

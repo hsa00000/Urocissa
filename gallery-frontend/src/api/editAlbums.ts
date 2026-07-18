@@ -3,8 +3,10 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import { IsolationId } from '@/type/types'
 import axios from 'axios'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
+import type { SelectionInput } from '@/type/selection'
+import { normalizeSelection } from '@/type/selection'
 export async function editAlbums(
-  indexArray: number[],
+  selectionInput: SelectionInput,
   addAlbumsArray: string[],
   removeAlbumsArray: string[],
   isolationId: IsolationId
@@ -12,6 +14,7 @@ export async function editAlbums(
   const prefetchStore = usePrefetchStore(isolationId)
   const timestamp = prefetchStore.timestamp
   const messageStore = useMessageStore('mainId')
+  const selection = normalizeSelection(selectionInput)
 
   if (timestamp === null) {
     messageStore.error('Cannot edit albums because timestamp is missing.')
@@ -20,7 +23,7 @@ export async function editAlbums(
 
   await tryWithMessageStore('mainId', async () => {
     const response = await axios.put('/put/edit_album', {
-      indexArray,
+      selection,
       addAlbumsArray,
       removeAlbumsArray,
       timestamp

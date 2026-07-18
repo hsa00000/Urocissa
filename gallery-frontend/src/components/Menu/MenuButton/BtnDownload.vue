@@ -11,15 +11,19 @@ import { getIsolationIdByRoute, getSrcOriginal } from '@utils/getter'
 import { EnrichedUnifiedData } from '@type/types'
 import { useTokenStore } from '@/store/tokenStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
+import { usePrefetchStore } from '@/store/prefetchStore'
+import type { SelectionInput } from '@/type/selection'
+import { normalizeSelection, selectionBatches } from '@/type/selection'
 
 const props = defineProps<{
-  indexList: number[]
+  indexList: SelectionInput
 }>()
 
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const dataStore = useDataStore(isolationId)
 const tokenStore = useTokenStore(isolationId)
+const prefetchStore = usePrefetchStore(isolationId)
 
 const waitForMetadata = (
   index: number,
@@ -49,15 +53,17 @@ const waitForMetadata = (
 }
 
 const downloadAllFiles = async () => {
-  const indexArray = props.indexList
   const concurrencyLimit = 8
   const delay = 1000
   const delayFunction = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
   const isolationId = getIsolationIdByRoute(route)
 
   await tryWithMessageStore(isolationId, async () => {
-    for (let i = 0; i < indexArray.length; i += concurrencyLimit) {
-      const batchIndex = indexArray.slice(i, i + concurrencyLimit)
+    for (const batchIndex of selectionBatches(
+      normalizeSelection(props.indexList),
+      prefetchStore.dataLength,
+      concurrencyLimit
+    )) {
       const downloadPromises = batchIndex.map(async (index) => {
         let abstractData = dataStore.data.get(index)
         if (!abstractData) {

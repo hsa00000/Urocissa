@@ -213,7 +213,7 @@ const submit = ref<() => Promise<void> | undefined>()
 
 onMounted(() => {
   submit.value = async () => {
-    const hashes = Array.from(collectionStore.editModeCollection)
+    const selection = collectionStore.descriptor()
     const addValues = changedTags.value.add
     const removeValues = changedTags.value.remove
 
@@ -225,7 +225,7 @@ onMounted(() => {
 
     // Persist real tag changes via editTags (with optimistic update).
     if (addTagsArray.length > 0 || removeTagsArray.length > 0) {
-      await editTags(hashes, addTagsArray, removeTagsArray, isolationId)
+      await editTags(selection, addTagsArray, removeTagsArray, isolationId)
     }
 
     // Persist flag changes via editFlags.
@@ -241,7 +241,7 @@ onMounted(() => {
       flagChanges.isArchived = false
 
     if (Object.keys(flagChanges).length > 0) {
-      await editFlags(hashes, flagChanges, isolationId)
+      await editFlags(selection, flagChanges, isolationId)
     }
   }
 })

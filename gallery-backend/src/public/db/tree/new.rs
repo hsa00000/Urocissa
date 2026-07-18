@@ -1,16 +1,17 @@
 use super::Tree;
 use crate::public::db::tree::read_tags::TreeListSnapshot;
-use crate::public::structure::response::database_timestamp::DatabaseTimestamp;
+use crate::public::db::tree::state::TreeState;
 use crate::storage::DataStore;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
-static TREE_SNAPSHOT_IN_MEMORY: LazyLock<Arc<RwLock<Vec<DatabaseTimestamp>>>> =
-    LazyLock::new(|| Arc::new(RwLock::new(vec![])));
+static TREE_STATE_IN_MEMORY: LazyLock<Arc<RwLock<TreeState>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(TreeState::default())));
 
 static TREE_LIST_SNAPSHOT: LazyLock<Arc<RwLock<Option<Arc<TreeListSnapshot>>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(None)));
 
 static TREE_LIST_SNAPSHOT_UPDATE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static TREE_PERSISTENCE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 use crate::public::constant::storage::get_data_path;
 
@@ -28,9 +29,10 @@ impl Tree {
     pub fn new() -> Self {
         Self {
             store: &TREE_STORE,
-            in_memory: &TREE_SNAPSHOT_IN_MEMORY,
+            state: &TREE_STATE_IN_MEMORY,
             list_snapshot: &TREE_LIST_SNAPSHOT,
             list_snapshot_update_lock: &TREE_LIST_SNAPSHOT_UPDATE_LOCK,
+            persistence_lock: &TREE_PERSISTENCE_LOCK,
         }
     }
 }

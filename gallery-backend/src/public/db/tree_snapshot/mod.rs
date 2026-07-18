@@ -7,12 +7,13 @@ use std::sync::LazyLock;
 
 use dashmap::DashMap;
 
-use crate::public::structure::response::reduced_data::ReducedData;
-
 #[derive(Debug)]
 pub struct TreeSnapshot {
     pub in_disk: &'static redb::Database,
-    pub in_memory: &'static DashMap<i64, Vec<ReducedData>>,
+    /// Ordered generational arena identities. Static display/query fields are
+    /// resolved from `RecordArena`, avoiding a second full metadata copy per
+    /// UI snapshot.
+    pub in_memory: &'static DashMap<i64, Vec<u64>>,
 }
 
 pub static TREE_SNAPSHOT: LazyLock<TreeSnapshot> = LazyLock::new(TreeSnapshot::new);

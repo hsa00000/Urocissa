@@ -4,41 +4,21 @@ use std::fs;
 pub fn initialize_file() {
     let root = get_data_path();
 
-    {
-        let db_path = root.join("db/temp_db.redb");
+    for (file_name, label) in [
+        ("temp_db.redb", "legacy tree cache"),
+        ("temp_db_v4.redb", "tree cache"),
+        ("cache_db.redb", "legacy query cache"),
+        ("cache_db_v4.redb", "query cache"),
+        ("expire_db.redb", "expire table"),
+    ] {
+        let db_path = root.join("db").join(file_name);
         if fs::metadata(&db_path).is_ok() {
             match fs::remove_file(&db_path) {
                 Ok(()) => {
-                    info!("Clear tree cache");
+                    info!("Clear {label}");
                 }
                 Err(_) => {
-                    error!("Fail to delete cache data {db_path:?}");
-                }
-            }
-        }
-    }
-    {
-        let db_path = root.join("db/cache_db.redb");
-        if fs::metadata(&db_path).is_ok() {
-            match fs::remove_file(&db_path) {
-                Ok(()) => {
-                    info!("Clear query cache");
-                }
-                Err(_) => {
-                    error!("Fail to delete cache data {db_path:?}");
-                }
-            }
-        }
-    }
-    {
-        let db_path = root.join("db/expire_db.redb");
-        if fs::metadata(&db_path).is_ok() {
-            match fs::remove_file(&db_path) {
-                Ok(()) => {
-                    info!("Clear expire table");
-                }
-                Err(_) => {
-                    error!("Fail to delete expire table {db_path:?}");
+                    error!("Fail to delete {label} {db_path:?}");
                 }
             }
         }

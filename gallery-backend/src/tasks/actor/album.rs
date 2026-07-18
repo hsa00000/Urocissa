@@ -6,7 +6,6 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use log::info;
 use mini_executor::Task;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tokio::task::spawn_blocking;
 
 pub struct AlbumSelfUpdateTask {
@@ -51,21 +50,18 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
                 data_table.insert(&AbstractData::Album(album))?;
             } else {
                 // Album has been deleted
-                let ref_data = TREE.in_memory.read().unwrap();
-
-                // Collect all data contained in this album
-                let hash_list: Vec<_> = ref_data
-                    .par_iter()
-                    .filter_map(|dt| match &dt.abstract_data {
-                        AbstractData::Image(img) if img.metadata.albums.contains(&*album_id) => {
-                            Some(img.object.id)
-                        }
-                        AbstractData::Video(vid) if vid.metadata.albums.contains(&*album_id) => {
-                            Some(vid.object.id)
-                        }
-                        _ => None,
-                    })
-                    .collect();
+                let state = TREE.state.read().unwrap();
+                let hash_list = state
+                    .query
+                    .albums
+                    .get(&album_id)
+                    .into_iter()
+                    .flat_map(|members| members.iter())
+                    .filter_map(|ordinal| state.slot_for_ordinal(ordinal))
+                    .filter_map(|slot_ref| state.get(slot_ref))
+                    .map(|record| record.id)
+                    .collect::<Vec<_>>();
+                drop(state);
 
                 // Remove this album from these data
                 for hash in hash_list {

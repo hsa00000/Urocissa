@@ -1,5 +1,6 @@
 // src/router/fairing/auth_utils.rs
 use crate::public::db::tree::TREE;
+use crate::public::db::write_behind::WRITE_BEHIND;
 use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::{ResolvedShare, Share};
@@ -134,22 +135,22 @@ fn resolve_share_internal(
     share_id: &str,
     req: &Request<'_>,
 ) -> Result<Option<Claims>, AppError> {
-    let table = TREE.store.reader().map_err(|e| {
-        AppError::from_err(ErrorKind::Database, e).context("Failed to open data table")
-    })?;
-
-    let abstract_data = table
-        .get(album_id)
-        .map_err(|e| {
-            AppError::from_err(ErrorKind::Database, e).context("Failed to get data from table")
-        })?
+    let durable = TREE
+        .store
+        .read(|table| {
+            table
+                .get(album_id)
+                .map(|value| value.map(|value| value.value()))
+        })
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
+    let abstract_data = WRITE_BEHIND
+        .logical_record(album_id, durable)
         .ok_or_else(|| {
             AppError::new(
                 ErrorKind::NotFound,
                 format!("Album not found for id '{album_id}'"),
             )
-        })?
-        .value();
+        })?;
 
     let AbstractData::Album(mut album) = abstract_data else {
         return Err(AppError::new(
@@ -216,9 +217,12 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>,
 pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
     if let Some(album_id) = req.headers().get_one("x-album-id")
         && let Some(share_id) = req.headers().get_one("x-share-id")
-        && let Ok(table) = TREE.store.reader()
-        && let Ok(Some(data_guard)) = table.get(album_id)
-        && let AbstractData::Album(mut album) = data_guard.value()
+        && let Ok(durable) = TREE.store.read(|table| {
+            table
+                .get(album_id)
+                .map(|value| value.map(|value| value.value()))
+        })
+        && let Some(AbstractData::Album(mut album)) = WRITE_BEHIND.logical_record(album_id, durable)
         && let Some(share) = album.metadata.share_list.remove(share_id)
         && share.show_upload
         && validate_share_access(&share, req).is_ok()

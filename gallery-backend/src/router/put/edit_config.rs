@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 // Import PublicConfig
 use crate::public::error::{AppError, ErrorKind, ResultExt};
-use crate::public::structure::config::{APP_CONFIG, AppConfig};
+use crate::public::structure::config::{APP_CONFIG, AppConfig, WriteBehindConfig};
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -26,6 +26,7 @@ pub struct PartialUpdateConfigRequest {
     pub sync_paths: Option<HashSet<PathBuf>>,
     pub read_only_mode: Option<bool>,
     pub disable_img: Option<bool>,
+    pub write_behind: Option<WriteBehindConfig>,
     pub auth_key: Option<String>,
     pub discord_hook_url: Option<String>,
 }
@@ -65,6 +66,9 @@ pub async fn update_config_handler(
         if let Some(disable_img) = req_data.disable_img {
             current_config.public.disable_img = disable_img;
         }
+        if let Some(write_behind) = req_data.write_behind {
+            current_config.public.write_behind = write_behind;
+        }
 
         // 3. Apply updates to PrivateConfig fields
         if let Some(key) = req_data.auth_key {
@@ -84,6 +88,12 @@ pub async fn update_config_handler(
                 current_config.private.discord_hook_url = Some(trimmed.to_string());
             }
         }
+
+        current_config
+            .public
+            .write_behind
+            .validate()
+            .map_err(|error| AppError::from_err(ErrorKind::InvalidInput, error))?;
 
         // 4. Update using the modified full config
         AppConfig::update(current_config).map_err(|e| {

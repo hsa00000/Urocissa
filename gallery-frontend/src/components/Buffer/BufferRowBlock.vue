@@ -20,7 +20,7 @@
             zIndex: 100,
             border:
               collectionStore.editModeOn &&
-              collectionStore.editModeCollection.has(row.start + subIndex)
+              collectionStore.isSelected(row.start + subIndex)
                 ? '4px solid rgb(var(--v-theme-primary))'
                 : '4px solid transparent'
           }"

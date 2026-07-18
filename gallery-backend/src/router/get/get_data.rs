@@ -2,10 +2,9 @@
 
 use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
 use crate::operations::resolve_show_download_and_metadata;
-use crate::operations::transitor::{
-    abstract_data_to_database_timestamp_return, hash_to_abstract_data, index_to_hash,
-};
+use crate::operations::transitor::{abstract_data_to_database_timestamp_return, index_to_hash};
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
+use crate::public::db::write_behind::WRITE_BEHIND;
 use crate::public::structure::response::database_timestamp::DataBaseTimestampReturn;
 use crate::public::structure::response::row::{Row, ScrollBarData};
 
@@ -51,12 +50,18 @@ pub async fn get_data(
                     )
                 })?;
 
-                let abstract_data = hash_to_abstract_data(&data_table, hash).or_raise(|| {
-                    (
-                        ErrorKind::Database,
-                        format!("Failed to retrieve data for hash {hash}"),
-                    )
-                })?;
+                let durable = data_table
+                    .get(hash.as_str())
+                    .or_raise(|| (ErrorKind::Database, "Failed to read durable data"))?
+                    .map(|value| value.value());
+                let abstract_data = WRITE_BEHIND
+                    .logical_record(hash.as_str(), durable)
+                    .ok_or_else(|| {
+                        AppError::new(
+                            ErrorKind::NotFound,
+                            format!("Failed to retrieve logical data for hash {hash}"),
+                        )
+                    })?;
 
                 let database_timestamp_return = abstract_data_to_database_timestamp_return(
                     abstract_data,

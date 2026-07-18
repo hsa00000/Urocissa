@@ -8,9 +8,10 @@
 import { useRoute } from 'vue-router'
 import { getIsolationIdByRoute } from '@utils/getter'
 import { setFavorite } from '@/api/editFlags'
+import type { SelectionInput } from '@/type/selection'
 
 const props = defineProps<{
-  indexList: number[]
+  indexList: SelectionInput
 }>()
 
 const route = useRoute()

@@ -1,128 +1,172 @@
-use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
-use crate::process::transitor::index_to_abstract_data;
-use crate::public::db::tree::TREE;
-use crate::public::error::{AppError, ErrorKind, ResultExt};
-use crate::public::structure::abstract_data::AbstractData;
+use std::collections::BTreeSet;
+use std::sync::atomic::Ordering;
+
+use arrayvec::ArrayString;
+use rocket::serde::{Deserialize, json::Json};
+use serde::Serialize;
+
+use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
+use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
+use crate::public::error::{AppError, ErrorKind};
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
+use crate::router::selection::{SelectionDescriptor, resolve_selection};
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
-use anyhow::Result;
-use arrayvec::ArrayString;
-use futures::{StreamExt, TryStreamExt, stream};
-use rocket::serde::{Deserialize, json::Json};
-use serde::Serialize;
-use std::collections::HashSet;
 
-/// Payload for batch editing album associations for multiple items.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditAlbumsData {
-    /// List of item indices to modify.
+    #[serde(default)]
     index_array: Vec<usize>,
-    /// List of album IDs to add these items to.
+    #[serde(default)]
+    selection: Option<SelectionDescriptor>,
     add_albums_array: Vec<ArrayString<64>>,
-    /// List of album IDs to remove these items from.
     remove_albums_array: Vec<ArrayString<64>>,
-    /// Snapshot timestamp to ensure data consistency during the read-modify-write cycle.
     timestamp: i64,
 }
 
-/// Batches modifications to album associations for multiple media items.
-///
-/// This performs a read-modify-write operation using a specific DB snapshot
-/// to ensure consistency, then triggers background updates for affected albums.
 #[put("/put/edit_album", format = "json", data = "<json_data>")]
 pub async fn edit_album(
     auth: GuardResult<GuardAuth>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     json_data: Json<EditAlbumsData>,
 ) -> AppResult<()> {
-    const MAX_CONCURRENT_UPDATES: usize = 8;
     let _ = auth?;
     let _ = read_only_mode?;
-
-    let (to_flush, unique_affected_albums) = tokio::task::spawn_blocking(
-        move || -> Result<(Vec<_>, Vec<ArrayString<64>>), AppError> {
-            let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
-                .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
-            let data_table = open_data_table();
-
-            let mut to_flush = Vec::with_capacity(json_data.index_array.len());
-            for &index in &json_data.index_array {
-                let mut abstract_data = index_to_abstract_data(&tree_snapshot, &data_table, index)
-                    .or_raise(|| {
-                        (
-                            ErrorKind::Database,
-                            format!("Failed to retrieve data at index {index}"),
-                        )
-                    })?;
-
-                if let Some(albums) = abstract_data.albums_mut() {
-                    for album_id in &json_data.add_albums_array {
-                        albums.insert(*album_id);
-                    }
-                    for album_id in &json_data.remove_albums_array {
-                        albums.remove(album_id);
-                    }
-                }
-                to_flush.push(abstract_data);
-            }
-
-            // Deduplicate affected albums to prevent redundant update tasks.
-            let unique_affected_albums = json_data
-                .add_albums_array
+    let data = json_data.into_inner();
+    let selection = data
+        .selection
+        .unwrap_or_else(|| SelectionDescriptor::explicit(data.index_array));
+    let resolved =
+        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, &selection))
+            .await
+            .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
+    let mut add = data.add_albums_array.into_iter().collect::<BTreeSet<_>>();
+    let remove = data
+        .remove_albums_array
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    add.retain(|album| !remove.contains(album));
+    let targets = resolved.targets;
+    let reservation = {
+        let state = TREE
+            .state
+            .read()
+            .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+        if !targets.is_current(&state) {
+            return Err(AppError::new(ErrorKind::Conflict, "selection is stale"));
+        }
+        let membership_bytes = add
+            .iter()
+            .map(|album_id| DirtyOperation::Albums {
+                targets: targets.clone(),
+                add: BTreeSet::from([*album_id]),
+                remove: BTreeSet::new(),
+            })
+            .chain(remove.iter().map(|album_id| DirtyOperation::Albums {
+                targets: targets.clone(),
+                add: BTreeSet::new(),
+                remove: BTreeSet::from([*album_id]),
+            }))
+            .map(|operation| operation.estimated_bytes())
+            .sum::<usize>();
+        membership_bytes
+            + add
+                .union(&remove)
+                .filter_map(|album_id| state.albums.get(album_id))
+                .map(|album| DirtyOperation::AlbumReplace(album.clone()).estimated_bytes() + 1_024)
+                .sum::<usize>()
+    };
+    WRITE_BEHIND.reserve(reservation).await?;
+    let mut state = match TREE.state.write() {
+        Ok(state) => state,
+        Err(_) => {
+            WRITE_BEHIND.release_reservation(reservation);
+            return Err(AppError::new(
+                ErrorKind::Internal,
+                "tree state lock poisoned",
+            ));
+        }
+    };
+    if !targets.is_current(&state) {
+        WRITE_BEHIND.release_reservation(reservation);
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            "selection became stale before publication",
+        ));
+    }
+    let targets = state.media_targets(&targets);
+    if let Some(missing) = add
+        .iter()
+        .find(|album_id| !state.albums.contains_key(*album_id))
+    {
+        WRITE_BEHIND.release_reservation(reservation);
+        return Err(AppError::new(
+            ErrorKind::NotFound,
+            format!("album {missing} does not exist"),
+        ));
+    }
+    let universe = state.arena.capacity();
+    let mut operations = Vec::with_capacity(add.len() + remove.len());
+    for album_id in &add {
+        let existing = state.query.albums.get(album_id);
+        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
+            targets
                 .iter()
-                .chain(json_data.remove_albums_array.iter())
-                .copied()
-                .collect::<HashSet<_>>()
-                .into_iter()
-                .collect();
-
-            Ok((to_flush, unique_affected_albums))
-        },
-    )
-    .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-
-    BATCH_COORDINATOR
-        .execute_batch_waiting(FlushTreeTask::insert(to_flush))
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to execute flush tree task"))?;
-
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to execute update tree task"))?;
-
-    stream::iter(unique_affected_albums)
-        .map(|album_id| async move {
-            INDEX_COORDINATOR
-                .execute_waiting(AlbumSelfUpdateTask::new(album_id))
-                .await
-        })
-        .buffer_unordered(MAX_CONCURRENT_UPDATES)
-        .try_collect::<Vec<_>>()
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update albums"))?;
-
+                .filter(|slot_ref| !existing.is_some_and(|set| set.contains(slot_ref.index()))),
+            universe,
+        );
+        if !changed.is_empty() {
+            operations.push(DirtyOperation::Albums {
+                targets: changed,
+                add: BTreeSet::from([*album_id]),
+                remove: BTreeSet::new(),
+            });
+        }
+    }
+    for album_id in &remove {
+        let existing = state.query.albums.get(album_id);
+        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
+            targets
+                .iter()
+                .filter(|slot_ref| existing.is_some_and(|set| set.contains(slot_ref.index()))),
+            universe,
+        );
+        if !changed.is_empty() {
+            operations.push(DirtyOperation::Albums {
+                targets: changed,
+                add: BTreeSet::new(),
+                remove: BTreeSet::from([*album_id]),
+            });
+        }
+    }
+    operations.extend(
+        state
+            .edit_album_memberships(targets.ordinals(), &add, &remove)
+            .into_iter()
+            .map(DirtyOperation::AlbumReplace),
+    );
+    if operations.is_empty() {
+        WRITE_BEHIND.release_reservation(reservation);
+    } else {
+        let mut reservation_left = reservation;
+        for operation in operations {
+            WRITE_BEHIND.enqueue_reserved(operation, reservation_left);
+            reservation_left = 0;
+        }
+    }
+    VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }
 
-/// Payload for updating a specific album's cover image.
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SetAlbumCover {
     pub album_id: ArrayString<64>,
-    /// The hash of the image to set as cover.
     pub cover_hash: ArrayString<64>,
 }
 
-/// Updates the cover image of a specific album.
 #[put("/put/set_album_cover", data = "<set_album_cover>")]
 pub async fn set_album_cover(
     auth: GuardResult<GuardAuth>,
@@ -131,45 +175,54 @@ pub async fn set_album_cover(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-
-    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-        let set_album_cover_inner = set_album_cover.into_inner();
-        let album_id = set_album_cover_inner.album_id;
-        let cover_hash = set_album_cover_inner.cover_hash;
-
-        TREE.store.write(|data_table| {
-            let album = data_table
-                .get(album_id.as_str())?
-                .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?
-                .value();
-            let AbstractData::Album(mut album) = album else {
-                return Err(AppError::new(
-                    ErrorKind::InvalidInput,
-                    "Expected Album but got different type",
-                ));
-            };
-            let database = data_table
-                .get(cover_hash.as_str())?
-                .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Cover image not found"))?
-                .value();
-
-            album.set_cover(&database);
-            data_table.insert_at(album_id.as_str(), &AbstractData::Album(album))?;
-            Ok::<(), AppError>(())
+    let data = set_album_cover.into_inner();
+    let reservation = TREE
+        .state
+        .read()
+        .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?
+        .albums
+        .get(&data.album_id)
+        .map(|album| DirtyOperation::AlbumReplace(album.clone()).estimated_bytes() + 1_024)
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "album not found"))?;
+    WRITE_BEHIND.reserve(reservation).await?;
+    let mut state = TREE.state.write().map_err(|_| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::Internal, "tree state lock poisoned")
+    })?;
+    let cover = state
+        .find(data.cover_hash.as_str())
+        .and_then(|slot_ref| state.get(slot_ref))
+        .cloned()
+        .ok_or_else(|| {
+            WRITE_BEHIND.release_reservation(reservation);
+            AppError::new(ErrorKind::NotFound, "cover media not found")
         })?;
-        Ok(())
-    })
-    .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+    if !state
+        .query
+        .albums
+        .get(&data.album_id)
+        .is_some_and(|members| {
+            members.contains(state.find(data.cover_hash.as_str()).unwrap().index())
+        })
+    {
+        WRITE_BEHIND.release_reservation(reservation);
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "cover must be a member of the album",
+        ));
+    }
+    let album = state.albums.get_mut(&data.album_id).ok_or_else(|| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::NotFound, "album not found")
+    })?;
+    album.metadata.cover = Some(cover.id);
+    album.object.thumbhash = cover.thumbhash;
+    let album = album.clone();
+    WRITE_BEHIND.enqueue_reserved(DirtyOperation::AlbumReplace(album), reservation);
+    VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }
 
-/// Payload for renaming an album.
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SetAlbumTitle {
@@ -177,7 +230,6 @@ pub struct SetAlbumTitle {
     pub title: Option<String>,
 }
 
-/// Updates the display title of a specific album.
 #[put("/put/set_album_title", data = "<set_album_title>")]
 pub async fn set_album_title(
     auth: GuardResult<GuardShare>,
@@ -186,36 +238,31 @@ pub async fn set_album_title(
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = read_only_mode?;
-
-    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-        let set_album_title_inner = set_album_title.into_inner();
-        let album_id = set_album_title_inner.album_id;
-
-        TREE.store.write(|data_table| {
-            let album = data_table
-                .get(album_id.as_str())?
-                .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?
-                .value();
-            let AbstractData::Album(mut album) = album else {
-                return Err(AppError::new(
-                    ErrorKind::InvalidInput,
-                    "Expected Album but got different type",
-                ));
-            };
-
-            album.metadata.title = set_album_title_inner.title;
-            data_table.insert_at(album_id.as_str(), &AbstractData::Album(album))?;
-            Ok::<(), AppError>(())
-        })?;
-        Ok(())
-    })
-    .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
-
+    let data = set_album_title.into_inner();
+    let reservation = TREE
+        .state
+        .read()
+        .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?
+        .albums
+        .get(&data.album_id)
+        .map(|album| {
+            DirtyOperation::AlbumReplace(album.clone()).estimated_bytes()
+                + data.title.as_ref().map_or(0, String::capacity)
+                + 1_024
+        })
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "album not found"))?;
+    WRITE_BEHIND.reserve(reservation).await?;
+    let mut state = TREE.state.write().map_err(|_| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::Internal, "tree state lock poisoned")
+    })?;
+    let album = state.albums.get_mut(&data.album_id).ok_or_else(|| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::NotFound, "album not found")
+    })?;
+    album.metadata.title = data.title;
+    let album = album.clone();
+    WRITE_BEHIND.enqueue_reserved(DirtyOperation::AlbumReplace(album), reservation);
+    VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }

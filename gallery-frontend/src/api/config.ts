@@ -1,4 +1,11 @@
 import axios from 'axios'
+import { PublicConfigSchema } from '@/type/schemas'
+
+export interface WriteBehindConfig {
+  flushIntervalMs: number
+  softLimitMiB: number
+  hardLimitMiB: number
+}
 
 export interface AppConfig {
   // Rocket settings
@@ -9,6 +16,7 @@ export interface AppConfig {
   // App settings
   readOnlyMode: boolean
   disableImg: boolean
+  writeBehind: WriteBehindConfig
   // password is handled separately now
   authKey: string | null
   hasAuthKey: boolean
@@ -20,7 +28,8 @@ export interface AppConfig {
 
 export const getConfig = async (): Promise<AppConfig> => {
   const response = await axios.get<AppConfig>('/get/config')
-  return response.data
+  const publicConfig = PublicConfigSchema.parse(response.data)
+  return { ...response.data, ...publicConfig }
 }
 
 export const updateConfig = async (config: Partial<AppConfig>): Promise<void> => {

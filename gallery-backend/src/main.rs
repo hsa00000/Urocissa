@@ -21,6 +21,7 @@ use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::batcher::update_tree::update_tree_task;
 use crate::tasks::looper::start_expire_check_loop;
 use public::db::tree::TREE;
+use public::db::write_behind::WRITE_BEHIND;
 use public::structure::abstract_data::AbstractData;
 use storage::migration::prepare_storage;
 
@@ -34,8 +35,14 @@ fn main() {
         std::process::exit(1);
     }
 
+    #[cfg(feature = "performance-test")]
+    eprintln!("performance startup: storage ready");
+
     // Initialize core subsystems (Config, DB, FFmpeg checks)
     initialize();
+
+    #[cfg(feature = "performance-test")]
+    eprintln!("performance startup: subsystems initialized");
 
     #[cfg(feature = "embed-frontend")]
     info!("Frontend Configuration: EMBEDDED (Assets compiled into binary)");
@@ -73,9 +80,15 @@ fn main() {
                 album_count
             );
 
+            #[cfg(feature = "performance-test")]
+            eprintln!("performance startup: database count read");
+
             // Build the first in-memory tree and list snapshot before Rocket
             // starts accepting requests. Later rebuilds remain asynchronous.
             update_tree_task();
+            #[cfg(feature = "performance-test")]
+            eprintln!("performance startup: logical tree ready");
+            let write_behind_worker = INDEX_RUNTIME.spawn(WRITE_BEHIND.run_worker());
             if tree_ready_tx.send(()).is_err() {
                 error!("Failed to signal initial tree readiness.");
                 return;
@@ -100,6 +113,15 @@ fn main() {
             if let Err(e) = tokio::signal::ctrl_c().await {
                 error!("Failed to listen for ctrl-c in worker: {}", e);
             }
+            let drained = WRITE_BEHIND.drain(std::time::Duration::from_secs(30)).await;
+            if !drained {
+                let status = WRITE_BEHIND.status();
+                error!(
+                    "Write-behind shutdown drain timed out: {} operations, {} bytes remain",
+                    status.pending_operations, status.pending_bytes
+                );
+            }
+            write_behind_worker.abort();
             info!("Worker thread shutting down.");
         });
     });
@@ -110,9 +132,16 @@ fn main() {
     }
 
     let rocket_handle = thread::spawn(|| {
+        #[cfg(feature = "performance-test")]
+        eprintln!("performance startup: rocket thread starting");
         info!("Rocket thread starting.");
         if let Err(e) = ROCKET_RUNTIME.block_on(async {
-            let rocket = router::build_rocket().ignite().await?;
+            let rocket = router::build_rocket();
+            #[cfg(feature = "performance-test")]
+            eprintln!("performance startup: rocket routes built");
+            let rocket = rocket.ignite().await?;
+            #[cfg(feature = "performance-test")]
+            eprintln!("performance startup: rocket ignited");
             #[cfg(feature = "auto-open-browser")]
             let port = rocket.config().port;
             let shutdown_handle = rocket.shutdown();
@@ -131,6 +160,8 @@ fn main() {
             open_browser(port);
             launch_future.await.map_err(anyhow::Error::from)
         }) {
+            #[cfg(feature = "performance-test")]
+            eprintln!("performance startup: rocket error: {e:#}");
             error!("Rocket thread exited with an error: {}", e);
         }
     });

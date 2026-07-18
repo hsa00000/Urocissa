@@ -1,22 +1,24 @@
-use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
-use crate::operations::transitor::index_to_hash;
-use crate::public::db::tree::TREE;
+use std::collections::BTreeSet;
+use std::sync::atomic::Ordering;
+
+use rocket::serde::{Deserialize, json::Json};
+
 use crate::public::db::tree::read_tags::TagInfo;
-use crate::public::error::{AppError, ErrorKind, ResultExt};
-use crate::public::structure::abstract_data::AbstractData;
+use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
+use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
+use crate::public::error::{AppError, ErrorKind};
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::router::selection::{SelectionDescriptor, resolve_selection};
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use anyhow::Result;
-use rocket::serde::{Deserialize, json::Json};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditTagsData {
+    #[serde(default)]
     index_array: Vec<usize>,
+    #[serde(default)]
+    selection: Option<SelectionDescriptor>,
     add_tags_array: Vec<String>,
     remove_tags_array: Vec<String>,
     timestamp: i64,
@@ -30,58 +32,103 @@ pub async fn edit_tag(
 ) -> AppResult<Json<Vec<TagInfo>>> {
     let _ = auth?;
     let _ = read_only_mode?;
-
-    let data_to_flush =
-        tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>, AppError> {
-            let data_table = open_data_table();
-            let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
-                .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
-
-            let mut data_to_flush: Vec<AbstractData> = Vec::new();
-
-            for &index in &json_data.index_array {
-                let hash = index_to_hash(&tree_snapshot, index).or_raise(|| {
-                    (
-                        ErrorKind::Database,
-                        format!("Failed to get hash for index {index}"),
-                    )
-                })?;
-
-                if let Some(guard) = data_table
-                    .get(&*hash)
-                    .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
-                {
-                    let mut abstract_data = guard.value();
-
-                    // Apply tag additions and removals (only regular tags)
-                    let tags = abstract_data.tag_mut();
-                    for tag in &json_data.add_tags_array {
-                        tags.insert(tag.clone());
-                    }
-                    for tag in &json_data.remove_tags_array {
-                        tags.remove(tag);
-                    }
-
-                    data_to_flush.push(abstract_data);
-                }
-            }
-
-            Ok(data_to_flush)
-        })
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-
-    if !data_to_flush.is_empty() {
-        BATCH_COORDINATOR
-            .execute_batch_waiting(FlushTreeTask::insert(data_to_flush))
+    let data = json_data.into_inner();
+    let selection = data
+        .selection
+        .unwrap_or_else(|| SelectionDescriptor::explicit(data.index_array));
+    let resolved =
+        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, &selection))
             .await
-            .or_raise(|| (ErrorKind::Internal, "Failed to flush edited tags"))?;
-    }
+            .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
 
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+    let mut add = data.add_tags_array.into_iter().collect::<BTreeSet<_>>();
+    let remove = data.remove_tags_array.into_iter().collect::<BTreeSet<_>>();
+    add.retain(|tag| !remove.contains(tag));
+    let targets = resolved.targets;
+    let worst_case_operations = add
+        .iter()
+        .map(|tag| DirtyOperation::Tags {
+            targets: targets.clone(),
+            add: BTreeSet::from([tag.clone()]),
+            remove: BTreeSet::new(),
+        })
+        .chain(remove.iter().map(|tag| DirtyOperation::Tags {
+            targets: targets.clone(),
+            add: BTreeSet::new(),
+            remove: BTreeSet::from([tag.clone()]),
+        }))
+        .collect::<Vec<_>>();
+    let bytes = worst_case_operations
+        .iter()
+        .map(DirtyOperation::estimated_bytes)
+        .sum();
+    WRITE_BEHIND.reserve(bytes).await?;
+
+    let mut state = match TREE.state.write() {
+        Ok(state) => state,
+        Err(_) => {
+            WRITE_BEHIND.release_reservation(bytes);
+            return Err(AppError::new(
+                ErrorKind::Internal,
+                "tree state lock poisoned",
+            ));
+        }
+    };
+    if !targets.is_current(&state) {
+        WRITE_BEHIND.release_reservation(bytes);
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            "selection became stale before publication",
+        ));
+    }
+    let universe = state.arena.capacity();
+    let mut operations = Vec::with_capacity(add.len() + remove.len());
+    for tag in &add {
+        let existing = state.query.tags.get(tag);
+        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
+            targets
+                .iter()
+                .filter(|slot_ref| !existing.is_some_and(|set| set.contains(slot_ref.index()))),
+            universe,
+        );
+        if !changed.is_empty() {
+            operations.push(DirtyOperation::Tags {
+                targets: changed,
+                add: BTreeSet::from([tag.clone()]),
+                remove: BTreeSet::new(),
+            });
+        }
+    }
+    for tag in &remove {
+        let existing = state.query.tags.get(tag);
+        let changed = crate::public::db::tree::state::TargetSet::from_slot_refs(
+            targets
+                .iter()
+                .filter(|slot_ref| existing.is_some_and(|set| set.contains(slot_ref.index()))),
+            universe,
+        );
+        if !changed.is_empty() {
+            operations.push(DirtyOperation::Tags {
+                targets: changed,
+                add: BTreeSet::new(),
+                remove: BTreeSet::from([tag.clone()]),
+            });
+        }
+    }
+    state
+        .query
+        .edit_tags(targets.ordinals(), &add, &remove, universe);
+    if operations.is_empty() {
+        WRITE_BEHIND.release_reservation(bytes);
+    } else {
+        let mut reservation_left = bytes;
+        for operation in operations {
+            WRITE_BEHIND.enqueue_reserved(operation, reservation_left);
+            reservation_left = 0;
+        }
+    }
+    VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
+    drop(state);
 
     Ok(Json(TREE.read_tags()))
 }

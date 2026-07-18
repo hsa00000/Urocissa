@@ -13,6 +13,6 @@ const props = defineProps<{
 const collectionStore = useCollectionStore(props.isolationId)
 
 const selectClear = () => {
-  collectionStore.editModeCollection.clear()
+  collectionStore.clearSelection()
 }
 </script>

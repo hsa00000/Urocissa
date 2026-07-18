@@ -1,6 +1,5 @@
 use arrayvec::ArrayString;
 use chrono::Utc;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use super::metadata::AlbumMetadata;
@@ -38,44 +37,26 @@ impl AlbumCombined {
     }
 
     pub fn self_update(&mut self) {
-        // Acquire a read lock on the in-memory tree
-        let ref_data = TREE.in_memory.read().unwrap();
-
-        // Collect relevant media items (Image/Video) along with their info
-        let mut data_in_album: Vec<MediaItemInfo> = ref_data
-            .par_iter()
-            .filter_map(
-                |database_timestamp| match &database_timestamp.abstract_data {
-                    AbstractData::Image(img) => {
-                        // Check if in this album and not trashed
-                        if img.metadata.albums.contains(&self.object.id) && !img.object.is_trashed {
-                            Some(MediaItemInfo {
-                                hash: img.object.id,
-                                size: img.metadata.size,
-                                thumbhash: img.object.thumbhash.clone(),
-                                timestamp: database_timestamp.timestamp,
-                            })
-                        } else {
-                            None
-                        }
-                    }
-                    AbstractData::Video(vid) => {
-                        // Check if in this album and not trashed
-                        if vid.metadata.albums.contains(&self.object.id) && !vid.object.is_trashed {
-                            Some(MediaItemInfo {
-                                hash: vid.object.id,
-                                size: vid.metadata.size,
-                                thumbhash: vid.object.thumbhash.clone(),
-                                timestamp: database_timestamp.timestamp,
-                            })
-                        } else {
-                            None
-                        }
-                    }
-                    AbstractData::Album(_) => None,
-                },
-            )
-            .collect();
+        let state = TREE.state.read().unwrap();
+        let mut data_in_album = state
+            .query
+            .albums
+            .get(&self.object.id)
+            .into_iter()
+            .flat_map(|members| members.iter())
+            .filter(|ordinal| !state.query.trashed.contains(*ordinal))
+            .filter_map(|ordinal| state.slot_for_ordinal(ordinal))
+            .filter_map(|slot_ref| state.get(slot_ref))
+            .filter(|record| {
+                record.object_type != crate::public::structure::object::ObjectType::Album
+            })
+            .map(|record| MediaItemInfo {
+                hash: record.id,
+                size: record.size,
+                thumbhash: record.thumbhash.clone(),
+                timestamp: record.timestamp,
+            })
+            .collect::<Vec<_>>();
 
         // If there are no items in the album, there's nothing to set
         if data_in_album.is_empty() {

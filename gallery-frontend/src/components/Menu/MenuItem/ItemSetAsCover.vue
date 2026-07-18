@@ -11,19 +11,21 @@ import { useDataStore } from '@/store/dataStore'
 import { getIsolationIdByRoute } from '@utils/getter'
 import axios from 'axios'
 import { refreshAlbumMetadata } from '@utils/refreshAlbumMetadata'
+import { usePrefetchStore } from '@/store/prefetchStore'
 
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const collectionStore = useCollectionStore(isolationId)
 const dataStore = useDataStore(isolationId)
+const prefetchStore = usePrefetchStore(isolationId)
 
 const setAsCover = async () => {
-  if (collectionStore.editModeCollection.size !== 1) {
-    console.warn('editModeCollection must contain exactly one item to set as cover.')
+  if (collectionStore.selectedCount(prefetchStore.dataLength) !== 1) {
+    console.warn('Selection must contain exactly one item to set as cover.')
     return
   }
 
-  const coverIndex = Array.from(collectionStore.editModeCollection)[0]
+  const coverIndex = collectionStore.singleSelectedIndex(prefetchStore.dataLength)
   if (coverIndex === undefined) {
     return
   }

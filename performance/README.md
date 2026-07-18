@@ -20,7 +20,7 @@ node performance\run.mjs compare --baseline .performance\baseline\latest\summary
 node performance\run.mjs smoke --count 100000 --samples 1
 ```
 
-The runner builds the release backend with `--features performance-test`, builds the frontend, starts an isolated server, inserts the fixture, and restarts it to measure recovery. Chromium then performs the existing login/top-scroll/middle-jump/end-jump journey followed by:
+The runner builds the backend with `--profile dev-release --features performance-test` (never plain `--release`), builds the frontend, starts an isolated server, inserts the fixture, and restarts it to measure recovery. Chromium then performs the existing login/top-scroll/middle-jump/end-jump journey followed by:
 
 - creating and titling an album;
 - creating, updating, and deleting a share;
@@ -29,9 +29,9 @@ The runner builds the release backend with `--features performance-test`, builds
 - entering the test album and setting a cover; and
 - warm reloading and auditing the persisted final state.
 
-Every timed UI edit waits for its target response, application API quiet, and the backend barrier. Audits run outside the timed interval. The fixture is then deleted, and the runner verifies that both disk and memory contain zero records. Use `UROCISSA_PERF_SKIP_BUILD=1` when iterating on the runner after the binaries are already built.
+Every timed UI edit measures RAM publication: it waits for its target response, application API quiet, and the backend barrier without forcing Redb durability. Logical audits run outside those intervals. A separate `write-behind-drain` phase measures Redb materialization and requires logical/disk audits to match before warm reload. The runner then injects a one-shot write-behind chunk failure, terminates the process before retry, restarts it, and verifies the exact committed marker prefix from Redb. The fixture is finally deleted by the restarted process, and both disk and memory must contain zero records. Use `UROCISSA_PERF_SKIP_BUILD=1` only when the dev-release backend and frontend have already been rebuilt for the current source.
 
-The artifact schema is version 3 and includes the complete edit workload in `environment.workload`. Schema 2 baselines are intentionally incompatible with comparison runs. Generate a fresh baseline after upgrading:
+The artifact schema is version 4 and includes the complete RAM-first edit and write-behind workload in `environment.workload`. Derived tree snapshots also use the schema-4 compact `SlotRef` representation; incompatible temp/query caches are deleted at startup. Schema 2 and 3 baselines are intentionally incompatible with comparison runs. Generate a fresh baseline after upgrading:
 
 ```powershell
 .\performance\run.ps1 baseline
@@ -47,4 +47,4 @@ Reports are written under `.performance/` (ignored by Git):
 
 The report includes median, p95, and max timings for the fixture API, restart, every read/edit browser phase, HTTP method and route latency for GET/POST/PUT/DELETE requests, deletion, and structured backend operations such as `get_data.read_range`, `prefetch.filter_items`, and `tree_snapshot.flush_disk`. Long tasks, frame gaps, paints, and heap readings are reset for each phase instead of accumulating across the journey. A comparison marks a timing as notable when it is at least 10% slower and exceeds the absolute noise floor (10 ms for browser phases, 1 ms for server operations). Correctness failures always fail the run independently of timing thresholds.
 
-The benchmark-only fixture, barrier, phase, status, and `POST /__perf/audit` routes are protected by a per-run `X-Urocissa-Perf-Token` and only operate when `UROCISSA_PERF_ROOT` points to a directory containing `.urocissa-performance-root`. They are compiled only with the `performance-test` feature, so production builds do not expose them.
+The benchmark-only fixture, barrier, drain, phase, status, audit, and restart-probe routes are protected by a per-run `X-Urocissa-Perf-Token` and only operate when `UROCISSA_PERF_ROOT` points to a directory containing `.urocissa-performance-root`. `POST /__perf/audit` accepts `view: "logical" | "disk"`; `POST /__perf/restart-probe` is the isolated failure-injection entry point. These routes are compiled only with the `performance-test` feature, so production builds do not expose them.

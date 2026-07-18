@@ -67,6 +67,10 @@
       </v-list-item>
 
       <v-divider></v-divider>
+
+      <WriteBehindSettings v-model="writeBehind" />
+
+      <v-divider></v-divider>
       <v-list-item
         title="JWT Authentication Key"
         subtitle="Disable to use random key"
@@ -106,6 +110,8 @@ import { ref, watch } from 'vue'
 import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 import type { AppConfig } from '@/api/config'
+import type { WriteBehindConfig } from '@/api/config'
+import WriteBehindSettings from './WriteBehindSettings.vue'
 
 const authKey = defineModel<string | null>('authKey', { required: true })
 const discordHookUrl = defineModel<string | null>('discordHookUrl', { required: true })
@@ -113,6 +119,7 @@ const readOnlyMode = defineModel<boolean>('readOnlyMode', { required: true })
 const disableImg = defineModel<boolean>('disableImg', { required: true })
 const hasDiscordHook = defineModel<boolean>('hasDiscordHook', { required: true })
 const hasAuthKey = defineModel<boolean>('hasAuthKey', { required: true })
+const writeBehind = defineModel<WriteBehindConfig>('writeBehind', { required: true })
 
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
@@ -148,9 +155,22 @@ const save = async () => {
     return
   }
 
+  if (
+    writeBehind.value.flushIntervalMs < 100 ||
+    writeBehind.value.flushIntervalMs > 60_000 ||
+    writeBehind.value.softLimitMiB <= 0 ||
+    writeBehind.value.softLimitMiB >= writeBehind.value.hardLimitMiB ||
+    writeBehind.value.hardLimitMiB > 256
+  ) {
+    messageStore.error('Write-behind limits are invalid')
+    loading.value = false
+    return
+  }
+
   const payload: Partial<AppConfig> = {
     readOnlyMode: readOnlyMode.value,
-    disableImg: disableImg.value
+    disableImg: disableImg.value,
+    writeBehind: { ...writeBehind.value }
   }
 
   if (!hasAuthKey.value) {
