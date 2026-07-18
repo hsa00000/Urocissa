@@ -82,7 +82,7 @@ async function ensureBuilds() {
 async function runSuite({ resultDir, count, samples, seed, headed }) {
   await mkdir(join(resultDir, 'samples'), { recursive: true })
   const summary = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     source: sourceIdentity(),
     environment: {
@@ -222,6 +222,7 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }
   const responses = []
   const errors = []
   let authComplete = false
+  let currentPhase = 'startup'
   const requestStarts = new WeakMap()
   page.on('request', (request) => {
     if (request.url().includes('/get/') || request.url().includes('/post/')) requestStarts.set(request, Date.now())
@@ -234,7 +235,8 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }
         url: response.url(),
         status: response.status(),
         method: request.method(),
-        durationMs: started == null ? null : Date.now() - started
+        durationMs: started == null ? null : Date.now() - started,
+        phase: currentPhase
       })
     }
     if (response.status() >= 400 && (authComplete || response.status() !== 401)) errors.push(`HTTP ${response.status()} ${response.url()}`)
@@ -273,6 +275,7 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed }
   const phases = []
   const phase = async (name, action) => {
     await setPhase(port, token, name)
+    currentPhase = name
     const beforeResponses = responses.length
     const start = Date.now()
     let payload
@@ -387,6 +390,9 @@ function aggregateSamples(samples) {
       if (response.durationMs == null) continue
       const route = new URL(response.url).pathname.replaceAll('/', '_').replace(/^_/, '')
       addValue(values, `browser.network.${response.method.toLowerCase()}.${route}.ms`, response.durationMs)
+      if (response.phase) {
+        addValue(values, `browser.phase.${response.phase}.network.${response.method.toLowerCase()}.${route}.ms`, response.durationMs)
+      }
     }
     addValue(values, 'server.fixture.totalMs', sample.fixture?.total_ns / 1e6)
     addValue(values, 'server.fixture.insertMs', sample.fixture?.insert_ns / 1e6)
@@ -394,13 +400,19 @@ function aggregateSamples(samples) {
     addValue(values, 'server.startup.wallMs', sample.startupWallMs)
     addValue(values, 'server.delete.totalMs', sample.delete?.total_ns / 1e6)
     for (const event of sample.backendEvents ?? []) {
-      if (event.operation && event.duration_ns != null) addValue(values, `backend.${event.operation}.ms`, event.duration_ns / 1e6)
+      if (event.operation && event.duration_ns != null) {
+        addValue(values, `backend.${event.operation}.ms`, event.duration_ns / 1e6)
+        if (event.phase) addValue(values, `backend.phase.${event.phase}.${event.operation}.ms`, event.duration_ns / 1e6)
+      }
     }
   }
   return Object.fromEntries([...values].map(([key, list]) => [key, stats(list)]))
 }
 
 function compareSummaries(baseline, current) {
+  if (baseline.schemaVersion !== current.schemaVersion) {
+    throw new Error(`incompatible benchmark schemas: baseline=${baseline.schemaVersion}, current=${current.schemaVersion}`)
+  }
   const keys = new Set([...Object.keys(baseline.aggregates ?? {}), ...Object.keys(current.aggregates ?? {})])
   const metrics = {}
   for (const key of keys) {
