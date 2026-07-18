@@ -9,7 +9,7 @@ mod enabled {
         query_snapshot::QUERY_SNAPSHOT,
         tree::{TREE, VERSION_COUNT_TIMESTAMP, state::TargetSet},
         tree_snapshot::TREE_SNAPSHOT,
-        write_behind::{DirtyOperation, WRITE_BEHIND},
+        write_behind::{DirtyOperation, FLUSH_CHUNK_SIZE, WRITE_BEHIND},
     };
     use crate::public::error::{AppError, ErrorKind};
     use crate::public::structure::abstract_data::AbstractData;
@@ -98,7 +98,16 @@ mod enabled {
         pub query_snapshot_pending: usize,
         pub database_bytes: u64,
         pub write_behind_pending_operations: usize,
+        pub write_behind_flush_chunk_records: usize,
+        pub write_behind_pending_records: usize,
+        pub write_behind_active_records: usize,
+        pub write_behind_flushing_records: usize,
         pub write_behind_pending_bytes: usize,
+        pub write_behind_last_flush_records: usize,
+        pub write_behind_last_flush_unique_records: usize,
+        pub write_behind_last_flush_chunks: usize,
+        pub write_behind_flush_records_per_second: Option<f64>,
+        pub write_behind_estimated_drain_ms: Option<u64>,
         pub write_behind_flush_failure_count: u64,
         pub write_behind_flush_retry_count: u64,
         pub write_behind_last_error: Option<String>,
@@ -120,6 +129,7 @@ mod enabled {
         pub targets: usize,
         pub expected_durable_min: usize,
         pub expected_durable_max: usize,
+        pub flush_chunk_records: usize,
         pub failure_count_before: u64,
         pub retry_count_before: u64,
     }
@@ -385,12 +395,13 @@ mod enabled {
 
         let committed = request
             .commits_before_failure
-            .saturating_mul(4_096)
+            .saturating_mul(FLUSH_CHUNK_SIZE)
             .min(targets.len());
         Ok(Json(RestartProbeSummary {
             targets: targets.len(),
             expected_durable_min: committed,
             expected_durable_max: committed,
+            flush_chunk_records: FLUSH_CHUNK_SIZE,
             failure_count_before: status.flush_failure_count,
             retry_count_before: status.flush_retry_count,
         }))
@@ -550,7 +561,16 @@ mod enabled {
             query_snapshot_pending: QUERY_SNAPSHOT.in_memory.len(),
             database_bytes,
             write_behind_pending_operations: write_behind.pending_operations,
+            write_behind_flush_chunk_records: write_behind.flush_chunk_records,
+            write_behind_pending_records: write_behind.pending_records,
+            write_behind_active_records: write_behind.active_records,
+            write_behind_flushing_records: write_behind.flushing_records,
             write_behind_pending_bytes: write_behind.pending_bytes,
+            write_behind_last_flush_records: write_behind.last_flush_records,
+            write_behind_last_flush_unique_records: write_behind.last_flush_unique_records,
+            write_behind_last_flush_chunks: write_behind.last_flush_chunks,
+            write_behind_flush_records_per_second: write_behind.flush_records_per_second,
+            write_behind_estimated_drain_ms: write_behind.estimated_drain_ms,
             write_behind_flush_failure_count: write_behind.flush_failure_count,
             write_behind_flush_retry_count: write_behind.flush_retry_count,
             write_behind_last_error: write_behind.last_error,

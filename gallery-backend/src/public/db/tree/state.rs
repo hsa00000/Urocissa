@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Instant;
 
 use arrayvec::ArrayString;
 
@@ -255,13 +256,16 @@ impl CacheRecord {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DenseBitmap(Vec<u64>);
+pub struct DenseBitmap {
+    words: Vec<u64>,
+    len: usize,
+}
 
 impl DenseBitmap {
     pub fn contains(&self, ordinal: u32) -> bool {
         let word = ordinal as usize / 64;
         let bit = ordinal % 64;
-        self.0
+        self.words
             .get(word)
             .is_some_and(|value| value & (1_u64 << bit) != 0)
     }
@@ -269,10 +273,10 @@ impl DenseBitmap {
     pub fn set(&mut self, ordinal: u32, value: bool) -> bool {
         let word = ordinal as usize / 64;
         let bit = ordinal % 64;
-        if value && word >= self.0.len() {
-            self.0.resize(word + 1, 0);
+        if value && word >= self.words.len() {
+            self.words.resize(word + 1, 0);
         }
-        let Some(entry) = self.0.get_mut(word) else {
+        let Some(entry) = self.words.get_mut(word) else {
             return false;
         };
         let before = *entry & (1_u64 << bit) != 0;
@@ -281,25 +285,76 @@ impl DenseBitmap {
         } else {
             *entry &= !(1_u64 << bit);
         }
-        before != value
+        if before == value {
+            return false;
+        }
+        if value {
+            self.len += 1;
+        } else {
+            self.len -= 1;
+        }
+        true
     }
 
     pub fn count(&self) -> usize {
-        self.0.iter().map(|word| word.count_ones() as usize).sum()
+        self.len
     }
 
     pub fn iter(&self) -> impl Iterator<Item = u32> + '_ {
-        self.0.iter().enumerate().flat_map(|(word_index, word)| {
-            let mut remaining = *word;
-            std::iter::from_fn(move || {
-                if remaining == 0 {
-                    return None;
-                }
-                let bit = remaining.trailing_zeros();
-                remaining &= remaining - 1;
-                Some(u32::try_from(word_index).expect("bitmap index") * 64 + bit)
+        self.words
+            .iter()
+            .enumerate()
+            .flat_map(|(word_index, word)| {
+                let mut remaining = *word;
+                std::iter::from_fn(move || {
+                    if remaining == 0 {
+                        return None;
+                    }
+                    let bit = remaining.trailing_zeros();
+                    remaining &= remaining - 1;
+                    Some(u32::try_from(word_index).expect("bitmap index") * 64 + bit)
+                })
             })
-        })
+    }
+
+    fn union_with(&mut self, other: &Self, mut changed: impl FnMut(u32)) {
+        if self.words.len() < other.words.len() {
+            self.words.resize(other.words.len(), 0);
+        }
+        for (word_index, (word, other_word)) in self.words.iter_mut().zip(&other.words).enumerate()
+        {
+            let added = *other_word & !*word;
+            if added == 0 {
+                continue;
+            }
+            *word |= *other_word;
+            self.len += added.count_ones() as usize;
+            visit_word_bits(word_index, added, &mut changed);
+        }
+    }
+
+    fn subtract_with(&mut self, other: &Self, mut changed: impl FnMut(u32)) {
+        for (word_index, (word, other_word)) in self.words.iter_mut().zip(&other.words).enumerate()
+        {
+            let removed = *word & *other_word;
+            if removed == 0 {
+                continue;
+            }
+            *word &= !*other_word;
+            self.len -= removed.count_ones() as usize;
+            visit_word_bits(word_index, removed, &mut changed);
+        }
+        while self.words.last() == Some(&0) {
+            self.words.pop();
+        }
+    }
+}
+
+fn visit_word_bits(word_index: usize, mut bits: u64, visit: &mut impl FnMut(u32)) {
+    while bits != 0 {
+        let bit = bits.trailing_zeros();
+        bits &= bits - 1;
+        visit(u32::try_from(word_index).expect("bitmap index") * 64 + bit);
     }
 }
 
@@ -332,6 +387,23 @@ impl OrdinalSet {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn max(&self) -> Option<u32> {
+        match self {
+            Self::Sparse(items) => items.last().copied(),
+            Self::Dense(bitmap) => {
+                bitmap
+                    .words
+                    .iter()
+                    .rposition(|word| *word != 0)
+                    .map(|word_index| {
+                        let word = bitmap.words[word_index];
+                        u32::try_from(word_index).expect("bitmap index") * 64
+                            + (63 - word.leading_zeros())
+                    })
+            }
+        }
     }
 
     pub fn insert(&mut self, ordinal: u32, universe: usize) -> bool {
@@ -383,11 +455,109 @@ impl OrdinalSet {
     pub fn estimated_bytes(&self) -> usize {
         match self {
             Self::Sparse(items) => items.capacity() * std::mem::size_of::<u32>(),
-            Self::Dense(bitmap) => bitmap.0.capacity() * std::mem::size_of::<u64>(),
+            Self::Dense(bitmap) => bitmap.words.capacity() * std::mem::size_of::<u64>(),
         }
     }
 
     pub fn subtract(&mut self, removed: &Self, universe: usize) {
+        self.subtract_with(removed, universe, |_| {});
+    }
+
+    pub fn union_with(&mut self, added: &Self, universe: usize, mut changed: impl FnMut(u32)) {
+        match (&mut *self, added) {
+            (Self::Sparse(items), Self::Sparse(added)) => {
+                let mut next = Vec::with_capacity(items.len().saturating_add(added.len()));
+                let (mut left, mut right) = (0, 0);
+                while left < items.len() && right < added.len() {
+                    match items[left].cmp(&added[right]) {
+                        Ordering::Less => {
+                            next.push(items[left]);
+                            left += 1;
+                        }
+                        Ordering::Equal => {
+                            next.push(items[left]);
+                            left += 1;
+                            right += 1;
+                        }
+                        Ordering::Greater => {
+                            next.push(added[right]);
+                            changed(added[right]);
+                            right += 1;
+                        }
+                    }
+                }
+                next.extend_from_slice(&items[left..]);
+                for value in &added[right..] {
+                    next.push(*value);
+                    changed(*value);
+                }
+                *items = next;
+            }
+            (Self::Sparse(items), Self::Dense(added)) => {
+                let previous = std::mem::take(items);
+                let mut bitmap = DenseBitmap::default();
+                for ordinal in previous {
+                    bitmap.set(ordinal, true);
+                }
+                bitmap.union_with(added, changed);
+                *self = Self::Dense(bitmap);
+            }
+            (Self::Dense(bitmap), Self::Sparse(added)) => {
+                for ordinal in added {
+                    if bitmap.set(*ordinal, true) {
+                        changed(*ordinal);
+                    }
+                }
+            }
+            (Self::Dense(bitmap), Self::Dense(added)) => bitmap.union_with(added, changed),
+        }
+        self.rebalance(universe);
+    }
+
+    pub fn subtract_with(&mut self, removed: &Self, universe: usize, mut changed: impl FnMut(u32)) {
+        match (&mut *self, removed) {
+            (Self::Sparse(items), Self::Sparse(removed)) => {
+                let mut next = Vec::with_capacity(items.len());
+                let mut removed_index = 0;
+                for item in items.iter().copied() {
+                    while removed
+                        .get(removed_index)
+                        .is_some_and(|value| *value < item)
+                    {
+                        removed_index += 1;
+                    }
+                    if removed.get(removed_index) != Some(&item) {
+                        next.push(item);
+                    } else {
+                        changed(item);
+                    }
+                }
+                *items = next;
+            }
+            (Self::Sparse(items), Self::Dense(removed)) => {
+                items.retain(|ordinal| {
+                    let retain = !removed.contains(*ordinal);
+                    if !retain {
+                        changed(*ordinal);
+                    }
+                    retain
+                });
+            }
+            (Self::Dense(bitmap), Self::Sparse(removed)) => {
+                for ordinal in removed {
+                    if bitmap.set(*ordinal, false) {
+                        changed(*ordinal);
+                    }
+                }
+            }
+            (Self::Dense(bitmap), Self::Dense(removed)) => {
+                bitmap.subtract_with(removed, changed);
+            }
+        }
+        self.rebalance(universe);
+    }
+
+    fn subtract_without_rebalance(&mut self, removed: &Self) {
         match (&mut *self, removed) {
             (Self::Sparse(items), Self::Sparse(removed)) => {
                 let mut next = Vec::with_capacity(items.len());
@@ -414,12 +584,9 @@ impl OrdinalSet {
                 }
             }
             (Self::Dense(bitmap), Self::Dense(removed)) => {
-                for (word, removed_word) in bitmap.0.iter_mut().zip(&removed.0) {
-                    *word &= !removed_word;
-                }
+                bitmap.subtract_with(removed, |_| {});
             }
         }
-        self.rebalance(universe);
     }
 
     fn rebalance(&mut self, universe: usize) {
@@ -510,23 +677,37 @@ impl TargetSet {
     }
 
     pub fn subtract(&mut self, removed: &Self) {
-        for slot_ref in removed.iter() {
-            if !self.contains(slot_ref) {
-                continue;
-            }
-            match &mut self.ordinals {
-                OrdinalSet::Sparse(items) => {
-                    if let Ok(index) = items.binary_search(&slot_ref.index()) {
-                        items.remove(index);
-                    }
-                }
-                OrdinalSet::Dense(bitmap) => {
-                    bitmap.set(slot_ref.index(), false);
-                }
-            }
+        if self.generation_overrides.is_empty() && removed.generation_overrides.is_empty() {
+            self.ordinals.subtract_without_rebalance(&removed.ordinals);
+        } else {
+            let matching = removed
+                .iter()
+                .filter(|slot_ref| self.contains(*slot_ref))
+                .map(SlotRef::index)
+                .collect::<Vec<_>>();
+            let matching = OrdinalSet::Sparse(matching);
+            self.ordinals.subtract_without_rebalance(&matching);
         }
         self.generation_overrides
             .retain(|(ordinal, generation)| !removed.contains(SlotRef::new(*ordinal, *generation)));
+    }
+
+    pub fn union(&mut self, added: &Self, universe: usize) {
+        self.ordinals.union_with(&added.ordinals, universe, |_| {});
+        for (ordinal, generation) in &added.generation_overrides {
+            match self
+                .generation_overrides
+                .binary_search_by_key(ordinal, |(index, _)| *index)
+            {
+                Ok(index) => {
+                    self.generation_overrides[index].1 =
+                        self.generation_overrides[index].1.max(*generation);
+                }
+                Err(index) => self
+                    .generation_overrides
+                    .insert(index, (*ordinal, *generation)),
+            }
+        }
     }
 }
 
@@ -651,33 +832,41 @@ impl QueryIndexes {
         remove: &BTreeSet<String>,
         universe: usize,
     ) {
-        for ordinal in targets.iter() {
-            self.ensure_ordinal(ordinal);
+        let started = Instant::now();
+        if let Some(max_ordinal) = targets.max() {
+            self.ensure_ordinal(max_ordinal);
         }
         for tag in add {
             let members = self.tags.entry(tag.clone()).or_default();
-            for ordinal in targets.iter() {
-                if members.insert(ordinal, universe) {
-                    self.tag_membership_count[ordinal as usize] =
-                        self.tag_membership_count[ordinal as usize].saturating_add(1);
+            let membership_count = &mut self.tag_membership_count;
+            let has_any = &mut self.has_any_tag;
+            members.union_with(targets, universe, |ordinal| {
+                let count = &mut membership_count[ordinal as usize];
+                *count = count.saturating_add(1);
+                if *count == 1 {
+                    has_any.set(ordinal, true);
                 }
-            }
+            });
         }
         for tag in remove {
             if let Some(members) = self.tags.get_mut(tag) {
-                for ordinal in targets.iter() {
-                    if members.remove(ordinal, universe) {
-                        self.tag_membership_count[ordinal as usize] =
-                            self.tag_membership_count[ordinal as usize].saturating_sub(1);
+                let membership_count = &mut self.tag_membership_count;
+                let has_any = &mut self.has_any_tag;
+                members.subtract_with(targets, universe, |ordinal| {
+                    let count = &mut membership_count[ordinal as usize];
+                    *count = count.saturating_sub(1);
+                    if *count == 0 {
+                        has_any.set(ordinal, false);
                     }
-                }
+                });
             }
         }
         self.tags.retain(|_, members| !members.is_empty());
-        for ordinal in targets.iter() {
-            self.has_any_tag
-                .set(ordinal, self.tag_membership_count[ordinal as usize] > 0);
-        }
+        crate::perf_timing!(
+            "query_indexes.edit_tags.bulk",
+            started,
+            "Apply tag membership batch"
+        );
     }
 
     pub fn edit_albums(
@@ -687,33 +876,41 @@ impl QueryIndexes {
         remove: &BTreeSet<ArrayString<64>>,
         universe: usize,
     ) {
-        for ordinal in targets.iter() {
-            self.ensure_ordinal(ordinal);
+        let started = Instant::now();
+        if let Some(max_ordinal) = targets.max() {
+            self.ensure_ordinal(max_ordinal);
         }
         for album in add {
             let members = self.albums.entry(*album).or_default();
-            for ordinal in targets.iter() {
-                if members.insert(ordinal, universe) {
-                    self.album_membership_count[ordinal as usize] =
-                        self.album_membership_count[ordinal as usize].saturating_add(1);
+            let membership_count = &mut self.album_membership_count;
+            let has_any = &mut self.has_any_album;
+            members.union_with(targets, universe, |ordinal| {
+                let count = &mut membership_count[ordinal as usize];
+                *count = count.saturating_add(1);
+                if *count == 1 {
+                    has_any.set(ordinal, true);
                 }
-            }
+            });
         }
         for album in remove {
             if let Some(members) = self.albums.get_mut(album) {
-                for ordinal in targets.iter() {
-                    if members.remove(ordinal, universe) {
-                        self.album_membership_count[ordinal as usize] =
-                            self.album_membership_count[ordinal as usize].saturating_sub(1);
+                let membership_count = &mut self.album_membership_count;
+                let has_any = &mut self.has_any_album;
+                members.subtract_with(targets, universe, |ordinal| {
+                    let count = &mut membership_count[ordinal as usize];
+                    *count = count.saturating_sub(1);
+                    if *count == 0 {
+                        has_any.set(ordinal, false);
                     }
-                }
+                });
             }
         }
         self.albums.retain(|_, members| !members.is_empty());
-        for ordinal in targets.iter() {
-            self.has_any_album
-                .set(ordinal, self.album_membership_count[ordinal as usize] > 0);
-        }
+        crate::perf_timing!(
+            "query_indexes.edit_albums.bulk",
+            started,
+            "Apply album membership batch"
+        );
     }
 }
 
@@ -982,13 +1179,16 @@ impl TreeState {
         let Some(record) = self.get(slot_ref) else {
             return false;
         };
-        matches_expression(
-            record,
-            slot_ref.index(),
-            &self.query,
-            expression,
-            hidden_metadata_album,
-        )
+        self.compile_expression(expression, hidden_metadata_album)
+            .matches(record, slot_ref.index())
+    }
+
+    pub fn compile_expression<'a>(
+        &'a self,
+        expression: &Expression,
+        hidden_metadata_album: Option<ArrayString<64>>,
+    ) -> CompiledExpression<'a> {
+        CompiledExpression::new(expression, &self.query, hidden_metadata_album)
     }
 
     pub fn edit_album_memberships(
@@ -1298,120 +1498,219 @@ pub fn sort_and_merge(
     *existing = merged;
 }
 
-fn value_matches(value: Option<&str>, filter: &FilterValue) -> bool {
-    match filter {
-        FilterValue::Value(needle) => value.is_some_and(|value| {
-            value
-                .to_ascii_lowercase()
-                .contains(&needle.to_ascii_lowercase())
-        }),
-        FilterValue::Exists(exists) => value.is_some() == *exists,
+#[derive(Debug)]
+pub struct CompiledExpression<'a>(CompiledExpressionNode<'a>);
+
+#[derive(Debug)]
+enum CompiledExpressionNode<'a> {
+    Constant(bool),
+    Or(Vec<Self>),
+    And(Vec<Self>),
+    Not(Box<Self>),
+    Membership(Option<&'a OrdinalSet>),
+    Bitmap(&'a DenseBitmap, bool),
+    ExtType {
+        image: bool,
+        video: bool,
+        album: bool,
+    },
+    Ext(String),
+    Model(CompiledStringFilter),
+    Make(CompiledStringFilter),
+    Path(String),
+    HiddenAlbumExists(bool),
+    Any {
+        needle: String,
+        tag_members: Option<&'a OrdinalSet>,
+        include_paths: bool,
+        include_album_type: bool,
+    },
+}
+
+#[derive(Debug)]
+enum CompiledStringFilter {
+    Contains(String),
+    Exists(bool),
+}
+
+impl CompiledStringFilter {
+    fn new(filter: &FilterValue) -> Self {
+        match filter {
+            FilterValue::Value(needle) => Self::Contains(needle.to_ascii_lowercase()),
+            FilterValue::Exists(exists) => Self::Exists(*exists),
+        }
+    }
+
+    fn matches(&self, value: Option<&str>) -> bool {
+        match self {
+            Self::Contains(needle) => {
+                value.is_some_and(|value| contains_ascii_lowercase(value, needle))
+            }
+            Self::Exists(exists) => value.is_some() == *exists,
+        }
     }
 }
 
-fn matches_expression(
-    record: &CacheRecord,
-    ordinal: u32,
-    indexes: &QueryIndexes,
-    expression: &Expression,
-    hidden_metadata_album: Option<ArrayString<64>>,
-) -> bool {
-    match expression {
-        Expression::Or(expressions) => expressions.iter().any(|expression| {
-            matches_expression(record, ordinal, indexes, expression, hidden_metadata_album)
-        }),
-        Expression::And(expressions) => expressions.iter().all(|expression| {
-            matches_expression(record, ordinal, indexes, expression, hidden_metadata_album)
-        }),
-        Expression::Not(expression) => {
-            !matches_expression(record, ordinal, indexes, expression, hidden_metadata_album)
+impl<'a> CompiledExpression<'a> {
+    fn new(
+        expression: &Expression,
+        indexes: &'a QueryIndexes,
+        hidden_metadata_album: Option<ArrayString<64>>,
+    ) -> Self {
+        Self(CompiledExpressionNode::new(
+            expression,
+            indexes,
+            hidden_metadata_album,
+        ))
+    }
+
+    pub fn matches(&self, record: &CacheRecord, ordinal: u32) -> bool {
+        self.0.matches(record, ordinal)
+    }
+}
+
+impl<'a> CompiledExpressionNode<'a> {
+    fn new(
+        expression: &Expression,
+        indexes: &'a QueryIndexes,
+        hidden_metadata_album: Option<ArrayString<64>>,
+    ) -> Self {
+        match expression {
+            Expression::Or(expressions) => Self::Or(
+                expressions
+                    .iter()
+                    .map(|expression| Self::new(expression, indexes, hidden_metadata_album))
+                    .collect(),
+            ),
+            Expression::And(expressions) => Self::And(
+                expressions
+                    .iter()
+                    .map(|expression| Self::new(expression, indexes, hidden_metadata_album))
+                    .collect(),
+            ),
+            Expression::Not(expression) => Self::Not(Box::new(Self::new(
+                expression,
+                indexes,
+                hidden_metadata_album,
+            ))),
+            Expression::Tag(_) if hidden_metadata_album.is_some() => Self::Constant(false),
+            Expression::Tag(FilterValue::Value(tag)) => Self::Membership(indexes.tags.get(tag)),
+            Expression::Tag(FilterValue::Exists(exists)) => {
+                Self::Bitmap(&indexes.has_any_tag, *exists)
+            }
+            Expression::Favorite(value) => Self::Bitmap(&indexes.favorite, *value),
+            Expression::Archived(value) => Self::Bitmap(&indexes.archived, *value),
+            Expression::Trashed(value) => Self::Bitmap(&indexes.trashed, *value),
+            Expression::ExtType(ext_type) => Self::ExtType {
+                image: ext_type.contains("image"),
+                video: ext_type.contains("video"),
+                album: hidden_metadata_album.is_none() && ext_type.contains("album"),
+            },
+            Expression::Ext(ext) => Self::Ext(ext.to_ascii_lowercase()),
+            Expression::Model(filter) => Self::Model(CompiledStringFilter::new(filter)),
+            Expression::Make(filter) => Self::Make(CompiledStringFilter::new(filter)),
+            Expression::Path(_) if hidden_metadata_album.is_some() => Self::Constant(false),
+            Expression::Path(path) => Self::Path(path.to_ascii_lowercase()),
+            Expression::Album(AlbumFilterValue::Value(album_id))
+                if hidden_metadata_album.is_some_and(|allowed| allowed != *album_id) =>
+            {
+                Self::Constant(false)
+            }
+            Expression::Album(AlbumFilterValue::Value(album_id)) => {
+                Self::Membership(indexes.albums.get(album_id))
+            }
+            Expression::Album(AlbumFilterValue::Exists(exists))
+                if hidden_metadata_album.is_some() =>
+            {
+                Self::HiddenAlbumExists(*exists)
+            }
+            Expression::Album(AlbumFilterValue::Exists(exists)) => {
+                Self::Bitmap(&indexes.has_any_album, *exists)
+            }
+            Expression::Any(value) => Self::Any {
+                needle: value.to_ascii_lowercase(),
+                tag_members: hidden_metadata_album
+                    .is_none()
+                    .then(|| indexes.tags.get(value))
+                    .flatten(),
+                include_paths: hidden_metadata_album.is_none(),
+                include_album_type: hidden_metadata_album.is_none(),
+            },
         }
-        Expression::Tag(filter) => {
-            if hidden_metadata_album.is_some() {
-                return false;
-            }
-            match filter {
-                FilterValue::Value(tag) => indexes
-                    .tags
-                    .get(tag)
-                    .is_some_and(|members| members.contains(ordinal)),
-                FilterValue::Exists(exists) => indexes.has_any_tag.contains(ordinal) == *exists,
-            }
-        }
-        Expression::Favorite(value) => indexes.favorite.contains(ordinal) == *value,
-        Expression::Archived(value) => indexes.archived.contains(ordinal) == *value,
-        Expression::Trashed(value) => indexes.trashed.contains(ordinal) == *value,
-        Expression::ExtType(ext_type) => match record.object_type {
-            ObjectType::Image => ext_type.contains("image"),
-            ObjectType::Video => ext_type.contains("video"),
-            ObjectType::Album => hidden_metadata_album.is_none() && ext_type.contains("album"),
-        },
-        Expression::Ext(ext) => record
-            .ext
-            .to_ascii_lowercase()
-            .contains(&ext.to_ascii_lowercase()),
-        Expression::Model(filter) => value_matches(record.model.as_deref(), filter),
-        Expression::Make(filter) => value_matches(record.make.as_deref(), filter),
-        Expression::Path(path) => {
-            hidden_metadata_album.is_none()
-                && record.path_aliases.iter().any(|alias| {
-                    alias
-                        .to_ascii_lowercase()
-                        .contains(&path.to_ascii_lowercase())
-                })
-        }
-        Expression::Album(filter) => match filter {
-            AlbumFilterValue::Value(album_id) => {
-                if hidden_metadata_album.is_some_and(|allowed| allowed != *album_id) {
-                    return false;
-                }
-                indexes
-                    .albums
-                    .get(album_id)
-                    .is_some_and(|members| members.contains(ordinal))
-            }
-            AlbumFilterValue::Exists(exists) => {
-                if hidden_metadata_album.is_some() {
-                    record.object_type != ObjectType::Album && *exists
-                } else {
-                    indexes.has_any_album.contains(ordinal) == *exists
-                }
-            }
-        },
-        Expression::Any(value) => {
-            let lower = value.to_ascii_lowercase();
-            let static_match = record.id.as_str().to_ascii_lowercase().contains(&lower)
-                || record.ext.to_ascii_lowercase().contains(&lower)
-                || record
-                    .make
-                    .as_ref()
-                    .is_some_and(|item| item.to_ascii_lowercase().contains(&lower))
-                || record
-                    .model
-                    .as_ref()
-                    .is_some_and(|item| item.to_ascii_lowercase().contains(&lower))
-                || match record.object_type {
-                    ObjectType::Image => "image".contains(&lower),
-                    ObjectType::Video => "video".contains(&lower),
-                    ObjectType::Album => {
-                        hidden_metadata_album.is_none() && "album".contains(&lower)
-                    }
-                };
-            if hidden_metadata_album.is_some() {
-                static_match
-            } else {
-                static_match
-                    || indexes
-                        .tags
-                        .get(value)
-                        .is_some_and(|members| members.contains(ordinal))
+    }
+
+    fn matches(&self, record: &CacheRecord, ordinal: u32) -> bool {
+        match self {
+            Self::Constant(value) => *value,
+            Self::Or(expressions) => expressions
+                .iter()
+                .any(|expression| expression.matches(record, ordinal)),
+            Self::And(expressions) => expressions
+                .iter()
+                .all(|expression| expression.matches(record, ordinal)),
+            Self::Not(expression) => !expression.matches(record, ordinal),
+            Self::Membership(members) => members.is_some_and(|members| members.contains(ordinal)),
+            Self::Bitmap(bitmap, value) => bitmap.contains(ordinal) == *value,
+            Self::ExtType {
+                image,
+                video,
+                album,
+            } => match record.object_type {
+                ObjectType::Image => *image,
+                ObjectType::Video => *video,
+                ObjectType::Album => *album,
+            },
+            Self::Ext(needle) => contains_ascii_lowercase(&record.ext, needle),
+            Self::Model(filter) => filter.matches(record.model.as_deref()),
+            Self::Make(filter) => filter.matches(record.make.as_deref()),
+            Self::Path(needle) => record
+                .path_aliases
+                .iter()
+                .any(|path| contains_ascii_lowercase(path, needle)),
+            Self::HiddenAlbumExists(exists) => record.object_type != ObjectType::Album && *exists,
+            Self::Any {
+                needle,
+                tag_members,
+                include_paths,
+                include_album_type,
+            } => {
+                contains_ascii_lowercase(record.id.as_str(), needle)
+                    || contains_ascii_lowercase(&record.ext, needle)
                     || record
-                        .path_aliases
-                        .iter()
-                        .any(|path| path.to_ascii_lowercase().contains(&lower))
+                        .make
+                        .as_deref()
+                        .is_some_and(|value| contains_ascii_lowercase(value, needle))
+                    || record
+                        .model
+                        .as_deref()
+                        .is_some_and(|value| contains_ascii_lowercase(value, needle))
+                    || match record.object_type {
+                        ObjectType::Image => "image".contains(needle),
+                        ObjectType::Video => "video".contains(needle),
+                        ObjectType::Album => *include_album_type && "album".contains(needle),
+                    }
+                    || tag_members.is_some_and(|members| members.contains(ordinal))
+                    || (*include_paths
+                        && record
+                            .path_aliases
+                            .iter()
+                            .any(|path| contains_ascii_lowercase(path, needle)))
             }
         }
     }
+}
+
+fn contains_ascii_lowercase(value: &str, lowercase_needle: &str) -> bool {
+    let needle = lowercase_needle.as_bytes();
+    if needle.is_empty() {
+        return true;
+    }
+    value.as_bytes().windows(needle.len()).any(|window| {
+        window
+            .iter()
+            .zip(needle)
+            .all(|(value, needle)| value.to_ascii_lowercase() == *needle)
+    })
 }
 
 #[cfg(test)]
@@ -1475,6 +1774,114 @@ mod tests {
     }
 
     #[test]
+    fn dense_bitmap_cached_cardinality_matches_iteration() {
+        let mut bitmap = DenseBitmap::default();
+        let mut expected = BTreeSet::new();
+        let mut random = 0xD3A5_EB17_u64;
+        for _ in 0..20_000 {
+            random = random
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1);
+            let ordinal = (random % 4_096) as u32;
+            let value = random & (1 << 12) != 0;
+            assert_eq!(bitmap.set(ordinal, value), {
+                if value {
+                    expected.insert(ordinal)
+                } else {
+                    expected.remove(&ordinal)
+                }
+            });
+            assert_eq!(bitmap.count(), expected.len());
+            assert_eq!(
+                bitmap.iter().collect::<Vec<_>>(),
+                expected.iter().copied().collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn ordinal_set_random_bulk_union_and_difference_match_reference_set() {
+        let universe = 4_096;
+        let mut random = 0xB01D_5E7_u64;
+        let mut actual = OrdinalSet::default();
+        let mut expected = BTreeSet::new();
+        for _ in 0..250 {
+            let mut values = BTreeSet::new();
+            for _ in 0..128 {
+                random = random
+                    .wrapping_mul(2_862_933_555_777_941_757)
+                    .wrapping_add(3_037_000_493);
+                values.insert((random % universe as u64) as u32);
+            }
+            let operand = OrdinalSet::from_ordinals(values.iter().copied(), universe);
+            let mut changed = Vec::new();
+            if random & 1 == 0 {
+                actual.union_with(&operand, universe, |ordinal| changed.push(ordinal));
+                let expected_changed = values
+                    .iter()
+                    .filter(|ordinal| !expected.contains(*ordinal))
+                    .copied()
+                    .collect::<Vec<_>>();
+                expected.extend(values);
+                assert_eq!(changed, expected_changed);
+            } else {
+                actual.subtract_with(&operand, universe, |ordinal| changed.push(ordinal));
+                let expected_changed = values
+                    .iter()
+                    .filter(|ordinal| expected.contains(*ordinal))
+                    .copied()
+                    .collect::<Vec<_>>();
+                for ordinal in values {
+                    expected.remove(&ordinal);
+                }
+                assert_eq!(changed, expected_changed);
+            }
+            assert_eq!(
+                actual.iter().collect::<Vec<_>>(),
+                expected.iter().copied().collect::<Vec<_>>()
+            );
+            assert_eq!(actual.len(), expected.len());
+        }
+    }
+
+    #[test]
+    fn bulk_membership_edits_keep_counts_and_has_any_indexes_consistent() {
+        let universe = 256;
+        let targets = OrdinalSet::from_ordinals(0..128, universe);
+        let overlap = OrdinalSet::from_ordinals(64..192, universe);
+        let mut indexes = QueryIndexes::default();
+        indexes.edit_tags(
+            &targets,
+            &BTreeSet::from(["first".to_owned()]),
+            &BTreeSet::new(),
+            universe,
+        );
+        indexes.edit_tags(
+            &overlap,
+            &BTreeSet::from(["second".to_owned()]),
+            &BTreeSet::new(),
+            universe,
+        );
+        assert_eq!(indexes.tags["first"].len(), 128);
+        assert_eq!(indexes.tags["second"].len(), 128);
+        assert_eq!(indexes.tag_membership_count[63], 1);
+        assert_eq!(indexes.tag_membership_count[64], 2);
+        assert!(indexes.has_any_tag.contains(191));
+
+        indexes.edit_tags(
+            &targets,
+            &BTreeSet::new(),
+            &BTreeSet::from(["first".to_owned(), "second".to_owned()]),
+            universe,
+        );
+        assert!(!indexes.has_any_tag.contains(63));
+        assert!(!indexes.has_any_tag.contains(64));
+        assert!(indexes.has_any_tag.contains(128));
+        assert_eq!(indexes.tag_membership_count[64], 0);
+        assert_eq!(indexes.tag_membership_count[128], 1);
+    }
+
+    #[test]
     fn target_set_rejects_a_reused_generation_without_storing_common_generations() {
         let original = SlotRef::new(7, 1);
         let reused = SlotRef::new(7, 2);
@@ -1486,6 +1893,39 @@ mod tests {
         assert!(!override_set.contains(original));
         assert_eq!(common.generation_overrides.len(), 0);
         assert_eq!(override_set.generation_overrides, vec![(7, 2)]);
+    }
+
+    #[test]
+    fn target_set_bulk_subtraction_preserves_generation_identity() {
+        let mut targets = TargetSet::from_slot_refs(
+            [SlotRef::new(1, 1), SlotRef::new(7, 2), SlotRef::new(9, 1)],
+            64,
+        );
+        targets.subtract(&TargetSet::from_slot_refs(
+            [SlotRef::new(1, 1), SlotRef::new(7, 1)],
+            64,
+        ));
+        assert!(!targets.contains(SlotRef::new(1, 1)));
+        assert!(targets.contains(SlotRef::new(7, 2)));
+        assert!(targets.contains(SlotRef::new(9, 1)));
+    }
+
+    #[test]
+    fn target_set_union_merges_ordinals_and_keeps_latest_generation() {
+        let mut targets = TargetSet::from_slot_refs([SlotRef::new(1, 1), SlotRef::new(7, 2)], 128);
+        targets.union(
+            &TargetSet::from_slot_refs(
+                [SlotRef::new(2, 1), SlotRef::new(7, 3), SlotRef::new(90, 1)],
+                128,
+            ),
+            128,
+        );
+        assert_eq!(targets.len(), 4);
+        assert!(targets.contains(SlotRef::new(1, 1)));
+        assert!(targets.contains(SlotRef::new(2, 1)));
+        assert!(targets.contains(SlotRef::new(7, 3)));
+        assert!(!targets.contains(SlotRef::new(7, 2)));
+        assert!(targets.contains(SlotRef::new(90, 1)));
     }
 
     #[test]
@@ -1510,6 +1950,45 @@ mod tests {
         let mut order = vec![second];
         sort_and_merge(&arena, &mut order, vec![first]);
         assert_eq!(order, vec![first, second]);
+    }
+
+    #[cfg(feature = "performance-test")]
+    #[test]
+    fn compiled_parallel_query_matches_sequential_order() {
+        use rayon::prelude::*;
+
+        let records = (0..10_000)
+            .map(|index| AbstractData::generate_performance_data(index, 77))
+            .collect::<Vec<_>>();
+        let state = TreeState::from_records(records);
+        let expression = Expression::And(vec![
+            Expression::Or(vec![
+                Expression::Favorite(true),
+                Expression::Ext("JpG".to_owned()),
+                Expression::Any("camera".to_owned()),
+            ]),
+            Expression::Not(Box::new(Expression::Trashed(true))),
+        ]);
+        let compiled = state.compile_expression(&expression, None);
+        let sequential = state
+            .order
+            .iter()
+            .filter(|slot_ref| {
+                let record = state.get(**slot_ref).unwrap();
+                compiled.matches(record, slot_ref.index())
+            })
+            .map(|slot_ref| slot_ref.raw())
+            .collect::<Vec<_>>();
+        let parallel = state
+            .order
+            .par_iter()
+            .filter(|slot_ref| {
+                let record = state.get(**slot_ref).unwrap();
+                compiled.matches(record, slot_ref.index())
+            })
+            .map(|slot_ref| slot_ref.raw())
+            .collect::<Vec<_>>();
+        assert_eq!(parallel, sequential);
     }
 
     #[cfg(feature = "performance-test")]

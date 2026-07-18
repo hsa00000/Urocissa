@@ -38,7 +38,7 @@ const editWorkload = Object.freeze({
   flushIntervalMs: 1000,
   softLimitMiB: 16,
   hardLimitMiB: 32,
-  flushChunkRecords: 4096,
+  flushChunkRecords: 8192,
   mediaObjects: 'stubbed-transparent-png',
   operations: [
     'album-create-title-cover',
@@ -109,7 +109,7 @@ async function ensureBuilds() {
 async function runSuite({ resultDir, count, samples, seed, headed }) {
   await mkdir(join(resultDir, 'samples'), { recursive: true })
   const summary = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     generatedAt: new Date().toISOString(),
     source: sourceIdentity(),
     environment: {
@@ -218,7 +218,7 @@ async function runSample({ sampleDir, count, seed, sampleIndex, headed }) {
       body: JSON.stringify({
         markerTag: retryMarker,
         commitsBeforeFailure: 0,
-        targetLimit: Math.min(count, 4_096)
+        targetLimit: Math.min(count, editWorkload.flushChunkRecords)
       }),
       headers: { 'content-type': 'application/json' }
     })
@@ -236,7 +236,7 @@ async function runSample({ sampleDir, count, seed, sampleIndex, headed }) {
 
     await setPhase(port, token, 'restart-partial-persistence')
     const restartMarker = `${editMarkers.batchTag}-restart-${sampleIndex}`
-    const commitsBeforeFailure = count > 4_096 ? 1 : 0
+    const commitsBeforeFailure = count > editWorkload.flushChunkRecords ? 1 : 0
     const restartProbe = await perfFetch(port, token, '/__perf/restart-probe', {
       method: 'POST',
       body: JSON.stringify({ markerTag: restartMarker, commitsBeforeFailure }),
@@ -575,8 +575,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
     await deleteButton.waitFor({ state: 'visible' })
     await deleteButton.click()
     const dialog = page.locator('#delete-share-modal')
-    await performAndWaitForApiResponse(
+    await performDialogAndWaitForApiResponse(
       page,
+      dialog,
       'PUT',
       '/put/delete_share',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
@@ -626,8 +627,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
     await openAction(page, 'Media actions', 'Edit Tags')
     const dialog = page.locator('#edit-tag-overlay')
     await addComboboxValue(dialog.getByLabel('Tags'), editMarkers.singleTag)
-    await performAndWaitForApiResponse(
+    await performDialogAndWaitForApiResponse(
       page,
+      dialog,
       'PUT',
       '/put/edit_tag',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
@@ -640,8 +642,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
     await openAction(page, 'Media actions', 'Edit Tags')
     const dialog = page.locator('#edit-tag-overlay')
     await removeChip(dialog, editMarkers.singleTag)
-    await performAndWaitForApiResponse(
+    await performDialogAndWaitForApiResponse(
       page,
+      dialog,
       'PUT',
       '/put/edit_tag',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
@@ -654,8 +657,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
     await openAction(page, 'Media actions', 'Edit Albums')
     const dialog = page.locator('#edit-album-overlay')
     await selectComboboxOption(page, dialog.getByLabel('Albums'), editMarkers.albumTitle)
-    await performAndWaitForApiResponse(
+    await performDialogAndWaitForApiResponse(
       page,
+      dialog,
       'PUT',
       '/put/edit_album',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
@@ -670,8 +674,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
     await openAction(page, 'Media actions', 'Edit Albums')
     const dialog = page.locator('#edit-album-overlay')
     await removeChip(dialog, editMarkers.albumTitle)
-    await performAndWaitForApiResponse(
+    await performDialogAndWaitForApiResponse(
       page,
+      dialog,
       'PUT',
       '/put/edit_album',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
@@ -718,8 +723,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
     await openAction(page, 'Batch actions', 'Batch Edit Tags')
     const dialog = page.locator('#batch-edit-tag-overlay')
     await addComboboxValue(dialog.getByLabel('Add Tags'), editMarkers.batchTag)
-    await performAndWaitForApiResponse(
+    await performDialogAndWaitForApiResponse(
       page,
+      dialog,
       'PUT',
       '/put/edit_tag',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
@@ -746,8 +752,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
     const field = dialog.getByLabel('Remove Tags')
     await selectComboboxOption(page, field, 'Favorite')
     await selectComboboxOption(page, field, 'Archived')
-    await performAndWaitForApiResponse(
+    await performDialogAndWaitForApiResponse(
       page,
+      dialog,
       'PUT',
       '/put/edit_flags',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
@@ -764,8 +771,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
       dialog.getByRole('combobox', { name: 'Add to Albums', exact: true }),
       editMarkers.albumTitle
     )
-    await performAndWaitForApiResponse(
+    await performDialogAndWaitForApiResponse(
       page,
+      dialog,
       'PUT',
       '/put/edit_album',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
@@ -798,8 +806,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
       dialog.getByRole('combobox', { name: 'Remove from Albums', exact: true }),
       editMarkers.albumTitle
     )
-    await performAndWaitForApiResponse(
+    await performDialogAndWaitForApiResponse(
       page,
+      dialog,
       'PUT',
       '/put/edit_album',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
@@ -833,8 +842,9 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
     await openAction(page, 'Batch actions', 'Batch Edit Tags')
     const dialog = page.locator('#batch-edit-tag-overlay')
     await addComboboxValue(dialog.getByLabel('Remove Tags'), editMarkers.batchTag)
-    await performAndWaitForApiResponse(
+    await performDialogAndWaitForApiResponse(
       page,
+      dialog,
       'PUT',
       '/put/edit_tag',
       () => dialog.getByRole('button', { name: 'OK', exact: true }).click()
@@ -920,6 +930,12 @@ async function performAndWaitForApiResponse(page, method, path, action) {
   return response
 }
 
+async function performDialogAndWaitForApiResponse(page, dialog, method, path, action) {
+  const response = await performAndWaitForApiResponse(page, method, path, action)
+  await dialog.waitFor({ state: 'hidden' })
+  return response
+}
+
 async function performActionAndWaitForApiResponse(page, menuName, actionName, method, path) {
   return performAndWaitForApiResponse(
     page,
@@ -931,8 +947,10 @@ async function performActionAndWaitForApiResponse(page, menuName, actionName, me
 
 async function openAction(page, menuName, actionName) {
   await page.getByRole('button', { name: menuName }).click()
-  const overlay = page.locator('.v-overlay--active').last()
-  const action = overlay.getByText(actionName, { exact: true }).last()
+  const action = page
+    .locator('.v-overlay--active .v-list-item')
+    .getByText(actionName, { exact: true })
+    .last()
   await action.waitFor({ state: 'visible' })
   await action.click()
 }
@@ -941,14 +959,20 @@ async function addComboboxValue(field, value) {
   await field.click()
   await field.fill(value)
   await field.press('Enter')
+  const input = field.locator('xpath=ancestor::*[contains(@class,"v-input")][1]')
+  await input.getByText(value, { exact: true }).last().waitFor({ state: 'visible' })
 }
 
 async function selectComboboxOption(page, field, value) {
   await field.press('ArrowDown')
-  const overlay = page.locator('.v-overlay--active').last()
-  const option = overlay.getByText(value, { exact: true }).last()
+  const option = page
+    .locator('.v-overlay--active .v-list-item')
+    .filter({ has: page.getByText(value, { exact: true }) })
+    .last()
   await option.waitFor({ state: 'visible' })
   await option.dispatchEvent('click')
+  const input = field.locator('xpath=ancestor::*[contains(@class,"v-input")][1]')
+  await input.getByText(value, { exact: true }).last().waitFor({ state: 'visible' })
 }
 
 async function removeChip(dialog, value) {
@@ -1046,6 +1070,14 @@ function aggregateSamples(samples) {
       }
       addValue(values, `backend.phase.${phase.name}.rssBytes`, phase.backendStatus?.backend_rss_bytes)
       addValue(values, `backend.phase.${phase.name}.dirtyBytes`, phase.backendStatus?.write_behind_pending_bytes)
+      addValue(values, `backend.phase.${phase.name}.pendingRecords`, phase.backendStatus?.write_behind_pending_records)
+      addValue(values, `backend.phase.${phase.name}.activeRecords`, phase.backendStatus?.write_behind_active_records)
+      addValue(values, `backend.phase.${phase.name}.flushingRecords`, phase.backendStatus?.write_behind_flushing_records)
+      addValue(values, `backend.phase.${phase.name}.estimatedDrainMs`, phase.backendStatus?.write_behind_estimated_drain_ms)
+      addValue(values, `backend.phase.${phase.name}.flushRecordsPerSecond`, phase.backendStatus?.write_behind_flush_records_per_second)
+      addValue(values, `backend.phase.${phase.name}.lastFlushRecords`, phase.backendStatus?.write_behind_last_flush_records)
+      addValue(values, `backend.phase.${phase.name}.lastFlushUniqueRecords`, phase.backendStatus?.write_behind_last_flush_unique_records)
+      addValue(values, `backend.phase.${phase.name}.lastFlushChunks`, phase.backendStatus?.write_behind_last_flush_chunks)
     }
     for (const response of sample.browser?.responses ?? []) {
       if (response.durationMs == null) continue
@@ -1059,10 +1091,14 @@ function aggregateSamples(samples) {
     addValue(values, 'server.fixture.insertMs', sample.fixture?.insert_ns / 1e6)
     addValue(values, 'server.fixture.rebuildMs', sample.fixture?.rebuild_ns / 1e6)
     addValue(values, 'backend.stage.fixture.rssBytes', sample.fixtureStatus?.backend_rss_bytes)
+    addValue(values, 'backend.stage.fixture.flushRecordsPerSecond', sample.fixtureStatus?.write_behind_flush_records_per_second)
     addValue(values, 'server.startup.wallMs', sample.startupWallMs)
     addValue(values, 'backend.stage.startup.rssBytes', sample.startup?.backend_rss_bytes)
     addValue(values, 'backend.stage.failedFlush.rssBytes', sample.failedFlushStatus?.backend_rss_bytes)
+    addValue(values, 'backend.stage.failedFlush.pendingRecords', sample.failedFlushStatus?.write_behind_pending_records)
+    addValue(values, 'backend.stage.failedFlush.estimatedDrainMs', sample.failedFlushStatus?.write_behind_estimated_drain_ms)
     addValue(values, 'backend.stage.retry.rssBytes', sample.retryDrainStatus?.backend_rss_bytes)
+    addValue(values, 'backend.stage.retry.flushRecordsPerSecond', sample.retryDrainStatus?.write_behind_flush_records_per_second)
     addValue(values, 'backend.stage.restart.rssBytes', sample.restartStatus?.backend_rss_bytes)
     addValue(values, 'server.delete.totalMs', sample.delete?.total_ns / 1e6)
     for (const event of sample.backendEvents ?? []) {
@@ -1161,6 +1197,13 @@ function checkCorrectness({
   if (count >= 1_000_000 && backendStatuses.some((status) => status?.backend_rss_bytes >= 2.5 * 1024 ** 3)) {
     errors.push('backend peak RSS reached the 2.5 GiB acceptance limit')
   }
+  if (
+    backendStatuses.some(
+      (status) => status?.write_behind_flush_chunk_records !== editWorkload.flushChunkRecords
+    ) || restartProbe?.flushChunkRecords !== editWorkload.flushChunkRecords
+  ) {
+    errors.push('benchmark workload flush chunk size diverged from backend runtime')
+  }
   if ((backendEvents ?? []).some((event) => event.operation === 'tree.rebuild' && event.phase?.startsWith('edit-'))) {
     errors.push('metadata edit phase triggered a full tree rebuild')
   }
@@ -1187,7 +1230,7 @@ function checkCorrectness({
       `restart partial persistence mismatch: expected ${restartProbe?.expectedDurableMin ?? 'unknown'}, got ${durableMarkerCount ?? 'unknown'}`
     )
   }
-  if (count > 4_096 && !(durableMarkerCount > 0 && durableMarkerCount < restartProbe?.targets)) {
+  if (count > editWorkload.flushChunkRecords && !(durableMarkerCount > 0 && durableMarkerCount < restartProbe?.targets)) {
     errors.push('large-fixture restart probe did not preserve a strict partial chunk prefix')
   }
   if (deleteSummary?.found !== count + 1) {

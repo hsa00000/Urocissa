@@ -1,4 +1,5 @@
 #![allow(clippy::struct_field_names)]
+use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -17,7 +18,7 @@ pub struct Row {
     pub row_index: usize,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Encode, Decode)]
 #[serde(rename_all = "camelCase")]
 pub struct ScrollBarData {
     pub year: usize,

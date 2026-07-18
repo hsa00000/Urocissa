@@ -16,8 +16,9 @@ use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::AlbumCombined;
 use crate::public::structure::config::{APP_CONFIG, WriteBehindConfig};
 
-const FLUSH_CHUNK_SIZE: usize = 4_096;
+pub const FLUSH_CHUNK_SIZE: usize = 8_192;
 const CAPACITY_WAIT: Duration = Duration::from_secs(30);
+const FLUSH_RATE_EWMA_ALPHA: f64 = 0.25;
 
 #[cfg(feature = "performance-test")]
 static FAIL_AFTER_COMMITS: AtomicI64 = AtomicI64::new(-1);
@@ -381,6 +382,10 @@ struct DirtyState {
     next_sequence: u64,
     last_flush_time_ms: Option<u64>,
     last_flush_duration_ms: Option<u64>,
+    last_flush_records: usize,
+    last_flush_unique_records: usize,
+    last_flush_chunks: usize,
+    flush_records_per_second: Option<f64>,
     last_error: Option<String>,
     flush_failure_count: u64,
     flush_retry_count: u64,
@@ -399,6 +404,10 @@ impl Default for DirtyState {
             next_sequence: 2,
             last_flush_time_ms: None,
             last_flush_duration_ms: None,
+            last_flush_records: 0,
+            last_flush_unique_records: 0,
+            last_flush_chunks: 0,
+            flush_records_per_second: None,
             last_error: None,
             flush_failure_count: 0,
             flush_retry_count: 0,
@@ -428,13 +437,21 @@ pub struct DirtyDeltaStore {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WriteBehindStatus {
+    pub flush_chunk_records: usize,
     pub pending_operations: usize,
     pub pending_records: usize,
+    pub active_records: usize,
+    pub flushing_records: usize,
     pub pending_bytes: usize,
     pub flushing: bool,
     pub oldest_pending_age_ms: Option<u64>,
     pub last_flush_time_ms: Option<u64>,
     pub last_flush_duration_ms: Option<u64>,
+    pub last_flush_records: usize,
+    pub last_flush_unique_records: usize,
+    pub last_flush_chunks: usize,
+    pub flush_records_per_second: Option<f64>,
+    pub estimated_drain_ms: Option<u64>,
     pub last_error: Option<String>,
     pub flush_failure_count: u64,
     pub flush_retry_count: u64,
@@ -517,15 +534,31 @@ impl DirtyDeltaStore {
             .into_iter()
             .chain(flushing_created)
             .min();
+        let pending_records = active_records + flushing_records;
+        let estimated_drain_ms = state.flush_records_per_second.and_then(|rate| {
+            (rate > 0.0).then(|| {
+                ((pending_records as f64 / rate) * 1_000.0)
+                    .ceil()
+                    .min(u64::MAX as f64) as u64
+            })
+        });
         WriteBehindStatus {
+            flush_chunk_records: FLUSH_CHUNK_SIZE,
             pending_operations: active_operations + flushing_operations,
-            pending_records: active_records + flushing_records,
+            pending_records,
+            active_records,
+            flushing_records,
             pending_bytes: state.pending_bytes(),
             flushing: state.flushing.is_some(),
             oldest_pending_age_ms: oldest
                 .map(|created| u64::try_from(created.elapsed().as_millis()).unwrap_or(u64::MAX)),
             last_flush_time_ms: state.last_flush_time_ms,
             last_flush_duration_ms: state.last_flush_duration_ms,
+            last_flush_records: state.last_flush_records,
+            last_flush_unique_records: state.last_flush_unique_records,
+            last_flush_chunks: state.last_flush_chunks,
+            flush_records_per_second: state.flush_records_per_second,
+            estimated_drain_ms,
             last_error: state.last_error.clone(),
             flush_failure_count: state.flush_failure_count,
             flush_retry_count: state.flush_retry_count,
@@ -556,15 +589,9 @@ impl DirtyDeltaStore {
         self.capacity_changed.notify_waiters();
     }
 
-    fn is_flushing_slot_cancelled(
-        &self,
-        slot_ref: crate::public::db::tree::state::SlotRef,
-    ) -> bool {
-        self.state
-            .lock()
-            .unwrap()
-            .cancelled_flushing_slots
-            .contains(&slot_ref)
+    fn retain_uncancelled_slots(&self, slots: &mut Vec<crate::public::db::tree::state::SlotRef>) {
+        let state = self.state.lock().unwrap();
+        slots.retain(|slot_ref| !state.cancelled_flushing_slots.contains(slot_ref));
     }
 
     fn is_flushing_album_cancelled(&self, album_id: &ArrayString<64>) -> bool {
@@ -573,6 +600,11 @@ impl DirtyDeltaStore {
             .unwrap()
             .cancelled_flushing_albums
             .contains(album_id)
+    }
+
+    fn retain_uncancelled_albums(&self, album_ids: &mut Vec<ArrayString<64>>) {
+        let state = self.state.lock().unwrap();
+        album_ids.retain(|album_id| !state.cancelled_flushing_albums.contains(album_id));
     }
 
     fn rotate(&self) -> Option<Arc<DirtyBatch>> {
@@ -591,10 +623,10 @@ impl DirtyDeltaStore {
         Some(batch)
     }
 
-    fn complete(&self, sequence: u64, started: Instant, result: &anyhow::Result<()>) {
+    fn complete(&self, sequence: u64, started: Instant, result: &anyhow::Result<FlushStats>) {
         let mut state = self.state.lock().unwrap();
         match result {
-            Ok(()) => {
+            Ok(flush_stats) => {
                 if state
                     .flushing
                     .as_ref()
@@ -603,8 +635,19 @@ impl DirtyDeltaStore {
                     state.flushing = None;
                 }
                 state.last_flush_time_ms = Some(unix_time_ms());
+                let elapsed = started.elapsed();
                 state.last_flush_duration_ms =
-                    Some(u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX));
+                    Some(u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
+                state.last_flush_records = flush_stats.records;
+                state.last_flush_unique_records = flush_stats.unique_records;
+                state.last_flush_chunks = flush_stats.chunks;
+                if flush_stats.records > 0 && !elapsed.is_zero() {
+                    let rate = flush_stats.records as f64 / elapsed.as_secs_f64();
+                    state.flush_records_per_second =
+                        Some(state.flush_records_per_second.map_or(rate, |previous| {
+                            previous * (1.0 - FLUSH_RATE_EWMA_ALPHA) + rate * FLUSH_RATE_EWMA_ALPHA
+                        }));
+                }
                 state.last_error = None;
                 state.retry_delay = Duration::ZERO;
                 state.cancelled_flushing_slots.clear();
@@ -753,14 +796,6 @@ fn unix_time_ms() -> u64 {
         })
 }
 
-fn slots_to_ids(slots: &[crate::public::db::tree::state::SlotRef]) -> Vec<ArrayString<64>> {
-    let state = TREE.state.read().unwrap();
-    slots
-        .iter()
-        .filter_map(|slot_ref| state.get(*slot_ref).map(|record| record.id))
-        .collect()
-}
-
 #[cfg(feature = "performance-test")]
 fn before_flush_commit() -> anyhow::Result<()> {
     loop {
@@ -796,96 +831,220 @@ fn before_flush_commit() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn persist_batch(batch: &DirtyBatch) -> anyhow::Result<()> {
+#[derive(Debug, Clone, Copy, Default)]
+struct FlushStats {
+    /// Logical record touches retired from the dirty queue. This remains
+    /// comparable with `pending_records` for drain-time estimation.
+    records: usize,
+    /// Durable records actually decoded and written. Target-centric batches
+    /// can retire several logical touches with one materialization.
+    unique_records: usize,
+    chunks: usize,
+}
+
+fn persist_batch(batch: &DirtyBatch) -> anyhow::Result<FlushStats> {
     let batch_started = Instant::now();
-    for operation in &batch.operations {
-        let operation_started = Instant::now();
-        let operation_name = match operation {
-            DirtyOperation::Tags { .. } => "write_behind.flush.tags",
-            DirtyOperation::Albums { .. } => "write_behind.flush.albums",
-            DirtyOperation::Flags { .. } => "write_behind.flush.flags",
-            DirtyOperation::Description { .. } => "write_behind.flush.description",
-            DirtyOperation::AlbumCreate(_) => "write_behind.flush.album_create",
-            DirtyOperation::AlbumReplace(_) => "write_behind.flush.album_replace",
-            DirtyOperation::AlbumDelete(_) => "write_behind.flush.album_delete",
-        };
-        match operation {
-            DirtyOperation::Tags { targets, .. }
-            | DirtyOperation::Albums { targets, .. }
-            | DirtyOperation::Flags { targets, .. } => {
-                let mut slots = targets.iter();
-                loop {
-                    let mut slot_chunk = slots.by_ref().take(FLUSH_CHUNK_SIZE).collect::<Vec<_>>();
-                    if slot_chunk.is_empty() {
-                        break;
-                    }
-                    let _persistence_guard = TREE.persistence_lock.lock().unwrap();
-                    slot_chunk
-                        .retain(|slot_ref| !WRITE_BEHIND.is_flushing_slot_cancelled(*slot_ref));
-                    let ids = slots_to_ids(&slot_chunk);
-                    before_flush_commit()?;
-                    TREE.store.write(|writer| {
-                        for id in &ids {
-                            let Some(value) = writer.get(id.as_str())? else {
-                                continue;
-                            };
-                            let mut data = value.value();
-                            apply_record_operation(&mut data, operation);
-                            writer.insert_at(id.as_str(), &data)?;
-                        }
-                        Ok::<(), anyhow::Error>(())
-                    })?;
-                }
-            }
-            DirtyOperation::Description { target, .. } => {
-                let _persistence_guard = TREE.persistence_lock.lock().unwrap();
-                if WRITE_BEHIND.is_flushing_slot_cancelled(*target) {
-                    continue;
-                }
-                let ids = slots_to_ids(&[*target]);
-                for id in ids {
-                    before_flush_commit()?;
-                    TREE.store.write(|writer| {
-                        if let Some(value) = writer.get(id.as_str())? {
-                            let mut data = value.value();
-                            apply_record_operation(&mut data, operation);
-                            writer.insert_at(id.as_str(), &data)?;
-                        }
-                        Ok::<(), anyhow::Error>(())
-                    })?;
-                }
-            }
+    let mut stats = FlushStats {
+        records: batch.records(),
+        ..FlushStats::default()
+    };
+    let structural_album_ids = batch
+        .operations
+        .iter()
+        .filter_map(|operation| match operation {
             DirtyOperation::AlbumCreate(album) | DirtyOperation::AlbumReplace(album) => {
-                let _persistence_guard = TREE.persistence_lock.lock().unwrap();
-                if WRITE_BEHIND.is_flushing_album_cancelled(&album.object.id) {
-                    continue;
-                }
-                before_flush_commit()?;
-                TREE.store.write(|writer| {
-                    writer.insert_at(
-                        album.object.id.as_str(),
-                        &AbstractData::Album(album.clone()),
-                    )
-                })?;
+                Some(album.object.id)
             }
-            DirtyOperation::AlbumDelete(album_id) => {
-                let _persistence_guard = TREE.persistence_lock.lock().unwrap();
-                if WRITE_BEHIND.is_flushing_album_cancelled(album_id) {
-                    continue;
-                }
-                before_flush_commit()?;
-                TREE.store
-                    .write(|writer| writer.remove(album_id.as_str()))?;
-            }
-        }
-        crate::perf_timing!(operation_name, operation_started, "Flush dirty operation");
-    }
+            DirtyOperation::AlbumDelete(album_id) => Some(*album_id),
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
+
+    // A pending album must exist durably before media membership chunks can
+    // reference it. The final album pass below reapplies the complete sequence
+    // after media records, preserving aggregate and metadata ordering.
+    let create_started = Instant::now();
+    persist_album_creates(batch, &mut stats)?;
+    crate::perf_timing!(
+        "write_behind.flush.album_create",
+        create_started,
+        "Flush pending album records"
+    );
+
+    let targets_started = Instant::now();
+    persist_target_records(batch, &structural_album_ids, &mut stats)?;
+    crate::perf_timing!(
+        "write_behind.flush.targets",
+        targets_started,
+        "Flush target-centric metadata records"
+    );
+
+    // Structural album records are finalized after member records. Applying
+    // the whole operation list to each album preserves exact operation order
+    // even when flags/tags surround an AlbumReplace in the same sequence.
+    let albums_started = Instant::now();
+    persist_structural_albums(batch, &structural_album_ids, &mut stats)?;
+    crate::perf_timing!(
+        "write_behind.flush.album_finalize",
+        albums_started,
+        "Finalize structural album records"
+    );
+
     crate::perf_timing!(
         "write_behind.flush.batch",
         batch_started,
         "Flush dirty batch sequence {}",
         batch.sequence
     );
+    log::info!(
+        operation = "write_behind.flush.batch_work",
+        records = stats.records,
+        unique_records = stats.unique_records,
+        chunks = stats.chunks;
+        "Retired {} record touches by materializing {} records in {} chunks",
+        stats.records,
+        stats.unique_records,
+        stats.chunks
+    );
+    Ok(stats)
+}
+
+fn persist_album_creates(batch: &DirtyBatch, stats: &mut FlushStats) -> anyhow::Result<()> {
+    let albums = batch
+        .operations
+        .iter()
+        .filter_map(|operation| match operation {
+            DirtyOperation::AlbumCreate(album) => Some(album),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    for album_chunk in albums.chunks(FLUSH_CHUNK_SIZE) {
+        let _persistence_guard = TREE.persistence_lock.lock().unwrap();
+        let mut chunk = album_chunk.to_vec();
+        chunk.retain(|album| !WRITE_BEHIND.is_flushing_album_cancelled(&album.object.id));
+        if chunk.is_empty() {
+            continue;
+        }
+        before_flush_commit()?;
+        TREE.store.write(|writer| {
+            for album in &chunk {
+                writer.insert_at(
+                    album.object.id.as_str(),
+                    &AbstractData::Album((**album).clone()),
+                )?;
+            }
+            Ok::<(), anyhow::Error>(())
+        })?;
+        stats.unique_records = stats.unique_records.saturating_add(chunk.len());
+        stats.chunks = stats.chunks.saturating_add(1);
+    }
+    Ok(())
+}
+
+fn persist_target_records(
+    batch: &DirtyBatch,
+    structural_album_ids: &BTreeSet<ArrayString<64>>,
+    stats: &mut FlushStats,
+) -> anyhow::Result<()> {
+    let universe = TREE.state.read().unwrap().arena.capacity();
+    let mut targets = TargetSet::default();
+    for operation in &batch.operations {
+        match operation {
+            DirtyOperation::Tags {
+                targets: operation_targets,
+                ..
+            }
+            | DirtyOperation::Albums {
+                targets: operation_targets,
+                ..
+            }
+            | DirtyOperation::Flags {
+                targets: operation_targets,
+                ..
+            } => targets.union(operation_targets, universe),
+            DirtyOperation::Description { target, .. } => {
+                targets.union(&TargetSet::from_slot_refs([*target], universe), universe)
+            }
+            DirtyOperation::AlbumCreate(_)
+            | DirtyOperation::AlbumReplace(_)
+            | DirtyOperation::AlbumDelete(_) => {}
+        }
+    }
+
+    let mut slots = targets.iter();
+    loop {
+        let mut slot_chunk = slots.by_ref().take(FLUSH_CHUNK_SIZE).collect::<Vec<_>>();
+        if slot_chunk.is_empty() {
+            break;
+        }
+        let _persistence_guard = TREE.persistence_lock.lock().unwrap();
+        WRITE_BEHIND.retain_uncancelled_slots(&mut slot_chunk);
+        let records = {
+            let tree_state = TREE.state.read().unwrap();
+            slot_chunk
+                .into_iter()
+                .filter_map(|slot_ref| {
+                    let id = tree_state.get(slot_ref)?.id;
+                    (!structural_album_ids.contains(&id)).then_some((slot_ref, id))
+                })
+                .collect::<Vec<_>>()
+        };
+        if records.is_empty() {
+            continue;
+        }
+        before_flush_commit()?;
+        TREE.store.write(|writer| {
+            for (slot_ref, id) in &records {
+                let mut record = writer.get(id.as_str())?.map(|value| value.value());
+                apply_overlay(&mut record, Some(*slot_ref), id.as_str(), &batch.operations);
+                if let Some(record) = record {
+                    writer.insert_at(id.as_str(), &record)?;
+                }
+            }
+            Ok::<(), anyhow::Error>(())
+        })?;
+        stats.unique_records = stats.unique_records.saturating_add(records.len());
+        stats.chunks = stats.chunks.saturating_add(1);
+    }
+    Ok(())
+}
+
+fn persist_structural_albums(
+    batch: &DirtyBatch,
+    structural_album_ids: &BTreeSet<ArrayString<64>>,
+    stats: &mut FlushStats,
+) -> anyhow::Result<()> {
+    let album_ids = structural_album_ids.iter().copied().collect::<Vec<_>>();
+    for album_chunk in album_ids.chunks(FLUSH_CHUNK_SIZE) {
+        let _persistence_guard = TREE.persistence_lock.lock().unwrap();
+        let mut album_chunk = album_chunk.to_vec();
+        WRITE_BEHIND.retain_uncancelled_albums(&mut album_chunk);
+        if album_chunk.is_empty() {
+            continue;
+        }
+        let slots = {
+            let tree_state = TREE.state.read().unwrap();
+            album_chunk
+                .iter()
+                .map(|album_id| (*album_id, tree_state.find(album_id.as_str())))
+                .collect::<Vec<_>>()
+        };
+        before_flush_commit()?;
+        TREE.store.write(|writer| {
+            for (album_id, slot_ref) in &slots {
+                let mut record = writer.get(album_id.as_str())?.map(|value| value.value());
+                apply_overlay(&mut record, *slot_ref, album_id.as_str(), &batch.operations);
+                if let Some(record) = record {
+                    writer.insert_at(album_id.as_str(), &record)?;
+                } else {
+                    writer.remove(album_id.as_str())?;
+                }
+            }
+            Ok::<(), anyhow::Error>(())
+        })?;
+        stats.unique_records = stats.unique_records.saturating_add(slots.len());
+        stats.chunks = stats.chunks.saturating_add(1);
+    }
     Ok(())
 }
 
@@ -1078,6 +1237,44 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn status_reports_flush_work_and_estimated_drain() {
+        let store = DirtyDeltaStore::new();
+        store
+            .state
+            .lock()
+            .unwrap()
+            .active
+            .push(DirtyOperation::Flags {
+                targets: targets(0..100),
+                favorite: Some(true),
+                archived: None,
+                trashed: None,
+            });
+        let started = Instant::now() - Duration::from_secs(1);
+        store.complete(
+            0,
+            started,
+            &Ok(FlushStats {
+                records: 200,
+                unique_records: 100,
+                chunks: 2,
+            }),
+        );
+        let status = store.status();
+        assert_eq!(status.active_records, 100);
+        assert_eq!(status.flushing_records, 0);
+        assert_eq!(status.last_flush_records, 200);
+        assert_eq!(status.last_flush_unique_records, 100);
+        assert_eq!(status.last_flush_chunks, 2);
+        assert!(
+            status
+                .flush_records_per_second
+                .is_some_and(|rate| rate > 190.0)
+        );
+        assert!(status.estimated_drain_ms.is_some_and(|value| value >= 490));
+    }
+
     #[cfg(feature = "performance-test")]
     #[test]
     fn injected_chunk_failure_is_one_shot() {
@@ -1159,5 +1356,161 @@ mod tests {
         };
         assert_eq!(description.as_deref(), Some("active"));
         assert!(targets.contains(slot));
+    }
+
+    #[test]
+    fn target_centric_overlay_preserves_operation_order_around_album_replace() {
+        let album_id = ArrayString::<64>::from("ordered-album").unwrap();
+        let mut album = match Album::new(album_id, Some("before".to_owned())).into_abstract_data() {
+            AbstractData::Album(album) => album,
+            _ => unreachable!(),
+        };
+        album.object.is_favorite = false;
+        album.object.is_archived = false;
+        let slot = SlotRef::new(5, 1);
+        let targets = TargetSet::from_slot_refs([slot], 64);
+        let mut replacement = album.clone();
+        replacement.metadata.title = Some("replacement".to_owned());
+        let operations = vec![
+            DirtyOperation::Flags {
+                targets: targets.clone(),
+                favorite: Some(true),
+                archived: None,
+                trashed: None,
+            },
+            DirtyOperation::AlbumReplace(replacement),
+            DirtyOperation::Flags {
+                targets: targets.clone(),
+                favorite: None,
+                archived: Some(true),
+                trashed: None,
+            },
+            DirtyOperation::Tags {
+                targets,
+                add: BTreeSet::from(["after-replace".to_owned()]),
+                remove: BTreeSet::new(),
+            },
+        ];
+        let mut record = Some(AbstractData::Album(album));
+        apply_overlay(&mut record, Some(slot), album_id.as_str(), &operations);
+        let AbstractData::Album(result) = record.unwrap() else {
+            unreachable!();
+        };
+        assert!(!result.object.is_favorite);
+        assert!(result.object.is_archived);
+        assert_eq!(result.metadata.title.as_deref(), Some("replacement"));
+        assert!(result.object.tags.contains("after-replace"));
+    }
+
+    #[cfg(feature = "performance-test")]
+    #[test]
+    #[ignore = "targeted Redb flush chunk throughput matrix"]
+    fn flush_chunk_matrix_selects_the_smallest_material_improvement() {
+        use crate::storage::DataStore;
+
+        const RECORDS: usize = 100_000;
+        const CANDIDATES: [usize; 4] = [4_096, 8_192, 16_384, 32_768];
+        const MAX_CHUNK_WORKING_BYTES: usize = 64 * 1024 * 1024;
+
+        fn patch_tag(
+            store: &DataStore,
+            ids: &[ArrayString<64>],
+            chunk_size: usize,
+            tag: &str,
+            add: bool,
+        ) {
+            for chunk in ids.chunks(chunk_size) {
+                store
+                    .write(|writer| {
+                        for id in chunk {
+                            let mut data = writer.get(id.as_str())?.unwrap().value();
+                            if add {
+                                data.tag_mut().insert(tag.to_owned());
+                            } else {
+                                data.tag_mut().remove(tag);
+                            }
+                            writer.insert_at(id.as_str(), &data)?;
+                        }
+                        Ok::<(), anyhow::Error>(())
+                    })
+                    .unwrap();
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = DataStore::initialize_empty(&directory.path().join("matrix.redb")).unwrap();
+        let mut ids = Vec::with_capacity(RECORDS);
+        for start in (0..RECORDS).step_by(FLUSH_CHUNK_SIZE) {
+            let end = (start + FLUSH_CHUNK_SIZE).min(RECORDS);
+            let records = (start..end)
+                .map(|index| AbstractData::generate_performance_data(index as u64, 20_260_718))
+                .collect::<Vec<_>>();
+            ids.extend(records.iter().map(AbstractData::hash));
+            store
+                .write(|writer| {
+                    for record in &records {
+                        writer.insert(record)?;
+                    }
+                    Ok::<(), anyhow::Error>(())
+                })
+                .unwrap();
+        }
+
+        patch_tag(&store, &ids, FLUSH_CHUNK_SIZE, "flush-matrix-warmup", true);
+        patch_tag(&store, &ids, FLUSH_CHUNK_SIZE, "flush-matrix-warmup", false);
+
+        let mut rates = CANDIDATES
+            .into_iter()
+            .map(|candidate| (candidate, Vec::<f64>::new()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for (round, candidates) in [
+            CANDIDATES.to_vec(),
+            CANDIDATES.into_iter().rev().collect::<Vec<_>>(),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for candidate in candidates {
+                let tag = format!("flush-matrix-{round}-{candidate}");
+                let started = Instant::now();
+                patch_tag(&store, &ids, candidate, &tag, true);
+                patch_tag(&store, &ids, candidate, &tag, false);
+                let elapsed = started.elapsed();
+                let rate = (RECORDS * 2) as f64 / elapsed.as_secs_f64();
+                rates.get_mut(&candidate).unwrap().push(rate);
+                println!(
+                    "flush-matrix chunk={candidate} round={round} duration_ms={} records_per_second={rate:.2}",
+                    elapsed.as_millis()
+                );
+            }
+        }
+
+        let averages = rates
+            .iter()
+            .map(|(candidate, values)| {
+                let average = values.iter().sum::<f64>() / values.len() as f64;
+                (*candidate, average)
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let baseline = averages[&FLUSH_CHUNK_SIZE];
+        let recommended = CANDIDATES.into_iter().find(|candidate| {
+            let estimated_working_bytes = candidate
+                .saturating_mul(
+                    std::mem::size_of::<SlotRef>() + std::mem::size_of::<ArrayString<64>>(),
+                )
+                .saturating_add(1024 * 1024);
+            estimated_working_bytes <= MAX_CHUNK_WORKING_BYTES
+                && averages[candidate] >= baseline * 1.15
+        });
+        for (candidate, average) in &averages {
+            println!(
+                "flush-matrix-summary chunk={candidate} records_per_second={average:.2} relative={:.3}",
+                average / baseline
+            );
+        }
+        println!(
+            "flush-matrix-recommended={}",
+            recommended.unwrap_or(FLUSH_CHUNK_SIZE)
+        );
     }
 }

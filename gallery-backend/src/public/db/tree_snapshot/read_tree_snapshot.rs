@@ -1,4 +1,4 @@
-use super::TreeSnapshot;
+use super::{PendingTreeSnapshot, TreeSnapshot};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::state::SlotRef;
 use anyhow::Context;
@@ -27,7 +27,7 @@ impl TreeSnapshot {
 
 #[derive(Debug)]
 pub enum MyCow {
-    DashMap(Ref<'static, i64, Vec<u64>>),
+    DashMap(Ref<'static, i64, PendingTreeSnapshot>),
     Redb(ReadOnlyTable<u64, u64>),
 }
 
@@ -35,7 +35,7 @@ impl MyCow {
     #[allow(clippy::cast_possible_truncation)]
     pub fn len(&self) -> usize {
         match self {
-            MyCow::DashMap(data) => data.value().len(),
+            MyCow::DashMap(data) => data.value().slots.len(),
             MyCow::Redb(table) => table.len().unwrap() as usize,
         }
     }
@@ -81,7 +81,7 @@ impl MyCow {
     pub fn for_each_slot_ref(&self, mut visit: impl FnMut(usize, u64) -> Result<()>) -> Result<()> {
         match self {
             MyCow::DashMap(data) => {
-                for (index, slot_ref) in data.value().iter().copied().enumerate() {
+                for (index, slot_ref) in data.value().slots.iter().copied().enumerate() {
                     visit(index, slot_ref)?;
                 }
             }
@@ -115,6 +115,7 @@ impl MyCow {
         match self {
             MyCow::DashMap(data) => data
                 .value()
+                .slots
                 .get(index)
                 .copied()
                 .context(format!("Failed to find slot reference at index {index}")),

@@ -1,4 +1,5 @@
 use rocket::serde::{Deserialize, Serialize};
+use std::time::Instant;
 
 use crate::operations::open_db::open_tree_snapshot_table;
 use crate::public::db::tree::TREE;
@@ -64,6 +65,7 @@ pub fn resolve_selection(
     timestamp: i64,
     selection: &SelectionDescriptor,
 ) -> Result<ResolvedSelection, AppError> {
+    let started = Instant::now();
     let snapshot = open_tree_snapshot_table(timestamp).map_err(|error| {
         AppError::from_err(
             ErrorKind::Conflict,
@@ -119,10 +121,16 @@ pub fn resolve_selection(
                     .unwrap_or_else(|error| AppError::from_err(ErrorKind::Conflict, error))
             })?;
     }
-    Ok(ResolvedSelection {
+    let resolved = ResolvedSelection {
         targets: TargetSet::from_slot_refs(slots, universe),
         len,
-    })
+    };
+    crate::perf_timing!(
+        "selection.resolve",
+        started,
+        "Resolve and validate selection"
+    );
+    Ok(resolved)
 }
 
 #[cfg(test)]

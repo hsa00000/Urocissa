@@ -1,4 +1,4 @@
-use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
+use crate::public::db::tree_snapshot::{SCROLLBAR_METADATA_TABLE, TREE_SNAPSHOT};
 use anyhow::Result;
 use mini_executor::Task;
 use redb::TableDefinition;
@@ -25,6 +25,7 @@ impl Task for RemoveTask {
 }
 /// Removes a tree cache table by its timestamp.
 fn remove_task(timestamp: i64) {
+    TREE_SNAPSHOT.in_memory.remove(&timestamp);
     let write_txn = TREE_SNAPSHOT.in_disk.begin_write().unwrap();
     let binding = timestamp.to_string();
     let table_definition: TableDefinition<u64, u64> = TableDefinition::new(&binding);
@@ -41,6 +42,17 @@ fn remove_task(timestamp: i64) {
                 "Failed to delete tree cache table: {:?}, error: {:#?}",
                 timestamp, err
             );
+        }
+    }
+
+    match write_txn.open_table(SCROLLBAR_METADATA_TABLE) {
+        Ok(mut table) => {
+            if let Err(err) = table.remove(timestamp) {
+                error!("Failed to delete scrollbar metadata for {timestamp}: {err:#?}");
+            }
+        }
+        Err(err) => {
+            error!("Failed to open scrollbar metadata table: {err:#?}");
         }
     }
 

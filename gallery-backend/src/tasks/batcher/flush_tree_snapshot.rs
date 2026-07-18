@@ -1,4 +1,5 @@
-use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
+use crate::public::db::tree_snapshot::{SCROLLBAR_METADATA_TABLE, TREE_SNAPSHOT};
+use crate::storage::codec;
 use mini_executor::BatchTask;
 use redb::TableDefinition;
 use std::time::Instant;
@@ -29,6 +30,15 @@ fn flush_tree_snapshot_task() {
 
             let timestamp = *entry_ref.key();
             let timestamp_str = timestamp.to_string();
+            let scrollbar_bytes = match codec::encode(&entry_ref.scrollbar) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    handle_error(anyhow::anyhow!(
+                        "FlushTreeSnapshotTask: Failed to encode scrollbar for timestamp {timestamp}: {e}"
+                    ));
+                    break;
+                }
+            };
 
             let timer_start = Instant::now();
             let txn = match TREE_SNAPSHOT.in_disk.begin_write() {
@@ -43,6 +53,24 @@ fn flush_tree_snapshot_task() {
             let table_definition: TableDefinition<u64, u64> = TableDefinition::new(&timestamp_str);
 
             {
+                let mut metadata = match txn.open_table(SCROLLBAR_METADATA_TABLE) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        handle_error(anyhow::anyhow!(
+                            "FlushTreeSnapshotTask: Failed to open scrollbar metadata table: {e}"
+                        ));
+                        break;
+                    }
+                };
+                if let Err(e) = metadata.insert(timestamp, scrollbar_bytes.as_slice()) {
+                    handle_error(anyhow::anyhow!(
+                        "FlushTreeSnapshotTask: Failed to insert scrollbar metadata for timestamp {timestamp}: {e}"
+                    ));
+                    break;
+                }
+            }
+
+            {
                 let mut table = match txn.open_table(table_definition) {
                     Ok(t) => t,
                     Err(e) => {
@@ -52,7 +80,7 @@ fn flush_tree_snapshot_task() {
                         break;
                     }
                 };
-                for (index, slot_ref) in entry_ref.iter().copied().enumerate() {
+                for (index, slot_ref) in entry_ref.slots.iter().copied().enumerate() {
                     if let Err(e) = table.insert(index as u64, slot_ref) {
                         handle_error(anyhow::anyhow!(
                             "FlushTreeSnapshotTask: Failed to insert data at index {index} for timestamp {timestamp}: {e}"

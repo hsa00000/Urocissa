@@ -46,3 +46,13 @@ pub static WORKER_RAYON_POOL: LazyLock<ThreadPool> = LazyLock::new(|| {
         .build()
         .expect("Failed to build Worker Rayon pool")
 });
+
+/// Latency-oriented pool for large ordered metadata queries. Keeping it
+/// separate prevents indexing work from queueing ahead of interactive reads.
+pub static QUERY_RAYON_POOL: LazyLock<ThreadPool> = LazyLock::new(|| {
+    ThreadPoolBuilder::new()
+        .num_threads(*CURRENT_NUM_THREADS)
+        .thread_name(|i| format!("metadata-query-worker-{i}"))
+        .build()
+        .expect("Failed to build metadata query Rayon pool")
+});

@@ -1,7 +1,9 @@
+use crate::public::constant::runtime::QUERY_RAYON_POOL;
 use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
-use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
+use crate::public::db::tree_snapshot::read_scrollbar::build_scrollbar;
+use crate::public::db::tree_snapshot::{PendingTreeSnapshot, TREE_SNAPSHOT};
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::album::ResolvedShare;
 use crate::public::structure::expression::{AlbumFilterValue, Expression};
@@ -18,7 +20,7 @@ use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 use anyhow::Result;
 use bitcode::{Decode, Encode};
 use chrono::Utc;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::hash::Hasher;
@@ -26,6 +28,8 @@ use std::hash::{DefaultHasher, Hash};
 use std::mem;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
+
+const PARALLEL_FILTER_THRESHOLD: usize = 32_768;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Encode, Decode)]
 #[serde(rename_all = "camelCase")]
@@ -111,17 +115,29 @@ fn filter_items(
     let hidden_album = resolved_share_option
         .filter(|share| !share.share.show_metadata)
         .map(|share| share.album_id);
-    let reduced_data_vector: Vec<ReducedData> = tree_guard
-        .order
-        .iter()
-        .filter_map(|slot_ref| {
-            let record = tree_guard.get(*slot_ref)?;
-            expression_option
-                .as_ref()
-                .is_none_or(|expression| tree_guard.matches(*slot_ref, expression, hidden_album))
-                .then(|| record.reduced(*slot_ref))
-        })
-        .collect();
+    let compile_start = Instant::now();
+    let compiled_expression = expression_option
+        .as_ref()
+        .map(|expression| tree_guard.compile_expression(expression, hidden_album));
+    crate::perf_timing!(
+        "prefetch.compile_expression",
+        compile_start,
+        "Compile query expression"
+    );
+
+    let reduce = |slot_ref: &crate::public::db::tree::state::SlotRef| {
+        let record = tree_guard.get(*slot_ref)?;
+        compiled_expression
+            .as_ref()
+            .is_none_or(|expression| expression.matches(record, slot_ref.index()))
+            .then(|| record.reduced(*slot_ref))
+    };
+    let reduced_data_vector: Vec<ReducedData> =
+        if tree_guard.order.len() >= PARALLEL_FILTER_THRESHOLD {
+            QUERY_RAYON_POOL.install(|| tree_guard.order.par_iter().filter_map(reduce).collect())
+        } else {
+            tree_guard.order.iter().filter_map(reduce).collect()
+        };
 
     crate::perf_timing!(
         "prefetch.filter_items",
@@ -180,11 +196,18 @@ fn insert_data_into_tree_snapshot(reduced_data_vector: Vec<ReducedData>) -> (i64
     // Persist to snapshot
     let timestamp_millis = Utc::now().timestamp_millis();
     let reduced_data_vector_length = reduced_data_vector.len();
+    let scrollbar = build_scrollbar(reduced_data_vector.iter().map(|data| data.date));
     let slot_refs = reduced_data_vector
         .into_iter()
         .map(|data| data.slot_ref)
         .collect();
-    TREE_SNAPSHOT.in_memory.insert(timestamp_millis, slot_refs);
+    TREE_SNAPSHOT.in_memory.insert(
+        timestamp_millis,
+        PendingTreeSnapshot {
+            slots: slot_refs,
+            scrollbar,
+        },
+    );
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeSnapshotTask);
 
     crate::perf_timing!(
