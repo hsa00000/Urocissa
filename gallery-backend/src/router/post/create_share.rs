@@ -36,8 +36,12 @@ pub async fn create_share(
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || {
         let create_share = create_share.into_inner();
-        TREE.store
-            .write(|data_table| create_and_insert_share(data_table, create_share))
+        let album_id = create_share.album_id;
+        let result = TREE
+            .store
+            .write(|data_table| create_and_insert_share(data_table, create_share))?;
+        TREE.refresh_album_snapshot(album_id.as_str())?;
+        Ok::<String, AppError>(result)
     })
     .await
     .map_err(|e| AppError::from_err(ErrorKind::Internal, e.into()))?

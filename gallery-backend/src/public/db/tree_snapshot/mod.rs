@@ -1,7 +1,6 @@
 pub mod new;
 pub mod read_rows;
 pub mod read_scrollbar;
-pub mod read_tags;
 pub mod read_tree_snapshot;
 
 use std::sync::LazyLock;

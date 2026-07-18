@@ -1,10 +1,16 @@
 use super::Tree;
+use crate::public::db::tree::read_tags::TreeListSnapshot;
 use crate::public::structure::response::database_timestamp::DatabaseTimestamp;
 use crate::storage::DataStore;
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
 static TREE_SNAPSHOT_IN_MEMORY: LazyLock<Arc<RwLock<Vec<DatabaseTimestamp>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(vec![])));
+
+static TREE_LIST_SNAPSHOT: LazyLock<Arc<RwLock<Option<Arc<TreeListSnapshot>>>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(None)));
+
+static TREE_LIST_SNAPSHOT_UPDATE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 use crate::public::constant::storage::get_data_path;
 
@@ -23,6 +29,8 @@ impl Tree {
         Self {
             store: &TREE_STORE,
             in_memory: &TREE_SNAPSHOT_IN_MEMORY,
+            list_snapshot: &TREE_LIST_SNAPSHOT,
+            list_snapshot_update_lock: &TREE_LIST_SNAPSHOT_UPDATE_LOCK,
         }
     }
 }

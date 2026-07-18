@@ -1,5 +1,6 @@
 use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
 use crate::operations::transitor::index_to_hash;
+use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::TagInfo;
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::abstract_data::AbstractData;
@@ -30,56 +31,57 @@ pub async fn edit_tag(
     let _ = auth?;
     let _ = read_only_mode?;
 
-    let vec_tags_info = tokio::task::spawn_blocking(move || -> Result<Vec<TagInfo>, AppError> {
-        let data_table = open_data_table();
-        let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
-            .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
+    let data_to_flush =
+        tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>, AppError> {
+            let data_table = open_data_table();
+            let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
+                .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
 
-        let mut data_to_flush: Vec<AbstractData> = Vec::new();
+            let mut data_to_flush: Vec<AbstractData> = Vec::new();
 
-        for &index in &json_data.index_array {
-            let hash = index_to_hash(&tree_snapshot, index).or_raise(|| {
-                (
-                    ErrorKind::Database,
-                    format!("Failed to get hash for index {index}"),
-                )
-            })?;
+            for &index in &json_data.index_array {
+                let hash = index_to_hash(&tree_snapshot, index).or_raise(|| {
+                    (
+                        ErrorKind::Database,
+                        format!("Failed to get hash for index {index}"),
+                    )
+                })?;
 
-            if let Some(guard) = data_table
-                .get(&*hash)
-                .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
-            {
-                let mut abstract_data = guard.value();
+                if let Some(guard) = data_table
+                    .get(&*hash)
+                    .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
+                {
+                    let mut abstract_data = guard.value();
 
-                // Apply tag additions and removals (only regular tags)
-                let tags = abstract_data.tag_mut();
-                for tag in &json_data.add_tags_array {
-                    tags.insert(tag.clone());
+                    // Apply tag additions and removals (only regular tags)
+                    let tags = abstract_data.tag_mut();
+                    for tag in &json_data.add_tags_array {
+                        tags.insert(tag.clone());
+                    }
+                    for tag in &json_data.remove_tags_array {
+                        tags.remove(tag);
+                    }
+
+                    data_to_flush.push(abstract_data);
                 }
-                for tag in &json_data.remove_tags_array {
-                    tags.remove(tag);
-                }
-
-                data_to_flush.push(abstract_data);
             }
-        }
 
-        // Flush data
-        if !data_to_flush.is_empty() {
-            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(data_to_flush));
-        }
+            Ok(data_to_flush)
+        })
+        .await
+        .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
 
-        // Return TagInfo
-        crate::public::db::tree_snapshot::TreeSnapshot::read_tags().map_err(AppError::from)
-    })
-    .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
+    if !data_to_flush.is_empty() {
+        BATCH_COORDINATOR
+            .execute_batch_waiting(FlushTreeTask::insert(data_to_flush))
+            .await
+            .or_raise(|| (ErrorKind::Internal, "Failed to flush edited tags"))?;
+    }
 
-    // Wait for the in-memory Tree to be updated
     BATCH_COORDINATOR
         .execute_batch_waiting(UpdateTreeTask)
         .await
         .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
 
-    Ok(Json(vec_tags_info))
+    Ok(Json(TREE.read_tags()))
 }

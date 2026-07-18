@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate rocket;
-use std::{thread, time::Instant};
+use std::{sync::mpsc::sync_channel, thread, time::Instant};
 
 mod operations;
 mod performance;
@@ -18,7 +18,7 @@ use crate::public::error_data::handle_error;
 use crate::public::tui::{DASHBOARD, tui_task};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::start_watcher::StartWatcherTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::batcher::update_tree::update_tree_task;
 use crate::tasks::looper::start_expire_check_loop;
 use public::db::tree::TREE;
 use public::structure::abstract_data::AbstractData;
@@ -45,6 +45,7 @@ fn main() {
     // Architecture: Isolate the Indexing/TUI runtime from the Rocket server runtime.
 
     // This prevents heavy blocking operations in the indexer from stalling web requests.
+    let (tree_ready_tx, tree_ready_rx) = sync_channel(1);
     let worker_handle = thread::spawn(move || {
         INDEX_RUNTIME.block_on(async {
             let start_time = Instant::now();
@@ -72,8 +73,15 @@ fn main() {
                 album_count
             );
 
+            // Build the first in-memory tree and list snapshot before Rocket
+            // starts accepting requests. Later rebuilds remain asynchronous.
+            update_tree_task();
+            if tree_ready_tx.send(()).is_err() {
+                error!("Failed to signal initial tree readiness.");
+                return;
+            }
+
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
-            BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
             start_expire_check_loop();
 
             if let Some(console) = superconsole::SuperConsole::new() {
@@ -95,6 +103,11 @@ fn main() {
             info!("Worker thread shutting down.");
         });
     });
+
+    if tree_ready_rx.recv().is_err() {
+        eprintln!("Initial tree preparation failed; shutting down.");
+        std::process::exit(1);
+    }
 
     let rocket_handle = thread::spawn(|| {
         info!("Rocket thread starting.");

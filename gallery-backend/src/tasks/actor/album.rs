@@ -32,6 +32,7 @@ impl Task for AlbumSelfUpdateTask {
 
 pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
     info!("Perform album self-update");
+    let album_id_for_cache = album_id;
 
     TREE.store
         .write(|data_table| {
@@ -81,5 +82,7 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
             Ok::<(), anyhow::Error>(())
         })
         .context("album transaction failed")?;
+    TREE.refresh_album_snapshot(album_id_for_cache.as_str())
+        .context("album cache update failed")?;
     Ok(())
 }

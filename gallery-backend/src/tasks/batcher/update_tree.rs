@@ -38,28 +38,32 @@ impl BatchTask for UpdateTreeTask {
 
 pub fn update_tree_task() {
     let start_time = Instant::now();
-    let data_table = open_data_table();
+    TREE.with_list_snapshot_update(|| {
+        let data_table = open_data_table();
 
-    let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
+        let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
-    let mut database_timestamp_vec: Vec<DatabaseTimestamp> = data_table
-        .iter()
-        .unwrap()
-        .par_bridge()
-        .map(|guard| {
-            let (_, value) = guard.unwrap();
-            let mut abstract_data = value.value();
-            // retain only necessary exif data used for query search
-            if let Some(exif_vec) = abstract_data.exif_vec_mut() {
-                exif_vec.retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
-            }
-            DatabaseTimestamp::new(abstract_data, &priority_list)
-        })
-        .collect();
+        let mut database_timestamp_vec: Vec<DatabaseTimestamp> = data_table
+            .iter()
+            .unwrap()
+            .par_bridge()
+            .map(|guard| {
+                let (_, value) = guard.unwrap();
+                let mut abstract_data = value.value();
+                // retain only necessary exif data used for query search
+                if let Some(exif_vec) = abstract_data.exif_vec_mut() {
+                    exif_vec.retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
+                }
+                DatabaseTimestamp::new(abstract_data, &priority_list)
+            })
+            .collect();
 
-    database_timestamp_vec.par_sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-
-    *TREE.in_memory.write().unwrap() = database_timestamp_vec;
+        database_timestamp_vec.par_sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        let list_snapshot = crate::public::db::tree::read_tags::TreeListSnapshot::from_records(
+            &database_timestamp_vec,
+        );
+        TREE.replace_tree_snapshot(database_timestamp_vec, list_snapshot);
+    });
 
     BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
 
