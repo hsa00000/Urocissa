@@ -133,7 +133,7 @@ const onScrollEnd = () => {
   }
 }
 
-watch([windowWidth, () => constStore.subRowHeightScale], async () => {
+watch([windowWidth, () => constStore.subRowHeightScale, () => constStore.limitRatio], async () => {
   scrollController.resetPhysicalAnchor()
   locationStore.triggerForResize()
   prefetchStore.windowWidth = Math.round(windowWidth.value)

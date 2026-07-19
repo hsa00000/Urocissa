@@ -62,6 +62,7 @@ const routeKey = computed(() => {
 
 onBeforeMount(async () => {
   await constStore.loadSubRowHeightScale()
+  await constStore.loadLimitRation()
   await constStore.loadShowInfo()
   await constStore.loadConcurrencyNumber()
   await constStore.loadShowFilenameChip()

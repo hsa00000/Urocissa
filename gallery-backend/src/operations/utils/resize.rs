@@ -33,3 +33,57 @@ pub fn small_width_height(width: u32, height: u32, target_short_side: u32) -> (u
         (width, height)
     }
 }
+
+/// Resize dimensions so that the longer side is at most `max_long_side`, preserving aspect ratio.
+/// Dimensions that already fit are returned unchanged.
+pub fn max_long_side_width_height(width: u32, height: u32, max_long_side: u32) -> (u32, u32) {
+    let long_side = width.max(height);
+
+    if long_side <= max_long_side {
+        return (width, height);
+    }
+
+    if max_long_side == 0 {
+        return (0, 0);
+    }
+
+    let scale_dimension = |dimension: u32| {
+        let numerator = u64::from(dimension) * u64::from(max_long_side);
+        let denominator = u64::from(long_side);
+        let rounded = (numerator + denominator / 2) / denominator;
+
+        u32::try_from(rounded).unwrap_or(max_long_side).max(1)
+    };
+
+    (scale_dimension(width), scale_dimension(height))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{max_long_side_width_height, small_width_height};
+
+    #[test]
+    fn constrains_landscape_image_by_long_side() {
+        assert_eq!(max_long_side_width_height(4000, 3000, 1920), (1920, 1440));
+    }
+
+    #[test]
+    fn constrains_portrait_image_by_long_side() {
+        assert_eq!(max_long_side_width_height(3000, 4000, 1920), (1440, 1920));
+    }
+
+    #[test]
+    fn does_not_upscale_image_that_already_fits() {
+        assert_eq!(max_long_side_width_height(1600, 900, 1920), (1600, 900));
+    }
+
+    #[test]
+    fn keeps_extreme_aspect_ratio_dimension_nonzero() {
+        assert_eq!(max_long_side_width_height(10_000, 1, 1920), (1920, 1));
+    }
+
+    #[test]
+    fn short_side_resize_behavior_remains_available_for_video_thumbnails() {
+        assert_eq!(small_width_height(4000, 3000, 1280), (1706, 1280));
+    }
+}

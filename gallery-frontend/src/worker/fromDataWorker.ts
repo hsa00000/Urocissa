@@ -61,7 +61,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
     },
 
     fetchRowReturn: (payload) => {
-      const { timestamp, rowWithOffset, subRowHeightScale } = payload
+      const { timestamp, rowWithOffset, subRowHeightScale, limitRatio } = payload
       const windowWidth = rowWithOffset.windowWidth
 
       // Discard calculation if viewport changed during worker processing to avoid layout trashing.
@@ -81,11 +81,17 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       const timestampMatched = timestamp === prefetchStore.timestamp
       const offsetNotComputed = !offsetStore.offset.has(index)
       const subRowHeightScaleMatched = subRowHeightScale === constStore.subRowHeightScale
+      const limitRatioMatched = limitRatio === constStore.limitRatio
 
       //
       // Why: If the computed height (offset) is valid and new, we must propagate this delta
       // to all subsequent rows to ensure the virtual scroll total height remains accurate.
-      if (timestampMatched && offsetNotComputed && subRowHeightScaleMatched) {
+      if (
+        timestampMatched &&
+        offsetNotComputed &&
+        subRowHeightScaleMatched &&
+        limitRatioMatched
+      ) {
         offsetStore.offset.set(index, offset)
         row.offset = offsetStore.accumulatedOffset(row.rowIndex)
 

@@ -18,9 +18,11 @@ import { bindActionDispatch, createHandler } from 'typesafe-agent-events'
 import { fromDataWorker, toDataWorker } from './workerApi'
 import { z } from 'zod'
 import { setupWorkerAxiosInterceptor } from './workerAxiosInterceptor'
+import { clampRowDisplayRatios } from './thumbnailRatio'
 
 const shouldProcessBatch: number[] = []
 const fetchedRowData = new Map<number, Row>()
+let lastLimitRatio = false
 const postToMainData = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
 const workerAxios = axios.create()
 
@@ -65,8 +67,15 @@ self.addEventListener('message', (e) => {
       }
     },
     fetchRow: async (payload) => {
-      const { index, timestamp, windowWidth, isLastRow, timestampToken, subRowHeightScale } =
-        payload
+      const {
+        index,
+        timestamp,
+        windowWidth,
+        isLastRow,
+        timestampToken,
+        subRowHeightScale,
+        limitRatio
+      } = payload
 
       const rowWithOffset = await fetchRow(
         index,
@@ -74,13 +83,15 @@ self.addEventListener('message', (e) => {
         windowWidth,
         isLastRow,
         timestampToken,
-        subRowHeightScale
+        subRowHeightScale,
+        limitRatio
       )
 
       postToMainData.fetchRowReturn({
         rowWithOffset,
         timestamp,
-        subRowHeightScale
+        subRowHeightScale,
+        limitRatio
       })
     }
   })
@@ -199,8 +210,14 @@ async function fetchRow(
   windowWidth: number,
   isLastRow: boolean,
   timestampToken: string,
-  subRowHeightScale: number
+  subRowHeightScale: number,
+  limitRatio: boolean
 ): Promise<RowWithOffset> {
+  if (limitRatio !== lastLimitRatio) {
+    fetchedRowData.clear()
+    lastLimitRatio = limitRatio
+  }
+
   let row = fetchedRowData.get(index)
 
   if (row === undefined) {
@@ -214,6 +231,12 @@ async function fetchRow(
     )
     row = rowSchema.parse(response.data)
     fetchedRowData.set(row.rowIndex, structuredClone(row))
+  } else {
+    row = structuredClone(row)
+  }
+
+  if (limitRatio) {
+    row = clampRowDisplayRatios(row)
   }
 
   // Setting row.topPixelAccumulated

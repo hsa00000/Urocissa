@@ -44,6 +44,44 @@
 
       <v-divider></v-divider>
 
+      <v-list-item @click="onLimitRationUpdate(!limitRatioValue)">
+        <template #title>
+          <div class="d-flex align-center">
+            Restricted Ratio
+            <v-tooltip location="top" max-width="300">
+              <template #activator="{ props }">
+                <v-icon
+                  v-bind="props"
+                  icon="mdi-alert-circle-outline"
+                  size="small"
+                  color="medium-emphasis"
+                  class="ml-2"
+                  style="cursor: help"
+                ></v-icon>
+              </template>
+              <span>
+                <b>For extreme aspect-ratio images:</b><br />
+                <b>On:</b> Containers stay between 1:2 and 2:1, cropping the excess.<br />
+                <b>Off:</b> Images use their original aspect ratio.
+              </span>
+            </v-tooltip>
+          </div>
+        </template>
+        <template #append>
+          <v-switch
+            :model-value="limitRatioValue"
+            @update:model-value="onLimitRationUpdate"
+            :disabled="!initializedStore.initialized"
+            color="primary"
+            inset
+            hide-details
+            @click.stop
+          ></v-switch>
+        </template>
+      </v-list-item>
+
+      <v-divider></v-divider>
+
       <v-list-item @click="onViewBarOverlayUpdate(!viewBarOverlayValue)">
         <template #title>
           <div class="d-flex align-center">
@@ -135,6 +173,14 @@ const onShowFilenameChipUpdate = (newValue: boolean | null) => {
   })
 }
 
+const limitRatioValue = computed(() => constStore.limitRatio)
+
+const onLimitRationUpdate = (newValue: boolean | null) => {
+  constStore.updateLimitRation(newValue ?? false).catch((error: unknown) => {
+    console.error('Failed to update limitRatio:', error)
+  })
+}
+
 const viewBarOverlayValue = computed<boolean>({
   get: () => constStore.viewBarOverlay,
   set: (newVal: boolean | null) => {
@@ -153,7 +199,4 @@ const onViewBarOverlayUpdate = (newValue: boolean | null) => {
     })
   }
 }
-
-
-
 </script>

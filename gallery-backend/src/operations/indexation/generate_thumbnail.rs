@@ -1,7 +1,7 @@
 use crate::{
     operations::{
         indexation::generate_ffmpeg::create_silent_ffmpeg_command,
-        utils::resize::small_width_height,
+        utils::resize::{max_long_side_width_height, small_width_height},
     },
     public::structure::abstract_data::AbstractData,
 };
@@ -16,7 +16,7 @@ pub fn generate_thumbnail_for_image(
     dynamic_image: &DynamicImage,
 ) -> Result<()> {
     let (compressed_width, compressed_height) =
-        small_width_height(abstract_data.width(), abstract_data.height(), 720);
+        max_long_side_width_height(abstract_data.width(), abstract_data.height(), 1920);
 
     let thumbnail_image = dynamic_image
         .thumbnail_exact(compressed_width, compressed_height)

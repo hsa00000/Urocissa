@@ -77,6 +77,7 @@ export interface FetchRowPayload {
   isLastRow: boolean
   timestampToken: string
   subRowHeightScale: number
+  limitRatio: boolean
 }
 
 // === From DataWorker Payloads ===
@@ -89,6 +90,7 @@ export interface FetchRowReturnPayload {
   rowWithOffset: RowWithOffset
   timestamp: number
   subRowHeightScale: number
+  limitRatio: boolean
 }
 
 export interface EditTagsReturnPayload {
