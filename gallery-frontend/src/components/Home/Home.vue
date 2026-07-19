@@ -17,12 +17,13 @@
         ref="imageContainerRef"
         class="d-flex flex-wrap position-relative flex-grow-1 min-h-0 h-100 pa-1 pb-2 bg-surface-light"
         :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
-        @wheel="onWheel"
         @scroll="onScroll"
+        @scrollend="onScrollEnd"
       >
         <Buffer
           v-if="initializedStore.initialized && prefetchStore.dataLength > 0"
           :buffer-height="bufferHeight"
+          :effective-scroll-top="effectiveScrollTop"
           :isolation-id="props.isolationId"
         />
         <HomeEmptyCard
@@ -32,7 +33,10 @@
       </div>
 
       <div class="flex-grow-0 flex-shrink-0 bg-surface-light" style="overflow: visible">
-        <ScrollBar :isolation-id="props.isolationId" />
+        <ScrollBar
+          :isolation-id="props.isolationId"
+          @before-scroll-jump="scrollController.resetPhysicalAnchor"
+        />
       </div>
     </div>
   </div>
@@ -50,7 +54,7 @@ import { useQueueStore } from '@/store/queueStore'
 import { LocationQueryValue, useRoute } from 'vue-router'
 import { useElementSize } from '@vueuse/core'
 import { usePrefetch } from '@/script/hook/usePrefetch'
-import { applyWheelDeltaToPhysicalBuffer, handleScroll } from '@/script/hook/useHandleScroll'
+import { handleScroll } from '@/script/hook/useHandleScroll'
 import { useInitializeScrollPosition } from '@/script/hook/useInitializeScrollPosition'
 import { useImgStore } from '@/store/imgStore'
 import Buffer from '@/components/Buffer/Buffer.vue'
@@ -108,32 +112,29 @@ provide('imageContainerRef', imageContainerRef)
 provide('windowWidth', windowWidth)
 provide('windowHeight', windowHeight)
 
-const throttledHandleScroll = handleScroll(
+const scrollController = handleScroll(
   imageContainerRef,
   lastScrollTop,
   stopScroll,
   windowHeight,
   props.isolationId
 )
-
-const onWheel = (event: WheelEvent) => {
-  if (
-    stopScroll.value ||
-    prefetchStore.locateTo !== null ||
-    locationStore.pendingLocateTarget !== null
-  ) {
-    return
-  }
-  applyWheelDeltaToPhysicalBuffer(imageContainerRef.value, event)
-}
+const { effectiveScrollTop } = scrollController
 
 const onScroll = () => {
   if (prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null) {
-    throttledHandleScroll()
+    scrollController.onScroll()
+  }
+}
+
+const onScrollEnd = () => {
+  if (prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null) {
+    void scrollController.onScrollEnd()
   }
 }
 
 watch([windowWidth, () => constStore.subRowHeightScale], async () => {
+  scrollController.resetPhysicalAnchor()
   locationStore.triggerForResize()
   prefetchStore.windowWidth = Math.round(windowWidth.value)
   prefetchStore.clearForResize()
@@ -148,6 +149,15 @@ watch([windowWidth, () => constStore.subRowHeightScale], async () => {
   scrollTopStore.scrollTop = locationRowIndex * 2400
   await fetchRowInWorker(locationRowIndex, props.isolationId)
 })
+
+watch(
+  [() => prefetchStore.locateTo, () => locationStore.pendingLocateTarget],
+  ([locateTo, pendingLocateTarget]) => {
+    if (locateTo !== null || pendingLocateTarget !== null) {
+      scrollController.resetPhysicalAnchor()
+    }
+  }
+)
 
 const bufferHeight = computed(() => {
   return 600000
@@ -199,7 +209,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  throttledHandleScroll.cancel()
+  scrollController.cancel()
   workerStore.terminateWorker()
   initializedStore.initialized = false
   dataStore.clearAll()

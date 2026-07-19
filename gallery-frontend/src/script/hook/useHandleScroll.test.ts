@@ -4,13 +4,13 @@ import { shallowRef } from 'vue'
 import { useConfigStore } from '@/store/configStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useScrollTopStore } from '@/store/scrollTopStore'
-import { applyWheelDeltaToPhysicalBuffer, handleScroll } from './useHandleScroll'
+import { handleScroll } from './useHandleScroll'
 
 function createContainer(scrollTop: number): HTMLElement {
-  return { scrollTop } as HTMLElement
+  return { scrollTop, onscrollend: null } as unknown as HTMLElement
 }
 
-describe('compensated virtual scroll behavior', () => {
+describe('native compensated virtual scroll transactions', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.useFakeTimers()
@@ -23,6 +23,7 @@ describe('compensated virtual scroll behavior', () => {
       windowHeight: 100,
       virtualTop: 100,
       physicalTop: 120,
+      expectedPhysicalDuringScroll: 120,
       expectedVirtualTop: 120
     },
     {
@@ -31,6 +32,7 @@ describe('compensated virtual scroll behavior', () => {
       windowHeight: 100,
       virtualTop: 5,
       physicalTop: 90,
+      expectedPhysicalDuringScroll: 95,
       expectedVirtualTop: 0
     },
     {
@@ -39,6 +41,7 @@ describe('compensated virtual scroll behavior', () => {
       windowHeight: 100,
       virtualTop: 890,
       physicalTop: 120,
+      expectedPhysicalDuringScroll: 106,
       expectedVirtualTop: 896
     },
     {
@@ -47,32 +50,136 @@ describe('compensated virtual scroll behavior', () => {
       windowHeight: 100,
       virtualTop: 10,
       physicalTop: 120,
+      expectedPhysicalDuringScroll: 100,
       expectedVirtualTop: 0
     }
-  ])('$name while restoring the physical anchor', (fixture) => {
+  ])('$name while preserving native physical movement until scrollend', async (fixture) => {
     const prefetchStore = usePrefetchStore('tempId')
     const scrollTopStore = useScrollTopStore('tempId')
     prefetchStore.totalHeight = fixture.totalHeight
     scrollTopStore.scrollTop = fixture.virtualTop
     const container = createContainer(fixture.physicalTop)
-    const imageContainerRef = shallowRef<HTMLElement | null>(container)
-    const lastScrollTop = shallowRef(100)
-    const stopScroll = shallowRef(false)
-    const windowHeight = shallowRef(fixture.windowHeight)
-    const throttledHandleScroll = handleScroll(
-      imageContainerRef,
-      lastScrollTop,
-      stopScroll,
-      windowHeight,
+    const controller = handleScroll(
+      shallowRef<HTMLElement | null>(container),
+      shallowRef(100),
+      shallowRef(false),
+      shallowRef(fixture.windowHeight),
       'tempId'
     )
 
-    throttledHandleScroll()
+    controller.onScroll()
+
+    expect(container.scrollTop).toBe(fixture.expectedPhysicalDuringScroll)
+    expect(controller.effectiveScrollTop.value).toBe(fixture.expectedVirtualTop)
+    if (fixture.totalHeight > fixture.windowHeight) {
+      expect(scrollTopStore.scrollTop).toBe(fixture.virtualTop)
+    }
+
+    await controller.onScrollEnd()
 
     expect(scrollTopStore.scrollTop).toBe(fixture.expectedVirtualTop)
     expect(container.scrollTop).toBe(100)
-    expect(lastScrollTop.value).toBe(100)
-    throttledHandleScroll.cancel()
+    controller.cancel()
+  })
+
+  it('does not write the physical position during an in-bounds native animation', () => {
+    const prefetchStore = usePrefetchStore('tempId')
+    const scrollTopStore = useScrollTopStore('tempId')
+    prefetchStore.totalHeight = 1000
+    scrollTopStore.scrollTop = 100
+    const container = createContainer(101)
+    const controller = handleScroll(
+      shallowRef<HTMLElement | null>(container),
+      shallowRef(100),
+      shallowRef(false),
+      shallowRef(100),
+      'tempId'
+    )
+
+    controller.onScroll()
+
+    expect(container.scrollTop).toBe(101)
+    expect(scrollTopStore.scrollTop).toBe(100)
+    expect(controller.effectiveScrollTop.value).toBe(101)
+    controller.cancel()
+  })
+
+  it('coalesces repeated native scroll observations without committing early', async () => {
+    const prefetchStore = usePrefetchStore('tempId')
+    const scrollTopStore = useScrollTopStore('tempId')
+    prefetchStore.totalHeight = 1000
+    scrollTopStore.scrollTop = 100
+    const container = createContainer(101)
+    const controller = handleScroll(
+      shallowRef<HTMLElement | null>(container),
+      shallowRef(100),
+      shallowRef(false),
+      shallowRef(100),
+      'tempId'
+    )
+
+    controller.onScroll()
+    container.scrollTop = 105
+    controller.onScroll()
+
+    expect(scrollTopStore.scrollTop).toBe(100)
+    expect(controller.effectiveScrollTop.value).toBe(101)
+
+    vi.advanceTimersByTime(100)
+    expect(controller.effectiveScrollTop.value).toBe(105)
+    expect(container.scrollTop).toBe(105)
+
+    await controller.onScrollEnd()
+    expect(scrollTopStore.scrollTop).toBe(105)
+    expect(container.scrollTop).toBe(100)
+    controller.cancel()
+  })
+
+  it('keeps transient movement when committed geometry receives an offset shift', () => {
+    const prefetchStore = usePrefetchStore('tempId')
+    const scrollTopStore = useScrollTopStore('tempId')
+    prefetchStore.totalHeight = 1000
+    scrollTopStore.scrollTop = 100
+    const container = createContainer(120)
+    const controller = handleScroll(
+      shallowRef<HTMLElement | null>(container),
+      shallowRef(100),
+      shallowRef(false),
+      shallowRef(100),
+      'tempId'
+    )
+
+    controller.onScroll()
+    scrollTopStore.scrollTop += 25
+
+    expect(container.scrollTop).toBe(120)
+    expect(controller.effectiveScrollTop.value).toBe(145)
+    controller.cancel()
+  })
+
+  it('abandons transient movement before an external virtual jump', () => {
+    const prefetchStore = usePrefetchStore('tempId')
+    const scrollTopStore = useScrollTopStore('tempId')
+    prefetchStore.totalHeight = 1000
+    scrollTopStore.scrollTop = 100
+    const container = createContainer(150)
+    const controller = handleScroll(
+      shallowRef<HTMLElement | null>(container),
+      shallowRef(100),
+      shallowRef(false),
+      shallowRef(100),
+      'tempId'
+    )
+
+    controller.onScroll()
+    expect(controller.effectiveScrollTop.value).toBe(150)
+
+    controller.resetPhysicalAnchor()
+
+    expect(scrollTopStore.scrollTop).toBe(100)
+    expect(controller.effectiveScrollTop.value).toBe(100)
+    expect(container.scrollTop).toBe(100)
+    controller.cancel()
   })
 
   it('preserves the mobile stop-scroll window for short content', () => {
@@ -81,7 +188,7 @@ describe('compensated virtual scroll behavior', () => {
     prefetchStore.totalHeight = 50
     const container = createContainer(120)
     const stopScroll = shallowRef(false)
-    const throttledHandleScroll = handleScroll(
+    const controller = handleScroll(
       shallowRef<HTMLElement | null>(container),
       shallowRef(100),
       stopScroll,
@@ -89,53 +196,12 @@ describe('compensated virtual scroll behavior', () => {
       'tempId'
     )
 
-    throttledHandleScroll()
+    controller.onScroll()
     expect(stopScroll.value).toBe(true)
     vi.advanceTimersByTime(99)
     expect(stopScroll.value).toBe(true)
     vi.advanceTimersByTime(1)
     expect(stopScroll.value).toBe(false)
-    throttledHandleScroll.cancel()
-  })
-
-  it('writes a cancelable pixel wheel delta to the physical buffer exactly once', () => {
-    const container = createContainer(200000)
-    let prevented = false
-    const event = {
-      cancelable: true,
-      ctrlKey: false,
-      get defaultPrevented() {
-        return prevented
-      },
-      deltaMode: 0,
-      deltaY: 100,
-      preventDefault() {
-        prevented = true
-      }
-    }
-
-    expect(applyWheelDeltaToPhysicalBuffer(container, event)).toBe(true)
-    expect(prevented).toBe(true)
-    expect(container.scrollTop).toBe(200100)
-  })
-
-  it.each([
-    { name: 'non-cancelable', cancelable: false, ctrlKey: false, deltaMode: 0, deltaY: 100 },
-    { name: 'zoom gesture', cancelable: true, ctrlKey: true, deltaMode: 0, deltaY: 100 },
-    { name: 'line mode', cancelable: true, ctrlKey: false, deltaMode: 1, deltaY: 3 },
-    { name: 'horizontal-only', cancelable: true, ctrlKey: false, deltaMode: 0, deltaY: 0 }
-  ])('leaves $name wheel input to the browser', (fixture) => {
-    const container = createContainer(200000)
-    const preventDefault = vi.fn()
-
-    expect(
-      applyWheelDeltaToPhysicalBuffer(container, {
-        ...fixture,
-        defaultPrevented: false,
-        preventDefault
-      })
-    ).toBe(false)
-    expect(preventDefault).not.toHaveBeenCalled()
-    expect(container.scrollTop).toBe(200000)
+    controller.cancel()
   })
 })

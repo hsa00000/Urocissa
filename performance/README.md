@@ -39,6 +39,14 @@ Available scenarios are `continuous-down`, `continuous-up`, `discrete-wheel`,
 between samples; `locate` can use `--locate <hash>` or a hash observed from the loaded page.
 Reports include CDP timer install/fire counts for 0, 50, 75, and 100 ms timers. Use
 `--expect strict-smooth` when every sample must pass the jank gate.
+The browser instrumentation also records element `scrollend` events and waits for the
+compensated physical buffer to return to its original anchor before finalizing a wheel sample.
+The scroll-work budget includes both ordinary `scroll` handlers and the final `scrollend`
+commit, so moving work to transaction completion cannot hide it from the jank gate.
+For synthetic scenarios the budget remains normalized per input pulse. Native-wheel scenarios
+are normalized per emitted scroll event because one real Chrome smooth-scroll notch produces
+multiple compositor-driven scroll events; summing those animation frames into a per-notch
+budget would report smooth native motion as handler jank.
 
 `native-wheel` is the Windows hardware-path approximation used for the mouse-notch
 regression. It launches the locally installed Chrome Stable channel with Playwright's
@@ -46,8 +54,9 @@ temporary user-data directory and a fresh browser context; it never connects to 
 Chrome profile. `native-wheel-input.ps1` targets that isolated window by a unique title and
 PID, verifies that it is the foreground window, and then sends one Windows
 `MOUSEEVENTF_WHEEL` input per pulse (`-120` is one downward notch). The report keeps the raw
-OS delta, Chrome's trusted DOM wheel delta, physical scroll events, per-frame row displacement,
-and final physical-anchor error. `native-wheel-delay` adds the configured row-response delay.
+OS delta, Chrome's trusted DOM wheel delta and final `defaultPrevented` state, physical scroll
+and `scrollend` events, per-frame row displacement, and final physical-anchor error.
+`native-wheel-delay` adds the configured row-response delay.
 
 The runner builds the backend with `--profile dev-release --features performance-test` (never plain `--release`), builds the frontend, starts an isolated server, inserts the fixture, and restarts it to measure recovery. Chromium then performs the existing login/top-scroll/middle-jump/end-jump journey followed by:
 

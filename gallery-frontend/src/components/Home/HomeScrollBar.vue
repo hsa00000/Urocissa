@@ -122,6 +122,9 @@ const chipSize = 25
 const props = defineProps<{
   isolationId: IsolationId
 }>()
+const emit = defineEmits<{
+  beforeScrollJump: []
+}>()
 
 const scrollTopStore = useScrollTopStore(props.isolationId)
 const locationStore = useLocationStore(props.isolationId)
@@ -266,6 +269,9 @@ const handleClick = (event?: MouseEvent | TouchEvent) => {
   }
 
   const targetRowIndex = getTargetRowIndex(clickPositionRelative / scrollbarHeight.value)
+
+  // A custom scrollbar jump replaces any in-progress native physical transaction.
+  emit('beforeScrollJump')
 
   if (targetRowIndex === currentDateChipIndex.value) {
     return

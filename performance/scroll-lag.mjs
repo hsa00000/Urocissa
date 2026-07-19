@@ -230,6 +230,12 @@ function summarizeTrace(events) {
       event.args?.data?.type === 'scroll' &&
       (rendererMainThreads.size === 0 || onRendererMain(event))
   )
+  const scrollEndEvents = events.filter(
+    (event) =>
+      event.name === 'EventDispatch' &&
+      event.args?.data?.type === 'scrollend' &&
+      (rendererMainThreads.size === 0 || onRendererMain(event))
+  )
   const layoutEvents = events.filter(
     (event) => event.name === 'UpdateLayoutTree' && onRendererMain(event)
   )
@@ -262,6 +268,7 @@ function summarizeTrace(events) {
       String(event.args?.data?.nodeName ?? '').includes("id='image-container'")
   )
   const scrollDurations = scrollEvents.map(durationMs)
+  const scrollEndDurations = scrollEndEvents.map(durationMs)
   const layoutDurations = layoutEvents.map(durationMs)
   const taskDurations = tasks.map(durationMs)
   const droppedFrameTimes = droppedFrames.map((event) => event.ts / 1000).sort((a, b) => a - b)
@@ -300,6 +307,9 @@ function summarizeTrace(events) {
     scrollEventCount: scrollEvents.length,
     scrollEventMaxMs: round(Math.max(0, ...scrollDurations)),
     scrollEventTotalMs: round(scrollDurations.reduce((sum, value) => sum + value, 0)),
+    scrollEndEventCount: scrollEndEvents.length,
+    scrollEndEventMaxMs: round(Math.max(0, ...scrollEndDurations)),
+    scrollEndEventTotalMs: round(scrollEndDurations.reduce((sum, value) => sum + value, 0)),
     updateLayoutTreeCount: layoutEvents.length,
     updateLayoutTreeMaxMs: round(Math.max(0, ...layoutDurations)),
     updateLayoutTreeTotalMs: round(layoutDurations.reduce((sum, value) => sum + value, 0)),
@@ -372,6 +382,7 @@ function summarizeFrames(state, expectedDisplacementOverride = null) {
     stalledInputFrames,
     wheelEventCount: state.wheelEvents.length,
     scrollEventCount: state.scrollEvents.length,
+    domScrollEndEventCount: state.scrollEndEvents.length,
     scrollResetCount,
     expectedVisualDisplacementPx: round(expectedVisualDisplacementPx),
     actualVisualDisplacementPx: round(actualVisualDisplacementPx),
@@ -422,6 +433,7 @@ async function installInstrumentation(context) {
       frames: [],
       wheelEvents: [],
       scrollEvents: [],
+      scrollEndEvents: [],
       lastFrame: null
     }
     window.__scrollLag = state
@@ -430,17 +442,23 @@ async function installInstrumentation(context) {
       'wheel',
       (event) => {
         if (state.running) {
-          state.wheelEvents.push({
+          const wheelRecord = {
             time: performance.now(),
             deltaX: event.deltaX,
             deltaY: event.deltaY,
             deltaMode: event.deltaMode,
             wheelDelta: event.wheelDelta,
             wheelDeltaY: event.wheelDeltaY,
+            cancelable: event.cancelable,
+            defaultPrevented: event.defaultPrevented,
             isTrusted: event.isTrusted,
             targetId: event.target instanceof Element ? event.target.id || null : null,
             insideImageContainer:
               event.target instanceof Element && Boolean(event.target.closest('#image-container'))
+          }
+          state.wheelEvents.push(wheelRecord)
+          queueMicrotask(() => {
+            wheelRecord.defaultPrevented = event.defaultPrevented
           })
         }
       },
@@ -451,6 +469,18 @@ async function installInstrumentation(context) {
       (event) => {
         if (state.running && event.target?.id === 'image-container') {
           state.scrollEvents.push({
+            time: performance.now(),
+            scrollTop: event.target.scrollTop
+          })
+        }
+      },
+      true
+    )
+    window.addEventListener(
+      'scrollend',
+      (event) => {
+        if (state.running && event.target?.id === 'image-container') {
+          state.scrollEndEvents.push({
             time: performance.now(),
             scrollTop: event.target.scrollTop
           })
@@ -530,6 +560,7 @@ async function beginFrameSampling(page) {
     state.frames.length = 0
     state.wheelEvents.length = 0
     state.scrollEvents.length = 0
+    state.scrollEndEvents.length = 0
     state.lastFrame = null
     state.running = true
     return state.anchorStart
@@ -544,6 +575,7 @@ async function beginPassiveSampling(page) {
     state.frames.length = 0
     state.wheelEvents.length = 0
     state.scrollEvents.length = 0
+    state.scrollEndEvents.length = 0
     state.lastFrame = null
     state.running = true
   })
@@ -557,9 +589,34 @@ async function finishFrameSampling(page) {
       anchorStart: state.anchorStart,
       frames: state.frames,
       wheelEvents: state.wheelEvents,
-      scrollEvents: state.scrollEvents
+      scrollEvents: state.scrollEvents,
+      scrollEndEvents: state.scrollEndEvents
     }
   })
+}
+
+async function waitForScrollTransactionCommit(
+  page,
+  physicalAnchor,
+  timeout = Math.max(3000, config.pulseSettleMs * 4)
+) {
+  await page.waitForFunction(
+    ({ anchor, tolerance }) => {
+      const state = window.__scrollLag
+      const container = document.querySelector('#image-container')
+      const lastWheel = state?.wheelEvents.at(-1)
+      if (!state || !(container instanceof HTMLElement) || lastWheel === undefined) {
+        return false
+      }
+
+      const nativeScrollEnded = state.scrollEndEvents.some(
+        (scrollEnd) => scrollEnd.time >= lastWheel.time
+      )
+      return nativeScrollEnded && Math.abs(container.scrollTop - anchor) <= tolerance
+    },
+    { anchor: physicalAnchor, tolerance: config.behaviorTolerancePx },
+    { timeout }
+  )
 }
 
 async function firstRenderedRowStart(page) {
@@ -705,12 +762,14 @@ async function runDiscreteWheelScenario(page, imageContainer, delayRows = false)
     })
   }
 
+  await waitForScrollTransactionCommit(page, physicalAnchorStart)
   await page.waitForTimeout(150)
   const frameState = await finishFrameSampling(page)
   const physicalAnchorEnd = await imageContainer.evaluate((element) => element.scrollTop)
   const physicalAnchorErrorPx = Math.abs(physicalAnchorEnd - physicalAnchorStart)
   const invalidPulses = pulses.filter(
     (pulse) =>
+      pulse.inputEvents.some((inputEvent) => inputEvent.defaultPrevented) ||
       pulse.actualDisplacementPx === null ||
       Math.abs(pulse.actualDisplacementPx - config.deltaY) > config.behaviorTolerancePx
   )
@@ -772,6 +831,9 @@ async function runNativeWheelScenario(page, imageContainer, delayRows = false) {
       const scrollEventStartIndex = await page.evaluate(
         () => window.__scrollLag?.scrollEvents.length ?? 0
       )
+      const scrollEndEventStartIndex = await page.evaluate(
+        () => window.__scrollLag?.scrollEndEvents.length ?? 0
+      )
 
       const nativeInput = await controller.wheel(config.nativeWheelDelta)
       await page.waitForFunction(
@@ -798,6 +860,10 @@ async function runNativeWheelScenario(page, imageContainer, delayRows = false) {
         (startIndex) => window.__scrollLag?.scrollEvents.slice(startIndex) ?? [],
         scrollEventStartIndex
       )
+      const scrollEndEvents = await page.evaluate(
+        (startIndex) => window.__scrollLag?.scrollEndEvents.slice(startIndex) ?? [],
+        scrollEndEventStartIndex
+      )
       const pulseFrames = await page.evaluate(
         (startIndex) => window.__scrollLag?.frames.slice(startIndex) ?? [],
         pulseFrameStartIndex
@@ -808,10 +874,34 @@ async function runNativeWheelScenario(page, imageContainer, delayRows = false) {
             frame.anchorTop !== null && String(frame.anchorStart) === String(before.anchorStart)
         )
         .map((frame) => before.anchorTop - frame.anchorTop)
+      const nativeMovementSteps = []
+      let previousAnchorTop = before.anchorTop
+      for (const frame of pulseFrames) {
+        if (
+          frame.anchorTop === null ||
+          String(frame.anchorStart) !== String(before.anchorStart)
+        ) {
+          continue
+        }
+        const movement = previousAnchorTop - frame.anchorTop
+        if (Math.abs(movement) >= 0.5) nativeMovementSteps.push(movement)
+        previousAnchorTop = frame.anchorTop
+      }
       const expectedDomDisplacementPx = inputEvents.reduce(
         (sum, inputEvent) => sum + inputEvent.deltaY,
         0
       )
+      const expectedDirection = Math.sign(expectedDomDisplacementPx)
+      let prematurePhysicalResetCount = 0
+      for (let index = 1; index < scrollEvents.length; index += 1) {
+        const physicalMovement = scrollEvents[index].scrollTop - scrollEvents[index - 1].scrollTop
+        if (physicalMovement * expectedDirection >= -config.behaviorTolerancePx) continue
+
+        const scrollEndedBeforeReset = scrollEndEvents.some(
+          (scrollEnd) => scrollEnd.time <= scrollEvents[index].time
+        )
+        if (!scrollEndedBeforeReset) prematurePhysicalResetCount += 1
+      }
 
       pulses.push({
         pulse: pulse + 1,
@@ -821,6 +911,15 @@ async function runNativeWheelScenario(page, imageContainer, delayRows = false) {
         expectedDomDisplacementPx: round(expectedDomDisplacementPx),
         inputEvents,
         scrollEvents,
+        scrollEndEvents,
+        nativeMovementFrameCount: nativeMovementSteps.length,
+        nativeMovementStepMaxPx: round(
+          Math.max(0, ...nativeMovementSteps.map((movement) => Math.abs(movement)))
+        ),
+        reverseMovementFrameCount: nativeMovementSteps.filter(
+          (movement) => movement * expectedDirection < -config.behaviorTolerancePx
+        ).length,
+        prematurePhysicalResetCount,
         transientDisplacementMinPx: round(Math.min(0, ...pulseFrameDisplacements)),
         transientDisplacementMaxPx: round(Math.max(0, ...pulseFrameDisplacements)),
         pulseFrames,
@@ -838,6 +937,7 @@ async function runNativeWheelScenario(page, imageContainer, delayRows = false) {
         afterSettle
       })
     }
+    await waitForScrollTransactionCommit(page, physicalAnchorStart)
   } finally {
     await controller.close()
   }
@@ -856,8 +956,14 @@ async function runNativeWheelScenario(page, imageContainer, delayRows = false) {
     (pulse) =>
       pulse.inputEvents.length !== 1 ||
       pulse.inputEvents.some(
-        (inputEvent) => !inputEvent.isTrusted || !inputEvent.insideImageContainer
+        (inputEvent) =>
+          !inputEvent.isTrusted ||
+          !inputEvent.insideImageContainer ||
+          inputEvent.defaultPrevented
       ) ||
+      pulse.nativeMovementFrameCount < 2 ||
+      pulse.reverseMovementFrameCount > 0 ||
+      pulse.prematurePhysicalResetCount > 0 ||
       pulse.actualDisplacementPx === null ||
       pulse.transientDisplacementMinPx <
         Math.min(0, pulse.expectedDomDisplacementPx) - config.behaviorTolerancePx ||
@@ -878,6 +984,7 @@ async function runNativeWheelScenario(page, imageContainer, delayRows = false) {
     frameMetrics: summarizePassiveFrames(frameState),
     physicalAnchorErrorPx: round(physicalAnchorErrorPx),
     applyScrollBudget: true,
+    scrollBudgetUnit: 'scroll-event',
     interactionCount: config.pulses,
     details: {
       inputSource: 'Windows SendInput MOUSEEVENTF_WHEEL',
@@ -903,7 +1010,7 @@ async function runContinuousScenario(page, imageContainer, direction) {
   const anchorStart = await beginFrameSampling(page)
   await page.waitForTimeout(100)
   await runWheelPulses(page, config.deltaY * direction)
-  await page.waitForTimeout(500)
+  await waitForScrollTransactionCommit(page, physicalAnchorStart)
   const frameState = await finishFrameSampling(page)
   const physicalAnchorEnd = await imageContainer.evaluate((element) => element.scrollTop)
   const frameMetrics = summarizeFrames(frameState)
@@ -936,7 +1043,7 @@ async function runBoundsScenario(page, imageContainer, sampleIndex) {
   const anchorStart = await beginFrameSampling(page)
   await page.waitForTimeout(100)
   await runWheelPulses(page, config.deltaY * (boundary === 'upper' ? -1 : 1))
-  await page.waitForTimeout(500)
+  await waitForScrollTransactionCommit(page, physicalAnchorStart)
   const frameState = await finishFrameSampling(page)
   const frameMetrics = summarizeFrames(frameState, 0)
   const physicalAnchorEnd = await imageContainer.evaluate((element) => element.scrollTop)
@@ -1161,13 +1268,25 @@ async function runSample(browser, sampleIndex) {
     const scrollEventWorkPerPulseMs = round(
       traceMetrics.scrollEventTotalMs / Math.max(scenarioResult.interactionCount, 1)
     )
+    const scrollInteractionWorkPerPulseMs = round(
+      (traceMetrics.scrollEventTotalMs + traceMetrics.scrollEndEventTotalMs) /
+        Math.max(scenarioResult.interactionCount, 1)
+    )
+    const scrollInteractionWorkPerScrollEventMs = round(
+      (traceMetrics.scrollEventTotalMs + traceMetrics.scrollEndEventTotalMs) /
+        Math.max(traceMetrics.scrollEventCount, 1)
+    )
+    const scrollBudgetWorkMs =
+      scenarioResult.scrollBudgetUnit === 'scroll-event'
+        ? scrollInteractionWorkPerScrollEventMs
+        : scrollInteractionWorkPerPulseMs
     const timerBudgetExceeded =
       config.scenario === 'worker-delay' &&
       traceMetrics.timerInstall0Count > config.timerZeroBudget
     const behaviorEquivalent = scenarioResult.behaviorEquivalent && !timerBudgetExceeded
     const jankSignature =
       (scenarioResult.applyScrollBudget &&
-        scrollEventWorkPerPulseMs >= config.scrollWorkPerPulseBudgetMs) ||
+        scrollBudgetWorkMs >= config.scrollWorkPerPulseBudgetMs) ||
       frameMetrics.frameGapOver25MsCount > 0 ||
       traceMetrics.updateLayoutTreeMaxMs >= 8 ||
       traceMetrics.longTaskCount > 0 ||
@@ -1180,6 +1299,8 @@ async function runSample(browser, sampleIndex) {
       behaviorEquivalent,
       jankSignature,
       scrollEventWorkPerPulseMs,
+      scrollInteractionWorkPerPulseMs,
+      scrollInteractionWorkPerScrollEventMs,
       physicalAnchorErrorPx: scenarioResult.physicalAnchorErrorPx,
       scenarioDetails: scenarioResult.details,
       ...frameMetrics,
@@ -1224,7 +1345,7 @@ try {
     samples.push(sample)
     console.error(
       `sample ${sample.sample} (${sample.scenario}): dropped=${sample.droppedFrameCount} ` +
-        `scrollWorkPerPulse=${sample.scrollEventWorkPerPulseMs}ms ` +
+        `scrollInteractionWorkPerPulse=${sample.scrollInteractionWorkPerPulseMs}ms ` +
         `behaviorError=${sample.visualDisplacementErrorPx}px`
     )
   }

@@ -283,7 +283,6 @@ export function updateLastRowBottom(
  * It handles the addition and removal of rows, adjusts the scroll position if needed, and updates related stores.
  *
  * @param imageContainerRef - Reference to the container element that holds the rows.
- * @param scrollTop - Current vertical scroll position.
  * @param startHeight - Starting pixel position of the viewport.
  * @param endHeight - Ending pixel position of the viewport.
  * @param lastRowBottom - Reference to store the bottom position of the last visible row.
@@ -292,8 +291,8 @@ export function updateLastRowBottom(
  */
 export function useUpdateVisibleRows(
   imageContainerRef: Ref<HTMLElement | null>,
-  startHeight: Ref<number>,
-  endHeight: Ref<number>,
+  startHeight: Readonly<Ref<number>>,
+  endHeight: Readonly<Ref<number>>,
   lastRowBottom: Ref<number>,
   windowHeight: Ref<number>,
   isolationId: IsolationId
@@ -327,7 +326,7 @@ export function useUpdateVisibleRows(
         )
       }
       updateLastVisibleRow(visibleRows, rowStore)
-      updateLocationIndex(visibleRows, scrollTopStore.scrollTop, locationStore)
+      updateLocationIndex(visibleRows, startHeight.value, locationStore)
       updateLastRowBottom(
         visibleRows,
         lastRowBottom,
@@ -342,7 +341,7 @@ export function useUpdateVisibleRows(
   watch(
     [
       imageContainerRef,
-      () => scrollTopStore.scrollTop,
+      startHeight,
       () => prefetchStore.updateVisibleRowTrigger,
       () => document.visibilityState
     ],

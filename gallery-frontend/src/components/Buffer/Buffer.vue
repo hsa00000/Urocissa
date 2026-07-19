@@ -57,7 +57,7 @@
       ref="placeholderNoneRef"
       v-if="rowStore.firstRowFetched && visibleRows.length === 0 && windowWidth > 0"
       :top-pixel="
-        ((lastRowBottom - scrollTopStore.scrollTop + windowHeight) %
+        ((lastRowBottom - effectiveScrollTop + windowHeight) %
           (placeholderNoneRowRefHeight + 2 * paddingPixel)) +
         bufferHeight / 3 -
         windowHeight
@@ -79,7 +79,9 @@
  * If the list of RowBlocks is empty, BufferPlaceholder (placeholderNone) will be displayed instead.
  *
  * `topPixelAccumulated` represents the top pixel position of a RowBlock.
- * `scrollTop` is used to manage user scrolling because the scrollTop of the parent (image-container) is reset for every frame.
+ * Committed `scrollTop` controls the Buffer transform. While Chrome is performing native
+ * scrolling, `effectiveScrollTop` additionally includes the physical buffer displacement so
+ * rows can be selected and prefetched without interrupting the browser animation.
  * `bufferHeight / 3` is used to position the RowBlock at a sufficient distance from the top of the component so that the parent Homepage can scroll up without reaching the top prematurely.
  */
 import { ComponentPublicInstance, Ref, computed, provide, ref, watch } from 'vue'
@@ -99,12 +101,13 @@ import { scrollActivityKey, useScrollActivity } from '@/script/hook/useScrollAct
 const props = defineProps<{
   isolationId: IsolationId
   bufferHeight: number
+  effectiveScrollTop: number
 }>()
 
 const prefetchStore = usePrefetchStore(props.isolationId)
 const scrollTopStore = useScrollTopStore(props.isolationId)
 const rowStore = useRowStore(props.isolationId)
-const scrollActivity = useScrollActivity(() => scrollTopStore.scrollTop)
+const scrollActivity = useScrollActivity(() => props.effectiveScrollTop)
 provide(scrollActivityKey, scrollActivity)
 
 const windowWidth = getInjectValue<Ref<number>>('windowWidth')
@@ -121,8 +124,8 @@ const placeholderNoneRowRefHeight = computed(() =>
   placeholderNoneRef.value ? placeholderNoneRef.value.placeholderRowRefHeight : 0
 )
 const visibleRowsLength = computed(() => visibleRows.value.length)
-const startHeight = computed(() => scrollTopStore.scrollTop)
-const endHeight = computed(() => scrollTopStore.scrollTop + windowHeight.value)
+const startHeight = computed(() => props.effectiveScrollTop)
+const endHeight = computed(() => props.effectiveScrollTop + windowHeight.value)
 
 const { visibleRows } = useUpdateVisibleRows(
   imageContainerRef,
