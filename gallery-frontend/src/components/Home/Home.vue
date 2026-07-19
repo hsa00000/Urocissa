@@ -17,11 +17,7 @@
         ref="imageContainerRef"
         class="d-flex flex-wrap position-relative flex-grow-1 min-h-0 h-100 pa-1 pb-2 bg-surface-light"
         :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
-        @scroll="
-          prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null
-            ? throttledHandleScroll()
-            : () => {}
-        "
+        @scroll="onScroll"
       >
         <Buffer
           v-if="initializedStore.initialized && prefetchStore.dataLength > 0"
@@ -119,6 +115,12 @@ const throttledHandleScroll = handleScroll(
   props.isolationId
 )
 
+const onScroll = () => {
+  if (prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null) {
+    throttledHandleScroll()
+  }
+}
+
 watch([windowWidth, () => constStore.subRowHeightScale], async () => {
   locationStore.triggerForResize()
   prefetchStore.windowWidth = Math.round(windowWidth.value)
@@ -185,6 +187,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  throttledHandleScroll.cancel()
   workerStore.terminateWorker()
   initializedStore.initialized = false
   dataStore.clearAll()

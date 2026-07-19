@@ -2,8 +2,8 @@ import { IsolationId, Row } from '@type/types'
 import { fetchRowInWorker } from '@/api/fetchRow'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useLocationStore } from '@/store/locationStore'
-import { useRowStore } from '@/store/rowStore'
-import { markRaw, Ref, shallowRef, toRaw, watch } from 'vue'
+import { useRowStore, type RowGeometrySnapshot } from '@/store/rowStore'
+import { markRaw, Ref, shallowRef, watch } from 'vue'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { getArrayValue, getMapValue, getScrollUpperBound } from '@utils/getter'
 
@@ -21,8 +21,12 @@ type ScrollTopStore = ReturnType<typeof useScrollTopStore>
  * @param endRange - The ending pixel position of the vertical range.
  * @returns A sorted array of rows that fall within the specified vertical range.
  */
-function findRowInRange(rowMap: Map<number, Row>, startRange: number, endRange: number): Row[] {
-  const visibleRows = []
+export function findRowInRange<T extends RowGeometrySnapshot>(
+  rowMap: ReadonlyMap<number, T>,
+  startRange: number,
+  endRange: number
+): T[] {
+  const visibleRows: T[] = []
 
   for (const [, row] of rowMap) {
     if (
@@ -49,8 +53,8 @@ function findRowInRange(rowMap: Map<number, Row>, startRange: number, endRange: 
  * @param endHeight - The ending height of the current viewport.
  * @returns An array of rows currently visible in the viewport.
  */
-function getCurrentVisibleRows(
-  lastVisibleRow: Map<number, Row>,
+export function getCurrentVisibleRows(
+  lastVisibleRow: ReadonlyMap<number, RowGeometrySnapshot>,
   startHeight: number,
   endHeight: number,
   rowStore: RowStore
@@ -71,9 +75,9 @@ function getCurrentVisibleRows(
 
   if (rowsInRange.length > 0 && extraShift === 0) {
     // If there are rows from the previous frame visible in the current viewport
-    // and there is no offset shift, return these rows directly as they are
-    // correctly positioned.
-    return rowsInRange
+    // and there is no offset shift, resolve the current Row objects by index.
+    // The snapshots intentionally contain geometry only and must never be rendered.
+    return rowsInRange.map((snapshot) => getMapValue(rowStore.rowData, snapshot.rowIndex))
   } else {
     // If no rows from the previous frame are visible or there is an offset shift:
     // - If there are no visible rows from the previous frame, return the rows
@@ -144,7 +148,7 @@ function filterRowForLocation(visibleRows: Ref<Row[]>, locationStore: LocationSt
  * @param scrollTop - Current scroll position.
  * @param scrollingBound - Maximum allowed scroll position.
  */
-function scrollTopOffsetFix(
+export function scrollTopOffsetFix(
   visibleRows: Ref<Row[]>,
   scrollingBound: number,
   rowStore: RowStore,
@@ -169,13 +173,49 @@ function scrollTopOffsetFix(
  *
  * @param visibleRows - Array of currently visible rows.
  */
-function updateLastVisibleRow(visibleRows: Ref<Row[]>, rowStore: RowStore) {
-  const nextLastVisibleRow = new Map<number, Row>()
+function rowGeometryMatches(row: Row, snapshot: RowGeometrySnapshot): boolean {
+  return (
+    row.rowIndex === snapshot.rowIndex &&
+    row.topPixelAccumulated === snapshot.topPixelAccumulated &&
+    row.rowHeight === snapshot.rowHeight &&
+    row.offset === snapshot.offset
+  )
+}
+
+export function updateLastVisibleRow(visibleRows: Ref<Row[]>, rowStore: RowStore) {
+  if (rowStore.lastVisibleRow.size === visibleRows.value.length) {
+    let index = 0
+    let unchanged = true
+
+    for (const snapshot of rowStore.lastVisibleRow.values()) {
+      const row = visibleRows.value[index]
+      if (row === undefined || !rowGeometryMatches(row, snapshot)) {
+        unchanged = false
+        break
+      }
+      index += 1
+    }
+
+    if (unchanged) {
+      return
+    }
+  }
+
+  const previousLastVisibleRow = rowStore.lastVisibleRow
+  const nextLastVisibleRow = new Map<number, RowGeometrySnapshot>()
   visibleRows.value.forEach((row) => {
-    // Geometry needs to be snapshotted because row offsets can be replaced by
-    // worker results. Nested display data is immutable here, so cloning it on
-    // every scroll only adds allocation and proxying work.
-    nextLastVisibleRow.set(row.rowIndex, markRaw({ ...toRaw(row) }))
+    const previousSnapshot = previousLastVisibleRow.get(row.rowIndex)
+    const snapshot =
+      previousSnapshot !== undefined && rowGeometryMatches(row, previousSnapshot)
+        ? previousSnapshot
+        : markRaw<RowGeometrySnapshot>({
+            rowIndex: row.rowIndex,
+            topPixelAccumulated: row.topPixelAccumulated,
+            rowHeight: row.rowHeight,
+            offset: row.offset
+          })
+
+    nextLastVisibleRow.set(row.rowIndex, snapshot)
   })
   rowStore.lastVisibleRow = nextLastVisibleRow
 }
@@ -218,7 +258,7 @@ function updateLocationIndex(
  * @param visibleRows - Array of currently visible rows.
  * @param lastRowBottom - Reference to store the bottom position of the last row.
  */
-function updateLastRowBottom(
+export function updateLastRowBottom(
   visibleRows: Ref<Row[]>,
   lastRowBottom: Ref<number>,
   endHeight: number,
@@ -234,9 +274,6 @@ function updateLastRowBottom(
       fetchRowInWorker(lastRowIndex + 1, isolationId).catch((err: unknown) => {
         console.error('fetchRowInWorker failed:', err)
       })
-      setTimeout(() => {
-        prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
-      }, 0)
     }
   }
 }

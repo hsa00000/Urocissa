@@ -20,6 +20,23 @@ node performance\run.mjs compare --baseline .performance\baseline\latest\summary
 node performance\run.mjs smoke --count 100000 --samples 1
 ```
 
+### Scroll-lag microbenchmark
+
+With Rocket listening on `127.0.0.1:5673` and Vite on `127.0.0.1:5173`, run the
+focused compensated-virtual-scroll benchmark with:
+
+```powershell
+node performance\scroll-lag.mjs --scenario continuous-down --samples 5 --expect strict-smooth
+node performance\scroll-lag.mjs --scenario continuous-up --samples 5
+node performance\scroll-lag.mjs --scenario worker-delay --worker-delay 300 --timer-zero-budget 10
+```
+
+Available scenarios are `continuous-down`, `continuous-up`, `worker-delay`, `bounds`,
+`scrollbar`, `locate`, `resize`, and `mobile`. `bounds` alternates upper and lower bounds
+between samples; `locate` can use `--locate <hash>` or a hash observed from the loaded page.
+Reports include CDP timer install/fire counts for 0, 50, 75, and 100 ms timers. Use
+`--expect strict-smooth` when every sample must pass the jank gate.
+
 The runner builds the backend with `--profile dev-release --features performance-test` (never plain `--release`), builds the frontend, starts an isolated server, inserts the fixture, and restarts it to measure recovery. Chromium then performs the existing login/top-scroll/middle-jump/end-jump journey followed by:
 
 - creating and titling an album;

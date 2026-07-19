@@ -1,5 +1,6 @@
 // useFetchRows.ts
-import { Ref, watch } from 'vue'
+import { onScopeDispose, watch } from 'vue'
+import type { Ref } from 'vue'
 import { useInitializedStore } from '@/store/initializedStore'
 import { fetchRowInWorker } from '@/api/fetchRow'
 import debounce from 'lodash/debounce'
@@ -7,38 +8,9 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import { useRowStore } from '@/store/rowStore'
 import { useOffsetStore } from '@/store/offsetStore'
 import { useScrollTopStore } from '@/store/scrollTopStore'
-import { IsolationId } from '@type/types'
-
-/**
- * Computes the sum of offsets for rows above the given scroll position.
- *
- * @param scrollTop - The given scroll position in pixels.
- * @returns The sum of offsets for all rows above the given scroll position.
- */
-function computeOffSetSumOfAboveRowsIndex(scrollTop: number, isolationId: IsolationId) {
-  const aboveRowsIndex: number[] = []
-  const rowStore = useRowStore(isolationId)
-
-  for (const row of rowStore.rowData.values()) {
-    if (row.topPixelAccumulated + row.offset < scrollTop) {
-      aboveRowsIndex.push(row.rowIndex)
-    }
-  }
-
-  const offsetStore = useOffsetStore(isolationId)
-  let offsetSum = 0
-
-  aboveRowsIndex.forEach((rowIndex) => {
-    const offset = offsetStore.offset.get(rowIndex)
-    if (offset !== undefined) {
-      offsetSum += offset
-    } else {
-      console.error('offset is undefined')
-    }
-  })
-
-  return offsetSum
-}
+import type { IsolationId } from '@type/types'
+import { fixedBigRowHeight } from '@/type/constants'
+import { computeOffSetSumOfAboveRowsIndex } from '@utils/rowOffset'
 
 /**
  * Custom hook to fetch rows of data in a virtual scrolling environment based on the current scroll position.
@@ -59,15 +31,18 @@ export function useFetchRows(
   const initializedStore = useInitializedStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
   const scrollTopStore = useScrollTopStore(isolationId)
+  const rowStore = useRowStore(isolationId)
+  const offsetStore = useOffsetStore(isolationId)
 
   const debouncedFetch = debounce(
     async () => {
       if (initializedStore.initialized) {
         const offSetSumOfAboveRowsIndex = computeOffSetSumOfAboveRowsIndex(
           scrollTopStore.scrollTop,
-          isolationId
+          rowStore.rowData,
+          offsetStore.offset
         )
-        const fixedHeight = 2400
+        const fixedHeight = fixedBigRowHeight
         const startHeightOffseted = startHeight.value - offSetSumOfAboveRowsIndex - fixedHeight
         const endHeightOffseted = endHeight.value - offSetSumOfAboveRowsIndex + fixedHeight
         const startIndex = Math.floor(startHeightOffseted / fixedHeight)
@@ -99,4 +74,8 @@ export function useFetchRows(
     debouncedFetch,
     { immediate: true }
   )
+
+  onScopeDispose(() => {
+    debouncedFetch.cancel()
+  })
 }

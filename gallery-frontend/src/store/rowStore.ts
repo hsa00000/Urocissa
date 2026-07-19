@@ -1,11 +1,18 @@
 import type { IsolationId, Row } from '@type/types'
 import { defineStore } from 'pinia'
 
+export interface RowGeometrySnapshot {
+  readonly rowIndex: number
+  readonly topPixelAccumulated: number
+  readonly rowHeight: number
+  readonly offset: number
+}
+
 export const useRowStore = (isolationId: IsolationId) =>
   defineStore('rowStore' + isolationId, {
     state: (): {
       rowData: Map<number, Row> //  Map<rowIndex, Row>
-      lastVisibleRow: Map<number, Row>
+      lastVisibleRow: Map<number, RowGeometrySnapshot>
       firstRowFetched: boolean
     } => ({
       rowData: new Map(),

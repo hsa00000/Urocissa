@@ -1,4 +1,4 @@
-import { computed, Ref, watch } from 'vue'
+import { computed, onScopeDispose, Ref, watch } from 'vue'
 import { fetchDataInWorker } from '@/api/fetchData'
 import { useDataStore } from '@/store/dataStore'
 import debounce from 'lodash/debounce'
@@ -21,9 +21,9 @@ export function useFetchImgs(
   debounceTime = 75,
   maxWait = 1000
 ) {
+  const dataStore = useDataStore(isolationId)
   const debouncedFetch = debounce(
     async () => {
-      const dataStore = useDataStore(isolationId)
       const length = visibleRowsLength.value
       if (length > 0) {
         const startBatchIndex = Math.max(
@@ -59,4 +59,8 @@ export function useFetchImgs(
   })
 
   watch(visibleRowsId, debouncedFetch, { immediate: true })
+
+  onScopeDispose(() => {
+    debouncedFetch.cancel()
+  })
 }

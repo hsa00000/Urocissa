@@ -16,6 +16,23 @@ function numberOption(name, fallback) {
   return value
 }
 
+function nonNegativeNumberOption(name, fallback) {
+  const value = Number(option(name, fallback))
+  if (!Number.isFinite(value) || value < 0) throw new Error(`--${name} must be non-negative`)
+  return value
+}
+
+const supportedScenarios = new Set([
+  'continuous-down',
+  'continuous-up',
+  'worker-delay',
+  'bounds',
+  'scrollbar',
+  'locate',
+  'resize',
+  'mobile'
+])
+
 const config = {
   url: option('url', 'http://127.0.0.1:5173').replace(/\/$/, ''),
   password: option('password', process.env.UROCISSA_PASSWORD ?? 'password'),
@@ -28,13 +45,21 @@ const config = {
   viewportHeight: Math.floor(numberOption('viewport-height', 1000)),
   scrollWorkPerPulseBudgetMs: numberOption('scroll-work-per-pulse-budget', 0.7),
   behaviorTolerancePx: numberOption('behavior-tolerance', 1),
+  timerZeroBudget: Math.floor(nonNegativeNumberOption('timer-zero-budget', 10)),
+  workerDelayMs: Math.floor(numberOption('worker-delay', 300)),
+  scenario: option('scenario', 'continuous-down'),
+  locate: option('locate', null),
   output: option('output', null),
   expect: option('expect', 'none'),
   headed: args.includes('--headed')
 }
 
-if (!['none', 'janky', 'smooth'].includes(config.expect)) {
-  throw new Error('--expect must be one of: none, janky, smooth')
+if (!supportedScenarios.has(config.scenario)) {
+  throw new Error(`--scenario must be one of: ${[...supportedScenarios].join(', ')}`)
+}
+
+if (!['none', 'janky', 'smooth', 'strict-smooth'].includes(config.expect)) {
+  throw new Error('--expect must be one of: none, janky, smooth, strict-smooth')
 }
 
 const transparentPng = Buffer.from(
@@ -86,6 +111,27 @@ function summarizeTrace(events) {
     (event) => event.name === 'UpdateLayoutTree' && onRendererMain(event)
   )
   const tasks = events.filter((event) => event.name === 'RunTask' && onRendererMain(event))
+  const timerInstalls = events.filter((event) => {
+    if (event.name !== 'TimerInstall' || !onRendererMain(event)) return false
+    const stack = event.args?.data?.stackTrace ?? []
+    return !stack.some((frame) => String(frame.url ?? '').startsWith('chrome-extension://'))
+  })
+  const timerDelayById = new Map(
+    timerInstalls.map((event) => [
+      `${event.pid}:${event.tid}:${event.args?.data?.timerId}`,
+      Number(event.args?.data?.timeout ?? -1)
+    ])
+  )
+  const timerFires = events.filter(
+    (event) => event.name === 'TimerFire' && onRendererMain(event)
+  )
+  const timerInstallCount = (delay) =>
+    timerInstalls.filter((event) => Number(event.args?.data?.timeout) === delay).length
+  const timerFireCount = (delay) =>
+    timerFires.filter(
+      (event) =>
+        timerDelayById.get(`${event.pid}:${event.tid}:${event.args?.data?.timerId}`) === delay
+    ).length
   const droppedFrames = events.filter((event) => event.name === 'DroppedFrame')
   const scrollLayers = events.filter(
     (event) =>
@@ -136,12 +182,22 @@ function summarizeTrace(events) {
     updateLayoutTreeTotalMs: round(layoutDurations.reduce((sum, value) => sum + value, 0)),
     runTaskMaxMs: round(Math.max(0, ...taskDurations)),
     longTaskCount: taskDurations.filter((duration) => duration >= 50).length,
+    timerInstallCount: timerInstalls.length,
+    timerFireCount: timerFires.length,
+    timerInstall0Count: timerInstallCount(0),
+    timerInstall50Count: timerInstallCount(50),
+    timerInstall75Count: timerInstallCount(75),
+    timerInstall100Count: timerInstallCount(100),
+    timerFire0Count: timerFireCount(0),
+    timerFire50Count: timerFireCount(50),
+    timerFire75Count: timerFireCount(75),
+    timerFire100Count: timerFireCount(100),
     imageContainerScrollLayerCount: scrollLayers.length,
     slowestScrollEventBreakdown
   }
 }
 
-function summarizeFrames(state) {
+function summarizeFrames(state, expectedDisplacementOverride = null) {
   const frameGaps = state.frames.map((frame) => frame.gap).filter((gap) => gap !== null)
   const trackedFrames = state.frames.filter((frame) => frame.anchorTop !== null)
   const anchorFrames = trackedFrames.filter(
@@ -171,10 +227,9 @@ function summarizeFrames(state) {
 
   const firstAnchorFrame = anchorFrames[0]
   const lastAnchorFrame = anchorFrames[anchorFrames.length - 1]
-  const expectedVisualDisplacementPx = state.wheelEvents.reduce(
-    (sum, wheel) => sum + wheel.deltaY,
-    0
-  )
+  const expectedVisualDisplacementPx =
+    expectedDisplacementOverride ??
+    state.wheelEvents.reduce((sum, wheel) => sum + wheel.deltaY, 0)
   const actualVisualDisplacementPx =
     firstAnchorFrame && lastAnchorFrame
       ? firstAnchorFrame.anchorTop - lastAnchorFrame.anchorTop
@@ -198,6 +253,19 @@ function summarizeFrames(state) {
     expectedVisualDisplacementPx: round(expectedVisualDisplacementPx),
     actualVisualDisplacementPx: round(actualVisualDisplacementPx),
     visualDisplacementErrorPx: round(visualDisplacementErrorPx)
+  }
+}
+
+function summarizePassiveFrames(state) {
+  return {
+    ...summarizeFrames(state, 0),
+    visualFrameCount: 0,
+    visualMoveP95Px: 0,
+    visualMoveMaxPx: 0,
+    stalledInputFrames: 0,
+    expectedVisualDisplacementPx: 0,
+    actualVisualDisplacementPx: 0,
+    visualDisplacementErrorPx: 0
   }
 }
 
@@ -279,15 +347,7 @@ async function installInstrumentation(context) {
   })
 }
 
-async function loginAndWait(page) {
-  await page.goto(`${config.url}/login`, { waitUntil: 'domcontentloaded' })
-  const password = page.getByRole('textbox', { name: 'Password' })
-  if (await password.isVisible().catch(() => false)) {
-    await password.fill(config.password)
-    await page.getByRole('button', { name: 'Login' }).click()
-    await page.waitForURL((url) => url.pathname !== '/login', { timeout: 30_000 })
-  }
-
+async function waitForGallery(page) {
   const imageContainer = page.locator('#image-container')
   await imageContainer.waitFor({ state: 'visible', timeout: 30_000 })
   try {
@@ -307,6 +367,18 @@ async function loginAndWait(page) {
   }
   await page.waitForTimeout(1500)
   return imageContainer
+}
+
+async function loginAndWait(page) {
+  await page.goto(`${config.url}/login`, { waitUntil: 'domcontentloaded' })
+  const password = page.getByRole('textbox', { name: 'Password' })
+  if (await password.isVisible().catch(() => false)) {
+    await password.fill(config.password)
+    await page.getByRole('button', { name: 'Login' }).click()
+    await page.waitForURL((url) => url.pathname !== '/login', { timeout: 30_000 })
+  }
+
+  return waitForGallery(page)
 }
 
 async function beginFrameSampling(page) {
@@ -330,6 +402,19 @@ async function beginFrameSampling(page) {
   })
 }
 
+async function beginPassiveSampling(page) {
+  return page.evaluate(() => {
+    const state = window.__scrollLag
+    if (!state) throw new Error('scroll instrumentation was not installed')
+    state.anchorStart = null
+    state.frames.length = 0
+    state.wheelEvents.length = 0
+    state.scrollEvents.length = 0
+    state.lastFrame = null
+    state.running = true
+  })
+}
+
 async function finishFrameSampling(page) {
   return page.evaluate(() => {
     const state = window.__scrollLag
@@ -343,10 +428,272 @@ async function finishFrameSampling(page) {
   })
 }
 
+async function firstRenderedRowStart(page) {
+  return page.evaluate(
+    () => document.querySelector('#buffer [start]')?.getAttribute('start') ?? null
+  )
+}
+
+async function renderedRowCount(page) {
+  return page.evaluate(() => document.querySelectorAll('#buffer [start]').length)
+}
+
+async function waitForDifferentRow(page, previousStart, timeout = 5000) {
+  await page.waitForFunction(
+    (start) => {
+      const rows = [...document.querySelectorAll('#buffer [start]')]
+      return rows.length > 0 && rows[0]?.getAttribute('start') !== start
+    },
+    previousStart,
+    { timeout }
+  )
+  return firstRenderedRowStart(page)
+}
+
+async function clickScrollbarAt(page, percentage) {
+  const scrollbar = page.locator('#scroll-bar')
+  const box = await scrollbar.boundingBox()
+  if (!box) throw new Error('scrollbar does not have a bounding box')
+  await page.mouse.click(
+    box.x + box.width / 2,
+    box.y + Math.min(Math.max(box.height * percentage, 1), box.height - 1)
+  )
+}
+
+async function dragScrollbar(page, fromPercentage, toPercentage) {
+  const scrollbar = page.locator('#scroll-bar')
+  const box = await scrollbar.boundingBox()
+  if (!box) throw new Error('scrollbar does not have a bounding box')
+  const x = box.x + box.width / 2
+  await page.mouse.move(x, box.y + box.height * fromPercentage)
+  await page.mouse.down()
+  await page.mouse.move(x, box.y + box.height * toPercentage, { steps: 8 })
+  await page.mouse.up()
+}
+
+async function runWheelPulses(page, deltaY) {
+  for (let pulse = 0; pulse < config.pulses; pulse += 1) {
+    await page.mouse.wheel(0, deltaY)
+    await page.waitForTimeout(config.intervalMs)
+  }
+}
+
+async function runContinuousScenario(page, imageContainer, direction) {
+  if (direction < 0) {
+    await imageContainer.hover()
+    await page.mouse.wheel(0, config.deltaY * config.pulses * 2)
+    await page.waitForTimeout(300)
+  }
+
+  await imageContainer.hover()
+  const physicalAnchorStart = await imageContainer.evaluate((element) => element.scrollTop)
+  const anchorStart = await beginFrameSampling(page)
+  await page.waitForTimeout(100)
+  await runWheelPulses(page, config.deltaY * direction)
+  await page.waitForTimeout(500)
+  const frameState = await finishFrameSampling(page)
+  const physicalAnchorEnd = await imageContainer.evaluate((element) => element.scrollTop)
+  const frameMetrics = summarizeFrames(frameState)
+  const physicalAnchorErrorPx = Math.abs(physicalAnchorEnd - physicalAnchorStart)
+
+  return {
+    anchorStart,
+    behaviorEquivalent:
+      frameMetrics.wheelEventCount === config.pulses &&
+      frameMetrics.visualDisplacementErrorPx <= config.behaviorTolerancePx &&
+      physicalAnchorErrorPx <= config.behaviorTolerancePx,
+    frameMetrics,
+    physicalAnchorErrorPx: round(physicalAnchorErrorPx),
+    applyScrollBudget: true,
+    interactionCount: config.pulses,
+    details: { direction: direction < 0 ? 'up' : 'down' }
+  }
+}
+
+async function runBoundsScenario(page, imageContainer, sampleIndex) {
+  const boundary = sampleIndex % 2 === 0 ? 'upper' : 'lower'
+  await clickScrollbarAt(page, boundary === 'upper' ? 0 : 1)
+  await page.waitForTimeout(1500)
+  await imageContainer.hover()
+  if (boundary === 'lower') {
+    await page.mouse.wheel(0, config.deltaY * config.pulses * 4)
+    await page.waitForTimeout(500)
+  }
+  const physicalAnchorStart = await imageContainer.evaluate((element) => element.scrollTop)
+  const anchorStart = await beginFrameSampling(page)
+  await page.waitForTimeout(100)
+  await runWheelPulses(page, config.deltaY * (boundary === 'upper' ? -1 : 1))
+  await page.waitForTimeout(500)
+  const frameState = await finishFrameSampling(page)
+  const frameMetrics = summarizeFrames(frameState, 0)
+  const physicalAnchorEnd = await imageContainer.evaluate((element) => element.scrollTop)
+  const physicalAnchorErrorPx = Math.abs(physicalAnchorEnd - physicalAnchorStart)
+
+  return {
+    anchorStart,
+    behaviorEquivalent:
+      frameMetrics.wheelEventCount === config.pulses &&
+      frameMetrics.visualDisplacementErrorPx <= config.behaviorTolerancePx &&
+      physicalAnchorErrorPx <= config.behaviorTolerancePx,
+    frameMetrics,
+    physicalAnchorErrorPx: round(physicalAnchorErrorPx),
+    applyScrollBudget: true,
+    interactionCount: config.pulses,
+    details: { boundary }
+  }
+}
+
+async function runWorkerDelayScenario(page) {
+  await page.route('**/get/get-rows**', async (route) => {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, config.workerDelayMs))
+    await route.continue()
+  })
+  const initialStart = await firstRenderedRowStart(page)
+  await beginPassiveSampling(page)
+  await clickScrollbarAt(page, 0.6)
+  let finalStart = initialStart
+  let changed = false
+  try {
+    finalStart = await waitForDifferentRow(page, initialStart, 10_000)
+    changed = true
+  } catch {
+    finalStart = await firstRenderedRowStart(page)
+  }
+  await page.waitForTimeout(config.workerDelayMs + 500)
+  const frameState = await finishFrameSampling(page)
+  const rowCount = await renderedRowCount(page)
+
+  return {
+    anchorStart: null,
+    behaviorEquivalent: changed && rowCount > 0,
+    frameMetrics: summarizePassiveFrames(frameState),
+    physicalAnchorErrorPx: 0,
+    applyScrollBudget: false,
+    interactionCount: 1,
+    details: { initialStart, finalStart, rowCount, workerDelayMs: config.workerDelayMs }
+  }
+}
+
+async function runScrollbarScenario(page) {
+  const initialStart = await firstRenderedRowStart(page)
+  await beginPassiveSampling(page)
+  await clickScrollbarAt(page, 0.4)
+  let clickedStart = initialStart
+  try {
+    clickedStart = await waitForDifferentRow(page, initialStart)
+  } catch {
+    clickedStart = await firstRenderedRowStart(page)
+  }
+  await dragScrollbar(page, 0.4, 0.75)
+  await page.waitForTimeout(1500)
+  const draggedStart = await firstRenderedRowStart(page)
+  const frameState = await finishFrameSampling(page)
+  const rowCount = await renderedRowCount(page)
+
+  return {
+    anchorStart: null,
+    behaviorEquivalent:
+      rowCount > 0 && clickedStart !== initialStart && draggedStart !== clickedStart,
+    frameMetrics: summarizePassiveFrames(frameState),
+    physicalAnchorErrorPx: 0,
+    applyScrollBudget: false,
+    interactionCount: 2,
+    details: { initialStart, clickedStart, draggedStart, rowCount }
+  }
+}
+
+function objectHashFromUrl(url) {
+  const match = new URL(url).pathname.match(/\/object\/[^/]+\/[^/]+\/([^/.]+)\.[^/]+$/)
+  return match?.[1] ?? null
+}
+
+async function runLocateScenario(page, requestedObjectUrls) {
+  const locateHash = config.locate ?? requestedObjectUrls.map(objectHashFromUrl).find(Boolean)
+  await beginPassiveSampling(page)
+  let highlighted = false
+  let queryRemoved = false
+
+  if (locateHash) {
+    const targetUrl = new URL(page.url())
+    targetUrl.searchParams.set('locate', locateHash)
+    await page.goto(targetUrl.toString(), { waitUntil: 'domcontentloaded' })
+    await waitForGallery(page)
+    highlighted = await page.locator('.locate-highlight').first().isVisible().catch(() => false)
+    queryRemoved = !new URL(page.url()).searchParams.has('locate')
+  }
+
+  const frameState = await finishFrameSampling(page)
+  const rowCount = await renderedRowCount(page)
+  return {
+    anchorStart: null,
+    behaviorEquivalent: Boolean(locateHash) && highlighted && queryRemoved && rowCount > 0,
+    frameMetrics: summarizePassiveFrames(frameState),
+    physicalAnchorErrorPx: 0,
+    applyScrollBudget: false,
+    interactionCount: 1,
+    details: { locateHash, highlighted, queryRemoved, rowCount }
+  }
+}
+
+async function runResizeScenario(page) {
+  const anchorItemIndex = await page
+    .locator('[data-testid="gallery-item"]')
+    .first()
+    .getAttribute('data-item-index')
+  await beginPassiveSampling(page)
+  await page.setViewportSize({
+    width: Math.max(640, config.viewportWidth - 320),
+    height: Math.max(480, config.viewportHeight - 200)
+  })
+  await page.waitForTimeout(1500)
+  const anchorStillRendered =
+    anchorItemIndex !== null &&
+    (await page.locator(`[data-item-index="${anchorItemIndex}"]`).count()) > 0
+  const frameState = await finishFrameSampling(page)
+  const rowCount = await renderedRowCount(page)
+
+  return {
+    anchorStart: null,
+    behaviorEquivalent: anchorStillRendered && rowCount > 0,
+    frameMetrics: summarizePassiveFrames(frameState),
+    physicalAnchorErrorPx: 0,
+    applyScrollBudget: false,
+    interactionCount: 1,
+    details: { anchorItemIndex, anchorStillRendered, rowCount }
+  }
+}
+
+async function runScenario(page, imageContainer, sampleIndex, requestedObjectUrls) {
+  switch (config.scenario) {
+    case 'continuous-up':
+      return runContinuousScenario(page, imageContainer, -1)
+    case 'worker-delay':
+      return runWorkerDelayScenario(page)
+    case 'bounds':
+      return runBoundsScenario(page, imageContainer, sampleIndex)
+    case 'scrollbar':
+      return runScrollbarScenario(page)
+    case 'locate':
+      return runLocateScenario(page, requestedObjectUrls)
+    case 'resize':
+      return runResizeScenario(page)
+    case 'continuous-down':
+    case 'mobile':
+      return runContinuousScenario(page, imageContainer, 1)
+    default:
+      throw new Error(`unsupported scenario: ${config.scenario}`)
+  }
+}
+
 async function runSample(browser, sampleIndex) {
+  const mobile = config.scenario === 'mobile'
   const context = await browser.newContext({
-    viewport: { width: config.viewportWidth, height: config.viewportHeight },
+    viewport: mobile
+      ? { width: Math.min(config.viewportWidth, 390), height: Math.min(config.viewportHeight, 844) }
+      : { width: config.viewportWidth, height: config.viewportHeight },
     deviceScaleFactor: 1,
+    isMobile: mobile,
+    hasTouch: mobile,
     serviceWorkers: 'block'
   })
   // Keep font resolution identical when the baseline frontend is served from a
@@ -360,6 +707,7 @@ async function runSample(browser, sampleIndex) {
   await installInstrumentation(context)
   const page = await context.newPage()
   const errors = []
+  const requestedObjectUrls = []
   page.on('pageerror', (error) => errors.push(`PAGE ${error.message}`))
   page.on('requestfailed', (request) => {
     if (request.failure()?.errorText !== 'net::ERR_ABORTED') {
@@ -371,42 +719,48 @@ async function runSample(browser, sampleIndex) {
       errors.push(`HTTP ${response.status()} ${response.url()}`)
     }
   })
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/object/')) {
+      requestedObjectUrls.push(request.url())
+    }
+  })
 
   try {
     const imageContainer = await loginAndWait(page)
-    await imageContainer.hover()
     const stopTrace = await startTrace(page)
-    const anchorStart = await beginFrameSampling(page)
-    await page.waitForTimeout(100)
-
-    for (let pulse = 0; pulse < config.pulses; pulse += 1) {
-      await page.mouse.wheel(0, config.deltaY)
-      await page.waitForTimeout(config.intervalMs)
-    }
-    await page.waitForTimeout(500)
-
-    const frameState = await finishFrameSampling(page)
+    const scenarioResult = await runScenario(
+      page,
+      imageContainer,
+      sampleIndex,
+      requestedObjectUrls
+    )
     const traceEvents = await stopTrace()
-    const frameMetrics = summarizeFrames(frameState)
+    const frameMetrics = scenarioResult.frameMetrics
     const traceMetrics = summarizeTrace(traceEvents)
     const scrollEventWorkPerPulseMs = round(
-      traceMetrics.scrollEventTotalMs / config.pulses
+      traceMetrics.scrollEventTotalMs / Math.max(scenarioResult.interactionCount, 1)
     )
-    const behaviorEquivalent =
-      frameMetrics.wheelEventCount === config.pulses &&
-      frameMetrics.visualDisplacementErrorPx <= config.behaviorTolerancePx
+    const timerBudgetExceeded =
+      config.scenario === 'worker-delay' &&
+      traceMetrics.timerInstall0Count > config.timerZeroBudget
+    const behaviorEquivalent = scenarioResult.behaviorEquivalent && !timerBudgetExceeded
     const jankSignature =
-      scrollEventWorkPerPulseMs >= config.scrollWorkPerPulseBudgetMs ||
+      (scenarioResult.applyScrollBudget &&
+        scrollEventWorkPerPulseMs >= config.scrollWorkPerPulseBudgetMs) ||
       frameMetrics.frameGapOver25MsCount > 0 ||
       traceMetrics.updateLayoutTreeMaxMs >= 8 ||
-      traceMetrics.longTaskCount > 0
+      traceMetrics.longTaskCount > 0 ||
+      timerBudgetExceeded
 
     return {
       sample: sampleIndex + 1,
-      anchorStart,
+      scenario: config.scenario,
+      anchorStart: scenarioResult.anchorStart,
       behaviorEquivalent,
       jankSignature,
       scrollEventWorkPerPulseMs,
+      physicalAnchorErrorPx: scenarioResult.physicalAnchorErrorPx,
+      scenarioDetails: scenarioResult.details,
       ...frameMetrics,
       ...traceMetrics,
       errors
@@ -425,6 +779,7 @@ function aggregate(samples) {
     const values = samples.map((sample) => sample[key])
     metrics[key] = {
       median: round(percentile(values, 0.5)),
+      p95: round(percentile(values, 0.95)),
       max: round(Math.max(...values))
     }
   }
@@ -443,7 +798,7 @@ try {
     const sample = await runSample(browser, sampleIndex)
     samples.push(sample)
     console.error(
-      `sample ${sample.sample}: dropped=${sample.droppedFrameCount} ` +
+      `sample ${sample.sample} (${sample.scenario}): dropped=${sample.droppedFrameCount} ` +
         `scrollWorkPerPulse=${sample.scrollEventWorkPerPulseMs}ms ` +
         `behaviorError=${sample.visualDisplacementErrorPx}px`
     )
@@ -486,6 +841,12 @@ if (config.expect === 'janky' && report.aggregate.jankySamples < requiredJankySa
 if (config.expect === 'smooth' && report.aggregate.jankySamples >= requiredJankySamples) {
   throw new Error(
     `expected smooth scrolling in a majority of samples, observed ` +
+      `${report.aggregate.jankySamples}/${config.samples} jank signatures`
+  )
+}
+if (config.expect === 'strict-smooth' && report.aggregate.jankySamples > 0) {
+  throw new Error(
+    `expected every sample to be smooth, observed ` +
       `${report.aggregate.jankySamples}/${config.samples} jank signatures`
   )
 }

@@ -17,7 +17,6 @@ export const useOffsetStore = (isolationId: IsolationId) =>
           if (key < currentRowIndex) {
             sum += value
           }
-          setTimeout(() => ({}), 0)
         })
         return sum
       },

@@ -70,13 +70,13 @@ import { useRouter, useRoute } from 'vue-router'
 import { useQueueStore } from '@/store/queueStore'
 import { useWorkerStore } from '@/store/workerStore'
 import { getArrayValue } from '@utils/getter'
-import { useScrollTopStore } from '@/store/scrollTopStore'
 import MainBlock from './FunctionalComponent/MainBlock'
 import DesktopHoverIcon from './FunctionalComponent/DesktopHoverIcon'
 import HoverGradientDiv from './FunctionalComponent/HoverGradientDiv'
 import { useConfigStore } from '@/store/configStore'
 import { useConstStore } from '@/store/constStore'
 import { useLocationStore } from '@/store/locationStore'
+import { useRowScrollActivity } from '@/script/hook/useScrollActivity'
 const props = defineProps<{
   row: Row
   isolationId: IsolationId
@@ -90,32 +90,15 @@ const prefetchStore = usePrefetchStore(props.isolationId)
 const collectionStore = useCollectionStore(props.isolationId)
 const queueStore = useQueueStore(props.isolationId)
 const workerStore = useWorkerStore(props.isolationId)
-const scorllTopStore = useScrollTopStore(props.isolationId)
 const locationStore = useLocationStore(props.isolationId)
 const timeInterval = ref(0)
 const isLongPress = ref(false)
 const pressTimer = ref<number | null>(null)
-const scrollingTimer = ref<number | null>(null)
-const isScrolling = ref(false)
+const isScrolling = useRowScrollActivity()
+const highlightTimers = new Set<ReturnType<typeof setTimeout>>()
+let intervalId: ReturnType<typeof setInterval> | null = null
 
 const mobile = configStore.isMobile
-
-watch(
-  () => scorllTopStore.scrollTop,
-  () => {
-    isScrolling.value = true
-
-    if (scrollingTimer.value !== null) {
-      clearTimeout(scrollingTimer.value)
-    }
-
-    scrollingTimer.value = window.setTimeout(() => {
-      isScrolling.value = false
-
-      scrollingTimer.value = null
-    }, 100)
-  }
-)
 
 const { handleClick } = useHandleClick(router, route, props.isolationId)
 
@@ -173,25 +156,43 @@ watch(
   () => locationStore.highlightedIndex,
   (val) => {
     if (val !== null && val >= props.row.start && val <= props.row.end) {
-      setTimeout(() => {
+      const highlightTimer = setTimeout(() => {
         locationStore.highlightedIndex = null
+        highlightTimers.delete(highlightTimer)
       }, 2000)
+      highlightTimers.add(highlightTimer)
     }
   }
 )
 
 onMounted(() => {
-  const intervalId = setInterval(() => {
+  intervalId = setInterval(() => {
     // this part is crutial: if we do not delay the show of img, the scrub will lag if the img already loading
     if (timeInterval.value < layoutBatchNumber) {
       timeInterval.value += layoutBatchNumber
     } else {
-      clearInterval(intervalId)
+      if (intervalId !== null) {
+        clearInterval(intervalId)
+        intervalId = null
+      }
     }
   }, 0)
 })
 
 onBeforeUnmount(() => {
+  if (pressTimer.value !== null) {
+    clearTimeout(pressTimer.value)
+    pressTimer.value = null
+  }
+  if (intervalId !== null) {
+    clearInterval(intervalId)
+    intervalId = null
+  }
+  highlightTimers.forEach((timer) => {
+    clearTimeout(timer)
+  })
+  highlightTimers.clear()
+
   for (let abortIndex = props.row.start; abortIndex <= props.row.end; abortIndex++) {
     const workerIndex = abortIndex % constStore.concurrencyNumber
     if (workerStore.postToImgWorkerList !== undefined) {

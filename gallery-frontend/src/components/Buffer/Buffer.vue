@@ -31,7 +31,6 @@
           row.start,
           row.end,
           row.displayElements,
-          prefetchStore.updateVisibleRowTrigger,
           prefetchStore.timestamp
         ]"
         class="position-absolute w-100"
@@ -83,7 +82,7 @@
  * `scrollTop` is used to manage user scrolling because the scrollTop of the parent (image-container) is reset for every frame.
  * `bufferHeight / 3` is used to position the RowBlock at a sufficient distance from the top of the component so that the parent Homepage can scroll up without reaching the top prematurely.
  */
-import { ComponentPublicInstance, Ref, computed, ref, watch } from 'vue'
+import { ComponentPublicInstance, Ref, computed, provide, ref, watch } from 'vue'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useFetchImgs } from '@/script/hook/useFetchImgs'
 import { useUpdateVisibleRows } from '@/script/hook/useUpdateVisibleRows'
@@ -95,6 +94,7 @@ import { useScrollTopStore } from '@/store/scrollTopStore'
 import { getArrayValue, getInjectValue } from '@utils/getter'
 import { IsolationId } from '@type/types'
 import { useRowStore } from '@/store/rowStore'
+import { scrollActivityKey, useScrollActivity } from '@/script/hook/useScrollActivity'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -104,6 +104,8 @@ const props = defineProps<{
 const prefetchStore = usePrefetchStore(props.isolationId)
 const scrollTopStore = useScrollTopStore(props.isolationId)
 const rowStore = useRowStore(props.isolationId)
+const scrollActivity = useScrollActivity(() => scrollTopStore.scrollTop)
+provide(scrollActivityKey, scrollActivity)
 
 const windowWidth = getInjectValue<Ref<number>>('windowWidth')
 const windowHeight = getInjectValue<Ref<number>>('windowHeight')
