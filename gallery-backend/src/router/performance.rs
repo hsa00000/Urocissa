@@ -18,6 +18,7 @@ mod enabled {
     use crate::public::error::{AppError, ErrorKind};
     use crate::public::structure::abstract_data::AbstractData;
     use crate::public::structure::album::share::Share;
+    use crate::public::structure::object::next_mutation_timestamp;
     use crate::router::AppResult;
     use crate::storage::cache::{
         EXPIRE_CACHE_BYTES, QUERY_SNAPSHOT_CACHE_BYTES, TREE_SNAPSHOT_CACHE_BYTES,
@@ -410,7 +411,11 @@ mod enabled {
             add: BTreeSet::from([request.marker_tag]),
             remove: BTreeSet::new(),
         };
-        let bytes = operation.estimated_bytes();
+        let touch = DirtyOperation::Touch {
+            targets: targets.clone(),
+            changed_at: next_mutation_timestamp(),
+        };
+        let bytes = operation.estimated_bytes() + touch.estimated_bytes();
         WRITE_BEHIND.reserve(bytes).await?;
 
         let mut state = match TREE.state.write() {
@@ -444,6 +449,7 @@ mod enabled {
         }
         let status = WRITE_BEHIND.status();
         WRITE_BEHIND.enqueue_reserved(operation, bytes);
+        WRITE_BEHIND.enqueue_reserved(touch, 0);
         WRITE_BEHIND.inject_flush_failure_after_commits(request.commits_before_failure);
         VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
         drop(state);

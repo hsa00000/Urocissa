@@ -46,6 +46,11 @@ fn rotate_image_inner(hash: ArrayString<64>) -> Result<()> {
         anyhow::bail!("only images can be rotated");
     }
     let compressed_path = data.compressed_path();
+    let current_cache_version = data.cache_version();
+    let next_cache_version = current_cache_version
+        .checked_add(1)
+        .context("thumbnail cache version overflow")?;
+    let next_thumbnail_path = data.thumbnail_path_for_version(next_cache_version);
     let rotated = image::open(&compressed_path)
         .with_context(|| format!("failed to load {}", compressed_path.display()))?
         .rotate270();
@@ -56,16 +61,21 @@ fn rotate_image_inner(hash: ArrayString<64>) -> Result<()> {
     let phash = generate_phash(&rotated);
 
     let mut publisher = ArtifactPublisher::new(format!("rotate-{}", Uuid::new_v4()));
-    let staged = publisher.stage_path(&compressed_path)?;
+    let staged = publisher.stage_path(&next_thumbnail_path)?;
     generate_thumbnail_for_image_to(&data, &rotated, &staged)?;
-    publisher.replace(staged, compressed_path);
+    publisher.replace(staged, next_thumbnail_path);
+    publisher.retire_after_commit(compressed_path);
     publish_media_mutation(slot_ref, hash, publisher, move |latest| {
         let AbstractData::Image(image) = latest else {
             anyhow::bail!("media type changed before image rotation was published");
         };
+        if image.object.cache_version != current_cache_version {
+            anyhow::bail!("thumbnail cache version changed before image rotation was published");
+        }
         image.metadata.width = width;
         image.metadata.height = height;
         image.object.thumbhash = Some(thumbhash);
+        image.object.cache_version = next_cache_version;
         image.metadata.phash = Some(phash);
         Ok(())
     })?;

@@ -26,6 +26,10 @@ static FAIL_AFTER_COMMITS: AtomicI64 = AtomicI64::new(-1);
 
 #[derive(Debug, Clone)]
 pub enum DirtyOperation {
+    Touch {
+        targets: TargetSet,
+        changed_at: i64,
+    },
     Tags {
         targets: TargetSet,
         add: BTreeSet<String>,
@@ -55,6 +59,7 @@ impl DirtyOperation {
     pub fn estimated_bytes(&self) -> usize {
         const HEADER: usize = 96;
         match self {
+            Self::Touch { targets, .. } => HEADER + targets.estimated_bytes(),
             Self::Tags {
                 targets,
                 add,
@@ -112,7 +117,8 @@ impl DirtyOperation {
 
     fn records(&self) -> usize {
         match self {
-            Self::Tags { targets, .. }
+            Self::Touch { targets, .. }
+            | Self::Tags { targets, .. }
             | Self::Albums { targets, .. }
             | Self::Flags { targets, .. } => targets.len(),
             Self::Description { .. }
@@ -141,10 +147,30 @@ impl DirtyBatch {
         }
     }
 
-    fn push(&mut self, operation: DirtyOperation) {
+    fn push(&mut self, mut operation: DirtyOperation) {
         // Coalesce repeated edits in the active sequence. This is especially
         // important for UI toggles and create -> rename -> share journeys.
+        if let DirtyOperation::Touch { targets, .. } = &operation
+            && let Some(index) = self.operations.iter().rposition(|candidate| {
+                matches!(candidate, DirtyOperation::Touch { targets: old, .. } if old == targets)
+            })
+        {
+            let previous = self.operations.remove(index);
+            let DirtyOperation::Touch {
+                changed_at: previous,
+                ..
+            } = previous
+            else {
+                unreachable!();
+            };
+            let DirtyOperation::Touch { changed_at, .. } = &mut operation else {
+                unreachable!();
+            };
+            *changed_at = (*changed_at).max(previous);
+            self.recount_bytes();
+        }
         match &operation {
+            DirtyOperation::Touch { .. } => {}
             DirtyOperation::Flags {
                 targets,
                 favorite,
@@ -335,7 +361,10 @@ impl DirtyBatch {
 
     fn cancel_targets(&mut self, targets: &TargetSet, album_ids: &BTreeSet<ArrayString<64>>) {
         self.operations.retain_mut(|operation| match operation {
-            DirtyOperation::Tags {
+            DirtyOperation::Touch {
+                targets: pending, ..
+            }
+            | DirtyOperation::Tags {
                 targets: pending, ..
             }
             | DirtyOperation::Flags {
@@ -373,7 +402,10 @@ impl DirtyBatch {
         published_album_ids: &BTreeSet<ArrayString<64>>,
     ) {
         self.operations.retain_mut(|operation| match operation {
-            DirtyOperation::Tags {
+            DirtyOperation::Touch {
+                targets: pending, ..
+            }
+            | DirtyOperation::Tags {
                 targets: pending, ..
             }
             | DirtyOperation::Flags {
@@ -1009,7 +1041,11 @@ fn persist_target_records(
     let mut targets = TargetSet::default();
     for operation in &batch.operations {
         match operation {
-            DirtyOperation::Tags {
+            DirtyOperation::Touch {
+                targets: operation_targets,
+                ..
+            }
+            | DirtyOperation::Tags {
                 targets: operation_targets,
                 ..
             }
@@ -1109,6 +1145,7 @@ fn persist_structural_albums(
 
 fn apply_record_operation(data: &mut AbstractData, operation: &DirtyOperation) {
     match operation {
+        DirtyOperation::Touch { changed_at, .. } => data.touch_update_at(*changed_at),
         DirtyOperation::Tags { add, remove, .. } => {
             let tags = data.tag_mut();
             tags.extend(add.iter().cloned());
@@ -1153,6 +1190,11 @@ fn apply_record_operation(data: &mut AbstractData, operation: &DirtyOperation) {
 
 fn apply_v6_record_operation(data: &mut V6AbstractData, operation: &DirtyOperation) {
     match operation {
+        DirtyOperation::Touch { changed_at, .. } => {
+            let object = data.object_mut();
+            object.update_at = object.update_at.max(*changed_at);
+            crate::public::structure::object::observe_mutation_timestamp(object.update_at);
+        }
         DirtyOperation::Tags { add, remove, .. } => {
             let tags = &mut data.object_mut().tags;
             tags.extend(add.iter().cloned());
@@ -1210,7 +1252,8 @@ fn apply_v6_overlay(
             DirtyOperation::AlbumDelete(album_id) if album_id.as_str() == id => {
                 *record = None;
             }
-            DirtyOperation::Tags { targets, .. }
+            DirtyOperation::Touch { targets, .. }
+            | DirtyOperation::Tags { targets, .. }
             | DirtyOperation::Albums { targets, .. }
             | DirtyOperation::Flags { targets, .. }
                 if slot_ref.is_some_and(|slot_ref| targets.contains(slot_ref)) =>
@@ -1245,7 +1288,8 @@ fn apply_overlay(
             DirtyOperation::AlbumDelete(album_id) if album_id.as_str() == id => {
                 *record = None;
             }
-            DirtyOperation::Tags { targets, .. }
+            DirtyOperation::Touch { targets, .. }
+            | DirtyOperation::Tags { targets, .. }
             | DirtyOperation::Albums { targets, .. }
             | DirtyOperation::Flags { targets, .. }
                 if slot_ref.is_some_and(|slot_ref| targets.contains(slot_ref)) =>
@@ -1269,9 +1313,25 @@ mod tests {
     use super::*;
     use crate::public::db::tree::state::SlotRef;
     use crate::public::structure::album::Album;
+    use crate::public::structure::image::{ImageCombined, ImageMetadata};
+    use crate::public::structure::object::{ObjectSchema, ObjectType};
 
     fn targets(values: impl IntoIterator<Item = u32>) -> TargetSet {
         TargetSet::from_slot_refs(values.into_iter().map(|value| SlotRef::new(value, 1)), 64)
+    }
+
+    fn image(update_at: i64, cache_version: u32) -> AbstractData {
+        let id = ArrayString::<64>::from(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        let mut object = ObjectSchema::new(id, ObjectType::Image);
+        object.update_at = update_at;
+        object.cache_version = cache_version;
+        AbstractData::Image(ImageCombined {
+            object,
+            metadata: ImageMetadata::new(id, 10, 20, 30, "jpg".to_owned()),
+        })
     }
 
     #[test]
@@ -1337,6 +1397,143 @@ mod tests {
         });
         assert!(batch.operations.is_empty());
         assert_eq!(batch.bytes, 0);
+    }
+
+    #[test]
+    fn inverse_metadata_edits_keep_the_latest_touch() {
+        let targets = targets([1, 2]);
+        let mut batch = DirtyBatch::new(1);
+        batch.push(DirtyOperation::Tags {
+            targets: targets.clone(),
+            add: BTreeSet::from(["marker".to_owned()]),
+            remove: BTreeSet::new(),
+        });
+        batch.push(DirtyOperation::Touch {
+            targets: targets.clone(),
+            changed_at: 100,
+        });
+        batch.push(DirtyOperation::Tags {
+            targets: targets.clone(),
+            add: BTreeSet::new(),
+            remove: BTreeSet::from(["marker".to_owned()]),
+        });
+        batch.push(DirtyOperation::Touch {
+            targets,
+            changed_at: 101,
+        });
+
+        assert_eq!(batch.operations.len(), 1);
+        assert!(matches!(
+            &batch.operations[0],
+            DirtyOperation::Touch {
+                changed_at: 101,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn coalesced_touch_stays_after_interleaved_album_replacement() {
+        let target_set = targets([1]);
+        let album_id = ArrayString::<64>::from("touch-order-album").unwrap();
+        let mut album = match Album::new(album_id, None).into_abstract_data() {
+            AbstractData::Album(album) => album,
+            _ => unreachable!(),
+        };
+        album.object.update_at = 10;
+        let slot = SlotRef::new(1, 1);
+        let mut batch = DirtyBatch::new(1);
+        batch.push(DirtyOperation::Touch {
+            targets: target_set.clone(),
+            changed_at: 100,
+        });
+        batch.push(DirtyOperation::AlbumReplace(album.clone()));
+        batch.push(DirtyOperation::Touch {
+            targets: target_set,
+            changed_at: 101,
+        });
+
+        assert!(matches!(
+            batch.operations.last(),
+            Some(DirtyOperation::Touch {
+                changed_at: 101,
+                ..
+            })
+        ));
+        let mut record = Some(AbstractData::Album(album));
+        apply_overlay(
+            &mut record,
+            Some(slot),
+            album_id.as_str(),
+            &batch.operations,
+        );
+        let Some(AbstractData::Album(record)) = record else {
+            unreachable!();
+        };
+        assert_eq!(record.object.update_at, 101);
+    }
+
+    #[test]
+    fn touch_overlay_is_stable_and_does_not_change_thumbnail_version() {
+        let slot = SlotRef::new(1, 1);
+        let target_set = TargetSet::from_slot_refs([slot], 64);
+        let operation = DirtyOperation::Touch {
+            targets: target_set,
+            changed_at: 100,
+        };
+        let base = image(10, 7);
+        let id = base.hash().to_string();
+
+        let mut first_read = Some(base.clone());
+        apply_overlay(
+            &mut first_read,
+            Some(slot),
+            &id,
+            std::slice::from_ref(&operation),
+        );
+        let mut second_read = Some(base.clone());
+        apply_overlay(
+            &mut second_read,
+            Some(slot),
+            &id,
+            std::slice::from_ref(&operation),
+        );
+
+        let first_read = first_read.unwrap();
+        let second_read = second_read.unwrap();
+        assert_eq!(first_read.cache_version(), 7);
+        assert_eq!(second_read.cache_version(), 7);
+        let first_update_at = match first_read {
+            AbstractData::Image(image) => image.object.update_at,
+            _ => unreachable!(),
+        };
+        let second_update_at = match second_read {
+            AbstractData::Image(image) => image.object.update_at,
+            _ => unreachable!(),
+        };
+        assert_eq!(first_update_at, 100);
+        assert_eq!(second_update_at, 100);
+
+        let mut stored = V6AbstractData::from(&base);
+        apply_v6_record_operation(&mut stored, &operation);
+        let durable = stored.into_domain().unwrap();
+        assert_eq!(durable.cache_version(), 7);
+        let AbstractData::Image(durable) = durable else {
+            unreachable!();
+        };
+        assert_eq!(durable.object.update_at, 100);
+
+        let mut newer_record = Some(image(200, 7));
+        apply_overlay(
+            &mut newer_record,
+            Some(slot),
+            &id,
+            std::slice::from_ref(&operation),
+        );
+        let Some(AbstractData::Image(newer_record)) = newer_record else {
+            unreachable!();
+        };
+        assert_eq!(newer_record.object.update_at, 200);
     }
 
     #[test]

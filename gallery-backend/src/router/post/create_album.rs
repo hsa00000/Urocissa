@@ -11,6 +11,7 @@ use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
 use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
 use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::album::Album;
+use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::selection::{SelectionDescriptor, resolve_selection};
@@ -79,9 +80,17 @@ async fn create_album(
         remove: BTreeSet::new(),
     });
     let reservation = 4_096
-        + membership_operation
-            .as_ref()
-            .map_or(0, |operation| operation.estimated_bytes() + 4_096);
+        + membership_operation.as_ref().map_or(0, |operation| {
+            let touch_bytes = match operation {
+                DirtyOperation::Albums { targets, .. } => DirtyOperation::Touch {
+                    targets: targets.clone(),
+                    changed_at: 0,
+                }
+                .estimated_bytes(),
+                _ => 0,
+            };
+            operation.estimated_bytes() + touch_bytes + 4_096
+        });
     WRITE_BEHIND.reserve(reservation).await?;
     let mut state = TREE.state.write().map_err(|_| {
         WRITE_BEHIND.release_reservation(reservation);
@@ -98,18 +107,40 @@ async fn create_album(
     if let Some(DirtyOperation::Albums { targets, .. }) = &mut membership_operation {
         *targets = state.media_targets(targets);
     }
+    let changed_at = next_mutation_timestamp();
     if let Some(DirtyOperation::Albums { targets, add, .. }) = &membership_operation {
-        state.edit_album_memberships(targets.ordinals(), add, &BTreeSet::new());
+        state.edit_album_memberships(targets.ordinals(), add, &BTreeSet::new(), changed_at);
     }
     let album = state
         .albums
         .get(&album_id)
         .cloned()
         .expect("new album must be in catalog");
+    let album_slot = state
+        .find(album_id.as_str())
+        .expect("new album must have a tree slot");
     WRITE_BEHIND.enqueue_reserved(DirtyOperation::AlbumCreate(initial_album), reservation);
     if let Some(operation) = membership_operation {
+        let mut touch_targets = match &operation {
+            DirtyOperation::Albums { targets, .. } => targets.clone(),
+            _ => unreachable!(),
+        };
+        let universe = state.arena.capacity();
+        touch_targets.union(
+            &crate::public::db::tree::state::TargetSet::from_slot_refs([album_slot], universe),
+            universe,
+        );
         WRITE_BEHIND.enqueue_reserved(operation, 0);
         WRITE_BEHIND.enqueue_reserved(DirtyOperation::AlbumReplace(album), 0);
+        if !touch_targets.is_empty() {
+            WRITE_BEHIND.enqueue_reserved(
+                DirtyOperation::Touch {
+                    targets: touch_targets,
+                    changed_at,
+                },
+                0,
+            );
+        }
     }
     VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     crate::perf_timing!("album.create.ram_publish", started, "Create album in RAM");

@@ -8,6 +8,7 @@ use serde::Serialize;
 use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
 use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
 use crate::public::error::{AppError, ErrorKind};
+use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
@@ -72,12 +73,26 @@ pub async fn edit_album(
             }))
             .map(|operation| operation.estimated_bytes())
             .sum::<usize>();
+        let universe = state.arena.capacity();
+        let mut touch_targets = targets.clone();
+        let album_targets = crate::public::db::tree::state::TargetSet::from_slot_refs(
+            add.union(&remove)
+                .filter_map(|album_id| state.find(album_id.as_str())),
+            universe,
+        );
+        touch_targets.union(&album_targets, universe);
+        let touch_bytes = DirtyOperation::Touch {
+            targets: touch_targets,
+            changed_at: 0,
+        }
+        .estimated_bytes();
         membership_bytes
             + add
                 .union(&remove)
                 .filter_map(|album_id| state.albums.get(album_id))
                 .map(|album| DirtyOperation::AlbumReplace(album.clone()).estimated_bytes() + 1_024)
                 .sum::<usize>()
+            + touch_bytes
     };
     WRITE_BEHIND.reserve(reservation).await?;
     let mut state = match TREE.state.write() {
@@ -142,12 +157,23 @@ pub async fn edit_album(
             });
         }
     }
-    operations.extend(
-        state
-            .edit_album_memberships(targets.ordinals(), &add, &remove)
-            .into_iter()
-            .map(DirtyOperation::AlbumReplace),
+    let changed_at = next_mutation_timestamp();
+    let album_patches = state.edit_album_memberships(targets.ordinals(), &add, &remove, changed_at);
+    let mut touch_targets = targets.clone();
+    let album_targets = crate::public::db::tree::state::TargetSet::from_slot_refs(
+        album_patches
+            .iter()
+            .filter_map(|album| state.find(album.object.id.as_str())),
+        universe,
     );
+    touch_targets.union(&album_targets, universe);
+    operations.extend(album_patches.into_iter().map(DirtyOperation::AlbumReplace));
+    if !touch_targets.is_empty() {
+        operations.push(DirtyOperation::Touch {
+            targets: touch_targets,
+            changed_at,
+        });
+    }
     if operations.is_empty() {
         WRITE_BEHIND.release_reservation(reservation);
     } else {
@@ -212,14 +238,32 @@ pub async fn set_album_cover(
             "cover must be a member of the album",
         ));
     }
+    let universe = state.arena.capacity();
+    let album_slot = state.find(data.album_id.as_str()).ok_or_else(|| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::NotFound, "album not found")
+    })?;
+    let changed_at = next_mutation_timestamp();
     let album = state.albums.get_mut(&data.album_id).ok_or_else(|| {
         WRITE_BEHIND.release_reservation(reservation);
         AppError::new(ErrorKind::NotFound, "album not found")
     })?;
     album.metadata.cover = Some(cover.id);
     album.object.thumbhash = cover.thumbhash;
+    album.object.cache_version = cover.cache_version;
+    album.object.touch_update_at(changed_at);
     let album = album.clone();
     WRITE_BEHIND.enqueue_reserved(DirtyOperation::AlbumReplace(album), reservation);
+    WRITE_BEHIND.enqueue_reserved(
+        DirtyOperation::Touch {
+            targets: crate::public::db::tree::state::TargetSet::from_slot_refs(
+                [album_slot],
+                universe,
+            ),
+            changed_at,
+        },
+        0,
+    );
     VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }
@@ -257,13 +301,30 @@ pub async fn set_album_title(
         WRITE_BEHIND.release_reservation(reservation);
         AppError::new(ErrorKind::Internal, "tree state lock poisoned")
     })?;
+    let universe = state.arena.capacity();
+    let album_slot = state.find(data.album_id.as_str()).ok_or_else(|| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::NotFound, "album not found")
+    })?;
+    let changed_at = next_mutation_timestamp();
     let album = state.albums.get_mut(&data.album_id).ok_or_else(|| {
         WRITE_BEHIND.release_reservation(reservation);
         AppError::new(ErrorKind::NotFound, "album not found")
     })?;
     album.metadata.title = data.title;
+    album.object.touch_update_at(changed_at);
     let album = album.clone();
     WRITE_BEHIND.enqueue_reserved(DirtyOperation::AlbumReplace(album), reservation);
+    WRITE_BEHIND.enqueue_reserved(
+        DirtyOperation::Touch {
+            targets: crate::public::db::tree::state::TargetSet::from_slot_refs(
+                [album_slot],
+                universe,
+            ),
+            changed_at,
+        },
+        0,
+    );
     VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }

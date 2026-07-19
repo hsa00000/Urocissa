@@ -1,5 +1,4 @@
 use arrayvec::ArrayString;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use super::metadata::AlbumMetadata;
@@ -22,6 +21,7 @@ struct MediaItemInfo {
     hash: ArrayString<64>,
     size: u64,
     thumbhash: Option<Vec<u8>>,
+    cache_version: u32,
     timestamp: i64,
 }
 
@@ -29,14 +29,16 @@ impl AlbumCombined {
     pub fn set_cover(&mut self, cover_data: &AbstractData) {
         self.metadata.cover = Some(cover_data.hash());
         self.object.thumbhash = cover_data.thumbhash().cloned();
+        self.object.cache_version = cover_data.cache_version();
     }
 
     fn set_cover_from_info(&mut self, info: &MediaItemInfo) {
         self.metadata.cover = Some(info.hash);
         self.object.thumbhash.clone_from(&info.thumbhash);
+        self.object.cache_version = info.cache_version;
     }
 
-    pub fn self_update(&mut self) {
+    pub fn self_update(&mut self, changed_at: i64) {
         let state = TREE.state.read().unwrap();
         let mut data_in_album = state
             .query
@@ -54,6 +56,7 @@ impl AlbumCombined {
                 hash: record.id,
                 size: record.size,
                 thumbhash: record.thumbhash.clone(),
+                cache_version: record.cache_version,
                 timestamp: record.timestamp,
             })
             .collect::<Vec<_>>();
@@ -64,6 +67,7 @@ impl AlbumCombined {
             self.metadata.end_time = None;
             self.metadata.cover = None;
             self.object.thumbhash = None;
+            self.object.cache_version = 0;
             self.metadata.item_count = 0;
             self.metadata.item_size = 0;
             return;
@@ -79,7 +83,7 @@ impl AlbumCombined {
         self.metadata.item_size = data_in_album.iter().map(|info| info.size).sum();
 
         // Update last_modified_time
-        self.metadata.last_modified_time = Utc::now().timestamp_millis();
+        self.metadata.last_modified_time = changed_at;
 
         // Set cover if not already set
         if self.metadata.cover.is_none() {
@@ -89,8 +93,10 @@ impl AlbumCombined {
         } else {
             // Check if current cover is still in the album, if not update it
             let current_cover = self.metadata.cover.unwrap();
-            let cover_still_in_album = data_in_album.iter().any(|info| info.hash == current_cover);
-            if !cover_still_in_album && let Some(first_info) = data_in_album.first() {
+            if let Some(current_info) = data_in_album.iter().find(|info| info.hash == current_cover)
+            {
+                self.set_cover_from_info(current_info);
+            } else if let Some(first_info) = data_in_album.first() {
                 self.set_cover_from_info(first_info);
             }
         }

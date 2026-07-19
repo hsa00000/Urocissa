@@ -74,6 +74,12 @@ pub enum MediaStage {
     Publish,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThumbnailPublishMode {
+    Initial,
+    ReplaceExisting,
+}
+
 impl MediaStage {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -215,6 +221,7 @@ pub fn apply_selected_outputs(
             .object
             .thumbhash
             .clone_from(&candidate_image.object.thumbhash);
+        latest_image.object.cache_version = candidate_image.object.cache_version;
         latest_image.object.pending = false;
     } else {
         if plan.contains(ReindexOperation::FileSize) {
@@ -254,6 +261,9 @@ pub fn apply_selected_outputs(
                 _ => anyhow::bail!("media type changed while applying visual hashes"),
             }
         }
+        if plan.contains(ReindexOperation::Thumbnail) {
+            latest.set_cache_version(candidate.cache_version());
+        }
         if plan.contains(ReindexOperation::VideoCompression) && latest.is_video() {
             latest.set_pending(false);
         }
@@ -269,8 +279,9 @@ pub fn execute_media_pipeline(
     data: &AbstractData,
     plan: &MediaTaskPlan,
     publisher: &mut ArtifactPublisher,
+    thumbnail_mode: ThumbnailPublishMode,
 ) -> std::result::Result<MediaPipelineResult, MediaPipelineError> {
-    execute_media_pipeline_with_video_progress(data, plan, publisher, false)
+    execute_media_pipeline_with_video_progress(data, plan, publisher, false, thumbnail_mode)
 }
 
 pub fn execute_media_pipeline_with_video_progress(
@@ -278,6 +289,7 @@ pub fn execute_media_pipeline_with_video_progress(
     plan: &MediaTaskPlan,
     publisher: &mut ArtifactPublisher,
     report_video_progress: bool,
+    thumbnail_mode: ThumbnailPublishMode,
 ) -> std::result::Result<MediaPipelineResult, MediaPipelineError> {
     let mut candidate = data.clone();
     if plan.contains(ReindexOperation::FileSize) {
@@ -302,7 +314,12 @@ pub fn execute_media_pipeline_with_video_progress(
                 .map(|metadata| metadata.len()),
         )?;
         candidate.set_size(size);
-        run_image_pipeline(&mut candidate, &MediaTaskPlan::safe_default(), publisher)?;
+        run_image_pipeline(
+            &mut candidate,
+            &MediaTaskPlan::safe_default(),
+            publisher,
+            thumbnail_mode,
+        )?;
         candidate.set_pending(false);
         publisher.remove(video_compressed_path(data));
         return Ok(MediaPipelineResult {
@@ -312,9 +329,15 @@ pub fn execute_media_pipeline_with_video_progress(
     }
 
     if candidate.is_image() {
-        run_image_pipeline(&mut candidate, plan, publisher)?;
+        run_image_pipeline(&mut candidate, plan, publisher, thumbnail_mode)?;
     } else if candidate.is_video() {
-        run_video_pipeline(&mut candidate, plan, publisher, report_video_progress)?;
+        run_video_pipeline(
+            &mut candidate,
+            plan,
+            publisher,
+            report_video_progress,
+            thumbnail_mode,
+        )?;
     }
 
     Ok(MediaPipelineResult {
@@ -327,6 +350,7 @@ fn run_image_pipeline(
     candidate: &mut AbstractData,
     plan: &MediaTaskPlan,
     publisher: &mut ArtifactPublisher,
+    thumbnail_mode: ThumbnailPublishMode,
 ) -> std::result::Result<(), MediaPipelineError> {
     let needs_visual_input = plan.contains(ReindexOperation::Dimensions)
         || plan.contains(ReindexOperation::Thumbnail)
@@ -354,7 +378,12 @@ fn run_image_pipeline(
     }
 
     let staged_thumbnail = if plan.contains(ReindexOperation::Thumbnail) {
-        let destination = candidate.compressed_path();
+        let current_version = candidate.cache_version();
+        let published_version = stage(
+            MediaStage::Thumbnail,
+            thumbnail_version_for_publish(current_version, thumbnail_mode),
+        )?;
+        let destination = candidate.thumbnail_path_for_version(published_version);
         let staged = stage(MediaStage::Thumbnail, publisher.stage_path(&destination))?;
         let image = decoded
             .as_ref()
@@ -364,6 +393,10 @@ fn run_image_pipeline(
             generate_thumbnail_for_image_to(candidate, image, &staged),
         )?;
         publisher.replace(staged.clone(), destination);
+        if published_version != current_version {
+            publisher.retire_after_commit(candidate.thumbnail_path_for_version(current_version));
+            candidate.set_cache_version(published_version);
+        }
         Some(staged)
     } else {
         None
@@ -387,6 +420,7 @@ fn run_video_pipeline(
     plan: &MediaTaskPlan,
     publisher: &mut ArtifactPublisher,
     report_video_progress: bool,
+    thumbnail_mode: ThumbnailPublishMode,
 ) -> std::result::Result<(), MediaPipelineError> {
     let needs_probe = plan.contains(ReindexOperation::Exif)
         || plan.contains(ReindexOperation::Dimensions)
@@ -413,13 +447,22 @@ fn run_video_pipeline(
     }
 
     let staged_thumbnail = if plan.contains(ReindexOperation::Thumbnail) {
-        let destination = PathBuf::from(candidate.thumbnail_path());
+        let current_version = candidate.cache_version();
+        let published_version = stage(
+            MediaStage::Thumbnail,
+            thumbnail_version_for_publish(current_version, thumbnail_mode),
+        )?;
+        let destination = candidate.thumbnail_path_for_version(published_version);
         let staged = stage(MediaStage::Thumbnail, publisher.stage_path(&destination))?;
         stage(
             MediaStage::Thumbnail,
             generate_thumbnail_for_video_to(candidate, &staged),
         )?;
         publisher.replace(staged.clone(), destination);
+        if published_version != current_version {
+            publisher.retire_after_commit(candidate.thumbnail_path_for_version(current_version));
+            candidate.set_cache_version(published_version);
+        }
         Some(staged)
     } else {
         None
@@ -452,6 +495,15 @@ fn run_video_pipeline(
     Ok(())
 }
 
+fn thumbnail_version_for_publish(current_version: u32, mode: ThumbnailPublishMode) -> Result<u32> {
+    match mode {
+        ThumbnailPublishMode::Initial => Ok(current_version),
+        ThumbnailPublishMode::ReplaceExisting => current_version
+            .checked_add(1)
+            .context("thumbnail cache version overflow"),
+    }
+}
+
 fn video_compressed_path(data: &AbstractData) -> PathBuf {
     let hash = data.hash();
     crate::public::constant::storage::get_data_path().join(format!(
@@ -470,7 +522,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        MediaPipelineResult, MediaStage, MediaTaskPlan, ReindexOperation, apply_selected_outputs,
+        MediaPipelineResult, MediaStage, MediaTaskPlan, ReindexOperation, ThumbnailPublishMode,
+        apply_selected_outputs, thumbnail_version_for_publish,
     };
     use crate::public::structure::abstract_data::AbstractData;
     use crate::public::structure::image::{ImageCombined, ImageMetadata};
@@ -672,6 +725,7 @@ mod tests {
         candidate.set_height(93);
         candidate.set_thumbhash(vec![9]);
         candidate.set_phash(vec![8]);
+        candidate.set_cache_version(4);
         let plan = MediaTaskPlan::new(vec![ReindexOperation::VideoCompression]).unwrap();
         apply_selected_outputs(
             &mut latest,
@@ -688,6 +742,43 @@ mod tests {
         assert_eq!(image.metadata.size, 91);
         assert_eq!((image.metadata.width, image.metadata.height), (92, 93));
         assert_eq!(image.object.thumbhash, Some(vec![9]));
+        assert_eq!(image.object.cache_version, 4);
         assert!(image.object.tags.contains("keep"));
+    }
+
+    #[test]
+    fn thumbnail_publication_only_bumps_replacements() {
+        assert_eq!(
+            thumbnail_version_for_publish(0, ThumbnailPublishMode::Initial).unwrap(),
+            0
+        );
+        assert_eq!(
+            thumbnail_version_for_publish(7, ThumbnailPublishMode::ReplaceExisting).unwrap(),
+            8
+        );
+        assert!(
+            thumbnail_version_for_publish(u32::MAX, ThumbnailPublishMode::ReplaceExisting).is_err()
+        );
+    }
+
+    #[test]
+    fn non_thumbnail_reindex_preserves_cache_version() {
+        let mut latest = image();
+        latest.set_cache_version(9);
+        let mut candidate = latest.clone();
+        candidate.set_size(999);
+        let plan = MediaTaskPlan::new(vec![ReindexOperation::FileSize]).unwrap();
+
+        apply_selected_outputs(
+            &mut latest,
+            &MediaPipelineResult {
+                candidate,
+                static_gif_conversion: false,
+            },
+            &plan,
+        )
+        .unwrap();
+
+        assert_eq!(latest.cache_version(), 9);
     }
 }

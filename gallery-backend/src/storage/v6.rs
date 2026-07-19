@@ -222,7 +222,7 @@ impl V6ObjectSchema {
             obj_type: v6_object_type(value.obj_type),
             pending: value.pending,
             thumbhash: value.thumbhash.clone(),
-            cache_version: 0,
+            cache_version: value.cache_version,
             description: value.description.clone(),
             tags: value.tags.clone(),
             is_favorite: value.is_favorite,
@@ -238,6 +238,7 @@ impl V6ObjectSchema {
             obj_type: domain_object_type(self.obj_type),
             pending: self.pending,
             thumbhash: self.thumbhash,
+            cache_version: self.cache_version,
             description: self.description,
             tags: self.tags,
             is_favorite: self.is_favorite,
@@ -534,8 +535,60 @@ fn v5_album_metadata(value: LegacyAlbumMetadata) -> V6AlbumMetadata {
 mod tests {
     use super::*;
 
+    const V6_GOLDEN_BYTES: &[u8] = &[
+        0, 9, 118, 54, 45, 103, 111, 108, 100, 101, 110, 0, 0, 1, 3, 6, 57, 4, 37, 1, 7, 99, 117,
+        114, 114, 101, 110, 116, 0, 1, 0, 1, 0, 56, 254, 255, 255, 255, 255, 255, 255, 9, 118, 54,
+        45, 103, 111, 108, 100, 101, 110, 6, 84, 4, 20, 4, 40, 4, 119, 101, 98, 112, 0, 0, 0, 1, 6,
+        98, 46, 119, 101, 98, 112, 6, 3, 6, 4,
+    ];
+
+    fn golden_fixture() -> V6AbstractData {
+        let id = ArrayString::<64>::from("v6-golden").unwrap();
+        V6AbstractData::Image(V6ImageCombined {
+            object: V6ObjectSchema {
+                id,
+                obj_type: V6ObjectType::Image,
+                pending: false,
+                thumbhash: Some(vec![1, 2, 3]),
+                cache_version: 37,
+                description: Some("current".to_owned()),
+                tags: HashSet::new(),
+                is_favorite: true,
+                is_archived: false,
+                is_trashed: true,
+                update_at: -456,
+            },
+            metadata: V6ImageMetadata {
+                id,
+                size: 84,
+                width: 20,
+                height: 40,
+                ext: "webp".to_owned(),
+                phash: None,
+                albums: HashSet::new(),
+                exif_vec: BTreeMap::new(),
+                alias: vec![V6FileModify {
+                    file: "b.webp".to_owned(),
+                    modified: 3,
+                    scan_time: 4,
+                }],
+            },
+        })
+    }
+
     #[test]
     fn v6_type_name_is_frozen() {
         assert_eq!(V6AbstractData::type_name().name(), "AbstractDataV6");
+    }
+
+    #[test]
+    fn v6_golden_bytes_round_trip_with_nonzero_cache_version() {
+        let decoded: V6AbstractData = bitcode::decode(V6_GOLDEN_BYTES).unwrap();
+        assert_eq!(decoded, golden_fixture());
+        assert_eq!(bitcode::encode(&decoded), V6_GOLDEN_BYTES);
+
+        let domain = decoded.into_domain().unwrap();
+        assert_eq!(domain.cache_version(), 37);
+        assert_eq!(V6AbstractData::from(&domain), golden_fixture());
     }
 }

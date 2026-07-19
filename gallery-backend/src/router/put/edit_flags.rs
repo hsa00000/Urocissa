@@ -8,6 +8,7 @@ use crate::public::db::tree::state::FlagPatch;
 use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
 use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
 use crate::public::error::{AppError, ErrorKind};
+use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::selection::{SelectionDescriptor, resolve_selection};
@@ -80,6 +81,20 @@ pub async fn edit_flags(
             .filter_map(|album_id| state.albums.get(album_id))
             .map(|album| DirtyOperation::AlbumReplace(album.clone()).estimated_bytes() + 1_024)
             .sum::<usize>();
+        let universe = state.arena.capacity();
+        let mut touch_targets = targets.clone();
+        let album_targets = crate::public::db::tree::state::TargetSet::from_slot_refs(
+            affected
+                .iter()
+                .filter_map(|album_id| state.find(album_id.as_str())),
+            universe,
+        );
+        touch_targets.union(&album_targets, universe);
+        let touch_bytes = DirtyOperation::Touch {
+            targets: touch_targets,
+            changed_at: 0,
+        }
+        .estimated_bytes();
         let flag_bytes = [
             patch.favorite.map(|value| DirtyOperation::Flags {
                 targets: targets.clone(),
@@ -104,7 +119,7 @@ pub async fn edit_flags(
         .flatten()
         .map(|operation| operation.estimated_bytes())
         .sum::<usize>();
-        (affected, flag_bytes + album_bytes)
+        (affected, flag_bytes + album_bytes + touch_bytes)
     };
     WRITE_BEHIND.reserve(reservation).await?;
     let mut state = match TREE.state.write() {
@@ -203,6 +218,7 @@ pub async fn edit_flags(
         state.query.favorite.count(),
         state.query.archived.count()
     );
+    let changed_at = next_mutation_timestamp();
     let album_patches = match (trash_changed, trash_value) {
         (Some(changed), Some(value)) if !changed.is_empty() => state.edit_flags_and_refresh(
             changed.ordinals(),
@@ -211,10 +227,36 @@ pub async fn edit_flags(
                 archived: None,
                 trashed: Some(value),
             },
+            changed_at,
         ),
         _ => Vec::new(),
     };
+    state.edit_cached_album_objects(&targets, changed_at, |object| {
+        if let Some(value) = patch.favorite {
+            object.is_favorite = value;
+        }
+        if let Some(value) = patch.archived {
+            object.is_archived = value;
+        }
+        if let Some(value) = patch.trashed {
+            object.is_trashed = value;
+        }
+    });
+    let mut touch_targets = targets.clone();
+    let album_targets = crate::public::db::tree::state::TargetSet::from_slot_refs(
+        album_patches
+            .iter()
+            .filter_map(|album| state.find(album.object.id.as_str())),
+        universe,
+    );
+    touch_targets.union(&album_targets, universe);
     operations.extend(album_patches.into_iter().map(DirtyOperation::AlbumReplace));
+    if !touch_targets.is_empty() {
+        operations.push(DirtyOperation::Touch {
+            targets: touch_targets,
+            changed_at,
+        });
+    }
     if operations.is_empty() {
         WRITE_BEHIND.release_reservation(reservation);
     } else {

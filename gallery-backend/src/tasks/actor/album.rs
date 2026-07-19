@@ -1,6 +1,7 @@
 use crate::public::db::tree::TREE;
 use crate::public::error_data::handle_error;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::object::next_mutation_timestamp;
 use anyhow::Context;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -32,9 +33,14 @@ impl Task for AlbumSelfUpdateTask {
 pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
     info!("Perform album self-update");
     let album_id_for_cache = album_id;
+    let _persistence_guard = TREE
+        .persistence_lock
+        .lock()
+        .map_err(|_| anyhow::anyhow!("tree persistence lock poisoned"))?;
 
     TREE.store
         .write(|data_table| {
+            let changed_at = next_mutation_timestamp();
             let album_opt = data_table
                 .get(album_id.as_str())?
                 .map(|value| value.into_value())
@@ -45,8 +51,9 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
 
             if let Some(mut album) = album_opt {
                 album.object.pending = true;
-                album.self_update();
+                album.self_update(changed_at);
                 album.object.pending = false;
+                album.object.touch_update_at(changed_at);
                 data_table.insert(&AbstractData::Album(album))?;
             } else {
                 // Album has been deleted
@@ -70,7 +77,9 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
                     };
                     let mut abstract_data = value.into_value();
                     if let Some(albums) = abstract_data.albums_mut() {
-                        albums.remove(&*album_id);
+                        if albums.remove(&*album_id) {
+                            abstract_data.touch_update_at(changed_at);
+                        }
                     }
                     data_table.insert(&abstract_data)?;
                 }

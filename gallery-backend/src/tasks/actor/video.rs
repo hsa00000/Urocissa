@@ -2,16 +2,18 @@ use crate::{
     process::{
         artifact_publisher::ArtifactPublisher,
         media_pipeline::{
-            MediaTaskPlan, ReindexOperation, execute_media_pipeline_with_video_progress,
+            MediaTaskPlan, ReindexOperation, ThumbnailPublishMode,
+            execute_media_pipeline_with_video_progress,
         },
+        media_publish::publish_reindex_result,
     },
     public::{
         constant::runtime::WORKER_RAYON_POOL,
+        db::tree::TREE,
         error_data::handle_error,
         structure::{abstract_data::AbstractData, guard::PendingGuard},
         tui::DASHBOARD,
     },
-    tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
 use anyhow::Context;
 use anyhow::Result;
@@ -41,17 +43,25 @@ impl Task for VideoTask {
     }
 }
 
-pub fn video_task(mut abstract_data: AbstractData) -> Result<()> {
+pub fn video_task(abstract_data: AbstractData) -> Result<()> {
     let hash = abstract_data.hash();
+    let slot_ref = TREE
+        .state
+        .read()
+        .map_err(|_| anyhow::anyhow!("tree state lock poisoned"))?
+        .find(hash.as_str())
+        .context("newly indexed video was not persisted before compression")?;
     let plan = MediaTaskPlan::new(vec![ReindexOperation::VideoCompression])?;
     let mut publisher = ArtifactPublisher::new(format!("import-video-{}", Uuid::new_v4()));
-    match execute_media_pipeline_with_video_progress(&abstract_data, &plan, &mut publisher, true) {
+    match execute_media_pipeline_with_video_progress(
+        &abstract_data,
+        &plan,
+        &mut publisher,
+        true,
+        ThumbnailPublishMode::ReplaceExisting,
+    ) {
         Ok(result) => {
-            publisher.publish(|| Ok(()))?;
-            abstract_data = result.candidate;
-            abstract_data.set_pending(false);
-            BATCH_COORDINATOR
-                .execute_batch_detached(FlushTreeTask::insert(vec![abstract_data.clone()]));
+            publish_reindex_result(slot_ref, hash, &plan, &result, publisher)?;
 
             DASHBOARD.advance_task_state(&hash);
         }

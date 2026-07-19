@@ -152,7 +152,7 @@ async function checkAndFetch(
       password: shareStore.password,
       timestampToken,
       hashToken,
-      updatedAt: abstractData.updateAt
+      cacheVersion: abstractData.cacheVersion
     })
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   } else if (abstractData.type === 'album' && abstractData.cover != null) {
@@ -176,7 +176,7 @@ async function checkAndFetch(
       password: shareStore.password,
       timestampToken,
       hashToken,
-      updatedAt: abstractData.updateAt
+      cacheVersion: abstractData.cacheVersion
     })
   }
 }

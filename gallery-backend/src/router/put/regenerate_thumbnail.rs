@@ -49,12 +49,22 @@ pub async fn regenerate_thumbnail_with_frame(
         .map_err(|_| AppError::new(ErrorKind::InvalidInput, "invalid object id"))?;
     let _media_guard = lock_media(hash).await;
 
-    let root = crate::public::constant::storage::get_data_path();
-    let destination = root.join(format!(
-        "object/compressed/{}/{}.jpg",
-        &hash[0..2],
-        hash.as_str()
-    ));
+    let (_, current_data) = tokio::task::spawn_blocking(move || load_logical_media(hash))
+        .await
+        .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))?
+        .map_err(|error| AppError::from_err(ErrorKind::Database, error))?;
+    if !current_data.is_video() {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "captured-frame thumbnails only apply to videos",
+        ));
+    }
+    let current_cache_version = current_data.cache_version();
+    let next_cache_version = current_cache_version.checked_add(1).ok_or_else(|| {
+        AppError::new(ErrorKind::InvalidInput, "thumbnail cache version overflow")
+    })?;
+    let destination = current_data.thumbnail_path_for_version(next_cache_version);
+    let previous_thumbnail = current_data.thumbnail_path_for_version(current_cache_version);
     let mut publisher = ArtifactPublisher::new(format!("capture-{}", Uuid::new_v4()));
     let staged = publisher
         .stage_path(&destination)
@@ -64,17 +74,28 @@ pub async fn regenerate_thumbnail_with_frame(
         .await
         .or_raise(|| (ErrorKind::IO, "failed to stage captured video frame"))?;
     publisher.replace(staged.clone(), destination);
+    publisher.retire_after_commit(previous_thumbnail);
 
-    tokio::task::spawn_blocking(move || capture_frame_inner(hash, &staged, publisher))
-        .await
-        .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))?
-        .map_err(|error| AppError::from_err(ErrorKind::IO, error))?;
+    tokio::task::spawn_blocking(move || {
+        capture_frame_inner(
+            hash,
+            current_cache_version,
+            next_cache_version,
+            &staged,
+            publisher,
+        )
+    })
+    .await
+    .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))?
+    .map_err(|error| AppError::from_err(ErrorKind::IO, error))?;
     info!("Video frame thumbnail regenerated successfully");
     Ok(())
 }
 
 fn capture_frame_inner(
     hash: ArrayString<64>,
+    current_cache_version: u32,
+    next_cache_version: u32,
     staged: &std::path::Path,
     publisher: ArtifactPublisher,
 ) -> Result<()> {
@@ -98,9 +119,13 @@ fn capture_frame_inner(
         let AbstractData::Video(video) = latest else {
             anyhow::bail!("media type changed before captured frame was published");
         };
+        if video.object.cache_version != current_cache_version {
+            anyhow::bail!("thumbnail cache version changed before captured frame was published");
+        }
         video.metadata.width = width;
         video.metadata.height = height;
         video.object.thumbhash = Some(thumbhash);
+        video.object.cache_version = next_cache_version;
         Ok(())
     })?;
     Ok(())

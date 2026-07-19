@@ -65,6 +65,7 @@ fn main() {
             );
 
             let (_, album_count) = update_tree_task();
+            crate::process::artifact_publisher::cleanup_stale_thumbnail_versions();
             let media_count = total_count.saturating_sub(album_count);
             info!(
                 "Read {} photos/videos and {} albums from database.",

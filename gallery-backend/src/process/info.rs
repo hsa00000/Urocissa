@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use uuid::Uuid;
 
 use crate::process::artifact_publisher::ArtifactPublisher;
-use crate::process::media_pipeline::{MediaTaskPlan, execute_media_pipeline};
+use crate::process::media_pipeline::{MediaTaskPlan, ThumbnailPublishMode, execute_media_pipeline};
 use crate::public::structure::abstract_data::AbstractData;
 
 /// Run the same safe media plan used by selective reindex for a newly imported
@@ -32,6 +32,7 @@ fn process_safe_media_info(abstract_data: &mut AbstractData) -> Result<()> {
         abstract_data,
         &MediaTaskPlan::safe_default(),
         &mut publisher,
+        ThumbnailPublishMode::Initial,
     )
     .map_err(anyhow::Error::new)?;
     publisher.publish(|| Ok(()))?;

@@ -58,6 +58,7 @@ impl Album {
             obj_type: ObjectType::Album,
             pending: self.pending,
             thumbhash: self.thumbhash,
+            cache_version: 0,
             description: None,
             tags: self.tag,
             is_favorite: false,

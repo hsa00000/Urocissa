@@ -10,6 +10,7 @@ use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
 use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
 use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::album::Share;
+use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -70,13 +71,30 @@ pub async fn create_share(
         WRITE_BEHIND.release_reservation(reservation);
         AppError::new(ErrorKind::Internal, "tree state lock poisoned")
     })?;
+    let universe = state.arena.capacity();
+    let album_slot = state.find(data.album_id.as_str()).ok_or_else(|| {
+        WRITE_BEHIND.release_reservation(reservation);
+        AppError::new(ErrorKind::NotFound, "album not found")
+    })?;
+    let changed_at = next_mutation_timestamp();
     let album = state.albums.get_mut(&data.album_id).ok_or_else(|| {
         WRITE_BEHIND.release_reservation(reservation);
         AppError::new(ErrorKind::NotFound, "album not found")
     })?;
     album.metadata.share_list.insert(share_id, share);
+    album.object.touch_update_at(changed_at);
     let album = album.clone();
     WRITE_BEHIND.enqueue_reserved(DirtyOperation::AlbumReplace(album), reservation);
+    WRITE_BEHIND.enqueue_reserved(
+        DirtyOperation::Touch {
+            targets: crate::public::db::tree::state::TargetSet::from_slot_refs(
+                [album_slot],
+                universe,
+            ),
+            changed_at,
+        },
+        0,
+    );
     VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     Ok(link)
 }

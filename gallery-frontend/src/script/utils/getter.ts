@@ -4,6 +4,8 @@ import { useDataStore } from '@/store/dataStore'
 import { escapeAndWrap } from '@utils/escape'
 import { useShareStore } from '@/store/shareStore'
 
+export { getThumbnailSrc } from './thumbnail'
+
 export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded) {
   const isolationId = route.meta.level === 3 || route.meta.level === 4 ? 'subId' : 'mainId'
   return isolationId

@@ -8,8 +8,9 @@ import {
 } from '@/worker/workerApi'
 import axiosRetry from 'axios-retry'
 import axios from 'axios'
-import { getSrc } from '@utils/getter'
+import { getThumbnailSrc } from '@utils/thumbnail'
 import { setupWorkerAxiosInterceptor } from './workerAxiosInterceptor'
+import { ThumbnailBlobCache } from './thumbnailBlobCache'
 
 const postToMainImg = bindActionDispatch(fromImgWorker, self.postMessage.bind(self))
 const controllerMap = new Map<number, AbortController>()
@@ -27,12 +28,8 @@ axiosRetry(workerAxios, {
 
 setupWorkerAxiosInterceptor(workerAxios, postToMainImg.notification)
 
-// ================== Blob Cache ==================
-
-const IMG_CACHE_NAME = 'img-blob-cache-v1'
-
 /**
- * In-memory cache of fetched image Blobs, keyed by image hash.
+ * In-memory cache of fetched image Blobs, keyed by hash and cache version.
  *
  * On resize, the main thread clears imgStore.imgUrl and re-queues visible
  * images. Without this cache every image would repeat the full network fetch.
@@ -41,48 +38,8 @@ const IMG_CACHE_NAME = 'img-blob-cache-v1'
  * lifetime of the worker (terminated on component unmount via
  * workerStore.terminateWorker()).
  */
-const blobCache = new Map<string, Blob>()
-
-function imgCacheKey(hash: string): string {
-  return `https://img-blob-cache.internal/${hash}`
-}
-
-async function getFromDiskCache(hash: string): Promise<Blob | undefined> {
-  if (typeof caches === 'undefined') return undefined
-  try {
-    const cache = await caches.open(IMG_CACHE_NAME)
-    const response = await cache.match(imgCacheKey(hash))
-    if (response) {
-      const blob = await response.blob()
-      if (blob.size > 0) return blob
-      await cache.delete(imgCacheKey(hash))
-    }
-  } catch {
-    // Cache API unavailable
-  }
-  return undefined
-}
-
-async function putToDiskCache(hash: string, blob: Blob): Promise<void> {
-  if (typeof caches === 'undefined') return
-  try {
-    const cache = await caches.open(IMG_CACHE_NAME)
-    await cache.put(imgCacheKey(hash), new Response(blob))
-  } catch {
-    // Non-critical
-  }
-}
-
-async function purgeFromCaches(hash: string): Promise<void> {
-  blobCache.delete(hash)
-  if (typeof caches === 'undefined') return
-  try {
-    const cache = await caches.open(IMG_CACHE_NAME)
-    await cache.delete(imgCacheKey(hash))
-  } catch {
-    // Non-critical
-  }
-}
+const thumbnailBlobCache = new ThumbnailBlobCache()
+void thumbnailBlobCache.cleanupLegacy()
 
 // ================== Handlers ==================
 
@@ -92,16 +49,8 @@ const handler = createHandler<typeof toImgWorker>({
       const controller = new AbortController()
       controllerMap.set(event.index, controller)
 
-      // Layer 1: In-memory cache
-      let blob = blobCache.get(event.hash)
-
-      // Layer 2: Cache API (disk-persistent)
-      if (blob === undefined) {
-        blob = await getFromDiskCache(event.hash)
-        if (blob !== undefined) {
-          blobCache.set(event.hash, blob)
-        }
-      }
+      // Layer 1 + 2: worker memory and disk-persistent Cache Storage.
+      let blob = await thumbnailBlobCache.get(event.hash, event.cacheVersion)
 
       // Layer 3: Network fetch
       if (blob === undefined) {
@@ -121,13 +70,12 @@ const handler = createHandler<typeof toImgWorker>({
         }
 
         const response = await workerAxios.get<Blob>(
-          getSrc(event.hash, false, 'jpg', event.updatedAt),
+          getThumbnailSrc(event.hash, event.cacheVersion),
           config
         )
 
         blob = response.data
-        blobCache.set(event.hash, blob)
-        void putToDiskCache(event.hash, blob)
+        void thumbnailBlobCache.put(event.hash, event.cacheVersion, blob)
       }
 
       controllerMap.delete(event.index)
@@ -154,23 +102,15 @@ const handler = createHandler<typeof toImgWorker>({
     } catch (error) {
       if (axios.isCancel(error)) return
       // Purge potentially corrupt blob from caches so the next attempt re-fetches
-      void purgeFromCaches(event.hash)
+      void thumbnailBlobCache.purge(event.hash, event.cacheVersion)
       console.error(error)
     }
   },
 
   async processImage(event: ProcessImagePayload) {
     try {
-      // Layer 1: In-memory cache
-      let blob = blobCache.get(event.hash)
-
-      // Layer 2: Cache API (disk-persistent)
-      if (blob === undefined) {
-        blob = await getFromDiskCache(event.hash)
-        if (blob !== undefined) {
-          blobCache.set(event.hash, blob)
-        }
-      }
+      // Layer 1 + 2: worker memory and disk-persistent Cache Storage.
+      let blob = await thumbnailBlobCache.get(event.hash, event.cacheVersion)
 
       // Layer 3: Network fetch
       if (blob === undefined) {
@@ -188,13 +128,12 @@ const handler = createHandler<typeof toImgWorker>({
         }
 
         const response = await workerAxios.get<Blob>(
-          getSrc(event.hash, false, 'jpg', event.updatedAt),
+          getThumbnailSrc(event.hash, event.cacheVersion),
           config
         )
 
         blob = response.data
-        blobCache.set(event.hash, blob)
-        void putToDiskCache(event.hash, blob)
+        void thumbnailBlobCache.put(event.hash, event.cacheVersion, blob)
       }
 
       const img = await createImageBitmap(blob)
@@ -209,7 +148,7 @@ const handler = createHandler<typeof toImgWorker>({
       postToMainImg.imageProcessed({ index: event.index, url: objectUrl })
     } catch (error) {
       // Purge potentially corrupt blob from caches so the next attempt re-fetches
-      void purgeFromCaches(event.hash)
+      void thumbnailBlobCache.purge(event.hash, event.cacheVersion)
       console.error(error)
     }
   },

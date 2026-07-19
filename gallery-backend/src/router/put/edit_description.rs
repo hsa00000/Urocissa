@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
 use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
 use crate::public::error::{AppError, ErrorKind};
+use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::selection::{SelectionDescriptor, resolve_selection};
@@ -48,13 +49,24 @@ pub async fn set_user_defined_description(
     }
     let target = resolved.targets.iter().next().expect("one resolved target");
     let structural_epoch = resolved.structural_epoch;
+    let description = data.description;
     let operation = DirtyOperation::Description {
         target,
-        value: data.description,
+        value: description.clone(),
     };
-    let bytes = operation.estimated_bytes();
+    let universe = crate::public::db::tree::TREE
+        .state
+        .read()
+        .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?
+        .arena
+        .capacity();
+    let touch_preview = DirtyOperation::Touch {
+        targets: crate::public::db::tree::state::TargetSet::from_slot_refs([target], universe),
+        changed_at: 0,
+    };
+    let bytes = operation.estimated_bytes() + touch_preview.estimated_bytes();
     WRITE_BEHIND.reserve(bytes).await?;
-    let state = crate::public::db::tree::TREE.state.write().map_err(|_| {
+    let mut state = crate::public::db::tree::TREE.state.write().map_err(|_| {
         WRITE_BEHIND.release_reservation(bytes);
         AppError::new(ErrorKind::Internal, "tree state lock poisoned")
     })?;
@@ -65,7 +77,18 @@ pub async fn set_user_defined_description(
             "selection became stale before publication",
         ));
     }
+    let changed_at = next_mutation_timestamp();
+    let touch_targets =
+        crate::public::db::tree::state::TargetSet::from_slot_refs([target], universe);
+    state.edit_cached_album_objects(&touch_targets, changed_at, |object| {
+        object.description.clone_from(&description);
+    });
+    let touch = DirtyOperation::Touch {
+        targets: touch_targets,
+        changed_at,
+    };
     WRITE_BEHIND.enqueue_reserved(operation, bytes);
+    WRITE_BEHIND.enqueue_reserved(touch, 0);
     VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     drop(state);
     Ok(())

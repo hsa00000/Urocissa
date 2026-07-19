@@ -33,10 +33,17 @@ impl Task for IndexTask {
 
     async fn run(self) -> Self::Output {
         let _pending_guard = PendingGuard::new();
-        WORKER_RAYON_POOL
+        let abstract_data = WORKER_RAYON_POOL
             .spawn_async(move || index_task_match(self.abstract_data))
             .await
-            .map_err(|err| handle_error(err.context("Failed to run index task")))
+            .map_err(|err| handle_error(err.context("Failed to run index task")))?;
+        BATCH_COORDINATOR
+            .execute_batch_waiting(FlushTreeTask::insert(vec![abstract_data.clone()]))
+            .await
+            .map_err(|err| {
+                handle_error(anyhow::Error::new(err).context("Failed to persist indexed media"))
+            })?;
+        Ok(abstract_data)
     }
 }
 
@@ -99,8 +106,6 @@ fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
         }
         abstract_data.set_pending(true);
     }
-
-    BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data.clone()]));
 
     Ok(abstract_data)
 }

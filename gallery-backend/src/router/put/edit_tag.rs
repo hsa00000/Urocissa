@@ -7,6 +7,7 @@ use crate::public::db::tree::read_tags::TagInfo;
 use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
 use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
 use crate::public::error::{AppError, ErrorKind};
+use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::selection::{SelectionDescriptor, resolve_selection};
@@ -59,10 +60,15 @@ pub async fn edit_tag(
             remove: BTreeSet::from([tag.clone()]),
         }))
         .collect::<Vec<_>>();
+    let touch_preview = DirtyOperation::Touch {
+        targets: targets.clone(),
+        changed_at: 0,
+    };
     let bytes = worst_case_operations
         .iter()
         .map(DirtyOperation::estimated_bytes)
-        .sum();
+        .sum::<usize>()
+        + touch_preview.estimated_bytes();
     WRITE_BEHIND.reserve(bytes).await?;
 
     let mut state = match TREE.state.write() {
@@ -116,9 +122,22 @@ pub async fn edit_tag(
             });
         }
     }
+    let changed_at = next_mutation_timestamp();
     state
         .query
         .edit_tags(targets.ordinals(), &add, &remove, universe);
+    state.edit_cached_album_objects(&targets, changed_at, |object| {
+        object.tags.extend(add.iter().cloned());
+        for tag in &remove {
+            object.tags.remove(tag);
+        }
+    });
+    if !targets.is_empty() {
+        operations.push(DirtyOperation::Touch {
+            targets,
+            changed_at,
+        });
+    }
     if operations.is_empty() {
         WRITE_BEHIND.release_reservation(bytes);
     } else {

@@ -10,6 +10,7 @@ use crate::public::db::tree::state::{SlotRef, TargetSet};
 use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
 use crate::public::db::write_behind::WRITE_BEHIND;
 use crate::public::structure::abstract_data::AbstractData;
+use crate::public::structure::object::next_mutation_timestamp;
 
 pub fn load_logical_media(object_id: ArrayString<64>) -> Result<(SlotRef, AbstractData)> {
     let slot_ref = TREE
@@ -41,6 +42,18 @@ pub fn publish_reindex_result(
     publisher: ArtifactPublisher,
 ) -> Result<AbstractData> {
     publish_media_mutation(slot_ref, object_id, publisher, |latest| {
+        if plan.contains(crate::process::media_pipeline::ReindexOperation::Thumbnail)
+            || result.static_gif_conversion
+        {
+            let expected_previous = result
+                .candidate
+                .cache_version()
+                .checked_sub(1)
+                .ok_or_else(|| anyhow!("replacement thumbnail did not advance cache version"))?;
+            if latest.cache_version() != expected_previous {
+                anyhow::bail!("thumbnail cache version changed before reindex was published");
+            }
+        }
         apply_selected_outputs(latest, result, plan)
             .context("failed to apply selective media patch")
     })
@@ -68,6 +81,7 @@ pub fn publish_media_mutation(
             .filter(|record| record.id == object_id)
             .ok_or_else(|| anyhow!("object slot no longer exists at its captured generation"))?;
         debug_assert_eq!(current.id, object_id);
+        let changed_at = next_mutation_timestamp();
 
         let durable = TREE.store.read(|reader| {
             Ok::<_, anyhow::Error>(
@@ -87,14 +101,14 @@ pub fn publish_media_mutation(
             .logical_record_for_slot(Some(slot_ref), object_id.as_str(), durable)
             .ok_or_else(|| anyhow!("object was deleted before publication"))?;
         mutation(&mut latest)?;
-        latest.update_update_at();
+        latest.touch_update_at(changed_at);
 
         album_ids.extend(latest.albums().into_iter().flatten().copied());
         let (published_album_ids, albums): (BTreeSet<_>, Vec<_>) = album_ids
             .iter()
             .filter_map(|album_id| {
                 state
-                    .album_aggregate_with_override(*album_id, slot_ref, &latest)
+                    .album_aggregate_with_override(*album_id, slot_ref, &latest, changed_at)
                     .map(|album| (*album_id, AbstractData::Album(album)))
             })
             .unzip();

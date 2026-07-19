@@ -178,7 +178,7 @@ async function checkAndFetch(index: number): Promise<boolean> {
     password: shareStore.password,
     timestampToken,
     hashToken,
-    updatedAt: abstractData.updateAt
+    cacheVersion: abstractData.cacheVersion
   })
 
   return false

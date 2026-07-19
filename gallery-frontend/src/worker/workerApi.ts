@@ -17,7 +17,7 @@ export interface ProcessSmallImagePayload {
   password: null | string
   timestampToken: string
   hashToken: string
-  updatedAt: number
+  cacheVersion: number
 }
 
 export interface ProcessImagePayload {
@@ -29,7 +29,7 @@ export interface ProcessImagePayload {
   password: null | string
   timestampToken: string
   hashToken: string
-  updatedAt: number
+  cacheVersion: number
 }
 
 export interface ProcessAbortPayload {

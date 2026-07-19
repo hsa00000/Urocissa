@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -28,6 +29,7 @@ struct AppliedArtifact {
 pub struct ArtifactPublisher {
     token: String,
     actions: Vec<ArtifactAction>,
+    retire_after_commit: Vec<PathBuf>,
 }
 
 impl ArtifactPublisher {
@@ -35,6 +37,7 @@ impl ArtifactPublisher {
         Self {
             token: token.into(),
             actions: Vec::new(),
+            retire_after_commit: Vec::new(),
         }
     }
 
@@ -51,6 +54,12 @@ impl ArtifactPublisher {
 
     pub fn remove(&mut self, destination: PathBuf) {
         self.actions.push(ArtifactAction::Remove { destination });
+    }
+
+    /// Remove an obsolete immutable artifact only after its replacement and
+    /// the durable metadata commit both succeed.
+    pub fn retire_after_commit(&mut self, destination: PathBuf) {
+        self.retire_after_commit.push(destination);
     }
 
     /// Promote artifacts, execute the durable/cache commit, then discard
@@ -72,6 +81,16 @@ impl ArtifactPublisher {
                         log::warn!(
                             "failed to remove media artifact backup {}: {error}",
                             artifact.backup.display()
+                        );
+                    }
+                }
+                for destination in &self.retire_after_commit {
+                    if destination.exists()
+                        && let Err(error) = fs::remove_file(destination)
+                    {
+                        log::warn!(
+                            "failed to retire obsolete media artifact {}: {error}",
+                            destination.display()
                         );
                     }
                 }
@@ -221,7 +240,7 @@ pub fn cleanup_residual_artifacts() {
         };
         let parts = file_name.split('.').collect::<Vec<_>>();
         if parts.len() != 4
-            || parts[0].len() != 64
+            || crate::public::structure::abstract_data::parse_thumbnail_stem(parts[0]).is_none()
             || !matches!(parts[2], "tmp" | "bak")
             || !(parts[1].starts_with("reindex-")
                 || parts[1].starts_with("import-")
@@ -243,9 +262,78 @@ pub fn cleanup_residual_artifacts() {
     }
 }
 
+/// Reconcile immutable JPEG thumbnails with the durable cache version. This
+/// removes both old versions left after successful commits and orphaned final
+/// files left by a crash before the database commit.
+pub fn cleanup_stale_thumbnail_versions() {
+    let expected = match crate::public::db::tree::TREE.store.read(|reader| {
+        let mut expected = HashMap::<String, u32>::new();
+        for entry in reader.iter()? {
+            let (key, value) = entry?;
+            let data = value.into_value();
+            if data.is_image() || data.is_video() {
+                expected.insert(key.value().to_owned(), data.cache_version());
+            }
+        }
+        Ok::<_, anyhow::Error>(expected)
+    }) {
+        Ok(expected) => expected,
+        Err(error) => {
+            log::warn!("failed to read thumbnail versions for startup cleanup: {error:#}");
+            return;
+        }
+    };
+
+    let root = crate::public::constant::storage::get_data_path().join("object/compressed");
+    let removed = cleanup_stale_thumbnail_versions_at(&root, &expected);
+    if removed > 0 {
+        log::info!("Removed {removed} stale thumbnail version files");
+    }
+}
+
+fn cleanup_stale_thumbnail_versions_at(root: &Path, expected: &HashMap<String, u32>) -> usize {
+    let mut removed = 0_usize;
+    for entry in WalkDir::new(&root)
+        .min_depth(2)
+        .max_depth(2)
+        .into_iter()
+        .filter_map(std::result::Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+    {
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("jpg") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        let Some((hash, cache_version)) =
+            crate::public::structure::abstract_data::parse_thumbnail_stem(stem)
+        else {
+            continue;
+        };
+        if expected
+            .get(hash)
+            .is_some_and(|expected| *expected == cache_version)
+        {
+            continue;
+        }
+        match fs::remove_file(path) {
+            Ok(()) => removed += 1,
+            Err(error) => log::warn!(
+                "failed to remove stale thumbnail artifact {}: {error}",
+                path.display()
+            ),
+        }
+    }
+    removed
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ArtifactPublisher;
+    use std::collections::HashMap;
+
+    use super::{ArtifactPublisher, cleanup_stale_thumbnail_versions_at};
 
     #[test]
     fn staged_file_keeps_destination_extension() {
@@ -297,5 +385,69 @@ mod tests {
         publisher.publish(|| Ok(())).unwrap();
         assert_eq!(std::fs::read(&destination).unwrap(), b"new");
         assert!(!directory.path().join("object.job-3.bak.jpg").exists());
+    }
+
+    #[test]
+    fn failed_version_commit_keeps_old_thumbnail_and_rolls_back_new_version() {
+        let directory = tempfile::tempdir().unwrap();
+        let old_thumbnail = directory.path().join("hash.jpg");
+        let new_thumbnail = directory.path().join("hash-v1.jpg");
+        std::fs::write(&old_thumbnail, b"old").unwrap();
+        let mut publisher = ArtifactPublisher::new("job-version-failed");
+        let staged = publisher.stage_path(&new_thumbnail).unwrap();
+        std::fs::write(&staged, b"new").unwrap();
+        publisher.replace(staged, new_thumbnail.clone());
+        publisher.retire_after_commit(old_thumbnail.clone());
+
+        let result: anyhow::Result<()> = publisher.publish(|| anyhow::bail!("database failed"));
+
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(old_thumbnail).unwrap(), b"old");
+        assert!(!new_thumbnail.exists());
+    }
+
+    #[test]
+    fn successful_version_commit_retires_old_thumbnail() {
+        let directory = tempfile::tempdir().unwrap();
+        let old_thumbnail = directory.path().join("hash.jpg");
+        let new_thumbnail = directory.path().join("hash-v1.jpg");
+        std::fs::write(&old_thumbnail, b"old").unwrap();
+        let mut publisher = ArtifactPublisher::new("job-version-success");
+        let staged = publisher.stage_path(&new_thumbnail).unwrap();
+        std::fs::write(&staged, b"new").unwrap();
+        publisher.replace(staged, new_thumbnail.clone());
+        publisher.retire_after_commit(old_thumbnail.clone());
+
+        publisher.publish(|| Ok(())).unwrap();
+
+        assert!(!old_thumbnail.exists());
+        assert_eq!(std::fs::read(new_thumbnail).unwrap(), b"new");
+    }
+
+    #[test]
+    fn startup_cleanup_keeps_only_the_durable_thumbnail_version() {
+        const HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        const ORPHAN: &str = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        let directory = tempfile::tempdir().unwrap();
+        let shard = directory.path().join("01");
+        std::fs::create_dir_all(&shard).unwrap();
+        let current = shard.join(format!("{HASH}-v2.jpg"));
+        let old_v0 = shard.join(format!("{HASH}.jpg"));
+        let old_v1 = shard.join(format!("{HASH}-v1.jpg"));
+        let orphan = shard.join(format!("{ORPHAN}-v4.jpg"));
+        let unrelated = shard.join("not-a-thumbnail.jpg");
+        for path in [&current, &old_v0, &old_v1, &orphan, &unrelated] {
+            std::fs::write(path, b"jpeg").unwrap();
+        }
+        let expected = HashMap::from([(HASH.to_owned(), 2)]);
+
+        let removed = cleanup_stale_thumbnail_versions_at(directory.path(), &expected);
+
+        assert_eq!(removed, 3);
+        assert!(current.exists());
+        assert!(!old_v0.exists());
+        assert!(!old_v1.exists());
+        assert!(!orphan.exists());
+        assert!(unrelated.exists());
     }
 }

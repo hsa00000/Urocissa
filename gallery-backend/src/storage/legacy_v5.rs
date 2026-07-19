@@ -140,3 +140,71 @@ impl Value for LegacyAbstractData {
         TypeName::new("AbstractData")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const V5_GOLDEN_BYTES: &[u8] = &[
+        0, 9, 118, 53, 45, 103, 111, 108, 100, 101, 110, 0, 0, 1, 3, 6, 57, 1, 6, 108, 101, 103,
+        97, 99, 121, 0, 1, 0, 1, 0, 133, 255, 255, 255, 255, 255, 255, 255, 9, 118, 53, 45, 103,
+        111, 108, 100, 101, 110, 6, 42, 4, 10, 4, 20, 3, 106, 112, 103, 0, 0, 0, 1, 5, 97, 46, 106,
+        112, 103, 6, 1, 6, 2,
+    ];
+
+    fn golden_fixture() -> LegacyAbstractData {
+        let id = ArrayString::<64>::from("v5-golden").unwrap();
+        LegacyAbstractData::Image(LegacyImageCombined {
+            object: LegacyObjectSchema {
+                id,
+                obj_type: LegacyObjectType::Image,
+                pending: false,
+                thumbhash: Some(vec![1, 2, 3]),
+                description: Some("legacy".to_owned()),
+                tags: HashSet::new(),
+                is_favorite: true,
+                is_archived: false,
+                is_trashed: true,
+                update_at: -123,
+            },
+            metadata: LegacyImageMetadata {
+                id,
+                size: 42,
+                width: 10,
+                height: 20,
+                ext: "jpg".to_owned(),
+                phash: None,
+                albums: HashSet::new(),
+                exif_vec: BTreeMap::new(),
+                alias: vec![LegacyFileModify {
+                    file: "a.jpg".to_owned(),
+                    modified: 1,
+                    scan_time: 2,
+                }],
+            },
+        })
+    }
+
+    #[test]
+    fn v5_golden_bytes_decode() {
+        let decoded: LegacyAbstractData = bitcode::decode(V5_GOLDEN_BYTES).unwrap();
+        let LegacyAbstractData::Image(decoded) = decoded else {
+            panic!("V5 golden record changed variant");
+        };
+        let LegacyAbstractData::Image(expected) = golden_fixture() else {
+            unreachable!();
+        };
+
+        assert_eq!(decoded.object.id, expected.object.id);
+        assert!(matches!(decoded.object.obj_type, LegacyObjectType::Image));
+        assert_eq!(decoded.object.thumbhash, expected.object.thumbhash);
+        assert_eq!(decoded.object.description, expected.object.description);
+        assert_eq!(decoded.object.update_at, expected.object.update_at);
+        assert_eq!(decoded.metadata.id, expected.metadata.id);
+        assert_eq!(decoded.metadata.size, expected.metadata.size);
+        assert_eq!(decoded.metadata.width, expected.metadata.width);
+        assert_eq!(decoded.metadata.height, expected.metadata.height);
+        assert_eq!(decoded.metadata.ext, expected.metadata.ext);
+        assert_eq!(decoded.metadata.alias[0].file, "a.jpg");
+    }
+}

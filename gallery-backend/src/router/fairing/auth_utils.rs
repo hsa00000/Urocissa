@@ -84,18 +84,23 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
 
 /// Extract hash from the request URL path (last segment before extension)
 pub fn extract_hash_from_path(req: &Request<'_>) -> Result<String> {
-    let hash_opt = req
+    let file_name = req
         .uri()
         .path()
         .segments()
         .last()
-        .and_then(|hash_with_ext| hash_with_ext.rsplit_once('.'))
-        .map(|(hash, _ext)| hash.to_string());
+        .ok_or_else(|| anyhow!("No valid 'hash' parameter found in the uri"))?;
+    extract_hash_from_file_name(file_name)
+}
 
-    match hash_opt {
-        Some(hash) => Ok(hash),
-        None => Err(anyhow!("No valid 'hash' parameter found in the uri")),
-    }
+fn extract_hash_from_file_name(file_name: &str) -> Result<String> {
+    let (stem, _) = file_name
+        .rsplit_once('.')
+        .filter(|(_, extension)| !extension.is_empty())
+        .ok_or_else(|| anyhow!("No valid 'hash' parameter found in the uri"))?;
+    let (hash, _) = crate::public::structure::abstract_data::parse_thumbnail_stem(stem)
+        .ok_or_else(|| anyhow!("object file name does not contain a valid hash/version"))?;
+    Ok(hash.to_owned())
 }
 
 /// Validate share access: check expiration and password
@@ -232,4 +237,40 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_hash_from_file_name;
+
+    const HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn extracts_unversioned_and_versioned_object_hashes() {
+        assert_eq!(
+            extract_hash_from_file_name(&format!("{HASH}.jpg")).unwrap(),
+            HASH
+        );
+        assert_eq!(
+            extract_hash_from_file_name(&format!("{HASH}-v42.jpg")).unwrap(),
+            HASH
+        );
+        assert_eq!(
+            extract_hash_from_file_name(&format!("{HASH}.mp4")).unwrap(),
+            HASH
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_thumbnail_versions() {
+        for file_name in [
+            format!("{HASH}-v0.jpg"),
+            format!("{HASH}-v01.jpg"),
+            format!("{HASH}-v.jpg"),
+            format!("{HASH}-other.jpg"),
+            format!("{HASH}-v4294967296.jpg"),
+        ] {
+            assert!(extract_hash_from_file_name(&file_name).is_err());
+        }
+    }
 }

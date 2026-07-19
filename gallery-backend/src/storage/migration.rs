@@ -304,6 +304,7 @@ mod tests {
             .expect("migrated image")
             .into_value();
         assert_eq!(value.hash(), id);
+        assert_eq!(value.cache_version(), 0);
         Ok(())
     }
 

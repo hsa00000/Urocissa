@@ -9,6 +9,7 @@ use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
 use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::object::ObjectType;
+use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::selection::{SelectionDescriptor, resolve_selection};
@@ -93,7 +94,17 @@ async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> App
                         add: BTreeSet::new(),
                         remove: BTreeSet::from([album_id]),
                     })
-                    .map_or(0, |operation| operation.estimated_bytes());
+                    .map_or(0, |operation| {
+                        let touch_bytes = match &operation {
+                            DirtyOperation::Albums { targets, .. } => DirtyOperation::Touch {
+                                targets: targets.clone(),
+                                changed_at: 0,
+                            }
+                            .estimated_bytes(),
+                            _ => 0,
+                        };
+                        operation.estimated_bytes() + touch_bytes
+                    });
                 delete_bytes + membership_bytes
             })
             .sum::<usize>()
@@ -113,6 +124,9 @@ async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> App
     }
     let album_slots = targets.iter().collect::<Vec<_>>();
     let mut operations = Vec::new();
+    let universe = state.arena.capacity();
+    let mut touch_targets = TargetSet::default();
+    let mut deleted_album_ids = BTreeSet::new();
     for slot_ref in &album_slots {
         let Some(record) = state.get(*slot_ref) else {
             WRITE_BEHIND.release_reservation(reservation);
@@ -129,6 +143,7 @@ async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> App
             ));
         }
         let album_id = record.id;
+        deleted_album_ids.insert(album_id);
         let members = state
             .query
             .albums
@@ -136,18 +151,26 @@ async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> App
             .cloned()
             .unwrap_or_default();
         if !members.is_empty() {
+            let member_targets = TargetSet::from_slot_refs(
+                members
+                    .iter()
+                    .filter_map(|ordinal| state.slot_for_ordinal(ordinal)),
+                universe,
+            );
+            touch_targets.union(&member_targets, universe);
             operations.push(DirtyOperation::Albums {
-                targets: TargetSet::from_slot_refs(
-                    members
-                        .iter()
-                        .filter_map(|ordinal| state.slot_for_ordinal(ordinal)),
-                    state.arena.capacity(),
-                ),
+                targets: member_targets,
                 add: BTreeSet::new(),
                 remove: BTreeSet::from([album_id]),
             });
         }
         operations.push(DirtyOperation::AlbumDelete(album_id));
+    }
+    if !touch_targets.is_empty() {
+        operations.push(DirtyOperation::Touch {
+            targets: touch_targets,
+            changed_at: next_mutation_timestamp(),
+        });
     }
     let actual_bytes = operations
         .iter()
@@ -171,6 +194,7 @@ async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> App
                 .edit_albums(targets.ordinals(), &BTreeSet::new(), remove, universe);
         }
     }
+    WRITE_BEHIND.cancel_targets(&targets, &deleted_album_ids);
     state.remove_targets(&targets);
     if operations.is_empty() {
         WRITE_BEHIND.release_reservation(reservation);
@@ -198,6 +222,7 @@ async fn delete_durable_selection(targets: TargetSet, structural_epoch: u64) -> 
                 "selection became stale before durable delete",
             ));
         }
+        let changed_at = next_mutation_timestamp();
 
         let selected_album_ids = targets
             .iter()
@@ -231,21 +256,27 @@ async fn delete_durable_selection(targets: TargetSet, structural_epoch: u64) -> 
             })
             .map(|(album_id, _)| *album_id)
             .collect::<Vec<_>>();
-        let affected_album_patches = affected_albums
+        let mut affected_album_patches = affected_albums
             .into_iter()
-            .filter_map(|album_id| state.album_aggregate_excluding(album_id, &targets))
+            .filter_map(|album_id| state.album_aggregate_excluding(album_id, &targets, changed_at))
             .collect::<Vec<_>>();
+        for album in &mut affected_album_patches {
+            album.object.touch_update_at(changed_at);
+            album.metadata.last_modified_time = changed_at;
+        }
 
         TREE.store
             .write(|writer| {
                 // Album deletion removes durable reverse memberships first.
                 for (album_id, members) in &selected_album_members {
                     for ordinal in members.iter() {
-                        let Some(member_id) = state
-                            .slot_for_ordinal(ordinal)
-                            .and_then(|slot_ref| state.get(slot_ref))
-                            .map(|record| record.id)
-                        else {
+                        let Some(member_slot) = state.slot_for_ordinal(ordinal) else {
+                            continue;
+                        };
+                        if targets.contains(member_slot) {
+                            continue;
+                        }
+                        let Some(member_id) = state.get(member_slot).map(|record| record.id) else {
                             continue;
                         };
                         let Some(value) = writer.get(member_id.as_str())? else {
@@ -253,7 +284,9 @@ async fn delete_durable_selection(targets: TargetSet, structural_epoch: u64) -> 
                         };
                         let mut data = value.into_value();
                         if let Some(albums) = data.albums_mut() {
-                            albums.remove(album_id);
+                            if albums.remove(album_id) {
+                                data.touch_update_at(changed_at);
+                            }
                         }
                         writer.insert_at(member_id.as_str(), &data)?;
                     }

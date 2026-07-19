@@ -1,13 +1,16 @@
 use crate::{
-    operations::open_db::open_data_table,
-    public::{error_data::handle_error, structure::abstract_data::AbstractData},
-    tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
+    process::{
+        artifact_publisher::ArtifactPublisher,
+        media_publish::{load_logical_media, publish_media_mutation},
+    },
+    public::{db::tree::TREE, error_data::handle_error, structure::abstract_data::AbstractData},
 };
 use anyhow::Result;
 use arrayvec::ArrayString;
 use mini_executor::Task;
-use std::{mem, path::PathBuf};
+use std::path::PathBuf;
 use tokio::task::spawn_blocking;
+use uuid::Uuid;
 
 pub struct DeduplicateTask {
     pub path: PathBuf,
@@ -44,23 +47,31 @@ impl Task for DeduplicateTask {
 fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
     let mut abstract_data = AbstractData::new(&task.path, task.hash)?;
 
-    let data_table = open_data_table();
-    // File already in persistent database
+    let exists = TREE
+        .store
+        .read(|reader| Ok::<_, anyhow::Error>(reader.get(task.hash.as_str())?.is_some()))?;
 
-    if let Some(guard) = data_table.get(&*task.hash).unwrap() {
-        let mut data_exist = guard.into_value();
-        if let Some(alias_mut) = abstract_data.alias_mut() {
-            let file_modify = mem::take(&mut alias_mut[0]);
-            if let Some(exist_alias) = data_exist.alias_mut() {
-                exist_alias.push(file_modify);
+    if exists {
+        let file_modify = abstract_data
+            .alias_mut()
+            .and_then(Vec::pop)
+            .ok_or_else(|| anyhow::anyhow!("new duplicate record has no file alias"))?;
+        let album_id = task.presigned_album_id_opt;
+        let (slot_ref, _) = load_logical_media(task.hash)?;
+        let publisher = ArtifactPublisher::new(format!("deduplicate-{}", Uuid::new_v4()));
+        publish_media_mutation(slot_ref, task.hash, publisher, move |latest| {
+            latest
+                .alias_mut()
+                .ok_or_else(|| anyhow::anyhow!("duplicate target is not media"))?
+                .push(file_modify);
+            if let Some(album_id) = album_id {
+                latest
+                    .albums_mut()
+                    .ok_or_else(|| anyhow::anyhow!("duplicate target is not media"))?
+                    .insert(album_id);
             }
-        }
-        if let Some(album_id) = task.presigned_album_id_opt
-            && let Some(albums) = data_exist.albums_mut()
-        {
-            albums.insert(album_id);
-        }
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![data_exist]));
+            Ok(())
+        })?;
         warn!("File already exists in the database:\n{:#?}", abstract_data);
         Ok(None)
     } else {

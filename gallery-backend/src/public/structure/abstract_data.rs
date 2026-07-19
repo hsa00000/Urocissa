@@ -1,4 +1,3 @@
-use chrono::Utc;
 use std::collections::{BTreeMap, HashSet};
 use std::fs::metadata;
 use std::path::{Path, PathBuf};
@@ -23,9 +22,71 @@ use super::{
     album::AlbumCombined,
     common::FileModify,
     image::{ImageCombined, ImageMetadata},
-    object::{ObjectSchema, ObjectType},
+    object::{ObjectSchema, ObjectType, next_mutation_timestamp},
     video::{VideoCombined, VideoMetadata},
 };
+
+pub fn thumbnail_file_name(hash: &str, cache_version: u32) -> String {
+    if cache_version == 0 {
+        format!("{hash}.jpg")
+    } else {
+        format!("{hash}-v{cache_version}.jpg")
+    }
+}
+
+pub fn parse_thumbnail_stem(stem: &str) -> Option<(&str, u32)> {
+    if stem.len() < 64 {
+        return None;
+    }
+    let (hash, suffix) = stem.split_at(64);
+    if !hash
+        .as_bytes()
+        .iter()
+        .all(|character| character.is_ascii_digit() || (b'a'..=b'f').contains(character))
+    {
+        return None;
+    }
+    if suffix.is_empty() {
+        return Some((hash, 0));
+    }
+    let version_text = suffix.strip_prefix("-v")?;
+    if version_text.starts_with('0') {
+        return None;
+    }
+    let version = version_text.parse::<u32>().ok()?;
+    Some((hash, version))
+}
+
+#[cfg(test)]
+mod thumbnail_identity_tests {
+    use super::{parse_thumbnail_stem, thumbnail_file_name};
+
+    const HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn thumbnail_names_keep_version_zero_backward_compatible() {
+        assert_eq!(thumbnail_file_name(HASH, 0), format!("{HASH}.jpg"));
+        assert_eq!(thumbnail_file_name(HASH, 42), format!("{HASH}-v42.jpg"));
+    }
+
+    #[test]
+    fn thumbnail_stems_only_accept_canonical_versions() {
+        assert_eq!(parse_thumbnail_stem(HASH), Some((HASH, 0)));
+        assert_eq!(
+            parse_thumbnail_stem(&format!("{HASH}-v42")),
+            Some((HASH, 42))
+        );
+        for stem in [
+            format!("{HASH}-v0"),
+            format!("{HASH}-v01"),
+            format!("{HASH}-v"),
+            format!("{HASH}-other"),
+            format!("{HASH}-v4294967296"),
+        ] {
+            assert_eq!(parse_thumbnail_stem(&stem), None);
+        }
+    }
+}
 
 /// `AbstractData` enum with Image, Video, and Album variants
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,17 +175,15 @@ impl AbstractData {
 
     /// Update the `update_at` timestamp
     pub fn update_update_at(&mut self) {
-        let now = Utc::now().timestamp_millis();
+        self.touch_update_at(next_mutation_timestamp());
+    }
+
+    /// Apply a stable mutation timestamp without changing it on overlay reads.
+    pub fn touch_update_at(&mut self, changed_at: i64) {
         match self {
-            AbstractData::Image(img) => {
-                img.object.update_at = now.max(img.object.update_at.saturating_add(1));
-            }
-            AbstractData::Video(vid) => {
-                vid.object.update_at = now.max(vid.object.update_at.saturating_add(1));
-            }
-            AbstractData::Album(alb) => {
-                alb.object.update_at = now.max(alb.object.update_at.saturating_add(1));
-            }
+            AbstractData::Image(img) => img.object.touch_update_at(changed_at),
+            AbstractData::Video(vid) => vid.object.touch_update_at(changed_at),
+            AbstractData::Album(alb) => alb.object.touch_update_at(changed_at),
         }
     }
 
@@ -410,6 +469,7 @@ impl AbstractData {
             obj_type: object_type,
             pending: false,
             thumbhash: None,
+            cache_version: 0,
             description: (next(&mut state) % 5 == 0)
                 .then(|| format!("Performance fixture item {index}")),
             tags,
@@ -487,9 +547,11 @@ impl AbstractData {
     pub fn compressed_path_string(&self) -> String {
         let hash = self.hash();
         let relative_path = match self {
-            AbstractData::Image(_) => {
-                format!("object/compressed/{}/{}.jpg", &hash.as_str()[0..2], hash)
-            }
+            AbstractData::Image(_) => format!(
+                "object/compressed/{}/{}",
+                &hash.as_str()[0..2],
+                thumbnail_file_name(hash.as_str(), self.cache_version())
+            ),
             AbstractData::Video(_) => {
                 format!("object/compressed/{}/{}.mp4", &hash.as_str()[0..2], hash)
             }
@@ -518,15 +580,19 @@ impl AbstractData {
 
     /// Get the thumbnail path
     pub fn thumbnail_path(&self) -> String {
-        let hash = self.hash();
-        crate::public::constant::storage::get_data_path()
-            .join(format!(
-                "object/compressed/{}/{}.jpg",
-                &hash.as_str()[0..2],
-                hash
-            ))
+        self.thumbnail_path_for_version(self.cache_version())
             .to_string_lossy()
             .into_owned()
+    }
+
+    /// Get the thumbnail path for a specific immutable cache version.
+    pub fn thumbnail_path_for_version(&self, cache_version: u32) -> PathBuf {
+        let hash = self.hash();
+        crate::public::constant::storage::get_data_path().join(format!(
+            "object/compressed/{}/{}",
+            &hash.as_str()[0..2],
+            thumbnail_file_name(hash.as_str(), cache_version)
+        ))
     }
 
     /// Get the parent directory of the compressed path
@@ -622,6 +688,24 @@ impl AbstractData {
         }
     }
 
+    /// Get the immutable thumbnail cache version.
+    pub fn cache_version(&self) -> u32 {
+        match self {
+            AbstractData::Image(img) => img.object.cache_version,
+            AbstractData::Video(vid) => vid.object.cache_version,
+            AbstractData::Album(alb) => alb.object.cache_version,
+        }
+    }
+
+    /// Set the immutable thumbnail cache version.
+    pub fn set_cache_version(&mut self, cache_version: u32) {
+        match self {
+            AbstractData::Image(img) => img.object.cache_version = cache_version,
+            AbstractData::Video(vid) => vid.object.cache_version = cache_version,
+            AbstractData::Album(alb) => alb.object.cache_version = cache_version,
+        }
+    }
+
     /// Set phash (only for images)
     pub fn set_phash(&mut self, phash: Vec<u8>) {
         if let AbstractData::Image(img) = self {
@@ -646,12 +730,13 @@ impl AbstractData {
                 obj_type: ObjectType::Image,
                 pending: vid.object.pending,
                 thumbhash: vid.object.thumbhash.clone(),
+                cache_version: vid.object.cache_version,
                 description: vid.object.description.clone(),
                 tags: vid.object.tags.clone(),
                 is_favorite: vid.object.is_favorite,
                 is_archived: vid.object.is_archived,
                 is_trashed: vid.object.is_trashed,
-                update_at: Utc::now().timestamp_millis(),
+                update_at: vid.object.update_at,
             };
             let metadata = ImageMetadata {
                 id: vid.metadata.id,

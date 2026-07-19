@@ -9,7 +9,7 @@ use arrayvec::ArrayString;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::AlbumCombined;
 use crate::public::structure::expression::{AlbumFilterValue, Expression, FilterValue};
-use crate::public::structure::object::ObjectType;
+use crate::public::structure::object::{ObjectSchema, ObjectType};
 use crate::public::structure::response::reduced_data::ReducedData;
 
 static NEXT_STRUCTURAL_EPOCH: LazyLock<AtomicU64> = LazyLock::new(|| {
@@ -240,6 +240,7 @@ pub struct CacheRecord {
     pub height: u32,
     pub size: u64,
     pub thumbhash: Option<Vec<u8>>,
+    pub cache_version: u32,
     pub ext: String,
     pub make: Option<String>,
     pub model: Option<String>,
@@ -248,6 +249,12 @@ pub struct CacheRecord {
 
 impl CacheRecord {
     pub fn from_abstract_data(data: &AbstractData, timestamp: i64) -> Self {
+        let update_at = match data {
+            AbstractData::Image(image) => image.object.update_at,
+            AbstractData::Video(video) => video.object.update_at,
+            AbstractData::Album(album) => album.object.update_at,
+        };
+        crate::public::structure::object::observe_mutation_timestamp(update_at);
         let (object_type, size) = match data {
             AbstractData::Image(image) => (ObjectType::Image, image.metadata.size),
             AbstractData::Video(video) => (ObjectType::Video, video.metadata.size),
@@ -262,6 +269,7 @@ impl CacheRecord {
             height: data.height(),
             size,
             thumbhash: data.thumbhash().cloned(),
+            cache_version: data.cache_version(),
             ext: data.ext().to_owned(),
             make: exif.and_then(|values| values.get("Make").cloned()),
             model: exif.and_then(|values| values.get("Model").cloned()),
@@ -1179,6 +1187,26 @@ impl Default for TreeState {
 }
 
 impl TreeState {
+    pub fn edit_cached_album_objects(
+        &mut self,
+        targets: &TargetSet,
+        changed_at: i64,
+        mut edit: impl FnMut(&mut ObjectSchema),
+    ) {
+        let album_ids = targets
+            .iter()
+            .filter_map(|slot_ref| self.get(slot_ref))
+            .filter(|record| record.object_type == ObjectType::Album)
+            .map(|record| record.id)
+            .collect::<Vec<_>>();
+        for album_id in album_ids {
+            if let Some(album) = self.albums.get_mut(&album_id) {
+                edit(&mut album.object);
+                album.object.touch_update_at(changed_at);
+            }
+        }
+    }
+
     pub fn from_records(records: impl IntoIterator<Item = AbstractData>) -> Self {
         let mut state = Self::default();
         for data in records {
@@ -1524,6 +1552,7 @@ impl TreeState {
         targets: &OrdinalSet,
         add: &BTreeSet<ArrayString<64>>,
         remove: &BTreeSet<ArrayString<64>>,
+        changed_at: i64,
     ) -> Vec<AlbumCombined> {
         let mut updated = HashMap::<ArrayString<64>, (AlbumCombined, bool)>::new();
         for album_id in add.union(remove) {
@@ -1537,7 +1566,7 @@ impl TreeState {
             let Some((album, _)) = updated.get_mut(album_id) else {
                 continue;
             };
-            let mut cover_candidate = None::<(i64, ArrayString<64>, Option<Vec<u8>>)>;
+            let mut cover_candidate = None::<(i64, ArrayString<64>, Option<Vec<u8>>, u32)>;
             for ordinal in targets.iter() {
                 if existing.is_some_and(|members| members.contains(ordinal))
                     || self.query.trashed.contains(ordinal)
@@ -1566,19 +1595,27 @@ impl TreeState {
                         .map_or(record.timestamp, |value| value.max(record.timestamp)),
                 );
                 if album.metadata.cover.is_none()
-                    && cover_candidate.as_ref().is_none_or(|(timestamp, id, _)| {
-                        record.timestamp > *timestamp
-                            || (record.timestamp == *timestamp && record.id < *id)
-                    })
+                    && cover_candidate
+                        .as_ref()
+                        .is_none_or(|(timestamp, id, _, _)| {
+                            record.timestamp > *timestamp
+                                || (record.timestamp == *timestamp && record.id < *id)
+                        })
                 {
-                    cover_candidate = Some((record.timestamp, record.id, record.thumbhash.clone()));
+                    cover_candidate = Some((
+                        record.timestamp,
+                        record.id,
+                        record.thumbhash.clone(),
+                        record.cache_version,
+                    ));
                 }
             }
             if album.metadata.cover.is_none()
-                && let Some((_, id, thumbhash)) = cover_candidate
+                && let Some((_, id, thumbhash, cache_version)) = cover_candidate
             {
                 album.metadata.cover = Some(id);
                 album.object.thumbhash = thumbhash;
+                album.object.cache_version = cache_version;
             }
         }
 
@@ -1615,11 +1652,12 @@ impl TreeState {
         for album_id in affected {
             let (mut album, rebuild) = updated.remove(&album_id).expect("affected album");
             if rebuild {
-                if let Some(album) = self.refresh_album_aggregate(album_id) {
+                if let Some(album) = self.refresh_album_aggregate(album_id, changed_at) {
                     patches.push(album);
                 }
             } else {
-                album.metadata.last_modified_time = chrono::Utc::now().timestamp_millis();
+                album.metadata.last_modified_time = changed_at;
+                album.object.touch_update_at(changed_at);
                 self.albums.insert(album_id, album.clone());
                 patches.push(album);
             }
@@ -1631,6 +1669,7 @@ impl TreeState {
         &mut self,
         targets: &OrdinalSet,
         patch: FlagPatch,
+        changed_at: i64,
     ) -> Vec<AlbumCombined> {
         let Some(trashed) = patch.trashed else {
             self.query.edit_flags(targets, patch);
@@ -1660,7 +1699,7 @@ impl TreeState {
             let Some((album, rebuild)) = updated.get_mut(album_id) else {
                 continue;
             };
-            let mut cover_candidate = None::<(i64, ArrayString<64>, Option<Vec<u8>>)>;
+            let mut cover_candidate = None::<(i64, ArrayString<64>, Option<Vec<u8>>, u32)>;
             for ordinal in targets.iter() {
                 if !members.contains(ordinal) || self.query.trashed.contains(ordinal) == trashed {
                     continue;
@@ -1694,22 +1733,29 @@ impl TreeState {
                             .map_or(record.timestamp, |value| value.max(record.timestamp)),
                     );
                     if album.metadata.cover.is_none()
-                        && cover_candidate.as_ref().is_none_or(|(timestamp, id, _)| {
-                            record.timestamp > *timestamp
-                                || (record.timestamp == *timestamp && record.id < *id)
-                        })
+                        && cover_candidate
+                            .as_ref()
+                            .is_none_or(|(timestamp, id, _, _)| {
+                                record.timestamp > *timestamp
+                                    || (record.timestamp == *timestamp && record.id < *id)
+                            })
                     {
-                        cover_candidate =
-                            Some((record.timestamp, record.id, record.thumbhash.clone()));
+                        cover_candidate = Some((
+                            record.timestamp,
+                            record.id,
+                            record.thumbhash.clone(),
+                            record.cache_version,
+                        ));
                     }
                 }
             }
             if !trashed
                 && album.metadata.cover.is_none()
-                && let Some((_, id, thumbhash)) = cover_candidate
+                && let Some((_, id, thumbhash, cache_version)) = cover_candidate
             {
                 album.metadata.cover = Some(id);
                 album.object.thumbhash = thumbhash;
+                album.object.cache_version = cache_version;
             }
         }
 
@@ -1720,11 +1766,12 @@ impl TreeState {
                 continue;
             };
             if rebuild {
-                if let Some(album) = self.refresh_album_aggregate(album_id) {
+                if let Some(album) = self.refresh_album_aggregate(album_id, changed_at) {
                     patches.push(album);
                 }
             } else {
-                album.metadata.last_modified_time = chrono::Utc::now().timestamp_millis();
+                album.metadata.last_modified_time = changed_at;
+                album.object.touch_update_at(changed_at);
                 self.albums.insert(album_id, album.clone());
                 patches.push(album);
             }
@@ -1732,8 +1779,12 @@ impl TreeState {
         patches
     }
 
-    pub fn refresh_album_aggregate(&mut self, album_id: ArrayString<64>) -> Option<AlbumCombined> {
-        let album = self.album_aggregate_excluding(album_id, &TargetSet::default())?;
+    pub fn refresh_album_aggregate(
+        &mut self,
+        album_id: ArrayString<64>,
+        changed_at: i64,
+    ) -> Option<AlbumCombined> {
+        let album = self.album_aggregate_excluding(album_id, &TargetSet::default(), changed_at)?;
         self.albums.insert(album_id, album.clone());
         Some(album)
     }
@@ -1742,6 +1793,7 @@ impl TreeState {
         &self,
         album_id: ArrayString<64>,
         excluded: &TargetSet,
+        changed_at: i64,
     ) -> Option<AlbumCombined> {
         let mut album = self.albums.get(&album_id)?.clone();
         let current_cover = album.metadata.cover;
@@ -1751,6 +1803,7 @@ impl TreeState {
         let mut end_time = None::<i64>;
         let mut cover_is_member = false;
         let mut cover_thumbhash = None;
+        let mut cover_cache_version = 0;
         let mut newest = None::<&CacheRecord>;
         for record in self
             .query
@@ -1772,6 +1825,7 @@ impl TreeState {
             if current_cover == Some(record.id) {
                 cover_is_member = true;
                 cover_thumbhash.clone_from(&record.thumbhash);
+                cover_cache_version = record.cache_version;
             }
             if newest.is_none_or(|candidate| {
                 record.timestamp > candidate.timestamp
@@ -1784,15 +1838,19 @@ impl TreeState {
         album.metadata.item_size = item_size;
         album.metadata.start_time = start_time;
         album.metadata.end_time = end_time;
-        album.metadata.last_modified_time = chrono::Utc::now().timestamp_millis();
+        album.metadata.last_modified_time = changed_at;
+        album.object.touch_update_at(changed_at);
         if item_count == 0 {
             album.metadata.cover = None;
             album.object.thumbhash = None;
+            album.object.cache_version = 0;
         } else if cover_is_member {
             album.object.thumbhash = cover_thumbhash;
+            album.object.cache_version = cover_cache_version;
         } else if let Some(record) = newest {
             album.metadata.cover = Some(record.id);
             album.object.thumbhash.clone_from(&record.thumbhash);
+            album.object.cache_version = record.cache_version;
         }
         Some(album)
     }
@@ -1805,6 +1863,7 @@ impl TreeState {
         album_id: ArrayString<64>,
         override_slot: SlotRef,
         data: &AbstractData,
+        changed_at: i64,
     ) -> Option<AlbumCombined> {
         let mut album = self.albums.get(&album_id)?.clone();
         let current_cover = album.metadata.cover;
@@ -1812,31 +1871,51 @@ impl TreeState {
             data,
             data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST),
         );
-        let mut item_count = 0_usize;
-        let mut item_size = 0_u64;
-        let mut start_time = None::<i64>;
-        let mut end_time = None::<i64>;
-        let mut cover_is_member = false;
-        let mut cover_thumbhash = None;
-        let mut newest = None::<CacheRecord>;
-
+        let override_is_member = data
+            .albums()
+            .is_some_and(|albums| albums.contains(&album_id));
+        let override_is_trashed = match data {
+            AbstractData::Image(image) => image.object.is_trashed,
+            AbstractData::Video(video) => video.object.is_trashed,
+            AbstractData::Album(album) => album.object.is_trashed,
+        };
+        let mut saw_override = false;
+        let mut records = Vec::<CacheRecord>::new();
         for slot_ref in self
             .query
             .albums
             .get(&album_id)
             .into_iter()
             .flat_map(|members| members.iter())
-            .filter(|ordinal| !self.query.trashed.contains(*ordinal))
             .filter_map(|ordinal| self.slot_for_ordinal(ordinal))
         {
-            let record = if slot_ref == override_slot {
-                &override_record
-            } else {
-                let Some(record) = self.get(slot_ref) else {
-                    continue;
-                };
-                record
-            };
+            if slot_ref == override_slot {
+                saw_override = true;
+                if override_is_member && !override_is_trashed {
+                    records.push(override_record.clone());
+                }
+                continue;
+            }
+            if self.query.trashed.contains(slot_ref.index()) {
+                continue;
+            }
+            if let Some(record) = self.get(slot_ref) {
+                records.push(record.clone());
+            }
+        }
+        if override_is_member && !override_is_trashed && !saw_override {
+            records.push(override_record);
+        }
+        let mut item_count = 0_usize;
+        let mut item_size = 0_u64;
+        let mut start_time = None::<i64>;
+        let mut end_time = None::<i64>;
+        let mut cover_is_member = false;
+        let mut cover_thumbhash = None;
+        let mut cover_cache_version = 0;
+        let mut newest = None::<CacheRecord>;
+
+        for record in &records {
             if record.object_type == ObjectType::Album {
                 continue;
             }
@@ -1848,6 +1927,7 @@ impl TreeState {
             if current_cover == Some(record.id) {
                 cover_is_member = true;
                 cover_thumbhash.clone_from(&record.thumbhash);
+                cover_cache_version = record.cache_version;
             }
             if newest.as_ref().is_none_or(|candidate| {
                 record.timestamp > candidate.timestamp
@@ -1861,16 +1941,19 @@ impl TreeState {
         album.metadata.item_size = item_size;
         album.metadata.start_time = start_time;
         album.metadata.end_time = end_time;
-        album.metadata.last_modified_time = chrono::Utc::now().timestamp_millis();
-        album.object.update_at = album.metadata.last_modified_time;
+        album.metadata.last_modified_time = changed_at;
+        album.object.touch_update_at(changed_at);
         if item_count == 0 {
             album.metadata.cover = None;
             album.object.thumbhash = None;
+            album.object.cache_version = 0;
         } else if cover_is_member {
             album.object.thumbhash = cover_thumbhash;
+            album.object.cache_version = cover_cache_version;
         } else if let Some(record) = newest {
             album.metadata.cover = Some(record.id);
             album.object.thumbhash = record.thumbhash;
+            album.object.cache_version = record.cache_version;
         }
         Some(album)
     }
@@ -2152,6 +2235,7 @@ fn contains_ascii_lowercase(value: &str, lowercase_needle: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::public::structure::album::Album;
 
     fn cache_record(id: &str, timestamp: i64) -> CacheRecord {
         CacheRecord {
@@ -2162,6 +2246,7 @@ mod tests {
             height: 1,
             size: 1,
             thumbhash: None,
+            cache_version: 0,
             ext: "jpg".to_owned(),
             make: None,
             model: None,
@@ -2357,16 +2442,104 @@ mod tests {
         let mut updated = media;
         updated.set_size(99);
         updated.set_thumbhash(vec![9]);
+        updated.set_cache_version(7);
+        let changed_at = crate::public::structure::object::next_mutation_timestamp();
         let aggregate = state
-            .album_aggregate_with_override(album_id, slot_ref, &updated)
+            .album_aggregate_with_override(album_id, slot_ref, &updated, changed_at)
             .unwrap();
 
         assert_eq!(aggregate.metadata.item_count, 1);
         assert_eq!(aggregate.metadata.item_size, 99);
         assert_eq!(aggregate.metadata.cover, Some(media_id));
         assert_eq!(aggregate.object.thumbhash, Some(vec![9]));
+        assert_eq!(aggregate.object.cache_version, 7);
+        assert_eq!(aggregate.object.update_at, changed_at);
+        assert_eq!(aggregate.metadata.last_modified_time, changed_at);
         assert!(aggregate.metadata.start_time.is_some());
         assert_eq!(aggregate.metadata.start_time, aggregate.metadata.end_time);
+    }
+
+    #[test]
+    fn album_override_accounts_for_direct_membership_add_and_remove() {
+        let album_id = ArrayString::<64>::from("album-membership").unwrap();
+        let media_id = ArrayString::<64>::from("media-membership").unwrap();
+        let media = AbstractData::Image(crate::public::structure::image::ImageCombined {
+            object: crate::public::structure::object::ObjectSchema::new(
+                media_id,
+                ObjectType::Image,
+            ),
+            metadata: crate::public::structure::image::ImageMetadata::new(
+                media_id,
+                10,
+                20,
+                30,
+                "jpg".to_owned(),
+            ),
+        });
+        let album = AbstractData::Album(AlbumCombined {
+            object: crate::public::structure::object::ObjectSchema::new(
+                album_id,
+                ObjectType::Album,
+            ),
+            metadata: crate::public::structure::album::metadata::AlbumMetadata {
+                id: album_id,
+                ..crate::public::structure::album::metadata::AlbumMetadata::default()
+            },
+        });
+
+        let state_without_member = TreeState::from_records([media.clone(), album.clone()]);
+        let slot_ref = state_without_member.find(media_id.as_str()).unwrap();
+        let mut added = media;
+        added.albums_mut().unwrap().insert(album_id);
+        added.set_thumbhash(vec![5]);
+        added.set_cache_version(5);
+        let added_aggregate = state_without_member
+            .album_aggregate_with_override(
+                album_id,
+                slot_ref,
+                &added,
+                crate::public::structure::object::next_mutation_timestamp(),
+            )
+            .unwrap();
+        assert_eq!(added_aggregate.metadata.item_count, 1);
+        assert_eq!(added_aggregate.metadata.cover, Some(media_id));
+        assert_eq!(added_aggregate.object.cache_version, 5);
+
+        let state_with_member = TreeState::from_records([added.clone(), album]);
+        let slot_ref = state_with_member.find(media_id.as_str()).unwrap();
+        let mut removed = added;
+        removed.albums_mut().unwrap().remove(&album_id);
+        let removed_aggregate = state_with_member
+            .album_aggregate_with_override(
+                album_id,
+                slot_ref,
+                &removed,
+                crate::public::structure::object::next_mutation_timestamp(),
+            )
+            .unwrap();
+        assert_eq!(removed_aggregate.metadata.item_count, 0);
+        assert_eq!(removed_aggregate.metadata.cover, None);
+        assert_eq!(removed_aggregate.object.cache_version, 0);
+    }
+
+    #[test]
+    fn cached_album_object_edits_publish_the_same_mutation_timestamp() {
+        let album_id = ArrayString::<64>::from("cached-album-object").unwrap();
+        let album = Album::new(album_id, None).into_abstract_data();
+        let mut state = TreeState::from_records([album]);
+        let album_slot = state.find(album_id.as_str()).unwrap();
+        let targets = TargetSet::from_slot_refs([album_slot], state.arena.capacity());
+        let changed_at = crate::public::structure::object::next_mutation_timestamp();
+
+        state.edit_cached_album_objects(&targets, changed_at, |object| {
+            object.tags.insert("cached".to_owned());
+            object.description = Some("updated".to_owned());
+        });
+
+        let album = state.albums.get(&album_id).unwrap();
+        assert_eq!(album.object.update_at, changed_at);
+        assert!(album.object.tags.contains("cached"));
+        assert_eq!(album.object.description.as_deref(), Some("updated"));
     }
 
     #[test]
@@ -2743,8 +2916,6 @@ mod tests {
     #[cfg(feature = "performance-test")]
     #[test]
     fn album_membership_and_trash_aggregates_update_incrementally() {
-        use crate::public::structure::album::Album;
-
         let album_id = ArrayString::<64>::from("aggregate-album").unwrap();
         let mut first = AbstractData::generate_performance_data(700, 19);
         let mut second = AbstractData::generate_performance_data(701, 19);
@@ -2764,7 +2935,7 @@ mod tests {
         );
 
         let patches =
-            state.edit_album_memberships(&both, &BTreeSet::from([album_id]), &BTreeSet::new());
+            state.edit_album_memberships(&both, &BTreeSet::from([album_id]), &BTreeSet::new(), 100);
         assert_eq!(patches[0].metadata.item_count, 2);
         assert_eq!(state.query.albums[&album_id].len(), 2);
 
@@ -2775,6 +2946,7 @@ mod tests {
                 trashed: Some(true),
                 ..FlagPatch::default()
             },
+            101,
         );
         assert_eq!(patches[0].metadata.item_count, 1);
 
@@ -2782,6 +2954,7 @@ mod tests {
             &OrdinalSet::from_ordinals([second_slot.index()], state.arena.capacity()),
             &BTreeSet::new(),
             &BTreeSet::from([album_id]),
+            102,
         );
         assert_eq!(patches[0].metadata.item_count, 0);
         assert_eq!(patches[0].metadata.cover, None);
