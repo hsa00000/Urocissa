@@ -18,10 +18,28 @@ macro_rules! perf_timing {
 }
 
 #[cfg(feature = "performance-test")]
+mod memory;
+
+#[cfg(feature = "performance-test")]
 mod recorder;
 
 #[cfg(feature = "performance-test")]
-pub use recorder::{flush, initialize, record_log, set_phase};
+pub use memory::memory_snapshot;
+
+#[cfg(feature = "performance-test")]
+pub use recorder::{flush, record_log};
+
+#[cfg(feature = "performance-test")]
+pub fn initialize() {
+    recorder::initialize();
+    memory::initialize();
+}
+
+#[cfg(feature = "performance-test")]
+pub fn set_phase(phase: &str) {
+    recorder::set_phase(phase);
+    memory::set_phase();
+}
 
 #[cfg(not(feature = "performance-test"))]
 pub fn initialize() {}

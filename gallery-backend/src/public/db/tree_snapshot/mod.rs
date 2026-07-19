@@ -29,6 +29,22 @@ pub struct PendingTreeSnapshot {
 }
 
 impl PendingTreeSnapshot {
+    #[cfg(any(test, feature = "performance-test"))]
+    pub fn estimated_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(
+                self.ordinals
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<u32>()),
+            )
+            .saturating_add(self.targets.estimated_bytes())
+            .saturating_add(
+                self.scrollbar
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<ScrollBarData>()),
+            )
+    }
+
     pub fn encode(&self) -> anyhow::Result<Vec<u8>> {
         self.encode_with_layout().map(|(bytes, _)| bytes)
     }
@@ -279,6 +295,7 @@ mod tests {
             scrollbar: Vec::new(),
         };
         let bytes = snapshot.encode().unwrap();
+        assert!(snapshot.estimated_bytes() >= std::mem::size_of::<PendingTreeSnapshot>());
         assert!(bytes.len() < 256);
         let view = SnapshotBlobView::new(&bytes).unwrap();
         assert_eq!(view.structural_epoch(), 42);

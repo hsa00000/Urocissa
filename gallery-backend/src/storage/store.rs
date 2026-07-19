@@ -9,13 +9,18 @@ use redb::{
     Table, TableDefinition,
 };
 
-use super::v6::V6AbstractData;
+use super::{
+    cache::{CacheClass, database_builder},
+    v6::V6AbstractData,
+};
 use crate::public::structure::abstract_data::AbstractData;
 
 pub const RECORDS_TABLE: TableDefinition<&str, V6AbstractData> = TableDefinition::new("records");
 
 pub struct DataStore {
     db: Database,
+    #[cfg(feature = "performance-test")]
+    cache_limit_bytes: usize,
 }
 
 pub struct RecordReader {
@@ -46,15 +51,32 @@ pub struct RecordWriter<'txn> {
 
 impl DataStore {
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_with_cache(path, CacheClass::Main)
+    }
+
+    pub(crate) fn open_with_cache(path: &Path, cache_class: CacheClass) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).with_context(|| {
                 format!("failed to create database directory {}", parent.display())
             })?;
         }
         Ok(Self {
-            db: Database::create(path)
+            db: database_builder(cache_class)
+                .create(path)
                 .with_context(|| format!("failed to open V6 database {}", path.display()))?,
+            #[cfg(feature = "performance-test")]
+            cache_limit_bytes: cache_class.limit_bytes(),
         })
+    }
+
+    #[cfg(feature = "performance-test")]
+    pub const fn cache_limit_bytes(&self) -> usize {
+        self.cache_limit_bytes
+    }
+
+    #[cfg(feature = "performance-test")]
+    pub fn cache_stats(&self) -> redb::CacheStats {
+        self.db.cache_stats()
     }
 
     pub fn initialize_empty(path: &Path) -> Result<Self> {

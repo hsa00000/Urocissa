@@ -143,15 +143,10 @@ impl<T> RecordArena<T> {
     }
 }
 
-#[derive(Debug, Clone)]
-enum IdBucket {
-    One(SlotRef),
-    Many(Vec<SlotRef>),
-}
-
 #[derive(Debug, Default)]
 pub struct IdIndex {
-    buckets: HashMap<u64, IdBucket>,
+    primary: HashMap<u64, SlotRef>,
+    collisions: HashMap<u64, Vec<SlotRef>>,
 }
 
 impl IdIndex {
@@ -162,16 +157,24 @@ impl IdIndex {
 
     pub fn insert(&mut self, id: &str, slot_ref: SlotRef) {
         use std::collections::hash_map::Entry;
-        match self.buckets.entry(Self::fingerprint(id)) {
-            Entry::Vacant(entry) => {
-                entry.insert(IdBucket::One(slot_ref));
+        let fingerprint = Self::fingerprint(id);
+        if let Some(bucket) = self.collisions.get_mut(&fingerprint) {
+            if !bucket.contains(&slot_ref) {
+                bucket.push(slot_ref);
             }
-            Entry::Occupied(mut entry) => match entry.get_mut() {
-                IdBucket::One(existing) => {
-                    *entry.get_mut() = IdBucket::Many(vec![*existing, slot_ref]);
+            return;
+        }
+        match self.primary.entry(fingerprint) {
+            Entry::Vacant(entry) => {
+                entry.insert(slot_ref);
+            }
+            Entry::Occupied(entry) => {
+                let existing = *entry.get();
+                if existing != slot_ref {
+                    self.collisions
+                        .insert(fingerprint, vec![existing, slot_ref]);
                 }
-                IdBucket::Many(bucket) => bucket.push(slot_ref),
-            },
+            }
         }
     }
 
@@ -181,36 +184,48 @@ impl IdIndex {
                 .get(*slot_ref)
                 .is_some_and(|record| record.id.as_str() == id)
         };
-        match self.buckets.get(&Self::fingerprint(id))? {
-            IdBucket::One(slot_ref) => matches(slot_ref).then_some(*slot_ref),
-            IdBucket::Many(bucket) => bucket.iter().find(|slot_ref| matches(slot_ref)).copied(),
+        let fingerprint = Self::fingerprint(id);
+        if let Some(bucket) = self.collisions.get(&fingerprint) {
+            return bucket.iter().find(|slot_ref| matches(slot_ref)).copied();
         }
+        let slot_ref = self.primary.get(&fingerprint)?;
+        matches(slot_ref).then_some(*slot_ref)
     }
 
     pub fn remove(&mut self, id: &str, slot_ref: SlotRef) {
         let fingerprint = Self::fingerprint(id);
-        let Some(bucket) = self.buckets.get_mut(&fingerprint) else {
-            return;
-        };
-        match bucket {
-            IdBucket::One(existing) if *existing == slot_ref => {
-                self.buckets.remove(&fingerprint);
-            }
-            IdBucket::Many(items) => {
-                items.retain(|item| *item != slot_ref);
-                match items.as_slice() {
-                    [] => {
-                        self.buckets.remove(&fingerprint);
-                    }
-                    [remaining] => {
-                        let remaining = *remaining;
-                        self.buckets.insert(fingerprint, IdBucket::One(remaining));
-                    }
-                    _ => {}
+        if let Some(bucket) = self.collisions.get_mut(&fingerprint) {
+            bucket.retain(|item| *item != slot_ref);
+            let remaining = bucket.first().copied();
+            if bucket.len() > 1 {
+                if let Some(remaining) = remaining {
+                    self.primary.insert(fingerprint, remaining);
                 }
+                return;
             }
-            IdBucket::One(_) => {}
+            self.collisions.remove(&fingerprint);
+            if let Some(remaining) = remaining {
+                self.primary.insert(fingerprint, remaining);
+            } else {
+                self.primary.remove(&fingerprint);
+            }
+            return;
         }
+        if self.primary.get(&fingerprint) == Some(&slot_ref) {
+            self.primary.remove(&fingerprint);
+        }
+    }
+
+    #[cfg(feature = "performance-test")]
+    fn estimated_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + hash_map_allocation_bytes::<u64, SlotRef>(self.primary.capacity())
+            + hash_map_allocation_bytes::<u64, Vec<SlotRef>>(self.collisions.capacity())
+            + self
+                .collisions
+                .values()
+                .map(|bucket| bucket.capacity() * std::mem::size_of::<SlotRef>())
+                .sum::<usize>()
     }
 }
 
@@ -267,6 +282,57 @@ impl CacheRecord {
             date: self.timestamp,
         }
     }
+
+    #[cfg(feature = "performance-test")]
+    fn estimated_dynamic_bytes(&self) -> usize {
+        self.thumbhash.as_ref().map_or(0, Vec::capacity)
+            + self.ext.capacity()
+            + self.make.as_ref().map_or(0, String::capacity)
+            + self.model.as_ref().map_or(0, String::capacity)
+            + self.path_aliases.capacity() * std::mem::size_of::<String>()
+            + self
+                .path_aliases
+                .iter()
+                .map(String::capacity)
+                .sum::<usize>()
+    }
+}
+
+#[cfg(feature = "performance-test")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TreeMemoryUsage {
+    pub arena_inline_bytes: usize,
+    pub record_dynamic_bytes: usize,
+    pub id_index_bytes: usize,
+    pub order_index_bytes: usize,
+    pub query_indexes_bytes: usize,
+    pub album_catalog_bytes: usize,
+}
+
+#[cfg(feature = "performance-test")]
+impl TreeMemoryUsage {
+    pub fn total_bytes(self) -> usize {
+        self.arena_inline_bytes
+            .saturating_add(self.record_dynamic_bytes)
+            .saturating_add(self.id_index_bytes)
+            .saturating_add(self.order_index_bytes)
+            .saturating_add(self.query_indexes_bytes)
+            .saturating_add(self.album_catalog_bytes)
+    }
+}
+
+#[cfg(feature = "performance-test")]
+fn hash_map_allocation_bytes<K, V>(capacity: usize) -> usize {
+    capacity.saturating_mul(
+        std::mem::size_of::<K>()
+            .saturating_add(std::mem::size_of::<V>())
+            .saturating_add(1),
+    )
+}
+
+#[cfg(feature = "performance-test")]
+fn hash_set_allocation_bytes<T>(capacity: usize) -> usize {
+    capacity.saturating_mul(std::mem::size_of::<T>().saturating_add(1))
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -843,6 +909,39 @@ pub struct FlagPatch {
 }
 
 impl QueryIndexes {
+    #[cfg(feature = "performance-test")]
+    fn estimated_bytes(&self) -> usize {
+        let bitmap_bytes = [
+            &self.favorite,
+            &self.archived,
+            &self.trashed,
+            &self.has_any_tag,
+            &self.has_any_album,
+        ]
+        .into_iter()
+        .map(|bitmap| bitmap.words.capacity() * std::mem::size_of::<u64>())
+        .sum::<usize>();
+        let tag_bytes = hash_map_allocation_bytes::<String, OrdinalSet>(self.tags.capacity())
+            + self
+                .tags
+                .iter()
+                .map(|(tag, members)| tag.capacity() + members.estimated_bytes())
+                .sum::<usize>();
+        let album_bytes =
+            hash_map_allocation_bytes::<ArrayString<64>, OrdinalSet>(self.albums.capacity())
+                + self
+                    .albums
+                    .values()
+                    .map(OrdinalSet::estimated_bytes)
+                    .sum::<usize>();
+        std::mem::size_of::<Self>()
+            + bitmap_bytes
+            + tag_bytes
+            + album_bytes
+            + self.tag_membership_count.capacity() * std::mem::size_of::<u32>()
+            + self.album_membership_count.capacity() * std::mem::size_of::<u32>()
+    }
+
     fn ensure_ordinal(&mut self, ordinal: u32) {
         let len = ordinal as usize + 1;
         if self.tag_membership_count.len() < len {
@@ -1059,6 +1158,8 @@ pub struct TreeState {
     pub order: Arc<Vec<SlotRef>>,
     pub query: QueryIndexes,
     pub albums: HashMap<ArrayString<64>, AlbumCombined>,
+    #[cfg(feature = "performance-test")]
+    record_dynamic_bytes: usize,
     structural_epoch: u64,
 }
 
@@ -1070,6 +1171,8 @@ impl Default for TreeState {
             order: Arc::default(),
             query: QueryIndexes::default(),
             albums: HashMap::default(),
+            #[cfg(feature = "performance-test")]
+            record_dynamic_bytes: 0,
             structural_epoch: next_structural_epoch(),
         }
     }
@@ -1081,6 +1184,7 @@ impl TreeState {
         for data in records {
             let timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
             let record = CacheRecord::from_abstract_data(&data, timestamp);
+            state.track_record_added(&record);
             let id = record.id;
             let slot_ref = state.arena.allocate(record);
             state.id_index.insert(id.as_str(), slot_ref);
@@ -1099,6 +1203,51 @@ impl TreeState {
 
     pub fn len(&self) -> usize {
         self.arena.len()
+    }
+
+    #[cfg(feature = "performance-test")]
+    pub fn memory_usage(&self) -> TreeMemoryUsage {
+        let arena_inline_bytes = std::mem::size_of::<RecordArena<CacheRecord>>()
+            + self.arena.slots.capacity() * std::mem::size_of::<ArenaSlot<CacheRecord>>()
+            + self.arena.free.capacity() * std::mem::size_of::<u32>()
+            + std::mem::size_of::<u64>();
+        let order_index_bytes = std::mem::size_of::<Arc<Vec<SlotRef>>>()
+            + std::mem::size_of::<Vec<SlotRef>>()
+            + 2 * std::mem::size_of::<usize>()
+            + self.order.capacity() * std::mem::size_of::<SlotRef>();
+        let album_catalog_bytes = std::mem::size_of::<HashMap<ArrayString<64>, AlbumCombined>>()
+            + hash_map_allocation_bytes::<ArrayString<64>, AlbumCombined>(self.albums.capacity())
+            + self.albums.values().map(album_dynamic_bytes).sum::<usize>();
+        TreeMemoryUsage {
+            arena_inline_bytes,
+            record_dynamic_bytes: self.record_dynamic_bytes,
+            id_index_bytes: self.id_index.estimated_bytes(),
+            order_index_bytes,
+            query_indexes_bytes: self.query.estimated_bytes(),
+            album_catalog_bytes,
+        }
+    }
+
+    fn track_record_added(&mut self, record: &CacheRecord) {
+        #[cfg(feature = "performance-test")]
+        {
+            self.record_dynamic_bytes = self
+                .record_dynamic_bytes
+                .saturating_add(record.estimated_dynamic_bytes());
+        }
+        #[cfg(not(feature = "performance-test"))]
+        let _ = record;
+    }
+
+    fn track_record_removed(&mut self, record: &CacheRecord) {
+        #[cfg(feature = "performance-test")]
+        {
+            self.record_dynamic_bytes = self
+                .record_dynamic_bytes
+                .saturating_sub(record.estimated_dynamic_bytes());
+        }
+        #[cfg(not(feature = "performance-test"))]
+        let _ = record;
     }
 
     pub fn structural_epoch(&self) -> u64 {
@@ -1145,6 +1294,7 @@ impl TreeState {
     pub fn insert(&mut self, data: &AbstractData) -> SlotRef {
         let timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
         let record = CacheRecord::from_abstract_data(data, timestamp);
+        self.track_record_added(&record);
         let id = record.id;
         let slot_ref = self.arena.allocate(record);
         self.id_index.insert(id.as_str(), slot_ref);
@@ -1171,7 +1321,8 @@ impl TreeState {
         self.albums.remove(&id);
         Arc::make_mut(&mut self.order).retain(|candidate| *candidate != slot_ref);
         let removed = self.arena.remove(slot_ref);
-        if removed.is_some() {
+        if let Some(record) = &removed {
+            self.track_record_removed(record);
             self.bump_structural_epoch();
         }
         removed
@@ -1189,7 +1340,9 @@ impl TreeState {
             };
             self.id_index.remove(id.as_str(), slot_ref);
             self.albums.remove(&id);
-            self.arena.remove(slot_ref);
+            if let Some(record) = self.arena.remove(slot_ref) {
+                self.track_record_removed(&record);
+            }
         }
         let next_order = self
             .order
@@ -1214,6 +1367,13 @@ impl TreeState {
             .insert_record(slot_ref.index(), data, self.arena.capacity());
         if let AbstractData::Album(album) = data {
             self.albums.insert(album.object.id, album.clone());
+        }
+        #[cfg(feature = "performance-test")]
+        {
+            self.record_dynamic_bytes = self
+                .record_dynamic_bytes
+                .saturating_sub(old.estimated_dynamic_bytes())
+                .saturating_add(new.estimated_dynamic_bytes());
         }
         *self.arena.get_mut(slot_ref)? = new;
         if old.timestamp != new_timestamp {
@@ -1269,7 +1429,9 @@ impl TreeState {
             };
             self.id_index.remove(id.as_str(), *slot_ref);
             self.albums.remove(&id);
-            self.arena.remove(*slot_ref);
+            if let Some(record) = self.arena.remove(*slot_ref) {
+                self.track_record_removed(&record);
+            }
         }
 
         let mut rekeyed = HashSet::new();
@@ -1282,10 +1444,21 @@ impl TreeState {
                 let Some(old_timestamp) = self.get(slot_ref).map(|record| record.timestamp) else {
                     continue;
                 };
+                #[cfg(feature = "performance-test")]
+                let old_dynamic_bytes = self
+                    .get(slot_ref)
+                    .map_or(0, CacheRecord::estimated_dynamic_bytes);
                 self.query
                     .insert_record(slot_ref.index(), data, final_universe);
                 if let AbstractData::Album(album) = data {
                     self.albums.insert(album.object.id, album.clone());
+                }
+                #[cfg(feature = "performance-test")]
+                {
+                    self.record_dynamic_bytes = self
+                        .record_dynamic_bytes
+                        .saturating_sub(old_dynamic_bytes)
+                        .saturating_add(next_record.estimated_dynamic_bytes());
                 }
                 if let Some(record) = self.arena.get_mut(slot_ref) {
                     *record = next_record;
@@ -1295,6 +1468,7 @@ impl TreeState {
                     additions.push(slot_ref);
                 }
             } else {
+                self.track_record_added(&next_record);
                 let slot_ref = self.arena.allocate(next_record);
                 self.id_index.insert(id.as_str(), slot_ref);
                 self.query
@@ -1616,6 +1790,30 @@ impl TreeState {
         }
         Some(album)
     }
+}
+
+#[cfg(feature = "performance-test")]
+fn album_dynamic_bytes(album: &AlbumCombined) -> usize {
+    let object = &album.object;
+    let metadata = &album.metadata;
+    let tags = hash_set_allocation_bytes::<String>(object.tags.capacity())
+        + object.tags.iter().map(String::capacity).sum::<usize>();
+    let shares = hash_map_allocation_bytes::<
+        ArrayString<64>,
+        crate::public::structure::album::share::Share,
+    >(metadata.share_list.capacity())
+        + metadata
+            .share_list
+            .values()
+            .map(|share| {
+                share.description.capacity() + share.password.as_ref().map_or(0, String::capacity)
+            })
+            .sum::<usize>();
+    object.thumbhash.as_ref().map_or(0, Vec::capacity)
+        + object.description.as_ref().map_or(0, String::capacity)
+        + tags
+        + metadata.title.as_ref().map_or(0, String::capacity)
+        + shares
 }
 
 fn compare_slots(arena: &RecordArena<CacheRecord>, left: SlotRef, right: SlotRef) -> Ordering {
@@ -2177,12 +2375,68 @@ mod tests {
         let first = arena.allocate(cache_record("first", 1));
         let second = arena.allocate(cache_record("second", 1));
         let mut index = IdIndex::default();
-        index.buckets.insert(
-            IdIndex::fingerprint("second"),
-            IdBucket::Many(vec![first, second]),
-        );
+        let fingerprint = IdIndex::fingerprint("second");
+        index.primary.insert(fingerprint, first);
+        index.collisions.insert(fingerprint, vec![first, second]);
         assert_eq!(index.find("second", &arena), Some(second));
         assert_eq!(index.find("missing", &arena), None);
+
+        index.remove("second", second);
+        assert!(!index.collisions.contains_key(&fingerprint));
+        assert_eq!(index.primary.get(&fingerprint), Some(&first));
+        assert_eq!(index.find("second", &arena), None);
+    }
+
+    #[test]
+    fn id_index_insert_find_and_remove_use_the_primary_table() {
+        let mut arena = RecordArena::default();
+        let slot = arena.allocate(cache_record("primary", 1));
+        let mut index = IdIndex::default();
+        index.insert("primary", slot);
+        assert_eq!(index.find("primary", &arena), Some(slot));
+        assert!(index.collisions.is_empty());
+        index.remove("primary", slot);
+        assert_eq!(index.find("primary", &arena), None);
+        assert!(index.primary.is_empty());
+    }
+
+    #[test]
+    fn id_index_rejects_a_stale_slot_generation() {
+        let mut arena = RecordArena::default();
+        let stale = arena.allocate(cache_record("stale", 1));
+        let mut index = IdIndex::default();
+        index.insert("stale", stale);
+        assert!(arena.remove(stale).is_some());
+        let replacement = arena.allocate(cache_record("replacement", 1));
+        assert_eq!(stale.index(), replacement.index());
+        assert_ne!(stale.generation(), replacement.generation());
+        assert_eq!(index.find("stale", &arena), None);
+    }
+
+    #[cfg(feature = "performance-test")]
+    #[test]
+    fn tree_memory_usage_increases_with_owned_records() {
+        let empty = TreeState::default().memory_usage();
+        let mut state = TreeState::from_records(
+            (0..64).map(|index| AbstractData::generate_performance_data(index, 77)),
+        );
+        let populated = state.memory_usage();
+        assert!(populated.total_bytes() > empty.total_bytes());
+        assert!(populated.arena_inline_bytes > empty.arena_inline_bytes);
+        assert!(populated.record_dynamic_bytes > empty.record_dynamic_bytes);
+        assert!(populated.id_index_bytes > empty.id_index_bytes);
+        assert!(populated.order_index_bytes > empty.order_index_bytes);
+        let exact_dynamic_bytes = state
+            .arena
+            .slots
+            .iter()
+            .filter_map(|slot| slot.value.as_ref())
+            .map(CacheRecord::estimated_dynamic_bytes)
+            .sum::<usize>();
+        assert_eq!(populated.record_dynamic_bytes, exact_dynamic_bytes);
+
+        state = TreeState::default();
+        assert_eq!(state.memory_usage(), empty);
     }
 
     #[test]

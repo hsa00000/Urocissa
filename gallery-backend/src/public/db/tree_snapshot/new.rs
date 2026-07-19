@@ -4,6 +4,7 @@ use std::sync::LazyLock;
 use super::{PendingTreeSnapshot, SCROLLBAR_METADATA_TABLE, TREE_SNAPSHOT_TABLE, TreeSnapshot};
 
 use crate::public::constant::storage::get_data_path;
+use crate::storage::cache::{CacheClass, database_builder};
 
 static TREE_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     let db_directory = get_data_path().join("db");
@@ -30,7 +31,9 @@ static TREE_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
             );
         }
     }
-    let database = redb::Database::create(path).unwrap();
+    let database = database_builder(CacheClass::TreeSnapshot)
+        .create(path)
+        .unwrap();
     let txn = database.begin_write().unwrap();
     {
         let _snapshots = txn.open_table(TREE_SNAPSHOT_TABLE).unwrap();

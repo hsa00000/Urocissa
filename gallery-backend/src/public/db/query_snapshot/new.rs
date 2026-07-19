@@ -4,6 +4,7 @@ use std::sync::LazyLock;
 use super::{Prefetch, QuerySnapshot};
 
 use crate::public::constant::storage::get_data_path;
+use crate::storage::cache::{CacheClass, database_builder};
 
 static QUERY_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     let db_directory = get_data_path().join("db");
@@ -29,7 +30,9 @@ static QUERY_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
             );
         }
     }
-    redb::Database::create(path).unwrap()
+    database_builder(CacheClass::QuerySnapshot)
+        .create(path)
+        .unwrap()
 });
 
 static QUERY_SNAPSHOT_IN_MEMORY: LazyLock<DashMap<u64, Prefetch>> = LazyLock::new(DashMap::new);

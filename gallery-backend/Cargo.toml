@@ -85,7 +85,7 @@ tempfile = "3.23.0"
 [features]
 embed-frontend = []
 auto-open-browser = ["dep:webbrowser"]
-performance-test = ["dep:sysinfo"]
+performance-test = ["dep:sysinfo", "redb/cache_metrics"]
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

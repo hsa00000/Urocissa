@@ -6,8 +6,12 @@ mod enabled {
     use crate::performance;
     use crate::public::constant::storage::get_data_path;
     use crate::public::db::{
+        expire::EXPIRE,
         query_snapshot::QUERY_SNAPSHOT,
-        tree::{TREE, VERSION_COUNT_TIMESTAMP, state::TargetSet},
+        tree::{
+            TREE, VERSION_COUNT_TIMESTAMP,
+            state::{TargetSet, TreeMemoryUsage},
+        },
         tree_snapshot::TREE_SNAPSHOT,
         write_behind::{DirtyOperation, FLUSH_CHUNK_SIZE, WRITE_BEHIND},
     };
@@ -15,7 +19,11 @@ mod enabled {
     use crate::public::structure::abstract_data::AbstractData;
     use crate::public::structure::album::share::Share;
     use crate::router::AppResult;
+    use crate::storage::cache::{
+        EXPIRE_CACHE_BYTES, QUERY_SNAPSHOT_CACHE_BYTES, TREE_SNAPSHOT_CACHE_BYTES,
+    };
     use crate::tasks::batcher::update_tree::update_tree_task;
+    use redb::ReadableDatabase;
     use rocket::Request;
     use rocket::Route;
     use rocket::http::Status;
@@ -112,6 +120,54 @@ mod enabled {
         pub write_behind_flush_retry_count: u64,
         pub write_behind_last_error: Option<String>,
         pub backend_rss_bytes: u64,
+        pub backend_global_peak_rss_bytes: u64,
+        pub backend_phase_peak_rss_bytes: u64,
+        pub redb_main_cache: RedbCacheSummary,
+        pub redb_tree_snapshot_cache: RedbCacheSummary,
+        pub redb_query_snapshot_cache: RedbCacheSummary,
+        pub redb_expire_cache: RedbCacheSummary,
+        pub tree_memory: TreeMemorySummary,
+        pub tree_snapshot_memory_bytes: usize,
+        pub query_snapshot_memory_bytes: usize,
+        pub write_behind_memory_bytes: usize,
+    }
+
+    #[derive(Debug, Clone, Serialize)]
+    #[serde(crate = "rocket::serde")]
+    pub struct RedbCacheSummary {
+        pub limit_bytes: usize,
+        pub used_bytes: usize,
+        pub evictions: u64,
+        pub read_hits: u64,
+        pub read_misses: u64,
+        pub write_hits: u64,
+        pub write_misses: u64,
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize)]
+    #[serde(crate = "rocket::serde")]
+    pub struct TreeMemorySummary {
+        pub arena_inline_bytes: usize,
+        pub record_dynamic_bytes: usize,
+        pub id_index_bytes: usize,
+        pub order_index_bytes: usize,
+        pub query_indexes_bytes: usize,
+        pub album_catalog_bytes: usize,
+        pub total_bytes: usize,
+    }
+
+    impl From<TreeMemoryUsage> for TreeMemorySummary {
+        fn from(value: TreeMemoryUsage) -> Self {
+            Self {
+                arena_inline_bytes: value.arena_inline_bytes,
+                record_dynamic_bytes: value.record_dynamic_bytes,
+                id_index_bytes: value.id_index_bytes,
+                order_index_bytes: value.order_index_bytes,
+                query_indexes_bytes: value.query_indexes_bytes,
+                album_catalog_bytes: value.album_catalog_bytes,
+                total_bytes: value.total_bytes(),
+            }
+        }
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -550,10 +606,34 @@ mod enabled {
             .ok()
             .and_then(|value| usize::try_from(value).ok())
             .unwrap_or(0);
-        let memory_count = TREE.state.read().map_or(0, |value| value.len());
+        let (memory_count, tree_memory) = TREE
+            .state
+            .read()
+            .map_or((0, TreeMemoryUsage::default()), |value| {
+                (value.len(), value.memory_usage())
+            });
         let database_bytes = std::fs::metadata(get_data_path().join("db/index_v6.redb"))
             .map_or(0, |metadata| metadata.len());
         let write_behind = WRITE_BEHIND.status();
+        let memory = performance::memory_snapshot();
+        let tree_snapshot_memory_bytes = std::mem::size_of_val(&*TREE_SNAPSHOT.in_memory)
+            .saturating_add(
+                TREE_SNAPSHOT
+                    .in_memory
+                    .iter()
+                    .map(|entry| entry.value().estimated_bytes())
+                    .sum::<usize>(),
+            )
+            .saturating_add(std::mem::size_of_val(&*TREE_SNAPSHOT.verified_layouts))
+            .saturating_add(TREE_SNAPSHOT.verified_layouts.len().saturating_mul(
+                std::mem::size_of::<i64>()
+                    + std::mem::size_of::<crate::public::db::tree_snapshot::SnapshotBlobLayout>(),
+            ));
+        let query_snapshot_memory_bytes = std::mem::size_of_val(&*QUERY_SNAPSHOT.in_memory)
+            .saturating_add(QUERY_SNAPSHOT.in_memory.len().saturating_mul(
+                std::mem::size_of::<u64>()
+                    + std::mem::size_of::<crate::router::get::get_prefetch::Prefetch>(),
+            ));
         StatusSummary {
             disk_count,
             memory_count,
@@ -574,15 +654,39 @@ mod enabled {
             write_behind_flush_failure_count: write_behind.flush_failure_count,
             write_behind_flush_retry_count: write_behind.flush_retry_count,
             write_behind_last_error: write_behind.last_error,
-            backend_rss_bytes: process_rss_bytes(),
+            backend_rss_bytes: memory.current_rss_bytes,
+            backend_global_peak_rss_bytes: memory.global_peak_rss_bytes,
+            backend_phase_peak_rss_bytes: memory.phase_peak_rss_bytes,
+            redb_main_cache: cache_summary(
+                TREE.store.cache_limit_bytes(),
+                TREE.store.cache_stats(),
+            ),
+            redb_tree_snapshot_cache: cache_summary(
+                TREE_SNAPSHOT_CACHE_BYTES,
+                TREE_SNAPSHOT.in_disk.cache_stats(),
+            ),
+            redb_query_snapshot_cache: cache_summary(
+                QUERY_SNAPSHOT_CACHE_BYTES,
+                QUERY_SNAPSHOT.in_disk.cache_stats(),
+            ),
+            redb_expire_cache: cache_summary(EXPIRE_CACHE_BYTES, EXPIRE.in_disk.cache_stats()),
+            tree_memory: tree_memory.into(),
+            tree_snapshot_memory_bytes,
+            query_snapshot_memory_bytes,
+            write_behind_memory_bytes: write_behind.pending_bytes,
         }
     }
 
-    fn process_rss_bytes() -> u64 {
-        let pid = sysinfo::Pid::from_u32(std::process::id());
-        let mut system = sysinfo::System::new();
-        system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
-        system.process(pid).map_or(0, sysinfo::Process::memory)
+    fn cache_summary(limit_bytes: usize, stats: redb::CacheStats) -> RedbCacheSummary {
+        RedbCacheSummary {
+            limit_bytes,
+            used_bytes: stats.used_bytes(),
+            evictions: stats.evictions(),
+            read_hits: stats.read_hits(),
+            read_misses: stats.read_misses(),
+            write_hits: stats.write_hits(),
+            write_misses: stats.write_misses(),
+        }
     }
 
     fn audit_sync(request: &AuditRequest) -> Result<AuditSummary, AppError> {

@@ -22,6 +22,14 @@ const defaultSeed = 20260718n
 const defaultCount = 100_000
 const defaultSamples = 3
 const viewport = { width: 1440, height: 900 }
+const redbCacheBudgets = Object.freeze({
+  mainBytes: 256 * 1024 ** 2,
+  treeSnapshotBytes: 32 * 1024 ** 2,
+  querySnapshotBytes: 16 * 1024 ** 2,
+  expireBytes: 8 * 1024 ** 2,
+  migrationSourceBytes: 128 * 1024 ** 2,
+  migrationDestinationBytes: 256 * 1024 ** 2
+})
 const editMarkers = Object.freeze({
   albumTitle: 'Urocissa Performance Album',
   singleTag: 'urocissa-perf-single-edit',
@@ -110,7 +118,7 @@ async function ensureBuilds() {
 async function runSuite({ resultDir, count, samples, seed, headed }) {
   await mkdir(join(resultDir, 'samples'), { recursive: true })
   const summary = {
-    schemaVersion: 6,
+    schemaVersion: 7,
     generatedAt: new Date().toISOString(),
     source: sourceIdentity(),
     environment: {
@@ -120,6 +128,7 @@ async function runSuite({ resultDir, count, samples, seed, headed }) {
       viewport,
       browser: 'chromium',
       buildProfile: 'dev-release',
+      redbCacheBudgets,
       fixture: { count, samples, seed: seed.toString() },
       workload: editWorkload
     },
@@ -1136,7 +1145,7 @@ function aggregateSamples(samples) {
           addValue(values, `browser.phase.${phase.name}.metrics.${metric}`, value)
         }
       }
-      addValue(values, `backend.phase.${phase.name}.rssBytes`, phase.backendStatus?.backend_rss_bytes)
+      addStatusMemory(values, `backend.phase.${phase.name}`, phase.backendStatus)
       addValue(values, `backend.phase.${phase.name}.dirtyBytes`, phase.backendStatus?.write_behind_pending_bytes)
       addValue(values, `backend.phase.${phase.name}.pendingRecords`, phase.backendStatus?.write_behind_pending_records)
       addValue(values, `backend.phase.${phase.name}.activeRecords`, phase.backendStatus?.write_behind_active_records)
@@ -1158,16 +1167,17 @@ function aggregateSamples(samples) {
     addValue(values, 'server.fixture.totalMs', sample.fixture?.total_ns / 1e6)
     addValue(values, 'server.fixture.insertMs', sample.fixture?.insert_ns / 1e6)
     addValue(values, 'server.fixture.rebuildMs', sample.fixture?.rebuild_ns / 1e6)
-    addValue(values, 'backend.stage.fixture.rssBytes', sample.fixtureStatus?.backend_rss_bytes)
+    addStatusMemory(values, 'backend.stage.fixture', sample.fixtureStatus)
     addValue(values, 'backend.stage.fixture.flushRecordsPerSecond', sample.fixtureStatus?.write_behind_flush_records_per_second)
     addValue(values, 'server.startup.wallMs', sample.startupWallMs)
-    addValue(values, 'backend.stage.startup.rssBytes', sample.startup?.backend_rss_bytes)
-    addValue(values, 'backend.stage.failedFlush.rssBytes', sample.failedFlushStatus?.backend_rss_bytes)
+    addStatusMemory(values, 'backend.stage.startup', sample.startup)
+    addStatusMemory(values, 'backend.stage.failedFlush', sample.failedFlushStatus)
     addValue(values, 'backend.stage.failedFlush.pendingRecords', sample.failedFlushStatus?.write_behind_pending_records)
     addValue(values, 'backend.stage.failedFlush.estimatedDrainMs', sample.failedFlushStatus?.write_behind_estimated_drain_ms)
-    addValue(values, 'backend.stage.retry.rssBytes', sample.retryDrainStatus?.backend_rss_bytes)
+    addStatusMemory(values, 'backend.stage.retry', sample.retryDrainStatus)
     addValue(values, 'backend.stage.retry.flushRecordsPerSecond', sample.retryDrainStatus?.write_behind_flush_records_per_second)
-    addValue(values, 'backend.stage.restart.rssBytes', sample.restartStatus?.backend_rss_bytes)
+    addStatusMemory(values, 'backend.stage.restart', sample.restartStatus)
+    addStatusMemory(values, 'backend.stage.cleanup', sample.finalStatus)
     addValue(values, 'server.delete.totalMs', sample.delete?.total_ns / 1e6)
     for (const event of sample.backendEvents ?? []) {
       if (event.operation && event.duration_ns != null) {
@@ -1177,6 +1187,36 @@ function aggregateSamples(samples) {
     }
   }
   return Object.fromEntries([...values].map(([key, list]) => [key, stats(list)]))
+}
+
+function addStatusMemory(values, prefix, status) {
+  addValue(values, `${prefix}.rssBytes`, status?.backend_rss_bytes)
+  addValue(values, `${prefix}.globalPeakRssBytes`, status?.backend_global_peak_rss_bytes)
+  addValue(values, `${prefix}.phasePeakRssBytes`, status?.backend_phase_peak_rss_bytes)
+  for (const [name, cache] of [
+    ['main', status?.redb_main_cache],
+    ['treeSnapshot', status?.redb_tree_snapshot_cache],
+    ['querySnapshot', status?.redb_query_snapshot_cache],
+    ['expire', status?.redb_expire_cache]
+  ]) {
+    addValue(values, `${prefix}.redbCache.${name}.limitBytes`, cache?.limit_bytes)
+    addValue(values, `${prefix}.redbCache.${name}.usedBytes`, cache?.used_bytes)
+    addValue(values, `${prefix}.redbCache.${name}.evictionCount`, cache?.evictions)
+    addValue(values, `${prefix}.redbCache.${name}.readHitCount`, cache?.read_hits)
+    addValue(values, `${prefix}.redbCache.${name}.readMissCount`, cache?.read_misses)
+    addValue(values, `${prefix}.redbCache.${name}.writeHitCount`, cache?.write_hits)
+    addValue(values, `${prefix}.redbCache.${name}.writeMissCount`, cache?.write_misses)
+  }
+  for (const [name, value] of Object.entries(status?.tree_memory ?? {})) {
+    addValue(values, `${prefix}.component.tree.${snakeToCamel(name)}`, value)
+  }
+  addValue(values, `${prefix}.component.treeSnapshotBytes`, status?.tree_snapshot_memory_bytes)
+  addValue(values, `${prefix}.component.querySnapshotBytes`, status?.query_snapshot_memory_bytes)
+  addValue(values, `${prefix}.component.writeBehindBytes`, status?.write_behind_memory_bytes)
+}
+
+function snakeToCamel(value) {
+  return value.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
 }
 
 function compareSummaries(baseline, current) {
@@ -1257,13 +1297,42 @@ function checkCorrectness({
     retryFailedStatus,
     retryDrainStatus,
     failedFlushStatus,
-    restartStatus
+    restartStatus,
+    finalStatus
   ]
   if (backendStatuses.some((status) => status?.write_behind_pending_bytes > 32 * 1024 * 1024)) {
     errors.push('write-behind dirty bytes exceeded 32 MiB')
   }
-  if (count >= 1_000_000 && backendStatuses.some((status) => status?.backend_rss_bytes >= 2.5 * 1024 ** 3)) {
-    errors.push('backend peak RSS reached the 2.5 GiB acceptance limit')
+  if (
+    count >= 1_000_000 &&
+    backendStatuses.some((status) => status?.backend_global_peak_rss_bytes > 1.0 * 1024 ** 3)
+  ) {
+    errors.push('backend sampled process peak RSS exceeded the 1.0 GiB acceptance limit')
+  }
+  if (count >= 1_000_000 && startup?.backend_rss_bytes > 850 * 1024 ** 2) {
+    errors.push('backend startup RSS exceeded the 850 MiB target')
+  }
+  const cacheChecks = [
+    ['main', 'redb_main_cache', redbCacheBudgets.mainBytes],
+    ['tree snapshot', 'redb_tree_snapshot_cache', redbCacheBudgets.treeSnapshotBytes],
+    ['query snapshot', 'redb_query_snapshot_cache', redbCacheBudgets.querySnapshotBytes],
+    ['expire', 'redb_expire_cache', redbCacheBudgets.expireBytes]
+  ]
+  for (const [name, field, expectedLimit] of cacheChecks) {
+    if (backendStatuses.some((status) => status?.[field]?.limit_bytes !== expectedLimit)) {
+      errors.push(`${name} Redb cache limit diverged from the schema 7 workload`)
+    }
+    if (backendStatuses.some((status) => status?.[field]?.used_bytes > expectedLimit)) {
+      errors.push(`${name} Redb cache used bytes exceeded its fixed limit`)
+    }
+  }
+  if (
+    redbCacheBudgets.treeSnapshotBytes +
+      redbCacheBudgets.querySnapshotBytes +
+      redbCacheBudgets.expireBytes !==
+    56 * 1024 ** 2
+  ) {
+    errors.push('derived Redb cache budgets do not total 56 MiB')
   }
   if (
     backendStatuses.some(

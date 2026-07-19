@@ -7,11 +7,16 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use redb::{
-    Database, DatabaseError, Durability, ReadOnlyDatabase, ReadableDatabase, ReadableTable,
-    ReadableTableMetadata, TableDefinition,
+    DatabaseError, Durability, ReadableDatabase, ReadableTable, ReadableTableMetadata,
+    TableDefinition,
 };
 
-use super::{legacy_v5::LegacyAbstractData, store::DataStore, v6::V6AbstractData};
+use super::{
+    cache::{CacheClass, database_builder},
+    legacy_v5::LegacyAbstractData,
+    store::DataStore,
+    v6::V6AbstractData,
+};
 use crate::public::constant::storage::get_data_path;
 
 const V5_DB_NAME: &str = "index_v5.redb";
@@ -63,16 +68,18 @@ fn prepare_storage_at(db_dir: &Path) -> Result<()> {
 }
 
 fn migrate_v5(source_path: &Path, migrating_path: &Path, current_path: &Path) -> Result<()> {
-    let result = match ReadOnlyDatabase::open(source_path) {
+    let result = match database_builder(CacheClass::Migration).open_read_only(source_path) {
         Ok(old_db) => migrate_v5_from_database(&old_db, migrating_path, current_path),
         Err(DatabaseError::RepairAborted) => {
             warn!("V5 database requires repair; repairing index_v5.redb in place");
-            let repaired_db = Database::open(source_path).with_context(|| {
-                format!(
-                    "failed to repair V5 database in place {}",
-                    source_path.display()
-                )
-            })?;
+            let repaired_db = database_builder(CacheClass::Migration)
+                .open(source_path)
+                .with_context(|| {
+                    format!(
+                        "failed to repair V5 database in place {}",
+                        source_path.display()
+                    )
+                })?;
             migrate_v5_from_database(&repaired_db, migrating_path, current_path)
         }
         Err(error) => Err(error)
@@ -198,7 +205,7 @@ mod tests {
     };
 
     use arrayvec::ArrayString;
-    use redb::{Database, Durability};
+    use redb::{Database, Durability, ReadOnlyDatabase};
     use tempfile::tempdir;
 
     use super::*;
