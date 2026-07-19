@@ -29,13 +29,25 @@ focused compensated-virtual-scroll benchmark with:
 node performance\scroll-lag.mjs --scenario continuous-down --samples 5 --expect strict-smooth
 node performance\scroll-lag.mjs --scenario continuous-up --samples 5
 node performance\scroll-lag.mjs --scenario worker-delay --worker-delay 300 --timer-zero-budget 10
+node performance\scroll-lag.mjs --browser chrome --headed --scenario native-wheel `
+  --samples 3 --pulses 20 --pulse-settle 400 --os-wheel-delta -120
 ```
 
-Available scenarios are `continuous-down`, `continuous-up`, `worker-delay`, `bounds`,
+Available scenarios are `continuous-down`, `continuous-up`, `discrete-wheel`,
+`discrete-wheel-delay`, `native-wheel`, `native-wheel-delay`, `worker-delay`, `bounds`,
 `scrollbar`, `locate`, `resize`, and `mobile`. `bounds` alternates upper and lower bounds
 between samples; `locate` can use `--locate <hash>` or a hash observed from the loaded page.
 Reports include CDP timer install/fire counts for 0, 50, 75, and 100 ms timers. Use
 `--expect strict-smooth` when every sample must pass the jank gate.
+
+`native-wheel` is the Windows hardware-path approximation used for the mouse-notch
+regression. It launches the locally installed Chrome Stable channel with Playwright's
+temporary user-data directory and a fresh browser context; it never connects to an existing
+Chrome profile. `native-wheel-input.ps1` targets that isolated window by a unique title and
+PID, verifies that it is the foreground window, and then sends one Windows
+`MOUSEEVENTF_WHEEL` input per pulse (`-120` is one downward notch). The report keeps the raw
+OS delta, Chrome's trusted DOM wheel delta, physical scroll events, per-frame row displacement,
+and final physical-anchor error. `native-wheel-delay` adds the configured row-response delay.
 
 The runner builds the backend with `--profile dev-release --features performance-test` (never plain `--release`), builds the frontend, starts an isolated server, inserts the fixture, and restarts it to measure recovery. Chromium then performs the existing login/top-scroll/middle-jump/end-jump journey followed by:
 

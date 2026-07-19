@@ -17,6 +17,7 @@
         ref="imageContainerRef"
         class="d-flex flex-wrap position-relative flex-grow-1 min-h-0 h-100 pa-1 pb-2 bg-surface-light"
         :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
+        @wheel="onWheel"
         @scroll="onScroll"
       >
         <Buffer
@@ -49,7 +50,7 @@ import { useQueueStore } from '@/store/queueStore'
 import { LocationQueryValue, useRoute } from 'vue-router'
 import { useElementSize } from '@vueuse/core'
 import { usePrefetch } from '@/script/hook/usePrefetch'
-import { handleScroll } from '@/script/hook/useHandleScroll'
+import { applyWheelDeltaToPhysicalBuffer, handleScroll } from '@/script/hook/useHandleScroll'
 import { useInitializeScrollPosition } from '@/script/hook/useInitializeScrollPosition'
 import { useImgStore } from '@/store/imgStore'
 import Buffer from '@/components/Buffer/Buffer.vue'
@@ -114,6 +115,17 @@ const throttledHandleScroll = handleScroll(
   windowHeight,
   props.isolationId
 )
+
+const onWheel = (event: WheelEvent) => {
+  if (
+    stopScroll.value ||
+    prefetchStore.locateTo !== null ||
+    locationStore.pendingLocateTarget !== null
+  ) {
+    return
+  }
+  applyWheelDeltaToPhysicalBuffer(imageContainerRef.value, event)
+}
 
 const onScroll = () => {
   if (prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null) {

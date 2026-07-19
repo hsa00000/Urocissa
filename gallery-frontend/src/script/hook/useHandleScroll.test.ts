@@ -4,7 +4,7 @@ import { shallowRef } from 'vue'
 import { useConfigStore } from '@/store/configStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useScrollTopStore } from '@/store/scrollTopStore'
-import { handleScroll } from './useHandleScroll'
+import { applyWheelDeltaToPhysicalBuffer, handleScroll } from './useHandleScroll'
 
 function createContainer(scrollTop: number): HTMLElement {
   return { scrollTop } as HTMLElement
@@ -96,5 +96,46 @@ describe('compensated virtual scroll behavior', () => {
     vi.advanceTimersByTime(1)
     expect(stopScroll.value).toBe(false)
     throttledHandleScroll.cancel()
+  })
+
+  it('writes a cancelable pixel wheel delta to the physical buffer exactly once', () => {
+    const container = createContainer(200000)
+    let prevented = false
+    const event = {
+      cancelable: true,
+      ctrlKey: false,
+      get defaultPrevented() {
+        return prevented
+      },
+      deltaMode: 0,
+      deltaY: 100,
+      preventDefault() {
+        prevented = true
+      }
+    }
+
+    expect(applyWheelDeltaToPhysicalBuffer(container, event)).toBe(true)
+    expect(prevented).toBe(true)
+    expect(container.scrollTop).toBe(200100)
+  })
+
+  it.each([
+    { name: 'non-cancelable', cancelable: false, ctrlKey: false, deltaMode: 0, deltaY: 100 },
+    { name: 'zoom gesture', cancelable: true, ctrlKey: true, deltaMode: 0, deltaY: 100 },
+    { name: 'line mode', cancelable: true, ctrlKey: false, deltaMode: 1, deltaY: 3 },
+    { name: 'horizontal-only', cancelable: true, ctrlKey: false, deltaMode: 0, deltaY: 0 }
+  ])('leaves $name wheel input to the browser', (fixture) => {
+    const container = createContainer(200000)
+    const preventDefault = vi.fn()
+
+    expect(
+      applyWheelDeltaToPhysicalBuffer(container, {
+        ...fixture,
+        defaultPrevented: false,
+        preventDefault
+      })
+    ).toBe(false)
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(container.scrollTop).toBe(200000)
   })
 })

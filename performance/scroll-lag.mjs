@@ -1,6 +1,10 @@
+import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import process from 'node:process'
+import { createInterface } from 'node:readline'
+import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 
 const args = process.argv.slice(2)
@@ -22,8 +26,18 @@ function nonNegativeNumberOption(name, fallback) {
   return value
 }
 
+function signedNumberOption(name, fallback) {
+  const value = Number(option(name, fallback))
+  if (!Number.isFinite(value) || value === 0) throw new Error(`--${name} must be non-zero`)
+  return value
+}
+
 const supportedScenarios = new Set([
   'continuous-down',
+  'discrete-wheel',
+  'discrete-wheel-delay',
+  'native-wheel',
+  'native-wheel-delay',
   'continuous-up',
   'worker-delay',
   'bounds',
@@ -36,10 +50,13 @@ const supportedScenarios = new Set([
 const config = {
   url: option('url', 'http://127.0.0.1:5173').replace(/\/$/, ''),
   password: option('password', process.env.UROCISSA_PASSWORD ?? 'password'),
+  browser: option('browser', 'chromium'),
   samples: Math.floor(numberOption('samples', 3)),
   pulses: Math.floor(numberOption('pulses', 36)),
   deltaY: numberOption('delta', 12),
   intervalMs: numberOption('interval', 8),
+  pulseSettleMs: numberOption('pulse-settle', 150),
+  nativeWheelDelta: signedNumberOption('os-wheel-delta', -120),
   cpuRate: numberOption('cpu-rate', 1),
   viewportWidth: Math.floor(numberOption('viewport-width', 1920)),
   viewportHeight: Math.floor(numberOption('viewport-height', 1000)),
@@ -66,6 +83,112 @@ const transparentPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64'
 )
+
+const nativeWheelScript = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  'native-wheel-input.ps1'
+)
+
+function withTimeout(promise, timeoutMs, message) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+async function launchNativeWheelController(page) {
+  if (process.platform !== 'win32') {
+    throw new Error('native-wheel scenarios require Windows')
+  }
+
+  const originalTitle = await page.title()
+  const titleToken = `urocissa-native-wheel-${randomUUID()}`
+  await page.evaluate((title) => {
+    document.title = title
+  }, titleToken)
+
+  const helper = spawn(
+    'powershell.exe',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      nativeWheelScript,
+      '-WindowTitleToken',
+      titleToken
+    ],
+    { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
+  )
+  const lines = createInterface({ input: helper.stdout })
+  const iterator = lines[Symbol.asyncIterator]()
+  let helperError = null
+  let stderr = ''
+  helper.on('error', (error) => {
+    helperError = error
+  })
+  helper.stderr.on('data', (chunk) => {
+    stderr += chunk.toString()
+  })
+
+  const readMessage = async () => {
+    const result = await withTimeout(
+      iterator.next(),
+      15_000,
+      `native wheel helper timed out${stderr ? `: ${stderr.trim()}` : ''}`
+    )
+    if (result.done) {
+      throw new Error(
+        `native wheel helper exited${helperError ? `: ${helperError.message}` : ''}` +
+          `${stderr ? `: ${stderr.trim()}` : ''}`
+      )
+    }
+    try {
+      return JSON.parse(result.value)
+    } catch (error) {
+      throw new Error(`native wheel helper returned invalid JSON: ${result.value}`, {
+        cause: error
+      })
+    }
+  }
+
+  const ready = await readMessage()
+  if (ready.type !== 'ready') {
+    throw new Error(`native wheel helper did not become ready: ${JSON.stringify(ready)}`)
+  }
+
+  return {
+    ready,
+    async wheel(delta) {
+      helper.stdin.write(`wheel ${delta}\n`)
+      const result = await readMessage()
+      if (result.type !== 'wheel' || result.sent !== 1 || !result.foreground) {
+        throw new Error(`native wheel input was refused: ${JSON.stringify(result)}`)
+      }
+      return result
+    },
+    async close() {
+      if (helper.exitCode === null) {
+        helper.stdin.write('quit\n')
+        helper.stdin.end()
+        await withTimeout(
+          new Promise((resolveExit) => helper.once('exit', resolveExit)),
+          5_000,
+          'native wheel helper did not exit'
+        ).catch(() => helper.kill())
+      }
+      lines.close()
+      await page
+        .evaluate((title) => {
+          document.title = title
+        }, originalTitle)
+        .catch(() => {})
+    }
+  }
+}
 
 const traceCategories = [
   'benchmark',
@@ -307,7 +430,18 @@ async function installInstrumentation(context) {
       'wheel',
       (event) => {
         if (state.running) {
-          state.wheelEvents.push({ time: performance.now(), deltaY: event.deltaY })
+          state.wheelEvents.push({
+            time: performance.now(),
+            deltaX: event.deltaX,
+            deltaY: event.deltaY,
+            deltaMode: event.deltaMode,
+            wheelDelta: event.wheelDelta,
+            wheelDeltaY: event.wheelDeltaY,
+            isTrusted: event.isTrusted,
+            targetId: event.target instanceof Element ? event.target.id || null : null,
+            insideImageContainer:
+              event.target instanceof Element && Boolean(event.target.closest('#image-container'))
+          })
         }
       },
       { capture: true, passive: true }
@@ -475,6 +609,285 @@ async function runWheelPulses(page, deltaY) {
   for (let pulse = 0; pulse < config.pulses; pulse += 1) {
     await page.mouse.wheel(0, deltaY)
     await page.waitForTimeout(config.intervalMs)
+  }
+}
+
+if (!['chromium', 'chrome'].includes(config.browser)) {
+  throw new Error('--browser must be one of: chromium, chrome')
+}
+
+async function captureWheelAnchor(page, anchorStart = null) {
+  return page.evaluate((requestedStart) => {
+    const rows = [...document.querySelectorAll('#buffer [start]')]
+    const viewportMiddle = window.innerHeight / 2
+    const anchor =
+      (requestedStart === null
+        ? null
+        : document.querySelector(`#buffer [start="${requestedStart}"]`)) ??
+      rows.sort(
+        (left, right) =>
+          Math.abs(left.getBoundingClientRect().top - viewportMiddle) -
+          Math.abs(right.getBoundingClientRect().top - viewportMiddle)
+      )[0]
+    const container = document.querySelector('#image-container')
+    const visibleRows = document.querySelector('#buffer .buffer-visible-rows')
+    const vueApp = document.querySelector('#app')?.__vue_app__
+    const pinia = vueApp?.config?.globalProperties?.$pinia
+    const scrollTopStore = [...(pinia?._s?.values?.() ?? [])].find((store) =>
+      String(store.$id ?? '').startsWith('scrollTopStore')
+    )
+
+    if (!(anchor instanceof HTMLElement) || !(container instanceof HTMLElement)) {
+      return null
+    }
+
+    return {
+      anchorStart: anchor.getAttribute('start'),
+      anchorTop: anchor.getBoundingClientRect().top,
+      physicalScrollTop: container.scrollTop,
+      virtualScrollTop: scrollTopStore?.scrollTop ?? null,
+      visibleRowsTop:
+        visibleRows instanceof HTMLElement ? visibleRows.getBoundingClientRect().top : null,
+      visibleRowsTransform:
+        visibleRows instanceof HTMLElement ? visibleRows.style.transform : null,
+      rowTransform: anchor.style.transform
+    }
+  }, anchorStart)
+}
+
+async function runDiscreteWheelScenario(page, imageContainer, delayRows = false) {
+  if (delayRows) {
+    await page.route('**/get/get-rows**', async (route) => {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, config.workerDelayMs))
+      await route.continue()
+    })
+  }
+
+  await imageContainer.hover()
+  const physicalAnchorStart = await imageContainer.evaluate((element) => element.scrollTop)
+  await beginPassiveSampling(page)
+  const pulses = []
+
+  for (let pulse = 0; pulse < config.pulses; pulse += 1) {
+    const before = await captureWheelAnchor(page)
+    if (before === null) throw new Error('discrete wheel could not find an anchor row')
+    const wheelEventStartIndex = await page.evaluate(
+      () => window.__scrollLag?.wheelEvents.length ?? 0
+    )
+
+    await page.mouse.wheel(0, config.deltaY)
+    const afterDispatch = await captureWheelAnchor(page, before.anchorStart)
+    await page.evaluate(() => new Promise(requestAnimationFrame))
+    const afterFrame = await captureWheelAnchor(page, before.anchorStart)
+    await page.waitForTimeout(config.pulseSettleMs)
+    const afterSettle = await captureWheelAnchor(page, before.anchorStart)
+    const inputEvents = await page.evaluate(
+      (startIndex) => window.__scrollLag?.wheelEvents.slice(startIndex) ?? [],
+      wheelEventStartIndex
+    )
+
+    pulses.push({
+      pulse: pulse + 1,
+      expectedDeltaY: config.deltaY,
+      inputEvents,
+      wheelPhaseDisplacementPx:
+        afterFrame === null ? null : round(before.anchorTop - afterFrame.anchorTop),
+      noInputDriftPx:
+        afterFrame === null || afterSettle === null
+          ? null
+          : round(afterFrame.anchorTop - afterSettle.anchorTop),
+      actualDisplacementPx:
+        afterSettle === null ? null : round(before.anchorTop - afterSettle.anchorTop),
+      before,
+      afterDispatch,
+      afterFrame,
+      afterSettle
+    })
+  }
+
+  await page.waitForTimeout(150)
+  const frameState = await finishFrameSampling(page)
+  const physicalAnchorEnd = await imageContainer.evaluate((element) => element.scrollTop)
+  const physicalAnchorErrorPx = Math.abs(physicalAnchorEnd - physicalAnchorStart)
+  const invalidPulses = pulses.filter(
+    (pulse) =>
+      pulse.actualDisplacementPx === null ||
+      Math.abs(pulse.actualDisplacementPx - config.deltaY) > config.behaviorTolerancePx
+  )
+
+  return {
+    anchorStart: null,
+    behaviorEquivalent:
+      frameState.wheelEvents.length === config.pulses &&
+      invalidPulses.length === 0 &&
+      physicalAnchorErrorPx <= config.behaviorTolerancePx,
+    frameMetrics: summarizePassiveFrames(frameState),
+    physicalAnchorErrorPx: round(physicalAnchorErrorPx),
+    applyScrollBudget: true,
+    interactionCount: config.pulses,
+    details: {
+      workerDelayMs: delayRows ? config.workerDelayMs : 0,
+      pulseSettleMs: config.pulseSettleMs,
+      invalidPulseCount: invalidPulses.length,
+      pulses
+    }
+  }
+}
+
+async function runNativeWheelScenario(page, imageContainer, delayRows = false) {
+  if (delayRows) {
+    await page.route('**/get/get-rows**', async (route) => {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, config.workerDelayMs))
+      await route.continue()
+    })
+  }
+
+  const centerTargetsGallery = await page.evaluate(() => {
+    const target = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
+    return target instanceof Element && Boolean(target.closest('#image-container'))
+  })
+  if (!centerTargetsGallery) {
+    throw new Error('the center of the isolated Chrome window is not inside #image-container')
+  }
+
+  const physicalAnchorStart = await imageContainer.evaluate((element) => element.scrollTop)
+  await beginPassiveSampling(page)
+  const controller = await launchNativeWheelController(page)
+  const pulses = []
+
+  try {
+    for (let pulse = 0; pulse < config.pulses; pulse += 1) {
+      const cadenceStartedAt = Date.now()
+      const before = await captureWheelAnchor(page)
+      if (before === null) throw new Error('native wheel could not find an anchor row')
+      const pulseFrameStartIndex = await page.evaluate((anchorStart) => {
+        const state = window.__scrollLag
+        if (!state) return 0
+        state.anchorStart = anchorStart
+        return state.frames.length
+      }, before.anchorStart)
+      const wheelEventStartIndex = await page.evaluate(
+        () => window.__scrollLag?.wheelEvents.length ?? 0
+      )
+      const scrollEventStartIndex = await page.evaluate(
+        () => window.__scrollLag?.scrollEvents.length ?? 0
+      )
+
+      const nativeInput = await controller.wheel(config.nativeWheelDelta)
+      await page.waitForFunction(
+        (startIndex) => (window.__scrollLag?.wheelEvents.length ?? 0) > startIndex,
+        wheelEventStartIndex,
+        { timeout: 2000 }
+      )
+      const afterDispatch = await captureWheelAnchor(page, before.anchorStart)
+      await page.evaluate(() => new Promise(requestAnimationFrame))
+      const afterFrame = await captureWheelAnchor(page, before.anchorStart)
+      const remainingCadenceMs = Math.max(
+        0,
+        config.pulseSettleMs - (Date.now() - cadenceStartedAt)
+      )
+      if (remainingCadenceMs > 0) {
+        await page.waitForTimeout(remainingCadenceMs)
+      }
+      const afterSettle = await captureWheelAnchor(page, before.anchorStart)
+      const inputEvents = await page.evaluate(
+        (startIndex) => window.__scrollLag?.wheelEvents.slice(startIndex) ?? [],
+        wheelEventStartIndex
+      )
+      const scrollEvents = await page.evaluate(
+        (startIndex) => window.__scrollLag?.scrollEvents.slice(startIndex) ?? [],
+        scrollEventStartIndex
+      )
+      const pulseFrames = await page.evaluate(
+        (startIndex) => window.__scrollLag?.frames.slice(startIndex) ?? [],
+        pulseFrameStartIndex
+      )
+      const pulseFrameDisplacements = pulseFrames
+        .filter(
+          (frame) =>
+            frame.anchorTop !== null && String(frame.anchorStart) === String(before.anchorStart)
+        )
+        .map((frame) => before.anchorTop - frame.anchorTop)
+      const expectedDomDisplacementPx = inputEvents.reduce(
+        (sum, inputEvent) => sum + inputEvent.deltaY,
+        0
+      )
+
+      pulses.push({
+        pulse: pulse + 1,
+        osWheelDelta: config.nativeWheelDelta,
+        nativeInput,
+        cadenceElapsedMs: Date.now() - cadenceStartedAt,
+        expectedDomDisplacementPx: round(expectedDomDisplacementPx),
+        inputEvents,
+        scrollEvents,
+        transientDisplacementMinPx: round(Math.min(0, ...pulseFrameDisplacements)),
+        transientDisplacementMaxPx: round(Math.max(0, ...pulseFrameDisplacements)),
+        pulseFrames,
+        wheelPhaseDisplacementPx:
+          afterFrame === null ? null : round(before.anchorTop - afterFrame.anchorTop),
+        noInputDriftPx:
+          afterFrame === null || afterSettle === null
+            ? null
+            : round(afterFrame.anchorTop - afterSettle.anchorTop),
+        actualDisplacementPx:
+          afterSettle === null ? null : round(before.anchorTop - afterSettle.anchorTop),
+        before,
+        afterDispatch,
+        afterFrame,
+        afterSettle
+      })
+    }
+  } finally {
+    await controller.close()
+  }
+
+  const finalDriftBefore = await captureWheelAnchor(page)
+  await page.waitForTimeout(Math.max(1000, config.pulseSettleMs * 2))
+  const finalDriftAfter = await captureWheelAnchor(page, finalDriftBefore?.anchorStart ?? null)
+  const finalNoInputDriftPx =
+    finalDriftBefore === null || finalDriftAfter === null
+      ? null
+      : round(finalDriftBefore.anchorTop - finalDriftAfter.anchorTop)
+  const frameState = await finishFrameSampling(page)
+  const physicalAnchorEnd = await imageContainer.evaluate((element) => element.scrollTop)
+  const physicalAnchorErrorPx = Math.abs(physicalAnchorEnd - physicalAnchorStart)
+  const invalidPulses = pulses.filter(
+    (pulse) =>
+      pulse.inputEvents.length !== 1 ||
+      pulse.inputEvents.some(
+        (inputEvent) => !inputEvent.isTrusted || !inputEvent.insideImageContainer
+      ) ||
+      pulse.actualDisplacementPx === null ||
+      pulse.transientDisplacementMinPx <
+        Math.min(0, pulse.expectedDomDisplacementPx) - config.behaviorTolerancePx ||
+      pulse.transientDisplacementMaxPx >
+        Math.max(0, pulse.expectedDomDisplacementPx) + config.behaviorTolerancePx ||
+      Math.abs(pulse.actualDisplacementPx - pulse.expectedDomDisplacementPx) >
+        config.behaviorTolerancePx
+  )
+
+  return {
+    anchorStart: null,
+    behaviorEquivalent:
+      frameState.wheelEvents.length === config.pulses &&
+      invalidPulses.length === 0 &&
+      Math.abs(finalNoInputDriftPx ?? Number.POSITIVE_INFINITY) <=
+        config.behaviorTolerancePx &&
+      physicalAnchorErrorPx <= config.behaviorTolerancePx,
+    frameMetrics: summarizePassiveFrames(frameState),
+    physicalAnchorErrorPx: round(physicalAnchorErrorPx),
+    applyScrollBudget: true,
+    interactionCount: config.pulses,
+    details: {
+      inputSource: 'Windows SendInput MOUSEEVENTF_WHEEL',
+      isolatedChromePid: controller.ready.chromePid,
+      workerDelayMs: delayRows ? config.workerDelayMs : 0,
+      pulseCadenceMs: config.pulseSettleMs,
+      finalNoInputDriftPx,
+      invalidPulseCount: invalidPulses.length,
+      pulses
+    }
   }
 }
 
@@ -665,6 +1078,14 @@ async function runResizeScenario(page) {
 
 async function runScenario(page, imageContainer, sampleIndex, requestedObjectUrls) {
   switch (config.scenario) {
+    case 'discrete-wheel':
+      return runDiscreteWheelScenario(page, imageContainer)
+    case 'discrete-wheel-delay':
+      return runDiscreteWheelScenario(page, imageContainer, true)
+    case 'native-wheel':
+      return runNativeWheelScenario(page, imageContainer)
+    case 'native-wheel-delay':
+      return runNativeWheelScenario(page, imageContainer, true)
     case 'continuous-up':
       return runContinuousScenario(page, imageContainer, -1)
     case 'worker-delay':
@@ -790,7 +1211,11 @@ function aggregate(samples) {
   }
 }
 
-const browser = await chromium.launch({ headless: !config.headed })
+const browser = await chromium.launch({
+  headless: !config.headed,
+  ...(config.browser === 'chrome' ? { channel: 'chrome' } : {})
+})
+const browserVersion = browser.version()
 let report
 try {
   const samples = []
@@ -805,6 +1230,8 @@ try {
   }
   report = {
     generatedAt: new Date().toISOString(),
+    browserVersion,
+    profileIsolation: 'Playwright temporary user-data-dir plus a fresh browser context per sample',
     config: { ...config, password: '<redacted>' },
     aggregate: aggregate(samples),
     samples

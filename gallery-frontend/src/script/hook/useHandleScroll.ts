@@ -7,6 +7,36 @@ import { Ref } from 'vue'
 import { useConfigStore } from '@/store/configStore'
 
 /**
+ * Converts one cancelable pixel-mode wheel event into one instantaneous physical
+ * buffer movement. This prevents Chrome's compositor from splitting a mouse-wheel
+ * notch into partial scroll events; the existing scroll handler still performs
+ * all virtual positioning, clamping, and physical-anchor compensation.
+ */
+export function applyWheelDeltaToPhysicalBuffer(
+  imageContainer: HTMLElement | null,
+  event: Pick<
+    WheelEvent,
+    'cancelable' | 'ctrlKey' | 'defaultPrevented' | 'deltaMode' | 'deltaY' | 'preventDefault'
+  >
+) {
+  if (
+    imageContainer === null ||
+    !event.cancelable ||
+    event.ctrlKey ||
+    event.deltaMode !== 0 ||
+    event.deltaY === 0
+  ) {
+    return false
+  }
+
+  event.preventDefault()
+  if (!event.defaultPrevented) return false
+
+  imageContainer.scrollTop += event.deltaY
+  return true
+}
+
+/**
  * Throttled scroll handler for an image container that adjusts `scrollTop`, which is used to manage controlled scrolling.
  * This function compensates for changes in `imageContainerRef.value.scrollTop` caused by user scrolling,
  * ensuring the scroll position remains within `bufferHeight.value / 3`, as initialized in `initializeScrollPosition.ts`.
