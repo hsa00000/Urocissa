@@ -3,6 +3,7 @@ import {
   createSelectionMatcher,
   normalizeSelection,
   selectionBatches,
+  selectionCount,
   selectionIncludes
 } from './selection'
 
@@ -19,6 +20,11 @@ describe('selection descriptors', () => {
     const matches = createSelectionMatcher({ mode: 'allExcept', excludedIndices: [1, 4] })
     expect(matches(0)).toBe(true)
     expect(matches(4)).toBe(false)
+  })
+
+  it('counts a frozen selection without duplicate or out-of-range entries', () => {
+    expect(selectionCount({ mode: 'explicit', indices: [1, 1, 4, 99] }, 6)).toBe(2)
+    expect(selectionCount({ mode: 'allExcept', excludedIndices: [1, 1, 4, 99] }, 6)).toBe(4)
   })
 
   it('expands lazily in fixed-size batches without duplicates or invalid indices', () => {

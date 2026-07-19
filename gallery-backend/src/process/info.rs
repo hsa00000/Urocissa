@@ -1,108 +1,40 @@
-use std::fs::metadata;
-
-use crate::operations::indexation::fix_orientation::{
-    fix_image_orientation, fix_image_width_height, fix_video_width_height,
-};
-use crate::operations::indexation::generate_dynamic_image::generate_dynamic_image;
-use crate::operations::indexation::generate_exif::{
-    generate_exif_for_image, generate_exif_for_video,
-};
-use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
-use crate::operations::indexation::generate_thumbnail::{
-    generate_thumbnail_for_image, generate_thumbnail_for_video,
-};
-use crate::operations::indexation::generate_width_height::{
-    generate_image_width_height, generate_video_width_height,
-};
-use crate::public::structure::abstract_data::AbstractData;
 use anyhow::{Context, Result};
+use uuid::Uuid;
 
-/// Analyse the newly‑imported **image** and populate the `AbstractData` record.
+use crate::process::artifact_publisher::ArtifactPublisher;
+use crate::process::media_pipeline::{MediaTaskPlan, execute_media_pipeline};
+use crate::public::structure::abstract_data::AbstractData;
+
+/// Run the same safe media plan used by selective reindex for a newly imported
+/// image. Artifacts are staged beside their final path and promoted only after
+/// every analysis stage succeeds.
 pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
-    // EXIF metadata extraction (non‑fallible)
-    // Generate exif first, then assign it to avoid borrow issues
-    let exif_data = generate_exif_for_image(abstract_data);
-    if let Some(exif_vec) = abstract_data.exif_vec_mut() {
-        *exif_vec = exif_data;
+    if !abstract_data.is_image() {
+        anyhow::bail!("image pipeline received a non-image record");
     }
-
-    // Decode image to DynamicImage
-    let mut dynamic_image = generate_dynamic_image(abstract_data)
-        .context("failed to decode image into DynamicImage")?;
-
-    // Measure & possibly fix width/height
-    let (width, height) = generate_image_width_height(&dynamic_image);
-    abstract_data.set_width(width);
-    abstract_data.set_height(height);
-    fix_image_width_height(abstract_data);
-
-    // Adjust orientation if required
-    fix_image_orientation(abstract_data, &mut dynamic_image);
-
-    // Compute perceptual hashes
-    abstract_data.set_thumbhash(generate_thumbhash(&dynamic_image));
-    abstract_data.set_phash(generate_phash(&dynamic_image));
-
-    // Generate on‑disk JPEG thumbnail
-    generate_thumbnail_for_image(abstract_data, &dynamic_image)
-        .context("failed to generate JPEG thumbnail for image")?;
-
-    Ok(())
+    process_safe_media_info(abstract_data).context("failed to process image info")
 }
 
-/// Re‑build all metadata for an existing **image** (e.g. after replace / fix).
-pub fn regenerate_metadata_for_image(abstract_data: &mut AbstractData) -> Result<()> {
-    // Refresh size from filesystem
-    let size = metadata(abstract_data.imported_path())
-        .context("failed to read metadata for imported image file")?
-        .len();
-    abstract_data.set_size(size);
-
-    // Re‑run the full processing pipeline
-    process_image_info(abstract_data).context("failed to process image info")?;
-    Ok(())
-}
-
-/// Analyse the newly‑imported **video** and populate the `AbstractData` record.
+/// New videos initially run the safe metadata/thumbnail/hash plan. Their
+/// pending record is published by `IndexTask` before `VideoTask` invokes the
+/// shared video-compression stage.
 pub fn process_video_info(abstract_data: &mut AbstractData) -> Result<()> {
-    // Extract EXIF‑like metadata via ffprobe
-    let exif = generate_exif_for_video(abstract_data)
-        .context("failed to extract video metadata via ffprobe")?;
-    if let Some(exif_vec) = abstract_data.exif_vec_mut() {
-        *exif_vec = exif;
+    if !abstract_data.is_video() {
+        anyhow::bail!("video pipeline received a non-video record");
     }
-
-    // Get logical dimensions and fix if rotated
-    let (width, height) = generate_video_width_height(abstract_data)
-        .context("failed to obtain video width/height")?;
-    abstract_data.set_width(width);
-    abstract_data.set_height(height);
-    fix_video_width_height(abstract_data);
-
-    // Produce thumbnail from first frame
-    generate_thumbnail_for_video(abstract_data)
-        .context("failed to generate video thumbnail via ffmpeg")?;
-
-    // Decode the first frame for hashing purposes
-    let dynamic_image = generate_dynamic_image(abstract_data)
-        .context("failed to decode first video frame into DynamicImage")?;
-
-    // Compute perceptual hashes
-    abstract_data.set_thumbhash(generate_thumbhash(&dynamic_image));
-    abstract_data.set_phash(generate_phash(&dynamic_image));
-
-    Ok(())
+    process_safe_media_info(abstract_data).context("failed to process video info")
 }
 
-/// Re‑build all metadata for an existing **video** file.
-pub fn regenerate_metadata_for_video(abstract_data: &mut AbstractData) -> Result<()> {
-    // Refresh size from filesystem metadata
-    let size = metadata(abstract_data.imported_path())
-        .context("failed to read metadata for imported video file")?
-        .len();
-    abstract_data.set_size(size);
-
-    // Re‑run the full processing pipeline
-    process_video_info(abstract_data).context("failed to process video info")?;
+fn process_safe_media_info(abstract_data: &mut AbstractData) -> Result<()> {
+    let token = format!("import-{}", Uuid::new_v4());
+    let mut publisher = ArtifactPublisher::new(token);
+    let result = execute_media_pipeline(
+        abstract_data,
+        &MediaTaskPlan::safe_default(),
+        &mut publisher,
+    )
+    .map_err(anyhow::Error::new)?;
+    publisher.publish(|| Ok(()))?;
+    *abstract_data = result.candidate;
     Ok(())
 }

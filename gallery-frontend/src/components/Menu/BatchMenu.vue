@@ -31,7 +31,7 @@
       <v-divider></v-divider>
 
       <!-- Regenerate Action -->
-      <ItemRegenerateMetadata :index-list="selection" />
+      <ItemRegenerateMetadata v-if="!isInAlbumsPage" :index-list="selection" />
     </v-list>
   </v-menu>
 </template>

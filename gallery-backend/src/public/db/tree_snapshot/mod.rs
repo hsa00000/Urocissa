@@ -295,6 +295,7 @@ mod tests {
             scrollbar: Vec::new(),
         };
         let bytes = snapshot.encode().unwrap();
+        #[cfg(feature = "performance-test")]
         assert!(snapshot.estimated_bytes() >= std::mem::size_of::<PendingTreeSnapshot>());
         assert!(bytes.len() < 256);
         let view = SnapshotBlobView::new(&bytes).unwrap();

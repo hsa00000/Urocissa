@@ -7,6 +7,13 @@ export type SelectionInput = number[] | SelectionDescriptor
 export const normalizeSelection = (selection: SelectionInput): SelectionDescriptor =>
   Array.isArray(selection) ? { mode: 'explicit', indices: selection } : selection
 
+export const selectionCount = (selection: SelectionDescriptor, total: number): number => {
+  const values =
+    selection.mode === 'explicit' ? selection.indices : selection.excludedIndices
+  const validUnique = new Set(values.filter((index) => index >= 0 && index < total)).size
+  return selection.mode === 'explicit' ? validUnique : Math.max(0, total - validUnique)
+}
+
 export const selectionIncludes = (selection: SelectionDescriptor, index: number): boolean => {
   const values = selection.mode === 'explicit' ? selection.indices : selection.excludedIndices
   const contained = values.includes(index)

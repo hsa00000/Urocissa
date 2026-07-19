@@ -7,13 +7,12 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow};
 use image::{DynamicImage, ImageFormat};
-use std::process::Stdio;
+use std::{path::Path, process::Stdio};
 
-/// Generate a JPEG thumbnail for an **image** asset, propagating
-/// every error with clear human‑readable context strings.
-pub fn generate_thumbnail_for_image(
-    abstract_data: &mut AbstractData,
+pub fn generate_thumbnail_for_image_to(
+    abstract_data: &AbstractData,
     dynamic_image: &DynamicImage,
+    output_path: &Path,
 ) -> Result<()> {
     let (compressed_width, compressed_height) =
         max_long_side_width_height(abstract_data.width(), abstract_data.height(), 1920);
@@ -23,11 +22,10 @@ pub fn generate_thumbnail_for_image(
         .to_rgb8();
 
     // Resolve parent directory of the compressed path
-    let binding = abstract_data.compressed_path();
-    let parent_path = binding.parent().ok_or_else(|| {
+    let parent_path = output_path.parent().ok_or_else(|| {
         anyhow!(
             "failed to determine parent directory of {}",
-            abstract_data.compressed_path().display()
+            output_path.display()
         )
     })?;
 
@@ -39,22 +37,21 @@ pub fn generate_thumbnail_for_image(
 
     // Persist the thumbnail as JPEG
     thumbnail_image
-        .save_with_format(abstract_data.compressed_path(), ImageFormat::Jpeg)
+        .save_with_format(output_path, ImageFormat::Jpeg)
         .context(format!(
             "failed to save JPEG thumbnail to {}",
-            abstract_data.compressed_path().display()
+            output_path.display()
         ))?;
 
     Ok(())
 }
 
-/// Generate a single JPEG thumbnail taken from the **first frame** of a video asset.
-/// Uses `ffprobe` for metadata and `ffmpeg` for frame extraction.
-/// All fallible operations carry explicit *context* for easier debugging.
-pub fn generate_thumbnail_for_video(abstract_data: &AbstractData) -> Result<()> {
+pub fn generate_thumbnail_for_video_to(
+    abstract_data: &AbstractData,
+    output_path: &Path,
+) -> Result<()> {
     let (width, height) = (abstract_data.width(), abstract_data.height());
     let (thumb_width, thumb_height) = small_width_height(width, height, 1280);
-    let thumbnail_path = abstract_data.thumbnail_path();
 
     // Create target directory tree if missing
     std::fs::create_dir_all(abstract_data.compressed_path_parent())
@@ -72,7 +69,7 @@ pub fn generate_thumbnail_for_video(abstract_data: &AbstractData) -> Result<()> 
         "1",
         "-vf",
         &format!("scale={thumb_width}:{thumb_height}"),
-        &thumbnail_path,
+        &output_path.to_string_lossy(),
     ]);
 
     // Execute and wait; we discard both stdout/stderr

@@ -1,7 +1,6 @@
 use super::video_ffprobe::video_duration;
 use crate::{
     operations::indexation::generate_ffmpeg::create_silent_ffmpeg_command,
-    process::info::process_image_info,
     public::{structure::abstract_data::AbstractData, tui::DASHBOARD},
 };
 use anyhow::Context;
@@ -11,6 +10,7 @@ use regex::Regex;
 use std::{
     cmp,
     io::{BufRead, BufReader},
+    path::Path,
     process::Stdio,
     sync::LazyLock,
 };
@@ -18,20 +18,50 @@ use std::{
 static REGEX_OUT_TIME_US: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"out_time_us=(\d+)").unwrap());
 
-/// Compresses a video file, reporting progress by parsing ffmpeg's output.
-pub fn generate_compressed_video(abstract_data: &mut AbstractData) -> Result<()> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VideoCompressionOutcome {
+    Video,
+    StaticImage,
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn is_static_gif(abstract_data: &AbstractData) -> Result<bool> {
+    match video_duration(&abstract_data.imported_path_string()) {
+        Ok(duration) => Ok((duration * 1000.0) as u32 == 100),
+        Err(error)
+            if (error.to_string().contains("fail to parse to f32")
+                || error.to_string().contains("Fail to parse to f64"))
+                && abstract_data.ext().eq_ignore_ascii_case("gif") =>
+        {
+            Ok(true)
+        }
+        Err(error) => Err(anyhow::anyhow!(
+            "Failed to get video duration for {:?}: {}",
+            abstract_data.imported_path_string(),
+            error
+        )),
+    }
+}
+
+/// Compress into a caller-provided job-scoped path. Static GIF conversion is
+/// reported to the shared media pipeline so it can stage the image artifacts
+/// and publish the type change atomically.
+pub fn generate_compressed_video_to(
+    abstract_data: &AbstractData,
+    output_path: &Path,
+    report_progress: bool,
+) -> Result<VideoCompressionOutcome> {
+    if is_static_gif(abstract_data)? {
+        info!(
+            "Static GIF detected. Processing as image: {:?}",
+            abstract_data.imported_path_string()
+        );
+        return Ok(VideoCompressionOutcome::StaticImage);
+    }
     let duration_result = video_duration(&abstract_data.imported_path_string());
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let duration = match duration_result {
-        // Handle static GIFs by delegating to the image processor.
-        Ok(d) if (d * 1000.0) as u32 == 100 => {
-            info!(
-                "Static GIF detected. Processing as image: {:?}",
-                abstract_data.imported_path_string()
-            );
-            abstract_data.convert_to_image();
-            return process_image_info(abstract_data);
-        }
+        Ok(d) => d,
         // Handle non-GIFs that fail to parse duration.
         Err(err)
             if err.to_string().contains("fail to parse to f32")
@@ -41,10 +71,8 @@ pub fn generate_compressed_video(abstract_data: &mut AbstractData) -> Result<()>
                 "Potentially corrupt or non-standard GIF. Processing as image: {:?}",
                 abstract_data.imported_path_string()
             );
-            abstract_data.convert_to_image();
-            return process_image_info(abstract_data);
+            return Ok(VideoCompressionOutcome::StaticImage);
         }
-        Ok(d) => d,
         Err(err) => {
             return Err(anyhow::anyhow!(
                 "Failed to get video duration for {:?}: {}",
@@ -63,11 +91,11 @@ pub fn generate_compressed_video(abstract_data: &mut AbstractData) -> Result<()>
         // Scale video to a max height of 720p, ensuring dimensions are even.
         &format!(
             "scale=trunc(oh*a/2)*2:{}",
-            (cmp::min(abstract_data.height(), 720) / 2) * 2
+            (cmp::min(abstract_data.height(), 720).max(2) / 2) * 2
         ),
         "-movflags",
         "faststart", // Optimize for web streaming
-        &abstract_data.compressed_path_string(),
+        &output_path.to_string_lossy(),
         "-progress",
         "pipe:2", // Send machine-readable progress to stderr (pipe 2)
     ]);
@@ -92,13 +120,21 @@ pub fn generate_compressed_video(abstract_data: &mut AbstractData) -> Result<()>
             // We only proceed if the captured value can be parsed as a number.
             if let Ok(microseconds) = caps[1].parse::<f64>() {
                 let percentage = (microseconds / 1_000_000.0 / duration) * 100.0;
-                DASHBOARD.update_progress(abstract_data.hash(), percentage);
+                if report_progress {
+                    DASHBOARD.update_progress(abstract_data.hash(), percentage);
+                }
             }
         }
     }
 
-    child
+    let status = child
         .wait()
         .context("Failed to wait for ffmpeg child process")?;
-    Ok(())
+    if !status.success() {
+        return Err(anyhow::anyhow!(
+            "ffmpeg video compression failed with exit code {}",
+            status.code().unwrap_or(-1)
+        ));
+    }
+    Ok(VideoCompressionOutcome::Video)
 }

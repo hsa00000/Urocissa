@@ -114,11 +114,17 @@ impl AbstractData {
 
     /// Update the `update_at` timestamp
     pub fn update_update_at(&mut self) {
-        let timestamp = Utc::now().timestamp_millis();
+        let now = Utc::now().timestamp_millis();
         match self {
-            AbstractData::Image(img) => img.object.update_at = timestamp,
-            AbstractData::Video(vid) => vid.object.update_at = timestamp,
-            AbstractData::Album(alb) => alb.object.update_at = timestamp,
+            AbstractData::Image(img) => {
+                img.object.update_at = now.max(img.object.update_at.saturating_add(1));
+            }
+            AbstractData::Video(vid) => {
+                vid.object.update_at = now.max(vid.object.update_at.saturating_add(1));
+            }
+            AbstractData::Album(alb) => {
+                alb.object.update_at = now.max(alb.object.update_at.saturating_add(1));
+            }
         }
     }
 

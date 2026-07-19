@@ -6,9 +6,15 @@ use std::{collections::BTreeMap, io, path::Path, process::Command, sync::LazyLoc
 /// Extract EXIF metadata for images. On any failure, returns the original
 /// map (possibly empty). Errors inside `read_exif` carry detailed context.
 pub fn generate_exif_for_image(abstract_data: &AbstractData) -> BTreeMap<String, String> {
+    generate_exif_for_image_path(&abstract_data.imported_path())
+}
+
+/// Extract image metadata from the canonical imported object. Reindexing must
+/// never depend on an alias path because aliases may be removed after import.
+pub fn generate_exif_for_image_path(file_path: &Path) -> BTreeMap<String, String> {
     let mut exif_tuple = BTreeMap::new();
 
-    if let Ok(exif) = read_exif(&abstract_data.source_path()) {
+    if let Ok(exif) = read_exif(file_path) {
         for field in exif.fields() {
             if field.ifd_num == exif::In::PRIMARY {
                 let tag = field.tag.to_string();
@@ -47,7 +53,12 @@ static RE_VIDEO_INFO: LazyLock<Regex> =
 /// Use `ffprobe` to retrieve metadata for videos, propagating every error
 /// with rich context strings.
 pub fn generate_exif_for_video(abstract_data: &AbstractData) -> Result<BTreeMap<String, String>> {
-    let source_path = abstract_data.source_path_string();
+    generate_exif_for_video_path(&abstract_data.imported_path())
+}
+
+/// Probe the canonical imported video rather than its original alias.
+pub fn generate_exif_for_video_path(file_path: &Path) -> Result<BTreeMap<String, String>> {
+    let source_path = file_path.to_string_lossy();
     let mut exif_tuple = BTreeMap::new();
 
     // Spawn ffprobe and capture its output
@@ -56,7 +67,7 @@ pub fn generate_exif_for_video(abstract_data: &AbstractData) -> Result<BTreeMap<
         .arg("error")
         .arg("-show_format")
         .arg("-show_streams")
-        .arg(source_path)
+        .arg(file_path)
         .output()
         .context(format!("failed to spawn ffprobe for {source_path}"))?;
 

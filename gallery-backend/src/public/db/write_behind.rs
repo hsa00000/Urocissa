@@ -362,6 +362,39 @@ impl DirtyBatch {
         });
         self.recount_bytes();
     }
+
+    /// Retire target-centric edits that were folded into a direct media
+    /// publication without discarding the same edit for other targets. Album
+    /// upserts are also retired when the publication persisted a freshly
+    /// aggregated copy of that album.
+    fn cancel_published_media(
+        &mut self,
+        targets: &TargetSet,
+        published_album_ids: &BTreeSet<ArrayString<64>>,
+    ) {
+        self.operations.retain_mut(|operation| match operation {
+            DirtyOperation::Tags {
+                targets: pending, ..
+            }
+            | DirtyOperation::Flags {
+                targets: pending, ..
+            }
+            | DirtyOperation::Albums {
+                targets: pending, ..
+            } => {
+                pending.subtract(targets);
+                !pending.is_empty()
+            }
+            DirtyOperation::Description { target, .. } => !targets.contains(*target),
+            DirtyOperation::AlbumCreate(album) | DirtyOperation::AlbumReplace(album) => {
+                !published_album_ids.contains(&album.object.id)
+            }
+            // A deleted album has no aggregate for media publication to
+            // persist, so its structural deletion must remain queued.
+            DirtyOperation::AlbumDelete(_) => true,
+        });
+        self.recount_bytes();
+    }
 }
 
 fn merge_flag_delta(existing: &mut Option<bool>, next: Option<bool>) {
@@ -584,6 +617,31 @@ impl DirtyDeltaStore {
                 .extend(album_ids.iter().copied());
             if let Some(flushing) = &mut state.flushing {
                 Arc::make_mut(flushing).cancel_targets(targets, album_ids);
+            }
+        }
+        drop(state);
+        self.capacity_changed.notify_waiters();
+    }
+
+    /// Reconcile edits already materialized by a selective media commit. In
+    /// contrast to `cancel_targets`, album add/remove sets stay intact for all
+    /// remaining targets in the same write-behind operation.
+    pub fn cancel_published_media(
+        &self,
+        targets: &TargetSet,
+        published_album_ids: &BTreeSet<ArrayString<64>>,
+    ) {
+        let mut state = self.state.lock().unwrap();
+        state
+            .active
+            .cancel_published_media(targets, published_album_ids);
+        if state.flushing.is_some() {
+            state.cancelled_flushing_slots.extend(targets.iter());
+            state
+                .cancelled_flushing_albums
+                .extend(published_album_ids.iter().copied());
+            if let Some(flushing) = &mut state.flushing {
+                Arc::make_mut(flushing).cancel_published_media(targets, published_album_ids);
             }
         }
         drop(state);
@@ -1481,6 +1539,45 @@ mod tests {
         assert!(result.object.is_archived);
         assert_eq!(result.metadata.title.as_deref(), Some("replacement"));
         assert!(result.object.tags.contains("after-replace"));
+    }
+
+    #[test]
+    fn media_publication_only_retires_the_committed_target_from_album_edits() {
+        let album_id = ArrayString::<64>::from("shared-album-edit").unwrap();
+        let deleted_album_id = ArrayString::<64>::from("deleted-album").unwrap();
+        let album = match Album::new(album_id, Some("Shared".to_owned())).into_abstract_data() {
+            AbstractData::Album(album) => album,
+            _ => unreachable!(),
+        };
+        let committed = SlotRef::new(1, 1);
+        let still_pending = SlotRef::new(2, 1);
+        let mut batch = DirtyBatch::new(1);
+        batch.push(DirtyOperation::Albums {
+            targets: TargetSet::from_slot_refs([committed, still_pending], 64),
+            add: BTreeSet::from([album_id]),
+            remove: BTreeSet::new(),
+        });
+        batch.push(DirtyOperation::AlbumReplace(album));
+        batch.push(DirtyOperation::AlbumDelete(deleted_album_id));
+
+        batch.cancel_published_media(
+            &TargetSet::from_slot_refs([committed], 64),
+            &BTreeSet::from([album_id]),
+        );
+
+        assert!(matches!(
+            &batch.operations[0],
+            DirtyOperation::Albums { targets, add, .. }
+                if !targets.contains(committed)
+                    && targets.contains(still_pending)
+                    && add.contains(&album_id)
+        ));
+        assert!(!batch.operations.iter().any(
+            |operation| matches!(operation, DirtyOperation::AlbumReplace(album) if album.object.id == album_id)
+        ));
+        assert!(batch.operations.iter().any(
+            |operation| matches!(operation, DirtyOperation::AlbumDelete(id) if *id == deleted_album_id)
+        ));
     }
 
     #[cfg(feature = "performance-test")]

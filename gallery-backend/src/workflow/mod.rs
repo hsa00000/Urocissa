@@ -7,27 +7,10 @@ use crate::tasks::{
 };
 use anyhow::Result;
 use arrayvec::ArrayString;
-use dashmap::DashSet;
-use log::warn;
 use path_clean::PathClean;
-use std::{path::PathBuf, sync::LazyLock};
+use std::path::PathBuf;
 
-static IN_PROGRESS: LazyLock<DashSet<ArrayString<64>>> = LazyLock::new(DashSet::new);
-
-pub struct ProcessingGuard(ArrayString<64>);
-impl Drop for ProcessingGuard {
-    fn drop(&mut self) {
-        IN_PROGRESS.remove(&self.0);
-    }
-}
-
-fn try_acquire(hash: ArrayString<64>) -> Option<ProcessingGuard> {
-    if IN_PROGRESS.insert(hash) {
-        Some(ProcessingGuard(hash))
-    } else {
-        None
-    }
-}
+use crate::process::media_lock::lock_media;
 
 pub async fn index_for_watch(
     path: PathBuf,
@@ -42,13 +25,7 @@ pub async fn index_for_watch(
         .execute_waiting(HashTask::new(file))
         .await??;
 
-    let Some(_guard) = try_acquire(hash) else {
-        warn!(
-            "Processing already in progress for path: {}, hash: {hash}",
-            path.display()
-        );
-        return Ok(());
-    };
+    let _media_guard = lock_media(hash).await;
 
     let abstract_data_opt = INDEX_COORDINATOR
         .execute_waiting(DeduplicateTask::new(

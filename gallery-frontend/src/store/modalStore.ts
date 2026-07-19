@@ -1,5 +1,13 @@
-import { IsolationId } from '@type/types'
+import type { IsolationId } from '@type/types'
+import type { SelectionDescriptor } from '@/type/selection'
 import { defineStore } from 'pinia'
+
+export interface ReindexRequestContext {
+  selection: SelectionDescriptor
+  timestamp: number
+  isolationId: IsolationId
+  targetCount: number
+}
 
 export const useModalStore = (isolationId: IsolationId) =>
   defineStore('modalStore' + isolationId, {
@@ -16,6 +24,7 @@ export const useModalStore = (isolationId: IsolationId) =>
       showDeleteShareModal: boolean
       showSettingModal: boolean
       showShareLoginModal: boolean
+      reindexContext: ReindexRequestContext | null
     } => ({
       showEditTagsModal: false,
       showBatchEditTagsModal: false,
@@ -28,7 +37,19 @@ export const useModalStore = (isolationId: IsolationId) =>
       showEditShareModal: false,
       showDeleteShareModal: false,
       showSettingModal: false,
-      showShareLoginModal: false
+      showShareLoginModal: false,
+      reindexContext: null
     }),
-    actions: {}
+    actions: {
+      openReindex(context: ReindexRequestContext) {
+        const selection: SelectionDescriptor =
+          context.selection.mode === 'explicit'
+            ? { mode: 'explicit', indices: [...context.selection.indices] }
+            : { mode: 'allExcept', excludedIndices: [...context.selection.excludedIndices] }
+        this.reindexContext = { ...context, selection }
+      },
+      closeReindex() {
+        this.reindexContext = null
+      }
+    }
   })()
