@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "gh-pages": "^6.3.0",
-    "vuetify-nuxt-module": "^0.19.5"
+    "vuetify-nuxt-module": "^1.0.0-rc.2"
   },
   "overrides": {
     "esbuild": "^0.25.0",
@@ -32,9 +32,9 @@
     "devalue": "^5.6.4",
     "serialize-javascript": "^7.0.5",
     "simple-git": "^3.32.3",
-    "unhead": "^2.1.13",
+    "unhead": "3.1.8",
     "svgo": "^4.0.1",
-    "vite": "^7.3.2",
+    "vite": "8.1.5",
     "picomatch": "^4.0.4",
     "node-forge": "^1.4.0",
     "defu": "^6.1.5",
