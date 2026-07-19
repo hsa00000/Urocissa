@@ -27,13 +27,14 @@ export function handleScroll(
   windowHeight: Ref<number>,
   isolationId: IsolationId
 ) {
+  const configStore = useConfigStore('mainId')
+  const scrollTopStore = useScrollTopStore(isolationId)
+  const prefetchStore = usePrefetchStore(isolationId)
+
   const throttledHandleScroll = throttle(
     () => {
       if (imageContainerRef.value !== null) {
-        const configStore = useConfigStore('mainId')
         const mobile = configStore.isMobile
-        const scrollTopStore = useScrollTopStore(isolationId)
-        const prefetchStore = usePrefetchStore(isolationId)
 
         const difference = imageContainerRef.value.scrollTop - lastScrollTop.value
 
@@ -53,6 +54,7 @@ export function handleScroll(
         }
 
         const result = scrollTopStore.scrollTop + difference
+        const upperBound = getScrollUpperBound(prefetchStore.totalHeight, windowHeight.value)
 
         if (result < 0) {
           // If scrolling exceeds the lower bound, reset the scroll position to 0.
@@ -65,22 +67,16 @@ export function handleScroll(
           } else {
             scrollTopStore.scrollTop = 0
           }
-        } else if (result >= getScrollUpperBound(prefetchStore.totalHeight, windowHeight.value)) {
+        } else if (result >= upperBound) {
           // If scrolling exceeds the upper bound, reset the scroll position to the maximum allowed value.
           if (mobile) {
             stopScroll.value = true
-            scrollTopStore.scrollTop = getScrollUpperBound(
-              prefetchStore.totalHeight,
-              windowHeight.value
-            )
+            scrollTopStore.scrollTop = upperBound
             setTimeout(() => {
               stopScroll.value = false
             }, 100)
           } else {
-            scrollTopStore.scrollTop = getScrollUpperBound(
-              prefetchStore.totalHeight,
-              windowHeight.value
-            )
+            scrollTopStore.scrollTop = upperBound
           }
         } else {
           // Adjust the scroll position normally within the allowed range.

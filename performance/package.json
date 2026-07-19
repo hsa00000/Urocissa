@@ -6,6 +6,7 @@
     "baseline": "node run.mjs baseline",
     "compare": "node run.mjs compare",
     "smoke": "node run.mjs smoke",
+    "scroll-lag": "node scroll-lag.mjs",
     "install-browser": "playwright install chromium"
   },
   "dependencies": {

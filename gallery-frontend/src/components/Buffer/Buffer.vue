@@ -6,41 +6,53 @@
       height: `${Math.max(bufferHeight, prefetchStore.totalHeight)}px`
     }"
   >
-    <BufferPlaceholder
-      id="placeholderTop"
-      v-if="visibleRows[0] !== undefined && !(prefetchStore.totalHeight <= windowHeight)"
-      :top-pixel="visibleRows[0].topPixelAccumulated! -
-        scrollTopStore.scrollTop +
-        bufferHeight / 3 +
-        visibleRows[0].offset"
-      :modify-top-pixel="true"
-    />
     <div
-      v-for="row in visibleRows"
-      :key="`${row.start}-${prefetchStore.timestamp}`"
-      class="position-absolute w-100"
+      v-if="visibleRows.length > 0"
+      class="buffer-visible-rows position-absolute w-100"
       :style="{
-        transform: `translateY(${row.topPixelAccumulated! - scrollTopStore.scrollTop + bufferHeight / 3 + row.offset}px)`,
-        height: `${row.rowHeight}px`,
+        transform: `translateY(${bufferHeight / 3 - scrollTopStore.scrollTop}px)`,
         willChange: 'transform'
       }"
-      :start="row.start"
     >
-      <RowBlock :row="row" :isolation-id="isolationId" />
+      <BufferPlaceholder
+        id="placeholderTop"
+        v-if="!(prefetchStore.totalHeight <= windowHeight)"
+        :top-pixel="visibleRows[0]!.topPixelAccumulated + visibleRows[0]!.offset"
+        :modify-top-pixel="true"
+      />
+      <div
+        v-for="row in visibleRows"
+        :key="`${row.start}-${prefetchStore.timestamp}`"
+        v-memo="[
+          row,
+          row.topPixelAccumulated,
+          row.offset,
+          row.rowHeight,
+          row.start,
+          row.end,
+          row.displayElements,
+          prefetchStore.updateVisibleRowTrigger,
+          prefetchStore.timestamp
+        ]"
+        class="position-absolute w-100"
+        :style="{
+          transform: `translateY(${row.topPixelAccumulated! + row.offset}px)`,
+          height: `${row.rowHeight}px`
+        }"
+        :start="row.start"
+      >
+        <RowBlock :row="row" :isolation-id="isolationId" />
+      </div>
+      <BufferPlaceholder
+        id="placeholderBottom"
+        v-if="!(prefetchStore.totalHeight <= windowHeight)"
+        :top-pixel="(()=>{
+          const lastData = getArrayValue(visibleRows, visibleRows.length - 1)
+          return lastData.topPixelAccumulated! + lastData.offset + lastData.rowHeight
+        })()"
+        :modify-top-pixel="false"
+      />
     </div>
-    <BufferPlaceholder
-      id="placeholderBottom"
-      v-if="visibleRows.length > 0 && !(prefetchStore.totalHeight <= windowHeight)"
-      :top-pixel="(()=>{
-        const lastData = getArrayValue(visibleRows, visibleRows.length - 1)
-        return lastData.topPixelAccumulated! -
-        scrollTopStore.scrollTop +
-        bufferHeight / 3 +
-        lastData.offset +
-        lastData.rowHeight
-      })()"
-      :modify-top-pixel="false"
-    />
     <BufferPlaceholder
       id="placeholderNone"
       ref="placeholderNoneRef"
