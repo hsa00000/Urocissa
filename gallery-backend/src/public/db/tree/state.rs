@@ -1210,27 +1210,57 @@ impl TreeState {
     pub fn from_records(records: impl IntoIterator<Item = AbstractData>) -> Self {
         let mut state = Self::default();
         for data in records {
-            let timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
-            let record = CacheRecord::from_abstract_data(&data, timestamp);
-            state.track_record_added(&record);
-            let id = record.id;
-            let slot_ref = state.arena.allocate(record);
-            state.id_index.insert(id.as_str(), slot_ref);
-            if let AbstractData::Album(album) = &data {
-                state.albums.insert(album.object.id, album.clone());
-            }
-            let universe = state.arena.capacity();
-            state.query.insert_record(slot_ref.index(), &data, universe);
-            Arc::make_mut(&mut state.order).push(slot_ref);
+            state.push_unsorted(data);
         }
-        let arena = &state.arena;
-        Arc::make_mut(&mut state.order)
+        state.finish_unsorted()
+    }
+
+    pub fn try_from_records<E>(
+        records: impl IntoIterator<Item = Result<AbstractData, E>>,
+    ) -> Result<Self, E> {
+        let mut state = Self::default();
+        for data in records {
+            state.push_unsorted(data?);
+        }
+        Ok(state.finish_unsorted())
+    }
+
+    fn push_unsorted(&mut self, data: AbstractData) {
+        let timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
+        let record = CacheRecord::from_abstract_data(&data, timestamp);
+        self.track_record_added(&record);
+        let id = record.id;
+        let slot_ref = self.arena.allocate(record);
+        self.id_index.insert(id.as_str(), slot_ref);
+        if let AbstractData::Album(album) = &data {
+            self.albums.insert(album.object.id, album.clone());
+        }
+        let universe = self.arena.capacity();
+        self.query.insert_record(slot_ref.index(), &data, universe);
+        Arc::make_mut(&mut self.order).push(slot_ref);
+    }
+
+    fn finish_unsorted(mut self) -> Self {
+        let arena = &self.arena;
+        Arc::make_mut(&mut self.order)
             .sort_unstable_by(|left, right| compare_slots(arena, *left, *right));
-        state
+        self
     }
 
     pub fn len(&self) -> usize {
         self.arena.len()
+    }
+
+    /// Snapshot the durable thumbnail identities represented by the rebuilt
+    /// tree. Albums do not own JPEG artifacts, so only image/video records are
+    /// included.
+    pub fn thumbnail_versions(&self) -> HashMap<String, u32> {
+        self.order
+            .iter()
+            .filter_map(|slot_ref| self.get(*slot_ref))
+            .filter(|record| record.object_type != ObjectType::Album)
+            .map(|record| (record.id.to_string(), record.cache_version))
+            .collect()
     }
 
     #[cfg(feature = "performance-test")]

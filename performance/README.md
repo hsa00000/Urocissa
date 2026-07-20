@@ -10,6 +10,7 @@ From the repository root (PowerShell):
 .\performance\run.ps1 smoke                 # 1,000 records; quick harness check
 .\performance\run.ps1 baseline              # 100,000 records; three samples
 .\performance\run.ps1 compare               # new three-sample run vs baseline
+.\performance\run.ps1 storage               # 1,000,000-record V5/V6 storage gate
 ```
 
 Useful options can be passed to the Node runner directly:
@@ -18,7 +19,23 @@ Useful options can be passed to the Node runner directly:
 node performance\run.mjs baseline --count 100000 --samples 3 --seed 20260718
 node performance\run.mjs compare --baseline .performance\baseline\latest\summary.json --headed
 node performance\run.mjs smoke --count 100000 --samples 1
+node performance\run.mjs storage --count 1000000 --samples 3
 ```
+
+On a Linux VPS, the storage-only harness is a single command and does not install
+Playwright or build the frontend:
+
+```bash
+./performance/run.sh storage --count 1000000 --samples 3
+```
+
+It creates one disposable V5 fixture, measures the production V5→V6 migration,
+runs V5 and V6 through the same TreeState builder, and then launches the real
+server once to measure complete readiness. The report includes storage-open and
+O(1) count time, decode scans, TreeState time, records/s, peak RSS, redb cache
+metrics, one normal-startup record iteration, one migration source scan, and zero
+migration destination scans. The hard gates are V6 median ≤115% of V5 and peak
+RSS ≤850 MiB. Results are written under `.performance/storage/`.
 
 ### Scroll-lag microbenchmark
 

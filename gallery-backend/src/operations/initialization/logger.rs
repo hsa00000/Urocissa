@@ -3,15 +3,31 @@ use log::kv::Key;
 use superconsole::style::Stylize;
 
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::public::tui::LOGGER_TX;
+
+/// Startup logging must remain visible before the TUI exists. Once the TUI
+/// task starts consuming the receiver, log lines are routed there instead.
+static TUI_ATTACHED: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn mark_tui_attached() {
+    TUI_ATTACHED.store(true, Ordering::Release);
+}
 
 /// A `Write` adapter that sends each incoming line over a Tokio channel.
 pub struct TokioPipe(pub UnboundedSender<String>);
 
 impl std::io::Write for TokioPipe {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if !TUI_ATTACHED.load(Ordering::Acquire) {
+            let mut stderr = std::io::stderr().lock();
+            stderr.write_all(buf)?;
+            stderr.flush()?;
+            return Ok(buf.len());
+        }
+
         // Decode bytes into a UTF-8 string, replacing invalid sequences
         let s = String::from_utf8_lossy(buf);
         // Split on newline, replace tabs, and send non-empty lines
@@ -114,4 +130,38 @@ pub fn initialize_logger() -> UnboundedReceiver<String> {
         .init();
 
     rx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use tokio::sync::mpsc::error::TryRecvError;
+
+    static TUI_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn startup_pipe_does_not_queue_lines_before_tui_attach() {
+        let _guard = TUI_TEST_LOCK.lock().unwrap();
+        TUI_ATTACHED.store(false, Ordering::Release);
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+        let mut pipe = TokioPipe(sender);
+
+        pipe.write_all(b"startup line\n").unwrap();
+
+        assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn attached_pipe_queues_lines_for_tui() {
+        let _guard = TUI_TEST_LOCK.lock().unwrap();
+        TUI_ATTACHED.store(true, Ordering::Release);
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+        let mut pipe = TokioPipe(sender);
+
+        pipe.write_all(b"attached line\n").unwrap();
+
+        assert_eq!(receiver.try_recv().unwrap(), "attached line");
+        TUI_ATTACHED.store(false, Ordering::Release);
+    }
 }

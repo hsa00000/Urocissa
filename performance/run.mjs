@@ -1,4 +1,3 @@
-import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync, createWriteStream } from 'node:fs'
@@ -63,12 +62,12 @@ const args = process.argv.slice(2)
 const command = args.shift() ?? 'smoke'
 const options = parseOptions(args)
 
-if (!['baseline', 'compare', 'smoke'].includes(command)) {
+if (!['baseline', 'compare', 'smoke', 'storage'].includes(command)) {
   console.error(`Unknown command: ${command}`)
   process.exit(2)
 }
 
-const count = Number(options.count ?? (command === 'smoke' ? 1_000 : defaultCount))
+const count = Number(options.count ?? (command === 'smoke' ? 1_000 : command === 'storage' ? 1_000_000 : defaultCount))
 const samples = Number(options.samples ?? (command === 'smoke' ? 1 : defaultSamples))
 const seed = BigInt(options.seed ?? defaultSeed)
 if (!Number.isSafeInteger(count) || count < 1 || count > 2_000_000) throw new Error('count must be an integer between 1 and 2,000,000')
@@ -77,6 +76,12 @@ if (seed < 0n || seed > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('seed m
 const headed = options.headed === true
 
 async function main() {
+  if (command === 'storage') {
+    if (process.env.UROCISSA_PERF_SKIP_BUILD !== '1') await ensureBackendBuild()
+    await runStorageSuite({ count, samples })
+    return
+  }
+
   if (!existsSync(join(repoRoot, 'performance', 'node_modules'))) {
     throw new Error('Performance dependencies are missing. Run: npm --prefix performance ci')
   }
@@ -108,11 +113,154 @@ async function main() {
 }
 
 async function ensureBuilds() {
-  await runCommand('cargo', ['build', '--profile', 'dev-release', '--features', 'performance-test'], backendDir)
+  await ensureBackendBuild()
   if (!existsSync(join(frontendDir, 'node_modules'))) {
     await runCommand('npm', ['ci'], frontendDir)
   }
   await runCommand('npm', ['run', 'build:only'], frontendDir)
+}
+
+async function ensureBackendBuild() {
+  await runCommand('cargo', ['build', '--profile', 'dev-release', '--features', 'performance-test'], backendDir)
+}
+
+async function runStorageSuite({ count, samples }) {
+  const resultDir = join(artifactRoot, 'storage', timestamp())
+  const root = await mkdtemp(join(tmpdir(), 'urocissa-storage-'))
+  const marker = join(root, '.urocissa-performance-root')
+  const resultPath = join(resultDir, 'storage-harness.json')
+  const harnessLog = join(resultDir, 'storage-harness.log')
+  const startupLog = join(resultDir, 'normal-startup.log')
+  const startupEvents = join(resultDir, 'normal-startup.jsonl')
+  let server = null
+
+  await mkdir(resultDir, { recursive: true })
+  await writeFile(marker, 'Disposable Urocissa storage benchmark data.\n')
+  await mkdir(join(root, 'db'), { recursive: true })
+  await mkdir(join(root, 'object', 'imported'), { recursive: true })
+  await mkdir(join(root, 'object', 'compressed'), { recursive: true })
+  await mkdir(join(root, 'upload'), { recursive: true })
+
+  const port = await freePort()
+  const token = randomBytes(24).toString('hex')
+  const config = {
+    public: {
+      address: '127.0.0.1',
+      port,
+      limits: { json: '10MiB', file: '10GiB', 'data-form': '10GiB' },
+      syncPaths: [],
+      readOnlyMode: false,
+      disableImg: false,
+      writeBehind: { flushIntervalMs: 1000, softLimitMiB: 16, hardLimitMiB: 32 }
+    },
+    private: {
+      password: 'urocissa-storage-benchmark',
+      authKey: randomBytes(32).toString('hex'),
+      discordHookUrl: null
+    }
+  }
+  await writeFile(join(root, 'config.json'), JSON.stringify(config, null, 2))
+
+  try {
+    const harnessExitCode = await runStorageHarnessProcess({
+      root,
+      resultPath,
+      logPath: harnessLog,
+      count,
+      samples
+    })
+    const report = JSON.parse(await readFile(resultPath, 'utf8'))
+
+    const readinessStarted = Date.now()
+    server = await startServer({ port, token, root, events: startupEvents, logPath: startupLog })
+    const completeReadinessMs = Date.now() - readinessStarted
+    const normalStartup = await perfFetch(port, token, '/__perf/status')
+    await setPhase(port, token, 'storage-readiness-complete')
+    await stopServer(server)
+    server = null
+
+    const maximumPeakRssBytes = Math.max(
+      report.gate.maximumPeakRssBytes,
+      normalStartup.backend_global_peak_rss_bytes
+    )
+    report.gate.maximumPeakRssBytes = maximumPeakRssBytes
+    report.gate.rssPassed = maximumPeakRssBytes <= 850 * 1024 ** 2
+
+    const summary = {
+      ...report,
+      generatedAt: new Date().toISOString(),
+      source: sourceIdentity(),
+      buildProfile: 'dev-release',
+      completeReadinessMs,
+      normalStartup,
+      harnessExitCode
+    }
+    await writeFile(join(resultDir, 'summary.json'), JSON.stringify(summary, null, 2))
+    await writeFile(join(resultDir, 'report.md'), renderStorageReport(summary))
+    console.log(renderStorageConsoleSummary(summary))
+    if (harnessExitCode !== 0 || !report.gate.relativeSpeedPassed || !report.gate.rssPassed) {
+      process.exitCode = 1
+    }
+  } finally {
+    await stopServer(server)
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+async function runStorageHarnessProcess({ root, resultPath, logPath, count, samples }) {
+  const logStream = createWriteStream(logPath, { flags: 'a' })
+  const child = spawn(backendBinary, [], {
+    cwd: backendDir,
+    env: {
+      ...process.env,
+      UROCISSA_PERF_ROOT: root,
+      UROCISSA_STORAGE_HARNESS: '1',
+      UROCISSA_STORAGE_COUNT: String(count),
+      UROCISSA_STORAGE_SAMPLES: String(samples),
+      UROCISSA_STORAGE_RESULT: resultPath
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true
+  })
+  child.stdout.pipe(logStream, { end: false })
+  child.stderr.pipe(logStream, { end: false })
+  const exitCode = await new Promise((resolvePromise, reject) => {
+    child.once('error', reject)
+    child.once('close', (code) => resolvePromise(code ?? 1))
+  })
+  logStream.end()
+  return exitCode
+}
+
+function renderStorageConsoleSummary(summary) {
+  return [
+    `storage harness: ${summary.records.toLocaleString()} records, ${summary.samples} samples`,
+    `migration: ${summary.migrationWallMs.toFixed(1)} ms (${Math.round(summary.migrationRecordsPerSecond).toLocaleString()} records/s)`,
+    `V5 median startup scan/build: ${summary.gate.v5MedianMs.toFixed(1)} ms`,
+    `V6 median startup scan/build: ${summary.gate.v6MedianMs.toFixed(1)} ms (${summary.gate.v6ToV5Ratio.toFixed(3)}x V5)`,
+    `complete readiness: ${summary.completeReadinessMs.toFixed(1)} ms`,
+    `peak RSS: ${(summary.gate.maximumPeakRssBytes / 1024 ** 2).toFixed(1)} MiB`,
+    `gates: speed=${summary.gate.relativeSpeedPassed ? 'PASS' : 'FAIL'}, RSS=${summary.gate.rssPassed ? 'PASS' : 'FAIL'}`
+  ].join('\n')
+}
+
+function renderStorageReport(summary) {
+  return `# Urocissa V6 storage benchmark
+
+- Records: ${summary.records.toLocaleString()}
+- Samples: ${summary.samples}
+- Migration: ${summary.migrationWallMs.toFixed(1)} ms (${Math.round(summary.migrationRecordsPerSecond).toLocaleString()} records/s)
+- V5 median decode + TreeState: ${summary.gate.v5MedianMs.toFixed(1)} ms
+- V6 median decode + TreeState: ${summary.gate.v6MedianMs.toFixed(1)} ms
+- V6 / V5: ${summary.gate.v6ToV5Ratio.toFixed(3)} (limit 1.150)
+- Complete readiness: ${summary.completeReadinessMs.toFixed(1)} ms
+- Peak RSS: ${(summary.gate.maximumPeakRssBytes / 1024 ** 2).toFixed(1)} MiB (limit 850 MiB)
+- Normal startup record iterations: ${summary.normalStartupRecordIterations}
+- Migration record scans: source=${summary.migrationSourceRecordScans}, destination=${summary.migrationDestinationRecordScans}
+- Gates: speed=${summary.gate.relativeSpeedPassed ? 'PASS' : 'FAIL'}, RSS=${summary.gate.rssPassed ? 'PASS' : 'FAIL'}
+
+The JSON summary contains per-sample storage-open, O(1) count, decode scan, TreeState, throughput, RSS, and redb cache metrics.
+`
 }
 
 async function runSuite({ resultDir, count, samples, seed, headed }) {
@@ -338,6 +486,7 @@ async function runSample({ sampleDir, count, seed, sampleIndex, headed }) {
 }
 
 async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, expectedHome }) {
+  const { chromium } = await import('playwright')
   const baseUrl = `http://localhost:${port}`
   const browser = await chromium.launch({ headless: !headed })
   const context = await browser.newContext({

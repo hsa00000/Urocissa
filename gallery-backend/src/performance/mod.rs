@@ -24,10 +24,16 @@ mod memory;
 mod recorder;
 
 #[cfg(feature = "performance-test")]
+mod storage_harness;
+
+#[cfg(feature = "performance-test")]
 pub use memory::memory_snapshot;
 
 #[cfg(feature = "performance-test")]
 pub use recorder::{flush, record_log};
+
+#[cfg(feature = "performance-test")]
+pub use storage_harness::{requested as storage_harness_requested, run as run_storage_harness};
 
 #[cfg(feature = "performance-test")]
 pub fn initialize() {

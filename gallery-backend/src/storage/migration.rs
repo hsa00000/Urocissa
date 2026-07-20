@@ -22,7 +22,6 @@ use crate::public::constant::storage::get_data_path;
 const V5_DB_NAME: &str = "index_v5.redb";
 const V6_DB_NAME: &str = "index_v6.redb";
 const MIGRATING_DB_NAME: &str = "index_v6.redb.migrating";
-const V4_DB_NAME: &str = "index_v4.redb";
 const RECORD_BATCH_SIZE: usize = 16_384;
 const LEGACY_TABLE_NAME: &str = "database";
 
@@ -30,7 +29,7 @@ pub fn prepare_storage() -> Result<()> {
     prepare_storage_at(&get_data_path().join("db"))
 }
 
-fn prepare_storage_at(db_dir: &Path) -> Result<()> {
+pub(crate) fn prepare_storage_at(db_dir: &Path) -> Result<()> {
     fs::create_dir_all(db_dir)
         .with_context(|| format!("failed to create database directory {}", db_dir.display()))?;
 
@@ -49,15 +48,11 @@ fn prepare_storage_at(db_dir: &Path) -> Result<()> {
     if v5.exists() {
         info!("Migrating V5 bitcode database to frozen V6 bitcode storage");
         migrate_v5(&v5, &migrating, &current)?;
-        return Ok(());
-    }
-
-    let v4 = db_dir.join(V4_DB_NAME);
-    if v4.exists() {
-        bail!(
-            "Old database format detected at {}. Please downgrade Urocissa to version 1.2.2, let it migrate the database to V5, then upgrade again.",
-            v4.display()
+        info!(
+            "V5 migration completed; V6 database is ready at {}",
+            current.display()
         );
+        return Ok(());
     }
 
     // Experimental unversioned files are intentionally ignored. Only the
@@ -199,20 +194,48 @@ fn remove_file(path: &Path, description: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use std::{
-        collections::{BTreeMap, HashSet},
+        collections::{BTreeMap, HashMap, HashSet},
         env,
         process::Command,
     };
 
     use arrayvec::ArrayString;
-    use redb::{Database, Durability, ReadOnlyDatabase};
+    use redb::{Database, Durability, ReadOnlyDatabase, TypeName, Value};
     use tempfile::tempdir;
 
     use super::*;
     use crate::storage::legacy_v5::{
-        LegacyFileModify, LegacyImageCombined, LegacyImageMetadata, LegacyObjectSchema,
-        LegacyObjectType,
+        LegacyAlbumCombined, LegacyAlbumMetadata, LegacyFileModify, LegacyImageCombined,
+        LegacyImageMetadata, LegacyObjectSchema, LegacyObjectType, LegacyShare,
+        LegacyVideoCombined, LegacyVideoMetadata,
     };
+
+    #[derive(Debug)]
+    struct RawV5Bytes;
+
+    impl Value for RawV5Bytes {
+        type SelfType<'a> = &'a [u8];
+        type AsBytes<'a> = &'a [u8];
+
+        fn fixed_width() -> Option<usize> {
+            None
+        }
+
+        fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+        where
+            Self: 'a,
+        {
+            data
+        }
+
+        fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a> {
+            value
+        }
+
+        fn type_name() -> TypeName {
+            TypeName::new("AbstractData")
+        }
+    }
 
     fn legacy_image_fixture() -> (ArrayString<64>, LegacyAbstractData) {
         let id = ArrayString::<64>::from("image-1").unwrap();
@@ -248,19 +271,103 @@ mod tests {
         (id, value)
     }
 
+    fn legacy_video_fixture() -> (ArrayString<64>, LegacyAbstractData) {
+        let id = ArrayString::<64>::from("video-1").unwrap();
+        let album_id = ArrayString::<64>::from("album-1").unwrap();
+        let value = LegacyAbstractData::Video(LegacyVideoCombined {
+            object: LegacyObjectSchema {
+                id,
+                obj_type: LegacyObjectType::Video,
+                pending: true,
+                thumbhash: Some(vec![6, 7]),
+                description: Some("video fixture".to_owned()),
+                tags: HashSet::from(["motion".to_owned()]),
+                is_favorite: false,
+                is_archived: true,
+                is_trashed: false,
+                update_at: 456,
+            },
+            metadata: LegacyVideoMetadata {
+                id,
+                size: 84,
+                width: 1_920,
+                height: 1_080,
+                ext: "mp4".to_owned(),
+                duration: 12.5,
+                albums: HashSet::from([album_id]),
+                exif_vec: BTreeMap::from([("rotation".to_owned(), "90".to_owned())]),
+                alias: vec![LegacyFileModify {
+                    file: "fixture.mp4".to_owned(),
+                    modified: 3,
+                    scan_time: 4,
+                }],
+            },
+        });
+        (id, value)
+    }
+
+    fn legacy_album_fixture() -> (ArrayString<64>, LegacyAbstractData) {
+        let id = ArrayString::<64>::from("album-1").unwrap();
+        let image_id = ArrayString::<64>::from("image-1").unwrap();
+        let share_id = ArrayString::<64>::from("share-1").unwrap();
+        let share_url = ArrayString::<64>::from("public-share").unwrap();
+        let value = LegacyAbstractData::Album(LegacyAlbumCombined {
+            object: LegacyObjectSchema {
+                id,
+                obj_type: LegacyObjectType::Album,
+                pending: false,
+                thumbhash: None,
+                description: Some("album fixture".to_owned()),
+                tags: HashSet::from(["collection".to_owned()]),
+                is_favorite: true,
+                is_archived: false,
+                is_trashed: false,
+                update_at: 789,
+            },
+            metadata: LegacyAlbumMetadata {
+                id,
+                title: Some("Fixture album".to_owned()),
+                created_time: 10,
+                start_time: Some(11),
+                end_time: Some(12),
+                last_modified_time: 13,
+                cover: Some(image_id),
+                item_count: 2,
+                item_size: 126,
+                share_list: HashMap::from([(
+                    share_id,
+                    LegacyShare {
+                        url: share_url,
+                        description: "shared fixture".to_owned(),
+                        password: Some("secret".to_owned()),
+                        show_metadata: true,
+                        show_download: false,
+                        show_upload: true,
+                        exp: 999,
+                    },
+                )]),
+            },
+        });
+        (id, value)
+    }
+
     fn create_v5(path: &Path) -> Result<ArrayString<64>> {
-        let (id, value) = legacy_image_fixture();
+        let (image_id, image) = legacy_image_fixture();
+        let (video_id, video) = legacy_video_fixture();
+        let (album_id, album) = legacy_album_fixture();
         let db = Database::create(path)?;
         let txn = db.begin_write()?;
         {
             let mut table = txn.open_table(TableDefinition::<&str, LegacyAbstractData>::new(
                 LEGACY_TABLE_NAME,
             ))?;
-            table.insert(id.as_str(), value)?;
+            table.insert(image_id.as_str(), image)?;
+            table.insert(video_id.as_str(), video)?;
+            table.insert(album_id.as_str(), album)?;
         }
         txn.commit()?;
         drop(db);
-        Ok(id)
+        Ok(image_id)
     }
 
     #[test]
@@ -305,6 +412,33 @@ mod tests {
             .into_value();
         assert_eq!(value.hash(), id);
         assert_eq!(value.cache_version(), 0);
+
+        let video = store
+            .read(|reader| reader.get("video-1"))?
+            .expect("migrated video")
+            .into_value();
+        let crate::public::structure::abstract_data::AbstractData::Video(video) = video else {
+            panic!("video-1 changed variant during migration");
+        };
+        assert_eq!(video.object.cache_version, 0);
+        assert_eq!(video.object.description.as_deref(), Some("video fixture"));
+        assert!((video.metadata.duration - 12.5).abs() < f64::EPSILON);
+        assert!(video.metadata.albums.contains("album-1"));
+
+        let album = store
+            .read(|reader| reader.get("album-1"))?
+            .expect("migrated album")
+            .into_value();
+        let crate::public::structure::abstract_data::AbstractData::Album(album) = album else {
+            panic!("album-1 changed variant during migration");
+        };
+        assert_eq!(album.object.cache_version, 0);
+        assert_eq!(album.metadata.title.as_deref(), Some("Fixture album"));
+        assert_eq!(album.metadata.item_count, 2);
+        let share_id = ArrayString::<64>::from("share-1").unwrap();
+        let share = album.metadata.share_list.get(&share_id).unwrap();
+        assert_eq!(share.url.as_str(), "public-share");
+        assert_eq!(share.password.as_deref(), Some("secret"));
         Ok(())
     }
 
@@ -332,7 +466,7 @@ mod tests {
         prepare_storage_at(directory.path())?;
 
         let store = DataStore::open(&directory.path().join(V6_DB_NAME))?;
-        assert_eq!(store.read(|reader| reader.len())?, 0);
+        assert_eq!(store.record_count()?, 0);
         Ok(())
     }
 
@@ -340,17 +474,45 @@ mod tests {
     fn unversioned_database_is_ignored() -> Result<()> {
         let directory = tempdir()?;
         fs::write(directory.path().join("index.redb"), b"ignored")?;
+        fs::write(directory.path().join("index_v4.redb"), b"also ignored")?;
 
         prepare_storage_at(directory.path())?;
 
         assert_eq!(fs::read(directory.path().join("index.redb"))?, b"ignored");
+        assert_eq!(
+            fs::read(directory.path().join("index_v4.redb"))?,
+            b"also ignored"
+        );
         assert!(directory.path().join(V6_DB_NAME).exists());
+        Ok(())
+    }
+
+    #[test]
+    fn migration_decode_error_removes_temporary_v6_and_reports_key() -> Result<()> {
+        let directory = tempdir()?;
+        let source = directory.path().join(V5_DB_NAME);
+        let database = Database::create(&source)?;
+        let transaction = database.begin_write()?;
+        {
+            let mut table = transaction
+                .open_table(TableDefinition::<&str, RawV5Bytes>::new(LEGACY_TABLE_NAME))?;
+            table.insert("broken-v5-record", b"not-valid-bitcode".as_slice())?;
+        }
+        transaction.commit()?;
+        drop(database);
+
+        let error = prepare_storage_at(directory.path()).unwrap_err();
+        assert!(format!("{error:#}").contains("broken-v5-record"));
+        assert!(source.exists());
+        assert!(!directory.path().join(MIGRATING_DB_NAME).exists());
+        assert!(!directory.path().join(V6_DB_NAME).exists());
         Ok(())
     }
 
     #[test]
     fn v6_table_type_is_checked_when_opened() -> Result<()> {
         let directory = tempdir()?;
+        create_v5(&directory.path().join(V5_DB_NAME))?;
         let path = directory.path().join(V6_DB_NAME);
         let db = Database::create(&path)?;
         let txn = db.begin_write()?;
@@ -360,8 +522,10 @@ mod tests {
         txn.commit()?;
         drop(db);
 
+        prepare_storage_at(directory.path())?;
         let store = DataStore::open(&path)?;
-        assert!(store.read(|reader| reader.len()).is_err());
+        assert!(store.record_count().is_err());
+        assert!(directory.path().join(V5_DB_NAME).exists());
         Ok(())
     }
     const UNCLEAN_V5_FIXTURE_PATH_ENV: &str = "UROCISSA_TEST_UNCLEAN_V5_PATH";

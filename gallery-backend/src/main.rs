@@ -1,6 +1,10 @@
 #[macro_use]
 extern crate rocket;
-use std::{sync::mpsc::sync_channel, thread, time::Instant};
+use std::{
+    sync::mpsc::sync_channel,
+    thread,
+    time::{Instant, SystemTime},
+};
 
 mod operations;
 mod performance;
@@ -18,7 +22,7 @@ use crate::public::error_data::handle_error;
 use crate::public::tui::{DASHBOARD, tui_task};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::start_watcher::StartWatcherTask;
-use crate::tasks::batcher::update_tree::update_tree_task;
+use crate::tasks::batcher::update_tree::update_tree_from_reader;
 use crate::tasks::looper::start_expire_check_loop;
 use public::db::tree::TREE;
 use public::db::write_behind::WRITE_BEHIND;
@@ -28,6 +32,15 @@ fn main() {
     // Initialize logger first thing
     let tui_events_rx = initialize_logger();
     performance::initialize();
+
+    #[cfg(feature = "performance-test")]
+    if performance::storage_harness_requested() {
+        if let Err(error) = performance::run_storage_harness() {
+            eprintln!("Storage harness failed: {error:#}");
+            std::process::exit(1);
+        }
+        return;
+    }
 
     if let Err(error) = prepare_storage() {
         eprintln!("Database preparation failed: {error:#}");
@@ -54,18 +67,54 @@ fn main() {
     let (tree_ready_tx, tree_ready_rx) = sync_channel(1);
     let worker_handle = thread::spawn(move || {
         INDEX_RUNTIME.block_on(async {
-            let start_time = Instant::now();
-            let total_count =
-                usize::try_from(TREE.store.record_count().unwrap()).unwrap_or(usize::MAX);
+            let storage_open_started = Instant::now();
+            let data_table = match TREE.store.reader() {
+                Ok(data_table) => data_table,
+                Err(error) => {
+                    error!("Failed to open V6 records for startup: {error:#}");
+                    return;
+                }
+            };
             crate::perf_timing!(
-                "startup.read_database_count",
-                start_time,
+                "startup.storage_open",
+                storage_open_started,
+                "Opened the V6 database and typed records table."
+            );
+
+            let count_started = Instant::now();
+            let total_count = match data_table
+                .len()
+                .and_then(|count| usize::try_from(count).map_err(anyhow::Error::from))
+            {
+                Ok(total_count) => total_count,
+                Err(error) => {
+                    error!("Failed to read the V6 records table length: {error:#}");
+                    return;
+                }
+            };
+            crate::perf_timing!(
+                "startup.record_count",
+                count_started,
                 "Read {} object count from V6 table metadata.",
                 total_count
             );
 
-            let (_, album_count) = update_tree_task();
-            crate::process::artifact_publisher::cleanup_stale_thumbnail_versions();
+            let (_, album_count) = match update_tree_from_reader(&data_table) {
+                Ok(counts) => counts,
+                Err(error) => {
+                    error!("Failed to build TreeState from V6 records: {error:#}");
+                    return;
+                }
+            };
+            drop(data_table);
+            let expected_thumbnail_versions = match TREE.state.read() {
+                Ok(state) => Some(state.thumbnail_versions()),
+                Err(error) => {
+                    error!("Failed to snapshot thumbnail versions for startup cleanup: {error}");
+                    None
+                }
+            };
+            let cleanup_cutoff = SystemTime::now();
             let media_count = total_count.saturating_sub(album_count);
             info!(
                 "Read {} photos/videos and {} albums from database.",
@@ -83,6 +132,30 @@ fn main() {
                 return;
             }
 
+            let cleanup_root =
+                crate::public::constant::storage::get_data_path().join("object/compressed");
+            if let Some(expected_thumbnail_versions) = expected_thumbnail_versions {
+                info!(
+                    "Background artifact cleanup scheduled for {} media records.",
+                    expected_thumbnail_versions.len()
+                );
+                INDEX_RUNTIME.spawn(async move {
+                    let result = tokio::task::spawn_blocking(move || {
+                        crate::process::artifact_publisher::cleanup_startup_artifacts(
+                            &cleanup_root,
+                            &expected_thumbnail_versions,
+                            cleanup_cutoff,
+                        )
+                    })
+                    .await;
+                    if let Err(error) = result {
+                        error!("Background artifact cleanup task failed: {error}");
+                    }
+                });
+            } else {
+                warn!("Skipping background artifact cleanup because tree state snapshot failed");
+            }
+
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
             start_expire_check_loop();
 
@@ -96,7 +169,7 @@ fn main() {
                     }
                 });
             } else {
-                error!("Superconsole disabled (no TTY)");
+                warn!("Superconsole disabled (no TTY); logs remain on stderr");
             }
 
             if let Err(e) = tokio::signal::ctrl_c().await {

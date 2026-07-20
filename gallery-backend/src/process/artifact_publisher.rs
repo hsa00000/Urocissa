@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Instant, SystemTime};
 
 use anyhow::{Context, Result, anyhow};
-use walkdir::WalkDir;
 
 #[derive(Debug)]
 enum ArtifactAction {
@@ -223,117 +223,204 @@ fn sibling_path(destination: &Path, token: &str, kind: &str) -> Result<PathBuf> 
     Ok(parent.join(file_name))
 }
 
-/// Crash recovery is intentionally limited to removing job-scoped leftovers;
-/// jobs and database transactions are not resumed across a restart.
-pub fn cleanup_residual_artifacts() {
-    let root = crate::public::constant::storage::get_data_path().join("object/compressed");
-    let mut removed = 0_usize;
-    for entry in WalkDir::new(&root)
-        .min_depth(2)
-        .max_depth(2)
-        .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|entry| entry.file_type().is_file())
-    {
-        let Some(file_name) = entry.file_name().to_str() else {
-            continue;
-        };
-        let parts = file_name.split('.').collect::<Vec<_>>();
-        if parts.len() != 4
-            || crate::public::structure::abstract_data::parse_thumbnail_stem(parts[0]).is_none()
-            || !matches!(parts[2], "tmp" | "bak")
-            || !(parts[1].starts_with("reindex-")
-                || parts[1].starts_with("import-")
-                || parts[1].starts_with("rotate-")
-                || parts[1].starts_with("capture-"))
-        {
-            continue;
-        }
-        match fs::remove_file(entry.path()) {
-            Ok(()) => removed += 1,
-            Err(error) => log::warn!(
-                "failed to remove residual media artifact {}: {error}",
-                entry.path().display()
-            ),
-        }
-    }
-    if removed > 0 {
-        log::info!("Removed {removed} residual media artifact files");
-    }
+/// Filesystem cleanup statistics emitted after startup reconciliation.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ArtifactCleanupSummary {
+    pub scanned: usize,
+    pub removed: usize,
+    pub skipped_new: usize,
+    pub errors: usize,
 }
 
-/// Reconcile immutable JPEG thumbnails with the durable cache version. This
-/// removes both old versions left after successful commits and orphaned final
-/// files left by a crash before the database commit.
-pub fn cleanup_stale_thumbnail_versions() {
-    let expected = match crate::public::db::tree::TREE.store.read(|reader| {
-        let mut expected = HashMap::<String, u32>::new();
-        for entry in reader.iter()? {
-            let (key, value) = entry?;
-            let data = value.into_value();
-            if data.is_image() || data.is_video() {
-                expected.insert(key.value().to_owned(), data.cache_version());
-            }
+/// Reconcile immutable JPEG thumbnails and crash leftovers in one shard scan.
+/// The cutoff prevents this startup task from deleting files published after
+/// readiness while the watcher and write-behind workers are starting.
+pub fn cleanup_startup_artifacts(
+    root: &Path,
+    expected: &HashMap<String, u32>,
+    cutoff: SystemTime,
+) -> ArtifactCleanupSummary {
+    let started = Instant::now();
+    let mut summary = ArtifactCleanupSummary::default();
+    log::info!(
+        "Background artifact cleanup started: root {}, expected media {}, cutoff {:?}",
+        root.display(),
+        expected.len(),
+        cutoff
+    );
+    let shards = match fs::read_dir(root) {
+        Ok(shards) => shards,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            crate::perf_timing!(
+                "startup.artifact_cleanup",
+                started,
+                "Background artifact cleanup finished: root {} does not exist",
+                root.display()
+            );
+            return summary;
         }
-        Ok::<_, anyhow::Error>(expected)
-    }) {
-        Ok(expected) => expected,
         Err(error) => {
-            log::warn!("failed to read thumbnail versions for startup cleanup: {error:#}");
-            return;
+            log::warn!(
+                "failed to scan compressed object root {}: {error}",
+                root.display()
+            );
+            summary.errors += 1;
+            return summary;
         }
     };
 
-    let root = crate::public::constant::storage::get_data_path().join("object/compressed");
-    let removed = cleanup_stale_thumbnail_versions_at(&root, &expected);
-    if removed > 0 {
-        log::info!("Removed {removed} stale thumbnail version files");
+    for shard_result in shards {
+        let shard = match shard_result {
+            Ok(shard) => shard,
+            Err(error) => {
+                summary.errors += 1;
+                log::warn!("failed to read compressed object directory entry: {error}");
+                continue;
+            }
+        };
+        let is_directory = match shard.file_type() {
+            Ok(file_type) => file_type.is_dir(),
+            Err(error) => {
+                summary.errors += 1;
+                log::warn!(
+                    "failed to inspect compressed object directory {}: {error}",
+                    shard.path().display()
+                );
+                false
+            }
+        };
+        if !is_directory {
+            continue;
+        }
+
+        let entries = match fs::read_dir(shard.path()) {
+            Ok(entries) => entries,
+            Err(error) => {
+                summary.errors += 1;
+                log::warn!(
+                    "failed to scan compressed object shard {}: {error}",
+                    shard.path().display()
+                );
+                continue;
+            }
+        };
+        for entry_result in entries {
+            let entry = match entry_result {
+                Ok(entry) => entry,
+                Err(error) => {
+                    summary.errors += 1;
+                    log::warn!("failed to read compressed object entry: {error}");
+                    continue;
+                }
+            };
+            summary.scanned += 1;
+            if summary.scanned.is_multiple_of(25_000) {
+                log::info!(
+                    "Background artifact cleanup scanned {} files (removed {})",
+                    summary.scanned,
+                    summary.removed
+                );
+            }
+
+            let is_file = match entry.file_type() {
+                Ok(file_type) => file_type.is_file(),
+                Err(error) => {
+                    summary.errors += 1;
+                    log::warn!(
+                        "failed to inspect compressed object {}: {error}",
+                        entry.path().display()
+                    );
+                    false
+                }
+            };
+            if !is_file {
+                continue;
+            }
+
+            let path = entry.path();
+            let Some(file_name) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            let stale_thumbnail = path.extension().and_then(|extension| extension.to_str())
+                == Some("jpg")
+                && path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .and_then(crate::public::structure::abstract_data::parse_thumbnail_stem)
+                    .is_some_and(|(hash, cache_version)| {
+                        !expected
+                            .get(hash)
+                            .is_some_and(|expected| *expected == cache_version)
+                    });
+            let residual = is_residual_artifact(&file_name);
+            if !stale_thumbnail && !residual {
+                continue;
+            }
+
+            let modified = match entry.metadata().and_then(|metadata| metadata.modified()) {
+                Ok(modified) => modified,
+                Err(error) => {
+                    summary.errors += 1;
+                    log::warn!(
+                        "failed to read modification time for {}: {error}",
+                        path.display()
+                    );
+                    continue;
+                }
+            };
+            if modified > cutoff {
+                summary.skipped_new += 1;
+                continue;
+            }
+
+            match fs::remove_file(&path) {
+                Ok(()) => summary.removed += 1,
+                Err(error) => {
+                    summary.errors += 1;
+                    log::warn!(
+                        "failed to remove startup artifact {}: {error}",
+                        path.display()
+                    );
+                }
+            }
+        }
     }
+
+    crate::perf_timing!(
+        "startup.artifact_cleanup",
+        started,
+        "Background artifact cleanup finished: scanned {}, removed {}, skipped new {}, errors {}",
+        summary.scanned,
+        summary.removed,
+        summary.skipped_new,
+        summary.errors
+    );
+    summary
 }
 
+fn is_residual_artifact(file_name: &str) -> bool {
+    let parts = file_name.split('.').collect::<Vec<_>>();
+    parts.len() == 4
+        && crate::public::structure::abstract_data::parse_thumbnail_stem(parts[0]).is_some()
+        && matches!(parts[2], "tmp" | "bak")
+        && (parts[1].starts_with("reindex-")
+            || parts[1].starts_with("import-")
+            || parts[1].starts_with("rotate-")
+            || parts[1].starts_with("capture-"))
+}
+
+#[cfg(test)]
 fn cleanup_stale_thumbnail_versions_at(root: &Path, expected: &HashMap<String, u32>) -> usize {
-    let mut removed = 0_usize;
-    for entry in WalkDir::new(&root)
-        .min_depth(2)
-        .max_depth(2)
-        .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|entry| entry.file_type().is_file())
-    {
-        let path = entry.path();
-        if path.extension().and_then(|extension| extension.to_str()) != Some("jpg") {
-            continue;
-        }
-        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
-            continue;
-        };
-        let Some((hash, cache_version)) =
-            crate::public::structure::abstract_data::parse_thumbnail_stem(stem)
-        else {
-            continue;
-        };
-        if expected
-            .get(hash)
-            .is_some_and(|expected| *expected == cache_version)
-        {
-            continue;
-        }
-        match fs::remove_file(path) {
-            Ok(()) => removed += 1,
-            Err(error) => log::warn!(
-                "failed to remove stale thumbnail artifact {}: {error}",
-                path.display()
-            ),
-        }
-    }
-    removed
+    cleanup_startup_artifacts(root, expected, SystemTime::now()).removed
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
-    use super::{ArtifactPublisher, cleanup_stale_thumbnail_versions_at};
+    use super::{
+        ArtifactPublisher, cleanup_stale_thumbnail_versions_at, cleanup_startup_artifacts,
+    };
 
     #[test]
     fn staged_file_keeps_destination_extension() {
@@ -435,19 +522,42 @@ mod tests {
         let old_v0 = shard.join(format!("{HASH}.jpg"));
         let old_v1 = shard.join(format!("{HASH}-v1.jpg"));
         let orphan = shard.join(format!("{ORPHAN}-v4.jpg"));
+        let residual = shard.join(format!("{HASH}-v2.rotate-job.tmp.jpg"));
         let unrelated = shard.join("not-a-thumbnail.jpg");
-        for path in [&current, &old_v0, &old_v1, &orphan, &unrelated] {
+        for path in [&current, &old_v0, &old_v1, &orphan, &residual, &unrelated] {
             std::fs::write(path, b"jpeg").unwrap();
         }
         let expected = HashMap::from([(HASH.to_owned(), 2)]);
 
         let removed = cleanup_stale_thumbnail_versions_at(directory.path(), &expected);
 
-        assert_eq!(removed, 3);
+        assert_eq!(removed, 4);
         assert!(current.exists());
         assert!(!old_v0.exists());
         assert!(!old_v1.exists());
         assert!(!orphan.exists());
+        assert!(!residual.exists());
         assert!(unrelated.exists());
+    }
+
+    #[test]
+    fn startup_cleanup_skips_files_created_after_cutoff() {
+        const HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let directory = tempfile::tempdir().unwrap();
+        let shard = directory.path().join("01");
+        std::fs::create_dir_all(&shard).unwrap();
+        let stale = shard.join(format!("{HASH}-v1.jpg"));
+        std::fs::write(&stale, b"jpeg").unwrap();
+        let expected = HashMap::from([(HASH.to_owned(), 0)]);
+
+        let summary = cleanup_startup_artifacts(
+            directory.path(),
+            &expected,
+            std::time::SystemTime::UNIX_EPOCH,
+        );
+
+        assert_eq!(summary.removed, 0);
+        assert_eq!(summary.skipped_new, 1);
+        assert!(stale.exists());
     }
 }

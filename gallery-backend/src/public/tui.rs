@@ -26,6 +26,7 @@ pub async fn tui_task(
     dashboard: std::sync::Arc<Dashboard>,
     mut rx: UnboundedReceiver<String>,
 ) -> Result<()> {
+    crate::operations::initialization::logger::mark_tui_attached();
     let mut tick = tokio::time::interval(std::time::Duration::from_millis(50));
 
     loop {

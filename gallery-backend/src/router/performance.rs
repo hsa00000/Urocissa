@@ -524,7 +524,8 @@ mod enabled {
         }
 
         let rebuild_start = Instant::now();
-        update_tree_task();
+        update_tree_task()
+            .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
         let rebuild_ns = elapsed_ns(rebuild_start);
         let status = status_sync();
         if status.disk_count != request.count || status.memory_count != request.count {
@@ -590,7 +591,8 @@ mod enabled {
         }
 
         let rebuild_start = Instant::now();
-        update_tree_task();
+        update_tree_task()
+            .map_err(|error| AppError::new(ErrorKind::Database, error.to_string()))?;
         let rebuild_ns = elapsed_ns(rebuild_start);
         let status = status_sync();
 
