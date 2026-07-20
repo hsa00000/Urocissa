@@ -18,3 +18,23 @@ export function computeOffSetSumOfAboveRowsIndex(
 
   return offsetSum
 }
+
+/**
+ * Projects a logical row position into the bounded physical buffer coordinate space.
+ *
+ * Keep the subtraction in JavaScript instead of splitting it across parent and child CSS
+ * transforms. At million-photo scale both logical values can exceed browser rendering limits
+ * even though their viewport-relative result remains small.
+ */
+export function projectVirtualTop(
+  logicalTop: number,
+  committedScrollTop: number,
+  bufferHeight: number
+): number {
+  return logicalTop - committedScrollTop + bufferHeight / 3
+}
+
+/** Returns a row's bounded position inside a visible-row group. */
+export function projectRelativeTop(logicalTop: number, groupLogicalTop: number): number {
+  return logicalTop - groupLogicalTop
+}

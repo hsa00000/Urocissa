@@ -10,14 +10,18 @@
       v-if="visibleRows.length > 0"
       class="buffer-visible-rows position-absolute w-100"
       :style="{
-        transform: `translateY(${bufferHeight / 3 - scrollTopStore.scrollTop}px)`,
+        transform: `translateY(${projectVirtualTop(
+          visibleRowsLogicalTop,
+          scrollTopStore.scrollTop,
+          bufferHeight
+        )}px)`,
         willChange: 'transform'
       }"
     >
       <BufferPlaceholder
         id="placeholderTop"
         v-if="!(prefetchStore.totalHeight <= windowHeight)"
-        :top-pixel="visibleRows[0]!.topPixelAccumulated + visibleRows[0]!.offset"
+        :top-pixel="0"
         :modify-top-pixel="true"
       />
       <div
@@ -31,11 +35,15 @@
           row.start,
           row.end,
           row.displayElements,
+          visibleRowsLogicalTop,
           prefetchStore.timestamp
         ]"
         class="position-absolute w-100"
         :style="{
-          transform: `translateY(${row.topPixelAccumulated! + row.offset}px)`,
+          transform: `translateY(${projectRelativeTop(
+            row.topPixelAccumulated! + row.offset,
+            visibleRowsLogicalTop
+          )}px)`,
           height: `${row.rowHeight}px`
         }"
         :start="row.start"
@@ -47,7 +55,10 @@
         v-if="!(prefetchStore.totalHeight <= windowHeight)"
         :top-pixel="(()=>{
           const lastData = getArrayValue(visibleRows, visibleRows.length - 1)
-          return lastData.topPixelAccumulated! + lastData.offset + lastData.rowHeight
+          return projectRelativeTop(
+            lastData.topPixelAccumulated! + lastData.offset + lastData.rowHeight,
+            visibleRowsLogicalTop
+          )
         })()"
         :modify-top-pixel="false"
       />
@@ -97,6 +108,7 @@ import { getArrayValue, getInjectValue } from '@utils/getter'
 import { IsolationId } from '@type/types'
 import { useRowStore } from '@/store/rowStore'
 import { scrollActivityKey, useScrollActivity } from '@/script/hook/useScrollActivity'
+import { projectRelativeTop, projectVirtualTop } from '@/script/utils/rowOffset'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -124,6 +136,10 @@ const placeholderNoneRowRefHeight = computed(() =>
   placeholderNoneRef.value ? placeholderNoneRef.value.placeholderRowRefHeight : 0
 )
 const visibleRowsLength = computed(() => visibleRows.value.length)
+const visibleRowsLogicalTop = computed(() => {
+  const firstRow = visibleRows.value[0]
+  return firstRow === undefined ? 0 : firstRow.topPixelAccumulated + firstRow.offset
+})
 const startHeight = computed(() => props.effectiveScrollTop)
 const endHeight = computed(() => props.effectiveScrollTop + windowHeight.value)
 
