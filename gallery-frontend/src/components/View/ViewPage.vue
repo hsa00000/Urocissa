@@ -38,12 +38,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useDataStore } from '@/store/dataStore'
 import ViewPageDisplay from '@/components/View/Display/Display.vue'
 import ViewPageMetadata from '@/components/View/Metadata/ViewPageMetadata.vue'
 import { IsolationId } from '@type/types'
 import { useConstStore } from '@/store/constStore'
+import { useConfigStore } from '@/store/configStore'
+import { interceptMobileInfoBackNavigation } from './mobileInfoBackNavigation'
 const props = defineProps<{
   isolationId: IsolationId
 }>()
@@ -52,6 +54,18 @@ const dataStore = useDataStore(props.isolationId)
 const route = useRoute()
 const router = useRouter()
 const constStore = useConstStore('mainId')
+const configStore = useConfigStore('mainId')
+
+onBeforeRouteLeave(() =>
+  interceptMobileInfoBackNavigation({
+    isMobile: configStore.isMobile,
+    isInfoOpen: constStore.showInfo,
+    closeInfo: () => constStore.updateShowInfo(false),
+    onCloseError: (error) => {
+      console.error('Failed to close the mobile info panel:', error)
+    }
+  })
+)
 
 const overlayVisible = computed<boolean>({
   get() {
