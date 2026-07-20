@@ -1,10 +1,6 @@
 #[macro_use]
 extern crate rocket;
-use std::{
-    sync::mpsc::sync_channel,
-    thread,
-    time::{Instant, SystemTime},
-};
+use std::{sync::mpsc::sync_channel, thread, time::Instant};
 
 mod operations;
 mod performance;
@@ -107,14 +103,6 @@ fn main() {
                 }
             };
             drop(data_table);
-            let expected_thumbnail_versions = match TREE.state.read() {
-                Ok(state) => Some(state.thumbnail_versions()),
-                Err(error) => {
-                    error!("Failed to snapshot thumbnail versions for startup cleanup: {error}");
-                    None
-                }
-            };
-            let cleanup_cutoff = SystemTime::now();
             let media_count = total_count.saturating_sub(album_count);
             info!(
                 "Read {} photos/videos and {} albums from database.",
@@ -130,30 +118,6 @@ fn main() {
             if tree_ready_tx.send(()).is_err() {
                 error!("Failed to signal initial tree readiness.");
                 return;
-            }
-
-            let cleanup_root =
-                crate::public::constant::storage::get_data_path().join("object/compressed");
-            if let Some(expected_thumbnail_versions) = expected_thumbnail_versions {
-                info!(
-                    "Background artifact cleanup scheduled for {} media records.",
-                    expected_thumbnail_versions.len()
-                );
-                INDEX_RUNTIME.spawn(async move {
-                    let result = tokio::task::spawn_blocking(move || {
-                        crate::process::artifact_publisher::cleanup_startup_artifacts(
-                            &cleanup_root,
-                            &expected_thumbnail_versions,
-                            cleanup_cutoff,
-                        )
-                    })
-                    .await;
-                    if let Err(error) = result {
-                        error!("Background artifact cleanup task failed: {error}");
-                    }
-                });
-            } else {
-                warn!("Skipping background artifact cleanup because tree state snapshot failed");
             }
 
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);

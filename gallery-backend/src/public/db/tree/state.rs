@@ -1251,18 +1251,6 @@ impl TreeState {
         self.arena.len()
     }
 
-    /// Snapshot the durable thumbnail identities represented by the rebuilt
-    /// tree. Albums do not own JPEG artifacts, so only image/video records are
-    /// included.
-    pub fn thumbnail_versions(&self) -> HashMap<String, u32> {
-        self.order
-            .iter()
-            .filter_map(|slot_ref| self.get(*slot_ref))
-            .filter(|record| record.object_type != ObjectType::Album)
-            .map(|record| (record.id.to_string(), record.cache_version))
-            .collect()
-    }
-
     #[cfg(feature = "performance-test")]
     pub fn memory_usage(&self) -> TreeMemoryUsage {
         let arena_inline_bytes = std::mem::size_of::<RecordArena<CacheRecord>>()
