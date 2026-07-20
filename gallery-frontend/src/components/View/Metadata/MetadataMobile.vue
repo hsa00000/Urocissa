@@ -146,9 +146,11 @@ watch(
 .slide-content {
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 :deep(.swiper) {
@@ -160,5 +162,8 @@ watch(
   background: transparent;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 </style>

@@ -1,6 +1,6 @@
 <template>
-  <div class="h-100 w-100 bg-surface">
-    <div class="position-relative h-100 overflow-y-auto">
+  <div class="metadata-content h-100 w-100 bg-surface">
+    <div class="metadata-content__scroll position-relative h-100">
       <div>
         <v-toolbar class="bg-surface">
           <v-btn icon @click="toggleInfo">
@@ -32,7 +32,12 @@
         />
       </v-card-item>
       <div v-if="abstractData.type === 'image' || abstractData.type === 'video'" class="w-100">
-        <v-list class="pa-0" lines="two" :density="metadataItemDensity" :slim="metadataItemSlim">
+        <v-list
+          class="metadata-list pa-0"
+          lines="two"
+          :density="metadataItemDensity"
+          :slim="metadataItemSlim"
+        >
           <ItemSize :database="abstractData" />
           <ItemPath v-if="showMetadata" :database="abstractData" />
           <ItemDate :database="abstractData" />
@@ -58,7 +63,12 @@
         </v-list>
       </div>
       <div v-if="abstractData.type === 'album'" class="w-100">
-        <v-list class="pa-0" lines="two" :density="metadataItemDensity" :slim="metadataItemSlim">
+        <v-list
+          class="metadata-list pa-0"
+          lines="two"
+          :density="metadataItemDensity"
+          :slim="metadataItemSlim"
+        >
           <ItemTitle :title="abstractData.title" />
           <ItemCount :album="abstractData" />
           <v-divider></v-divider>
@@ -132,6 +142,23 @@ watch(
 </script>
 
 <style scoped>
+.metadata-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.metadata-content__scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.metadata-list {
+  overflow: visible;
+}
+
 :deep(.v-list-item-subtitle) {
   overflow: visible;
 }
