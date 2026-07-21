@@ -7,6 +7,8 @@ pub struct MemorySnapshot {
     pub current_rss_bytes: u64,
     pub global_peak_rss_bytes: u64,
     pub phase_peak_rss_bytes: u64,
+    pub phase_average_rss_bytes: u64,
+    pub phase_sample_count: u64,
 }
 
 #[derive(Debug, Default)]
@@ -14,6 +16,8 @@ struct PeakTracker {
     current_rss_bytes: u64,
     global_peak_rss_bytes: u64,
     phase_peak_rss_bytes: u64,
+    phase_rss_sum: u128,
+    phase_sample_count: u64,
 }
 
 impl PeakTracker {
@@ -21,17 +25,29 @@ impl PeakTracker {
         self.current_rss_bytes = rss_bytes;
         self.global_peak_rss_bytes = self.global_peak_rss_bytes.max(rss_bytes);
         self.phase_peak_rss_bytes = self.phase_peak_rss_bytes.max(rss_bytes);
+        self.phase_rss_sum = self.phase_rss_sum.saturating_add(u128::from(rss_bytes));
+        self.phase_sample_count = self.phase_sample_count.saturating_add(1);
     }
 
     fn reset_phase(&mut self) {
         self.phase_peak_rss_bytes = self.current_rss_bytes;
+        self.phase_rss_sum = u128::from(self.current_rss_bytes);
+        self.phase_sample_count = 1;
     }
 
     fn snapshot(&self) -> MemorySnapshot {
+        let phase_average_rss_bytes = if self.phase_sample_count == 0 {
+            0
+        } else {
+            u64::try_from(self.phase_rss_sum / u128::from(self.phase_sample_count))
+                .unwrap_or(u64::MAX)
+        };
         MemorySnapshot {
             current_rss_bytes: self.current_rss_bytes,
             global_peak_rss_bytes: self.global_peak_rss_bytes,
             phase_peak_rss_bytes: self.phase_peak_rss_bytes,
+            phase_average_rss_bytes,
+            phase_sample_count: self.phase_sample_count,
         }
     }
 }
@@ -123,6 +139,8 @@ mod tests {
                 current_rss_bytes: 90,
                 global_peak_rss_bytes: 100,
                 phase_peak_rss_bytes: 90,
+                phase_average_rss_bytes: 85,
+                phase_sample_count: 2,
             }
         );
     }

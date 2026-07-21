@@ -123,6 +123,8 @@ mod enabled {
         pub backend_rss_bytes: u64,
         pub backend_global_peak_rss_bytes: u64,
         pub backend_phase_peak_rss_bytes: u64,
+        pub backend_phase_average_rss_bytes: u64,
+        pub backend_phase_rss_sample_count: u64,
         pub redb_main_cache: RedbCacheSummary,
         pub redb_tree_snapshot_cache: RedbCacheSummary,
         pub redb_query_snapshot_cache: RedbCacheSummary,
@@ -665,6 +667,8 @@ mod enabled {
             backend_rss_bytes: memory.current_rss_bytes,
             backend_global_peak_rss_bytes: memory.global_peak_rss_bytes,
             backend_phase_peak_rss_bytes: memory.phase_peak_rss_bytes,
+            backend_phase_average_rss_bytes: memory.phase_average_rss_bytes,
+            backend_phase_rss_sample_count: memory.phase_sample_count,
             redb_main_cache: cache_summary(
                 TREE.store.cache_limit_bytes(),
                 TREE.store.cache_stats(),

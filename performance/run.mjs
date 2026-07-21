@@ -1342,6 +1342,8 @@ function addStatusMemory(values, prefix, status) {
   addValue(values, `${prefix}.rssBytes`, status?.backend_rss_bytes)
   addValue(values, `${prefix}.globalPeakRssBytes`, status?.backend_global_peak_rss_bytes)
   addValue(values, `${prefix}.phasePeakRssBytes`, status?.backend_phase_peak_rss_bytes)
+  addValue(values, `${prefix}.phaseAverageRssBytes`, status?.backend_phase_average_rss_bytes)
+  addValue(values, `${prefix}.phaseRssSampleCount`, status?.backend_phase_rss_sample_count)
   for (const [name, cache] of [
     ['main', status?.redb_main_cache],
     ['treeSnapshot', status?.redb_tree_snapshot_cache],
