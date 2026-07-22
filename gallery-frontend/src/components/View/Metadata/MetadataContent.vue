@@ -7,6 +7,14 @@
             <v-icon>mdi-close</v-icon>
           </v-btn>
           <v-toolbar-title class="text-h5">Info</v-toolbar-title>
+          <v-btn
+            v-if="!isShareMode"
+            icon="mdi-content-copy"
+            variant="text"
+            aria-label="Copy metadata as JSON"
+            title="Copy metadata as JSON"
+            @click="copyMetadataAsJson"
+          />
         </v-toolbar>
       </div>
       <v-card-item v-if="!isShareMode || userDefinedDescriptionModel">
@@ -86,9 +94,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { useClipboard } from '@vueuse/core'
+import { computed, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useConstStore } from '@/store/constStore'
+import { useMessageStore } from '@/store/messageStore'
 import { useShareStore } from '@/store/shareStore'
 import { editUserDefinedDescription } from '@utils/editDescription'
 import { EnrichedUnifiedData, IsolationId } from '@type/types'
@@ -100,10 +110,11 @@ import ItemTag from './ItemTag.vue'
 import ItemAlbum from './ItemAlbum.vue'
 import ItemTitle from './ItemTitle.vue'
 import ItemCount from './ItemCount.vue'
+import { serializeMetadataAsJson } from './metadataJson'
 import { provideMetadataItemLayout } from './useMetadataItemLayout'
 
 const route = useRoute()
-const userDefinedDescriptionModel = ref('')
+const userDefinedDescriptionModel = shallowRef('')
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -121,11 +132,23 @@ const isShareMode = computed(() => {
 })
 
 const constStore = useConstStore('mainId')
+const messageStore = useMessageStore('mainId')
 const shareStore = useShareStore('mainId')
+const { copy } = useClipboard({ legacy: true })
 const { metadataItemDensity, metadataItemSlim } = provideMetadataItemLayout()
 
 function toggleInfo() {
   void constStore.updateShowInfo(!constStore.showInfo)
+}
+
+async function copyMetadataAsJson(): Promise<void> {
+  try {
+    await copy(serializeMetadataAsJson(props.abstractData))
+    messageStore.success('Metadata copied as JSON.')
+  } catch (error) {
+    console.error('Failed to copy metadata as JSON:', error)
+    messageStore.error('Failed to copy metadata as JSON.')
+  }
 }
 
 function getUserDefinedDescription(abstractData: EnrichedUnifiedData): string {
