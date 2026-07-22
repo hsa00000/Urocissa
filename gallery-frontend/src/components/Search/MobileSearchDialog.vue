@@ -12,6 +12,7 @@ const emit = defineEmits<{
   search: [query: string | null]
   selectHistory: [query: string]
   removeHistory: [index: number]
+  clearHistory: []
   openAdvancedSearch: []
 }>()
 
@@ -67,6 +68,7 @@ function clearAndSearch(): void {
         show-empty
         @select="emit('selectHistory', $event)"
         @remove="emit('removeHistory', $event)"
+        @clear="emit('clearHistory')"
       />
     </v-card>
   </v-dialog>

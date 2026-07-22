@@ -12,12 +12,28 @@ withDefaults(
 const emit = defineEmits<{
   select: [query: string]
   remove: [index: number]
+  clear: []
 }>()
 </script>
 
 <template>
   <v-list density="compact">
-    <v-list-subheader v-if="history.length > 0">Recent Searches</v-list-subheader>
+    <v-list-subheader v-if="history.length > 0">
+      <div class="d-flex align-center w-100">
+        <span>Recent Searches</span>
+        <v-spacer />
+        <v-btn
+          prepend-icon="mdi-delete-sweep-outline"
+          size="small"
+          variant="text"
+          aria-label="Clear all recent searches"
+          @mousedown.stop.prevent
+          @click.stop="emit('clear')"
+        >
+          Clear all
+        </v-btn>
+      </div>
+    </v-list-subheader>
     <v-list-subheader v-else-if="showEmpty">No recent searches</v-list-subheader>
 
     <v-list-item

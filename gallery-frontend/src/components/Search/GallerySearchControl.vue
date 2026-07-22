@@ -82,6 +82,11 @@ function removeHistoryItem(index: number): void {
   if (searchHistoryStore.history.length === 0) closeSearchHistory()
 }
 
+function clearSearchHistory(): void {
+  searchHistoryStore.clear()
+  closeSearchHistory()
+}
+
 function openAdvancedSearch(): void {
   closeSearchHistory()
   showAdvancedSearch.value = true
@@ -159,6 +164,7 @@ onUnmounted(clearBlurTimeout)
           :history="searchHistoryStore.history"
           @select="selectHistoryItem"
           @remove="removeHistoryItem"
+          @clear="clearSearchHistory"
         />
       </v-menu>
     </v-card-text>
@@ -191,6 +197,7 @@ onUnmounted(clearBlurTimeout)
     @search="applySearch"
     @select-history="selectHistoryItem"
     @remove-history="removeHistoryItem"
+    @clear-history="clearSearchHistory"
     @open-advanced-search="openAdvancedSearchFromMobile"
   />
 </template>
