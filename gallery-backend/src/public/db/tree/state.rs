@@ -897,15 +897,149 @@ impl TargetSet {
 }
 
 #[derive(Debug, Default)]
+pub struct StringFacetIndex {
+    values: HashMap<String, OrdinalSet>,
+    has_any: DenseBitmap,
+    membership_count: Vec<u32>,
+}
+
+impl StringFacetIndex {
+    pub fn get(&self, value: &str) -> Option<&OrdinalSet> {
+        self.values.get(value)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &OrdinalSet)> {
+        self.values.iter()
+    }
+
+    pub fn has_any(&self) -> &DenseBitmap {
+        &self.has_any
+    }
+
+    fn ensure_ordinal(&mut self, ordinal: u32) {
+        let len = ordinal as usize + 1;
+        if self.membership_count.len() < len {
+            self.membership_count.resize(len, 0);
+        }
+    }
+
+    fn insert_values<'a>(
+        &mut self,
+        ordinal: u32,
+        values: impl IntoIterator<Item = &'a String>,
+        universe: usize,
+    ) {
+        self.ensure_ordinal(ordinal);
+        let mut count = 0_u32;
+        for value in values {
+            if self
+                .values
+                .entry(value.clone())
+                .or_default()
+                .insert(ordinal, universe)
+            {
+                count = count.saturating_add(1);
+            }
+        }
+        self.membership_count[ordinal as usize] = count;
+        self.has_any.set(ordinal, count > 0);
+    }
+
+    fn remove_record(&mut self, ordinal: u32, universe: usize) {
+        self.ensure_ordinal(ordinal);
+        self.membership_count[ordinal as usize] = 0;
+        self.has_any.set(ordinal, false);
+        self.values.retain(|_, members| {
+            members.remove(ordinal, universe);
+            !members.is_empty()
+        });
+    }
+
+    fn remove_targets(&mut self, targets: &OrdinalSet, universe: usize) {
+        for ordinal in targets.iter() {
+            self.ensure_ordinal(ordinal);
+            self.membership_count[ordinal as usize] = 0;
+            self.has_any.set(ordinal, false);
+        }
+        self.values.retain(|_, members| {
+            members.subtract(targets, universe);
+            !members.is_empty()
+        });
+    }
+
+    fn edit_values(
+        &mut self,
+        targets: &OrdinalSet,
+        add: &BTreeSet<String>,
+        remove: &BTreeSet<String>,
+        universe: usize,
+    ) {
+        if let Some(max_ordinal) = targets.max() {
+            self.ensure_ordinal(max_ordinal);
+        }
+        for value in add {
+            let members = self.values.entry(value.clone()).or_default();
+            let membership_count = &mut self.membership_count;
+            let has_any = &mut self.has_any;
+            members.union_with(targets, universe, |ordinal| {
+                let count = &mut membership_count[ordinal as usize];
+                *count = count.saturating_add(1);
+                if *count == 1 {
+                    has_any.set(ordinal, true);
+                }
+            });
+        }
+        for value in remove {
+            if let Some(members) = self.values.get_mut(value) {
+                let membership_count = &mut self.membership_count;
+                let has_any = &mut self.has_any;
+                members.subtract_with(targets, universe, |ordinal| {
+                    let count = &mut membership_count[ordinal as usize];
+                    *count = count.saturating_sub(1);
+                    if *count == 0 {
+                        has_any.set(ordinal, false);
+                    }
+                });
+            }
+        }
+        self.values.retain(|_, members| !members.is_empty());
+    }
+
+    fn matching_members_ascii(&self, value: &str) -> OrdinalSet {
+        let needle = value.to_ascii_lowercase();
+        let universe = self.membership_count.len();
+        let mut matches = OrdinalSet::default();
+        for (candidate, members) in &self.values {
+            if contains_ascii_lowercase(candidate, &needle) {
+                matches.union_with(members, universe, |_| {});
+            }
+        }
+        matches
+    }
+
+    #[cfg(feature = "performance-test")]
+    fn estimated_dynamic_bytes(&self) -> usize {
+        self.has_any.words.capacity() * std::mem::size_of::<u64>()
+            + hash_map_allocation_bytes::<String, OrdinalSet>(self.values.capacity())
+            + self
+                .values
+                .iter()
+                .map(|(value, members)| value.capacity() + members.estimated_bytes())
+                .sum::<usize>()
+            + self.membership_count.capacity() * std::mem::size_of::<u32>()
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct QueryIndexes {
     pub favorite: DenseBitmap,
     pub archived: DenseBitmap,
     pub trashed: DenseBitmap,
-    pub has_any_tag: DenseBitmap,
     pub has_any_album: DenseBitmap,
-    pub tags: HashMap<String, OrdinalSet>,
+    pub tags: StringFacetIndex,
+    pub makes: StringFacetIndex,
+    pub models: StringFacetIndex,
     pub albums: HashMap<ArrayString<64>, OrdinalSet>,
-    tag_membership_count: Vec<u32>,
     album_membership_count: Vec<u32>,
 }
 
@@ -923,18 +1057,14 @@ impl QueryIndexes {
             &self.favorite,
             &self.archived,
             &self.trashed,
-            &self.has_any_tag,
             &self.has_any_album,
         ]
         .into_iter()
         .map(|bitmap| bitmap.words.capacity() * std::mem::size_of::<u64>())
         .sum::<usize>();
-        let tag_bytes = hash_map_allocation_bytes::<String, OrdinalSet>(self.tags.capacity())
-            + self
-                .tags
-                .iter()
-                .map(|(tag, members)| tag.capacity() + members.estimated_bytes())
-                .sum::<usize>();
+        let facet_bytes = self.tags.estimated_dynamic_bytes()
+            + self.makes.estimated_dynamic_bytes()
+            + self.models.estimated_dynamic_bytes();
         let album_bytes =
             hash_map_allocation_bytes::<ArrayString<64>, OrdinalSet>(self.albums.capacity())
                 + self
@@ -944,17 +1074,13 @@ impl QueryIndexes {
                     .sum::<usize>();
         std::mem::size_of::<Self>()
             + bitmap_bytes
-            + tag_bytes
+            + facet_bytes
             + album_bytes
-            + self.tag_membership_count.capacity() * std::mem::size_of::<u32>()
             + self.album_membership_count.capacity() * std::mem::size_of::<u32>()
     }
 
     fn ensure_ordinal(&mut self, ordinal: u32) {
         let len = ordinal as usize + 1;
-        if self.tag_membership_count.len() < len {
-            self.tag_membership_count.resize(len, 0);
-        }
         if self.album_membership_count.len() < len {
             self.album_membership_count.resize(len, 0);
         }
@@ -965,15 +1091,19 @@ impl QueryIndexes {
         self.favorite.set(ordinal, object_flags(data).0);
         self.archived.set(ordinal, object_flags(data).1);
         self.trashed.set(ordinal, object_flags(data).2);
-        for tag in data.tag() {
-            self.tags
-                .entry(tag.clone())
-                .or_default()
-                .insert(ordinal, universe);
-        }
-        self.tag_membership_count[ordinal as usize] =
-            u32::try_from(data.tag().len()).unwrap_or(u32::MAX);
-        self.has_any_tag.set(ordinal, !data.tag().is_empty());
+        self.tags
+            .insert_values(ordinal, data.tag().iter(), universe);
+        let exif = data.exif_vec();
+        self.makes.insert_values(
+            ordinal,
+            exif.and_then(|values| values.get("Make")),
+            universe,
+        );
+        self.models.insert_values(
+            ordinal,
+            exif.and_then(|values| values.get("Model")),
+            universe,
+        );
         if let Some(albums) = data.albums() {
             for album in albums {
                 self.albums
@@ -993,15 +1123,12 @@ impl QueryIndexes {
         self.favorite.set(ordinal, false);
         self.archived.set(ordinal, false);
         self.trashed.set(ordinal, false);
-        self.has_any_tag.set(ordinal, false);
         self.has_any_album.set(ordinal, false);
         self.ensure_ordinal(ordinal);
-        self.tag_membership_count[ordinal as usize] = 0;
         self.album_membership_count[ordinal as usize] = 0;
-        self.tags.retain(|_, members| {
-            members.remove(ordinal, universe);
-            !members.is_empty()
-        });
+        self.tags.remove_record(ordinal, universe);
+        self.makes.remove_record(ordinal, universe);
+        self.models.remove_record(ordinal, universe);
         self.albums.retain(|_, members| {
             members.remove(ordinal, universe);
             !members.is_empty()
@@ -1013,16 +1140,13 @@ impl QueryIndexes {
             self.favorite.set(ordinal, false);
             self.archived.set(ordinal, false);
             self.trashed.set(ordinal, false);
-            self.has_any_tag.set(ordinal, false);
             self.has_any_album.set(ordinal, false);
             self.ensure_ordinal(ordinal);
-            self.tag_membership_count[ordinal as usize] = 0;
             self.album_membership_count[ordinal as usize] = 0;
         }
-        self.tags.retain(|_, members| {
-            members.subtract(targets, universe);
-            !members.is_empty()
-        });
+        self.tags.remove_targets(targets, universe);
+        self.makes.remove_targets(targets, universe);
+        self.models.remove_targets(targets, universe);
         self.albums.retain(|_, members| {
             members.subtract(targets, universe);
             !members.is_empty()
@@ -1058,35 +1182,7 @@ impl QueryIndexes {
         universe: usize,
     ) {
         let started = Instant::now();
-        if let Some(max_ordinal) = targets.max() {
-            self.ensure_ordinal(max_ordinal);
-        }
-        for tag in add {
-            let members = self.tags.entry(tag.clone()).or_default();
-            let membership_count = &mut self.tag_membership_count;
-            let has_any = &mut self.has_any_tag;
-            members.union_with(targets, universe, |ordinal| {
-                let count = &mut membership_count[ordinal as usize];
-                *count = count.saturating_add(1);
-                if *count == 1 {
-                    has_any.set(ordinal, true);
-                }
-            });
-        }
-        for tag in remove {
-            if let Some(members) = self.tags.get_mut(tag) {
-                let membership_count = &mut self.tag_membership_count;
-                let has_any = &mut self.has_any_tag;
-                members.subtract_with(targets, universe, |ordinal| {
-                    let count = &mut membership_count[ordinal as usize];
-                    *count = count.saturating_sub(1);
-                    if *count == 0 {
-                        has_any.set(ordinal, false);
-                    }
-                });
-            }
-        }
-        self.tags.retain(|_, members| !members.is_empty());
+        self.tags.edit_values(targets, add, remove, universe);
         crate::perf_timing!(
             "query_indexes.edit_tags.bulk",
             started,
@@ -2045,6 +2141,7 @@ enum CompiledExpressionNode<'a> {
     And(Vec<Self>),
     Not(Box<Self>),
     Membership(Option<&'a OrdinalSet>),
+    OwnedMembership(OrdinalSet),
     Bitmap(&'a DenseBitmap, bool),
     ExtType {
         image: bool,
@@ -2052,8 +2149,6 @@ enum CompiledExpressionNode<'a> {
         album: bool,
     },
     Ext(String),
-    Model(CompiledStringFilter),
-    Make(CompiledStringFilter),
     Path(String),
     HiddenAlbumExists(bool),
     Any {
@@ -2062,30 +2157,6 @@ enum CompiledExpressionNode<'a> {
         include_paths: bool,
         include_album_type: bool,
     },
-}
-
-#[derive(Debug)]
-enum CompiledStringFilter {
-    Contains(String),
-    Exists(bool),
-}
-
-impl CompiledStringFilter {
-    fn new(filter: &FilterValue) -> Self {
-        match filter {
-            FilterValue::Value(needle) => Self::Contains(needle.to_ascii_lowercase()),
-            FilterValue::Exists(exists) => Self::Exists(*exists),
-        }
-    }
-
-    fn matches(&self, value: Option<&str>) -> bool {
-        match self {
-            Self::Contains(needle) => {
-                value.is_some_and(|value| contains_ascii_lowercase(value, needle))
-            }
-            Self::Exists(exists) => value.is_some() == *exists,
-        }
-    }
 }
 
 impl<'a> CompiledExpression<'a> {
@@ -2133,7 +2204,7 @@ impl<'a> CompiledExpressionNode<'a> {
             Expression::Tag(_) if hidden_metadata_album.is_some() => Self::Constant(false),
             Expression::Tag(FilterValue::Value(tag)) => Self::Membership(indexes.tags.get(tag)),
             Expression::Tag(FilterValue::Exists(exists)) => {
-                Self::Bitmap(&indexes.has_any_tag, *exists)
+                Self::Bitmap(indexes.tags.has_any(), *exists)
             }
             Expression::Favorite(value) => Self::Bitmap(&indexes.favorite, *value),
             Expression::Archived(value) => Self::Bitmap(&indexes.archived, *value),
@@ -2144,8 +2215,18 @@ impl<'a> CompiledExpressionNode<'a> {
                 album: hidden_metadata_album.is_none() && ext_type.contains("album"),
             },
             Expression::Ext(ext) => Self::Ext(ext.to_ascii_lowercase()),
-            Expression::Model(filter) => Self::Model(CompiledStringFilter::new(filter)),
-            Expression::Make(filter) => Self::Make(CompiledStringFilter::new(filter)),
+            Expression::Model(FilterValue::Value(model)) => {
+                Self::OwnedMembership(indexes.models.matching_members_ascii(model))
+            }
+            Expression::Model(FilterValue::Exists(exists)) => {
+                Self::Bitmap(indexes.models.has_any(), *exists)
+            }
+            Expression::Make(FilterValue::Value(make)) => {
+                Self::OwnedMembership(indexes.makes.matching_members_ascii(make))
+            }
+            Expression::Make(FilterValue::Exists(exists)) => {
+                Self::Bitmap(indexes.makes.has_any(), *exists)
+            }
             Expression::Path(_) if hidden_metadata_album.is_some() => Self::Constant(false),
             Expression::Path(path) => Self::Path(path.to_ascii_lowercase()),
             Expression::Album(AlbumFilterValue::Value(album_id))
@@ -2187,6 +2268,7 @@ impl<'a> CompiledExpressionNode<'a> {
                 .all(|expression| expression.matches(record, ordinal)),
             Self::Not(expression) => !expression.matches(record, ordinal),
             Self::Membership(members) => members.is_some_and(|members| members.contains(ordinal)),
+            Self::OwnedMembership(members) => members.contains(ordinal),
             Self::Bitmap(bitmap, value) => bitmap.contains(ordinal) == *value,
             Self::ExtType {
                 image,
@@ -2198,8 +2280,6 @@ impl<'a> CompiledExpressionNode<'a> {
                 ObjectType::Album => *album,
             },
             Self::Ext(needle) => contains_ascii_lowercase(&record.ext, needle),
-            Self::Model(filter) => filter.matches(record.model.as_deref()),
-            Self::Make(filter) => filter.matches(record.make.as_deref()),
             Self::Path(needle) => record
                 .path_aliases
                 .iter()
@@ -2270,6 +2350,20 @@ mod tests {
             model: None,
             path_aliases: Vec::new(),
         }
+    }
+
+    fn camera_record(index: u64, make: &str, model: &str) -> AbstractData {
+        let id = ArrayString::<64>::from(format!("camera-{index}").as_str()).unwrap();
+        let mut metadata =
+            crate::public::structure::image::ImageMetadata::new(id, 1, 1, 1, "jpg".to_owned());
+        metadata.exif_vec.insert("Make".to_owned(), make.to_owned());
+        metadata
+            .exif_vec
+            .insert("Model".to_owned(), model.to_owned());
+        AbstractData::Image(crate::public::structure::image::ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata,
+        })
     }
 
     #[test]
@@ -2401,11 +2495,11 @@ mod tests {
             &BTreeSet::new(),
             universe,
         );
-        assert_eq!(indexes.tags["first"].len(), 128);
-        assert_eq!(indexes.tags["second"].len(), 128);
-        assert_eq!(indexes.tag_membership_count[63], 1);
-        assert_eq!(indexes.tag_membership_count[64], 2);
-        assert!(indexes.has_any_tag.contains(191));
+        assert_eq!(indexes.tags.get("first").unwrap().len(), 128);
+        assert_eq!(indexes.tags.get("second").unwrap().len(), 128);
+        assert_eq!(indexes.tags.membership_count[63], 1);
+        assert_eq!(indexes.tags.membership_count[64], 2);
+        assert!(indexes.tags.has_any().contains(191));
 
         indexes.edit_tags(
             &targets,
@@ -2413,11 +2507,68 @@ mod tests {
             &BTreeSet::from(["first".to_owned(), "second".to_owned()]),
             universe,
         );
-        assert!(!indexes.has_any_tag.contains(63));
-        assert!(!indexes.has_any_tag.contains(64));
-        assert!(indexes.has_any_tag.contains(128));
-        assert_eq!(indexes.tag_membership_count[64], 0);
-        assert_eq!(indexes.tag_membership_count[128], 1);
+        assert!(!indexes.tags.has_any().contains(63));
+        assert!(!indexes.tags.has_any().contains(64));
+        assert!(indexes.tags.has_any().contains(128));
+        assert_eq!(indexes.tags.membership_count[64], 0);
+        assert_eq!(indexes.tags.membership_count[128], 1);
+    }
+
+    #[test]
+    fn camera_facets_are_independent_and_follow_static_record_lifecycle() {
+        let first = camera_record(10, "Canon", "R5");
+        let second = camera_record(11, "CANON", "R6");
+        let first_id = first.hash();
+        let second_id = second.hash();
+        let mut state = TreeState::from_records([first.clone(), second]);
+        let first_slot = state.find(first_id.as_str()).unwrap();
+        let second_slot = state.find(second_id.as_str()).unwrap();
+
+        assert_eq!(state.query.makes.get("Canon").unwrap().len(), 1);
+        assert_eq!(state.query.makes.get("CANON").unwrap().len(), 1);
+        assert_eq!(state.query.models.get("R5").unwrap().len(), 1);
+        assert_eq!(state.query.models.get("R6").unwrap().len(), 1);
+        assert!(state.query.makes.has_any().contains(first_slot.index()));
+        assert!(state.query.models.has_any().contains(second_slot.index()));
+
+        let make = Expression::Make(FilterValue::Value("canon".to_owned()));
+        assert!(state.matches(first_slot, &make, None));
+        assert!(state.matches(second_slot, &make, None));
+
+        let impossible_pair = Expression::And(vec![
+            Expression::Make(FilterValue::Value("Canon".to_owned())),
+            Expression::Model(FilterValue::Value("R6".to_owned())),
+        ]);
+        assert!(!state.matches(first_slot, &impossible_pair, None));
+        assert!(state.matches(second_slot, &impossible_pair, None));
+
+        let mut replacement = first;
+        let exif = replacement.exif_vec_mut().unwrap();
+        exif.insert("Make".to_owned(), "Sony".to_owned());
+        exif.insert("Model".to_owned(), "A1".to_owned());
+        state.replace_static(first_slot, &replacement).unwrap();
+        assert!(state.query.makes.get("Canon").is_none());
+        assert!(state.query.models.get("R5").is_none());
+        assert!(
+            state
+                .query
+                .makes
+                .get("Sony")
+                .unwrap()
+                .contains(first_slot.index())
+        );
+        assert!(
+            state
+                .query
+                .models
+                .get("A1")
+                .unwrap()
+                .contains(first_slot.index())
+        );
+
+        state.remove(second_slot).unwrap();
+        assert!(state.query.makes.get("CANON").is_none());
+        assert!(state.query.models.get("R6").is_none());
     }
 
     #[test]

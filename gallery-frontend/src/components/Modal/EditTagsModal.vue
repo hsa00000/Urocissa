@@ -77,7 +77,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
-import { useTagStore } from '@/store/tagStore'
+import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
 import { editTags } from '@/api/editTags'
 import { editFlags } from '@/api/editFlags'
@@ -128,11 +128,15 @@ const submit = ref<(() => Promise<void>) | undefined>(undefined)
 
 const route = useRoute()
 const modalStore = useModalStore('mainId')
-const tagStore = useTagStore('mainId')
+const searchFacetStore = useSearchFacetStore()
 
 // Merge virtual flag items with real tags into a single dropdown list.
 const allItems = computed<ComboboxItem[]>(() => {
-  const tagItems = tagStore.tags.map((t) => ({ title: t.tag, value: t.tag, isFlag: false }))
+  const tagItems = searchFacetStore.tags.map((tag) => ({
+    title: tag.value,
+    value: tag.value,
+    isFlag: false
+  }))
   return [FAVORITE_ITEM, ARCHIVED_ITEM, ...tagItems]
 })
 

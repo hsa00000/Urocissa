@@ -2,7 +2,7 @@ import { useDataStore } from '@/store/dataStore'
 import { IsolationId, SlicedData } from '@type/types'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useMessageStore } from '@/store/messageStore'
-import { useTagStore } from '@/store/tagStore'
+import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { createHandler } from 'typesafe-agent-events'
 import { fromDataWorker } from '@/worker/workerApi'
 import { useOffsetStore } from '@/store/offsetStore'
@@ -28,7 +28,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
   const messageStore = useMessageStore('mainId')
   const modalStore = useModalStore('mainId')
   const redirectionStore = useRedirectionStore('mainId')
-  const tagStore = useTagStore('mainId')
+  const searchFacetStore = useSearchFacetStore()
   const constStore = useConstStore('mainId')
   const tokenStore = useTokenStore(isolationId)
   const dataStore = useDataStore(isolationId)
@@ -126,7 +126,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
 
     editTagsReturn: (payload) => {
       if (payload.returnedTagsArray !== undefined) {
-        tagStore.applyTags(payload.returnedTagsArray)
+        searchFacetStore.applyTags(payload.returnedTagsArray)
       } else {
         console.warn('Returned tags array is undefined')
       }

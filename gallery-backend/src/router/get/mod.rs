@@ -15,7 +15,7 @@ pub mod get_write_behind;
 
 pub fn generate_get_routes() -> Vec<Route> {
     routes![
-        get_list::get_tags,
+        get_list::get_search_facets,
         get_list::get_albums,
         get_data::get_data,
         get_data::get_rows,

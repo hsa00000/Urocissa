@@ -13,14 +13,21 @@ use std::time::Instant;
 use super::Tree;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
-pub struct TagInfo {
-    pub tag: String,
-    pub number: usize,
+pub struct FacetValueInfo {
+    pub value: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SearchFacets {
+    pub tags: Vec<FacetValueInfo>,
+    pub makes: Vec<FacetValueInfo>,
+    pub models: Vec<FacetValueInfo>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct TreeListSnapshot {
-    pub tags: Vec<TagInfo>,
+    pub tags: Vec<FacetValueInfo>,
     pub albums: Vec<AlbumCombined>,
 }
 
@@ -40,9 +47,9 @@ impl TreeListSnapshot {
 
         let mut tags = tag_counts
             .into_iter()
-            .map(|(tag, number)| TagInfo { tag, number })
+            .map(|(value, count)| FacetValueInfo { value, count })
             .collect::<Vec<_>>();
-        tags.sort_unstable_by(|left, right| left.tag.cmp(&right.tag));
+        tags.sort_unstable_by(|left, right| left.value.cmp(&right.value));
         albums.sort_unstable_by_key(|album| album.object.id);
         Self { tags, albums }
     }
@@ -76,19 +83,10 @@ impl TreeListSnapshot {
 }
 
 impl Tree {
-    pub fn read_tags(&self) -> Vec<TagInfo> {
+    pub fn read_tags(&self) -> Vec<FacetValueInfo> {
         let start_time = Instant::now();
         let state = self.state.read().unwrap();
-        let mut tags = state
-            .query
-            .tags
-            .iter()
-            .map(|(tag, members)| TagInfo {
-                tag: tag.clone(),
-                number: members.len(),
-            })
-            .collect::<Vec<_>>();
-        tags.sort_unstable_by(|left, right| left.tag.cmp(&right.tag));
+        let tags = exact_facet_values(state.query.tags.iter());
         crate::perf_timing!(
             "get_list.read_tags",
             start_time,
@@ -96,6 +94,25 @@ impl Tree {
             tags.len()
         );
         tags
+    }
+
+    pub fn read_search_facets(&self) -> SearchFacets {
+        let start_time = Instant::now();
+        let state = self.state.read().unwrap();
+        let facets = SearchFacets {
+            tags: exact_facet_values(state.query.tags.iter()),
+            makes: camera_facet_values(state.query.makes.iter()),
+            models: camera_facet_values(state.query.models.iter()),
+        };
+        crate::perf_timing!(
+            "get_list.read_search_facets",
+            start_time,
+            "Read {} tags, {} makes, and {} models from cache",
+            facets.tags.len(),
+            facets.makes.len(),
+            facets.models.len()
+        );
+        facets
     }
 
     pub fn read_albums(&self) -> Result<Vec<AlbumCombined>, AppError> {
@@ -168,6 +185,144 @@ impl Tree {
     }
 }
 
+fn exact_facet_values<'a>(
+    values: impl Iterator<Item = (&'a String, &'a super::state::OrdinalSet)>,
+) -> Vec<FacetValueInfo> {
+    let mut facets = values
+        .map(|(value, members)| FacetValueInfo {
+            value: value.clone(),
+            count: members.len(),
+        })
+        .collect::<Vec<_>>();
+    facets.sort_unstable_by(|left, right| left.value.cmp(&right.value));
+    facets
+}
+
+fn camera_facet_values<'a>(
+    values: impl Iterator<Item = (&'a String, &'a super::state::OrdinalSet)>,
+) -> Vec<FacetValueInfo> {
+    let mut counts = HashMap::<String, usize>::new();
+    for (raw_value, members) in values {
+        let Some(value) = normalize_camera_facet_value(raw_value) else {
+            continue;
+        };
+        let count = counts.entry(value).or_default();
+        *count = count.saturating_add(members.len());
+    }
+
+    let mut facets = counts
+        .into_iter()
+        .map(|(value, count)| FacetValueInfo { value, count })
+        .collect::<Vec<_>>();
+    facets.sort_unstable_by(|left, right| left.value.cmp(&right.value));
+    facets
+}
+
+fn normalize_camera_facet_value(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let unquoted = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    }
+    .trim();
+    (!unquoted.is_empty()).then(|| unquoted.to_owned())
+}
+
+#[cfg(test)]
+mod search_facet_tests {
+    use super::{FacetValueInfo, SearchFacets, camera_facet_values, normalize_camera_facet_value};
+    use crate::public::db::tree::state::OrdinalSet;
+    use std::collections::HashMap;
+
+    #[test]
+    fn normalizes_camera_values_without_touching_inner_content() {
+        assert_eq!(
+            normalize_camera_facet_value("  \" Canon EOS \"  ").as_deref(),
+            Some("Canon EOS")
+        );
+        assert_eq!(
+            normalize_camera_facet_value("  Nikon  ").as_deref(),
+            Some("Nikon")
+        );
+        assert_eq!(normalize_camera_facet_value(" \"  \" "), None);
+        assert_eq!(
+            normalize_camera_facet_value("\"Sony").as_deref(),
+            Some("\"Sony")
+        );
+    }
+
+    #[test]
+    fn keeps_ascii_case_variants_separate_after_display_normalization() {
+        let values = HashMap::from([
+            (
+                "  \"Canon\"  ".to_owned(),
+                OrdinalSet::from_ordinals([0, 1], 16),
+            ),
+            ("CANON".to_owned(), OrdinalSet::from_ordinals([2], 16)),
+            ("Canon".to_owned(), OrdinalSet::from_ordinals([3, 4, 5], 16)),
+            ("nikon".to_owned(), OrdinalSet::from_ordinals([6], 16)),
+            ("NIKON".to_owned(), OrdinalSet::from_ordinals([7], 16)),
+            (" \" \" ".to_owned(), OrdinalSet::from_ordinals([8], 16)),
+        ]);
+
+        assert_eq!(
+            camera_facet_values(values.iter()),
+            vec![
+                FacetValueInfo {
+                    value: "CANON".to_owned(),
+                    count: 1,
+                },
+                FacetValueInfo {
+                    value: "Canon".to_owned(),
+                    count: 5,
+                },
+                FacetValueInfo {
+                    value: "NIKON".to_owned(),
+                    count: 1,
+                },
+                FacetValueInfo {
+                    value: "nikon".to_owned(),
+                    count: 1,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn serializes_the_unified_search_facet_contract() {
+        let facets = SearchFacets {
+            tags: vec![FacetValueInfo {
+                value: "family".to_owned(),
+                count: 2,
+            }],
+            makes: vec![
+                FacetValueInfo {
+                    value: "CANON".to_owned(),
+                    count: 1,
+                },
+                FacetValueInfo {
+                    value: "Canon".to_owned(),
+                    count: 3,
+                },
+            ],
+            models: vec![],
+        };
+
+        assert_eq!(
+            serde_json::to_value(facets).unwrap(),
+            serde_json::json!({
+                "tags": [{ "value": "family", "count": 2 }],
+                "makes": [
+                    { "value": "CANON", "count": 1 },
+                    { "value": "Canon", "count": 3 }
+                ],
+                "models": []
+            })
+        );
+    }
+}
+
 #[cfg(all(test, feature = "performance-test"))]
 mod tests {
     use super::TreeListSnapshot;
@@ -202,18 +357,18 @@ mod tests {
             snapshot
                 .tags
                 .iter()
-                .find(|tag| tag.tag == "shared")
+                .find(|tag| tag.value == "shared")
                 .unwrap()
-                .number,
+                .count,
             2
         );
         assert_eq!(
             snapshot
                 .tags
                 .iter()
-                .find(|tag| tag.tag == "image-only")
+                .find(|tag| tag.value == "image-only")
                 .unwrap()
-                .number,
+                .count,
             1
         );
     }

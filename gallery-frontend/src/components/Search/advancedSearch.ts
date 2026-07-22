@@ -7,8 +7,8 @@ export interface AdvancedSearchCriteria {
   filename: string
   tag: string | null
   extension: string
-  cameraMake: string
-  cameraModel: string
+  cameraMake: string | null
+  cameraModel: string | null
   mediaType: AdvancedSearchMediaType
 }
 
@@ -18,8 +18,8 @@ export function createEmptyAdvancedSearchCriteria(): AdvancedSearchCriteria {
     filename: '',
     tag: null,
     extension: '',
-    cameraMake: '',
-    cameraModel: '',
+    cameraMake: null,
+    cameraModel: null,
     mediaType: 'all'
   }
 }
@@ -39,10 +39,10 @@ export function buildAdvancedSearchFilter(criteria: AdvancedSearchCriteria): str
   const extension = criteria.extension.trim()
   if (extension !== '') parts.push(`ext:${escapeAndWrap(extension)}`)
 
-  const cameraMake = criteria.cameraMake.trim()
+  const cameraMake = criteria.cameraMake?.trim() ?? ''
   if (cameraMake !== '') parts.push(`make:${escapeAndWrap(cameraMake)}`)
 
-  const cameraModel = criteria.cameraModel.trim()
+  const cameraModel = criteria.cameraModel?.trim() ?? ''
   if (cameraModel !== '') parts.push(`model:${escapeAndWrap(cameraModel)}`)
 
   if (criteria.mediaType !== 'all') {

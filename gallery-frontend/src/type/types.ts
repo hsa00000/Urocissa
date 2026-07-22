@@ -2,7 +2,8 @@
 import { z } from 'zod'
 import {
   AliasSchema,
-  tagInfoSchema,
+  facetValueInfoSchema,
+  searchFacetsSchema,
   scrollbarDataSchema,
   displayElementSchema,
   rowSchema,
@@ -19,7 +20,8 @@ import {
 
 // Basic types
 export type Alias = z.infer<typeof AliasSchema>
-export type TagInfo = z.infer<typeof tagInfoSchema>
+export type FacetValueInfo = z.infer<typeof facetValueInfoSchema>
+export type SearchFacets = z.infer<typeof searchFacetsSchema>
 export type AlbumInfo = z.infer<typeof albumInfoSchema>
 export type ScrollbarData = z.infer<typeof scrollbarDataSchema>
 export type DisplayElement = z.infer<typeof displayElementSchema>

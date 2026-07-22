@@ -42,4 +42,12 @@ describe('advanced search filter builder', () => {
       'and(any:"sunset", tag:"family", ext:"jpg", make:"Canon", model:"R5", type:"album")'
     )
   })
+
+  it('handles nullable camera fields and trims selected or manually entered values', () => {
+    expect(
+      buildAdvancedSearchFilter(
+        criteria({ cameraMake: '  Canon  ', cameraModel: null, mediaType: 'image' })
+      )
+    ).toBe('and(make:"Canon", type:"image")')
+  })
 })

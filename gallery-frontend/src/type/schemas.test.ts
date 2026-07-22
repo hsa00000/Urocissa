@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BackendDataParser, PublicConfigSchema } from './schemas'
+import { BackendDataParser, PublicConfigSchema, searchFacetsSchema } from './schemas'
 
 const config = {
   address: '127.0.0.1',
@@ -74,5 +74,27 @@ describe('thumbnail cacheVersion schema', () => {
     for (const cacheVersion of [-1, 1.5, 0x1_0000_0000]) {
       expect(BackendDataParser.safeParse({ ...image, cacheVersion }).success).toBe(false)
     }
+  })
+})
+
+describe('search facets schema', () => {
+  it('accepts independent tag, make, and model arrays', () => {
+    expect(
+      searchFacetsSchema.parse({
+        tags: [{ value: 'family', count: 2 }],
+        makes: [{ value: 'Canon', count: 3 }],
+        models: [{ value: 'R5', count: 1 }]
+      })
+    ).toEqual({
+      tags: [{ value: 'family', count: 2 }],
+      makes: [{ value: 'Canon', count: 3 }],
+      models: [{ value: 'R5', count: 1 }]
+    })
+  })
+
+  it('rejects missing facets and invalid counts', () => {
+    expect(
+      searchFacetsSchema.safeParse({ tags: [], makes: [{ value: 'Canon', count: -1 }] }).success
+    ).toBe(false)
   })
 })

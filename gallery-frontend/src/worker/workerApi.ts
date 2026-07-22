@@ -1,5 +1,11 @@
 // ================== Imports ==================
-import { FetchDataMethod, MessageColor, RowWithOffset, SlicedData, TagInfo } from '@type/types'
+import {
+  FacetValueInfo,
+  FetchDataMethod,
+  MessageColor,
+  RowWithOffset,
+  SlicedData
+} from '@type/types'
 import { createActionCreators } from 'typesafe-agent-events'
 
 // ================== Payload Types ==================
@@ -94,7 +100,7 @@ export interface FetchRowReturnPayload {
 }
 
 export interface EditTagsReturnPayload {
-  returnedTagsArray: TagInfo[] | undefined
+  returnedTagsArray: FacetValueInfo[] | undefined
 }
 
 // ================== Worker Action Creators ==================

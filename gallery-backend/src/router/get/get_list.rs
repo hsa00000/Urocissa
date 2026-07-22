@@ -1,5 +1,5 @@
 use crate::public::db::tree::TREE;
-use crate::public::db::tree::read_tags::TagInfo;
+use crate::public::db::tree::read_tags::SearchFacets;
 use crate::public::error::AppError; // Import AppError
 use crate::public::structure::album::Share;
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -10,19 +10,18 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
 
-#[get("/get/get-tags")]
-pub async fn get_tags(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<TagInfo>>> {
+#[get("/get/get-search-facets")]
+pub async fn get_search_facets(auth: GuardResult<GuardAuth>) -> AppResult<Json<SearchFacets>> {
     let _ = auth?;
-    tokio::task::spawn_blocking(move || -> AppResult<Json<Vec<TagInfo>>> {
+    tokio::task::spawn_blocking(move || -> AppResult<Json<SearchFacets>> {
         let start_time = Instant::now();
-        let vec_tags_info = TREE.read_tags();
+        let facets = TREE.read_search_facets();
         crate::perf_timing!(
-            "get_list.read_tags_response",
+            "get_list.read_search_facets_response",
             start_time,
-            "Create tags response: {} items",
-            vec_tags_info.len()
+            "Create search facets response"
         );
-        Ok(Json(vec_tags_info))
+        Ok(Json(facets))
     })
     .await
     .map_err(|e| AppError::from(anyhow::Error::from(e)))? // Handle JoinError

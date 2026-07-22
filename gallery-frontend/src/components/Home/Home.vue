@@ -69,7 +69,7 @@ import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { IsolationId } from '@type/types'
 import { useRerenderStore } from '@/store/rerenderStore'
-import { useTagStore } from '@/store/tagStore'
+import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
 import { useScrollbarStore } from '@/store/scrollbarStore'
@@ -97,7 +97,7 @@ const scrollbarStore = useScrollbarStore(props.isolationId)
 // albumStore should not use 'mainId'; otherwise clearAll will be called when the 'props.isolationId' component is unmounted.
 const albumStore = useAlbumStore(props.isolationId)
 const rerenderStore = useRerenderStore('mainId')
-const tagStore = useTagStore('mainId')
+const searchFacetStore = useSearchFacetStore()
 const constStore = useConstStore('mainId')
 
 const route = useRoute()
@@ -223,7 +223,7 @@ onBeforeUnmount(() => {
   scrollbarStore.clearAll()
   locationStore.clearAll()
   optimisticUpateStore.clearAll()
-  tagStore.clearAll()
+  searchFacetStore.clearAll()
   albumStore.clearAll()
 })
 </script>

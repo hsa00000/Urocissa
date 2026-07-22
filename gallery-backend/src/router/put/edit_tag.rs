@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 
 use rocket::serde::{Deserialize, json::Json};
 
-use crate::public::db::tree::read_tags::TagInfo;
+use crate::public::db::tree::read_tags::FacetValueInfo;
 use crate::public::db::tree::{TREE, VERSION_COUNT_TIMESTAMP};
 use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
 use crate::public::error::{AppError, ErrorKind};
@@ -30,7 +30,7 @@ pub async fn edit_tag(
     auth: GuardResult<GuardAuth>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     json_data: Json<EditTagsData>,
-) -> AppResult<Json<Vec<TagInfo>>> {
+) -> AppResult<Json<Vec<FacetValueInfo>>> {
     let _ = auth?;
     let _ = read_only_mode?;
     let data = json_data.into_inner();

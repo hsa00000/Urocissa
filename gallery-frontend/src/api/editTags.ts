@@ -1,13 +1,14 @@
 import { useMessageStore } from '@/store/messageStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
-import { tagInfoSchema } from '@/type/schemas'
-import { IsolationId, TagInfo } from '@/type/types'
+import { facetValueInfoSchema } from '@/type/schemas'
+import { IsolationId, FacetValueInfo } from '@/type/types'
 import axios from 'axios'
 import { z } from 'zod'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import type { SelectionInput } from '@/type/selection'
 import { normalizeSelection } from '@/type/selection'
+import { useSearchFacetStore } from '@/store/searchFacetStore'
 
 export async function editTags(
   selectionInput: SelectionInput,
@@ -19,6 +20,7 @@ export async function editTags(
   const timestamp = prefetchStore.timestamp
   const messageStore = useMessageStore('mainId')
   const optimisticStore = useOptimisticStore(isolationId)
+  const searchFacetStore = useSearchFacetStore()
   const selection = normalizeSelection(selectionInput)
 
   if (timestamp === null) {
@@ -35,15 +37,15 @@ export async function editTags(
   optimisticStore.optimisticUpdateTags(payload, true)
 
   await tryWithMessageStore('mainId', async () => {
-    const axiosResponse = await axios.put<TagInfo[]>('/put/edit_tag', {
+    const axiosResponse = await axios.put<FacetValueInfo[]>('/put/edit_tag', {
       selection,
       addTagsArray,
       removeTagsArray,
       timestamp
     })
 
-    const tagsArraySchema = z.array(tagInfoSchema)
-    tagsArraySchema.parse(axiosResponse.data)
+    const tags = z.array(facetValueInfoSchema).parse(axiosResponse.data)
+    searchFacetStore.applyTags(tags)
 
     messageStore.success('Successfully edited tags.')
   })

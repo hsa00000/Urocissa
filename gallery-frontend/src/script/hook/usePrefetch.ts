@@ -6,7 +6,7 @@ import { prefetch } from '@/api/fetchPrefetch'
 import { useConfigStore } from '@/store/configStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useInitializedStore } from '@/store/initializedStore'
-import { useTagStore } from '@/store/tagStore'
+import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { fetchScrollbar } from '@/api/fetchScrollbar'
 import { useShareStore } from '@/store/shareStore'
@@ -92,9 +92,9 @@ async function processPrefetchChain(
 
 
   if (route.meta.baseName !== 'share') {
-    const tagStore = useTagStore('mainId')
-    if (!tagStore.fetched) {
-      dependentPromises.push(tagStore.fetchTags())
+    const searchFacetStore = useSearchFacetStore()
+    if (!searchFacetStore.fetched) {
+      dependentPromises.push(searchFacetStore.fetchFacets())
     }
 
     const albumStore = useAlbumStore('mainId')

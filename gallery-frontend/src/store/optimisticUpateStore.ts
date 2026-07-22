@@ -1,7 +1,7 @@
 import { EnrichedUnifiedData, IsolationId } from '@type/types'
 import { defineStore } from 'pinia'
 import { useDataStore } from './dataStore'
-import { useTagStore } from './tagStore'
+import { useSearchFacetStore } from './searchFacetStore'
 import type { SelectionDescriptor } from '@/type/selection'
 import { createSelectionMatcher } from '@/type/selection'
 
@@ -46,16 +46,11 @@ export const useOptimisticStore = (isolationId: IsolationId) =>
           }
         }
 
-        // Optimistically add newly created tags to the tagStore so they appear
+        // Optimistically add newly created tags so they appear
         // immediately in combobox dropdowns without waiting for a server round-trip.
-        const tagStore = useTagStore(isolationId)
+        const searchFacetStore = useSearchFacetStore()
         for (const tag of payload.addTagsArray) {
-          if (!tagStore.tags.some((t) => t.tag === tag)) {
-            tagStore.tags.push({ tag, number: 1 })
-          }
-        }
-        if (payload.addTagsArray.length > 0) {
-          tagStore.tags.sort((a, b) => a.tag.localeCompare(b.tag))
+          searchFacetStore.addOptimisticTag(tag)
         }
 
         void pushIntoQueue

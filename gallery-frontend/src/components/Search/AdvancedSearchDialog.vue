@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
 import { useDisplay } from 'vuetify'
-import { useTagStore } from '@/store/tagStore'
+import { useSearchFacetStore } from '@/store/searchFacetStore'
 import {
   buildAdvancedSearchFilter,
   createEmptyAdvancedSearchCriteria,
@@ -15,9 +15,11 @@ const emit = defineEmits<{
 }>()
 
 const { smAndDown } = useDisplay()
-const tagStore = useTagStore('mainId')
+const searchFacetStore = useSearchFacetStore()
 const criteria = reactive<AdvancedSearchCriteria>(createEmptyAdvancedSearchCriteria())
-const tagItems = computed(() => tagStore.tags.map((tagInfo) => tagInfo.tag))
+const tagItems = computed(() => searchFacetStore.tags.map((facet) => facet.value))
+const makeItems = computed(() => searchFacetStore.makes.map((facet) => facet.value))
+const modelItems = computed(() => searchFacetStore.models.map((facet) => facet.value))
 
 function clearAll(): void {
   Object.assign(criteria, createEmptyAdvancedSearchCriteria())
@@ -92,9 +94,13 @@ function submitSearch(): void {
         <div class="text-subtitle-2 mb-2">Camera</div>
         <v-row density="comfortable" class="mb-4">
           <v-col cols="6">
-            <v-text-field
+            <v-combobox
               v-model="criteria.cameraMake"
+              :items="makeItems"
+              :hide-no-data="false"
               label="Make"
+              menu-icon="mdi-menu-down"
+              no-data-text="No camera makes available"
               variant="outlined"
               density="comfortable"
               clearable
@@ -103,9 +109,13 @@ function submitSearch(): void {
             />
           </v-col>
           <v-col cols="6">
-            <v-text-field
+            <v-combobox
               v-model="criteria.cameraModel"
+              :items="modelItems"
+              :hide-no-data="false"
               label="Model"
+              menu-icon="mdi-menu-down"
+              no-data-text="No camera models available"
               variant="outlined"
               density="comfortable"
               clearable

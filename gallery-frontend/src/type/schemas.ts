@@ -183,9 +183,15 @@ export const scrollbarDataSchema = z.object({
   month: z.number()
 })
 
-export const tagInfoSchema = z.object({
-  tag: z.string(),
-  number: z.number()
+export const facetValueInfoSchema = z.object({
+  value: z.string(),
+  count: z.number().int().nonnegative()
+})
+
+export const searchFacetsSchema = z.object({
+  tags: z.array(facetValueInfoSchema),
+  makes: z.array(facetValueInfoSchema),
+  models: z.array(facetValueInfoSchema)
 })
 
 export const albumInfoSchema = z

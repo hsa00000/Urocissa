@@ -1,5 +1,5 @@
 <template>
-  <PageTemplate preset="card" width="pane" :ready="tagStore.fetched">
+  <PageTemplate preset="card" width="pane" :ready="searchFacetStore.fetched">
     <template #content>
       <v-table hover>
         <thead>
@@ -9,18 +9,18 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="tagsData in tagStore.tags" :key="tagsData.tag">
+          <tr v-for="tag in searchFacetStore.tags" :key="tag.value">
             <td class="key-cell">
               <v-btn
-                @click="searchByTag(tagsData.tag, router)"
+                @click="searchByTag(tag.value, router)"
                 slim
                 class="text-body-small"
                 variant="tonal"
               >
-                {{ tagsData.tag }}
+                {{ tag.value }}
               </v-btn>
             </td>
-            <td>{{ tagsData.number }}</td>
+            <td>{{ tag.count }}</td>
           </tr>
         </tbody>
       </v-table>
@@ -31,18 +31,18 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { useTagStore } from '@/store/tagStore'
+import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { searchByTag } from '@utils/getter'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 
 const initializedStore = useInitializedStore('mainId')
-const tagStore = useTagStore('mainId')
+const searchFacetStore = useSearchFacetStore()
 const router = useRouter()
 
 onMounted(async () => {
-  if (!tagStore.fetched) {
-    await tagStore.fetchTags()
+  if (!searchFacetStore.fetched) {
+    await searchFacetStore.fetchFacets()
   }
   initializedStore.initialized = true
 })

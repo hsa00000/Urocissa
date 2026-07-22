@@ -56,7 +56,7 @@ import type { ReindexOperation } from '@/api/reindex'
 import { useModalStore } from '@/store/modalStore'
 import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
-import { useTagStore } from '@/store/tagStore'
+import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
@@ -68,7 +68,7 @@ import ReindexJobList from './ReindexJobList.vue'
 const modalStore = useModalStore('mainId')
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
-const tagStore = useTagStore('mainId')
+const searchFacetStore = useSearchFacetStore()
 const rerenderStore = useRerenderStore('mainId')
 const albumStores: Record<IsolationId, ReturnType<typeof useAlbumStore>> = {
   mainId: useAlbumStore('mainId'),
@@ -89,9 +89,9 @@ const isOpen = computed({
 
 const handleTerminalSuccess = async (_job: unknown, isolationId: IsolationId) => {
   await tryWithMessageStore('mainId', async () => {
-    tagStore.clearAll()
+    searchFacetStore.clearAll()
     for (const albumStore of Object.values(albumStores)) albumStore.clearAll()
-    await Promise.all([tagStore.fetchTags(), albumStores[isolationId].fetchAlbums()])
+    await Promise.all([searchFacetStore.fetchFacets(), albumStores[isolationId].fetchAlbums()])
     if (isolationId === 'subId') rerenderStore.rerenderHomeIsolated()
     else rerenderStore.rerenderHome()
   })
