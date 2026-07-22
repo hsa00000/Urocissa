@@ -1,81 +1,3 @@
-<template>
-  <v-form @submit.prevent="submitPlan">
-    <div class="d-flex align-center ga-3 mb-4">
-      <v-avatar color="primary" variant="tonal" size="42">
-        <v-icon icon="mdi-image-sync-outline" />
-      </v-avatar>
-      <div>
-        <div class="text-subtitle-1 font-weight-bold">Choose what to rebuild</div>
-        <div class="text-body-2 text-medium-emphasis">
-          {{ targetCount.toLocaleString() }} selected {{ targetCount === 1 ? 'object' : 'objects' }}
-        </div>
-      </div>
-    </div>
-
-    <section v-for="group in optionGroups" :key="group.title" class="mb-5">
-      <div class="text-overline text-medium-emphasis mb-2">{{ group.title }}</div>
-      <div class="d-flex flex-column ga-2">
-        <ReindexOptionRow
-          v-for="option in group.options"
-          :key="option.operation"
-          :model-value="hasOperation(option.operation)"
-          :title="option.title"
-          :description="option.description"
-          :applicability="option.applicability"
-          :danger="option.danger"
-          @update:model-value="setOperation(option.operation, $event)"
-        />
-      </div>
-    </section>
-
-    <v-alert
-      v-if="hasOperation('videoCompression')"
-      type="warning"
-      variant="tonal"
-      density="compact"
-      class="mb-3"
-      icon="mdi-alert-outline"
-    >
-      Static GIFs may be converted to images. That conversion always rebuilds all image metadata,
-      the thumbnail, and visual hashes, even when those options are unchecked.
-    </v-alert>
-
-    <v-alert
-      v-if="isDangerous"
-      type="error"
-      variant="tonal"
-      density="compact"
-      class="mb-3"
-      icon="mdi-delete-alert-outline"
-    >
-      All tags on the {{ targetCount.toLocaleString() }} captured targets will be removed at commit
-      time. This cannot be undone.
-    </v-alert>
-
-    <v-alert
-      v-if="attemptedSubmit && selectedOperations.length === 0"
-      type="warning"
-      variant="tonal"
-      density="compact"
-      class="mb-3"
-    >
-      Select at least one operation before creating the job.
-    </v-alert>
-
-    <div class="d-flex justify-end mt-5">
-      <v-btn
-        type="submit"
-        :color="isDangerous ? 'error' : 'primary'"
-        :loading="submitting"
-        :disabled="submitting"
-        prepend-icon="mdi-play"
-      >
-        {{ isDangerous ? 'Create destructive job' : 'Create reindex job' }}
-      </v-btn>
-    </div>
-  </v-form>
-</template>
-
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue'
 import type { ReindexOperation } from '@/api/reindex'
@@ -93,6 +15,7 @@ interface ReindexOptionDefinition {
 interface ReindexOptionGroup {
   title: string
   options: ReindexOptionDefinition[]
+  danger?: boolean
 }
 
 defineProps<{
@@ -158,6 +81,7 @@ const optionGroups: ReindexOptionGroup[] = [
   },
   {
     title: 'Danger',
+    danger: true,
     options: [
       {
         operation: 'clearTags',
@@ -190,3 +114,91 @@ const submitPlan = () => {
   emit('submit', [...selectedOperations.value])
 }
 </script>
+
+<template>
+  <v-form @submit.prevent="submitPlan">
+    <v-list bg-color="transparent" class="pa-0 mb-4">
+      <v-list-item
+        title="Choose what to rebuild"
+        :subtitle="`${targetCount.toLocaleString()} selected ${targetCount === 1 ? 'object' : 'objects'}`"
+        lines="two"
+        class="px-0"
+      >
+        <template #prepend>
+          <v-avatar color="primary" variant="tonal" size="42">
+            <v-icon icon="mdi-image-sync-outline" />
+          </v-avatar>
+        </template>
+      </v-list-item>
+    </v-list>
+
+    <v-list
+      v-for="group in optionGroups"
+      :key="group.title"
+      border
+      rounded="lg"
+      bg-color="transparent"
+      :lines="false"
+      class="pa-0 mb-4"
+    >
+      <v-list-subheader
+        :title="group.title"
+        :color="group.danger === true ? 'error' : undefined"
+      />
+      <v-divider />
+
+      <template v-for="(option, index) in group.options" :key="option.operation">
+        <ReindexOptionRow
+          :model-value="hasOperation(option.operation)"
+          :title="option.title"
+          :description="option.description"
+          :applicability="option.applicability"
+          :danger="option.danger"
+          @update:model-value="setOperation(option.operation, $event)"
+        />
+        <v-divider v-if="index < group.options.length - 1" />
+      </template>
+    </v-list>
+
+    <v-alert
+      v-if="hasOperation('videoCompression')"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      class="mb-3"
+      icon="mdi-alert-outline"
+      text="Static GIFs may be converted to images. That conversion always rebuilds all image metadata, the thumbnail, and visual hashes, even when those options are unchecked."
+    />
+
+    <v-alert
+      v-if="isDangerous"
+      type="error"
+      variant="tonal"
+      density="compact"
+      class="mb-3"
+      icon="mdi-delete-alert-outline"
+      :text="`All tags on the ${targetCount.toLocaleString()} captured targets will be removed at commit time. This cannot be undone.`"
+    />
+
+    <v-alert
+      v-if="attemptedSubmit && selectedOperations.length === 0"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      class="mb-3"
+      text="Select at least one operation before creating the job."
+    />
+
+    <v-card-actions class="pa-0 pt-2">
+      <v-spacer />
+      <v-btn
+        type="submit"
+        :color="isDangerous ? 'error' : 'primary'"
+        :loading="submitting"
+        :disabled="submitting"
+        prepend-icon="mdi-play"
+        :text="isDangerous ? 'Create destructive job' : 'Create reindex job'"
+      />
+    </v-card-actions>
+  </v-form>
+</template>

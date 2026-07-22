@@ -18,35 +18,34 @@ const emit = defineEmits<{
 
 <template>
   <v-list density="compact">
-    <v-list-subheader v-if="history.length > 0">
-      <div class="d-flex align-center w-100">
-        <span>Recent Searches</span>
-        <v-spacer />
+    <v-list-item
+      v-if="history.length > 0"
+      title="Recent Searches"
+      density="compact"
+      class="text-medium-emphasis"
+    >
+      <template #append>
         <v-btn
+          text="Clear all"
           prepend-icon="mdi-delete-sweep-outline"
           size="small"
           variant="text"
+          color="primary"
           aria-label="Clear all recent searches"
           @mousedown.stop.prevent
           @click.stop="emit('clear')"
-        >
-          Clear all
-        </v-btn>
-      </div>
-    </v-list-subheader>
-    <v-list-subheader v-else-if="showEmpty">No recent searches</v-list-subheader>
+        />
+      </template>
+    </v-list-item>
+    <v-list-subheader v-else-if="showEmpty" title="No recent searches" />
 
     <v-list-item
       v-for="(item, index) in history"
       :key="item"
+      :title="item"
+      prepend-icon="mdi-magnify"
       @click="emit('select', item)"
     >
-      <template #prepend>
-        <v-icon size="small">mdi-magnify</v-icon>
-      </template>
-
-      <v-list-item-title class="text-body-2">{{ item }}</v-list-item-title>
-
       <template #append>
         <v-btn
           icon="mdi-close"
