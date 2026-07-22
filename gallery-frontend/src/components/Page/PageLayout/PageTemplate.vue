@@ -81,7 +81,7 @@ const presetDefaults = {
   },
   card: {
     containerId: 'table-container',
-    containerClass: baseContainerClass,
+    containerClass: [baseContainerClass, 'bg-surface-light'],
     cardClass: baseCardClass,
     col: { cols: 12, sm: 12, md: 10, lg: 8 },
     fillHeight: false,
@@ -223,7 +223,6 @@ const wrapperCardClass = computed(() => {
   position: relative;
   padding: 4px;
   padding-top: 4px;
-  background-color: #3d3d3d;
   overflow-y: auto;
   height: 100%;
   width: 100%;
