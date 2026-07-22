@@ -201,25 +201,57 @@ fn exact_facet_values<'a>(
 fn camera_facet_values<'a>(
     values: impl Iterator<Item = (&'a String, &'a super::state::OrdinalSet)>,
 ) -> Vec<FacetValueInfo> {
-    let mut counts = HashMap::<String, usize>::new();
+    #[derive(Default)]
+    struct Aggregate {
+        count: usize,
+        spellings: HashMap<String, usize>,
+    }
+
+    let mut aggregates = HashMap::<String, Aggregate>::new();
     for (raw_value, members) in values {
         let Some(value) = normalize_camera_facet_value(raw_value) else {
             continue;
         };
-        let count = counts.entry(value).or_default();
-        *count = count.saturating_add(members.len());
+        let member_count = members.len();
+        let aggregate = aggregates.entry(value.to_ascii_lowercase()).or_default();
+        aggregate.count = aggregate.count.saturating_add(member_count);
+        let spelling_count = aggregate.spellings.entry(value).or_default();
+        *spelling_count = spelling_count.saturating_add(member_count);
     }
 
-    let mut facets = counts
+    let mut facets = aggregates
         .into_iter()
-        .map(|(value, count)| FacetValueInfo { value, count })
+        .filter_map(|(_, aggregate)| {
+            let value = aggregate
+                .spellings
+                .into_iter()
+                // Prefer the most common spelling, then the lexicographically
+                // smallest spelling so HashMap iteration cannot affect output.
+                .max_by(|(left_value, left_count), (right_value, right_count)| {
+                    left_count
+                        .cmp(right_count)
+                        .then_with(|| right_value.cmp(left_value))
+                })?
+                .0;
+            Some(FacetValueInfo {
+                value,
+                count: aggregate.count,
+            })
+        })
         .collect::<Vec<_>>();
     facets.sort_unstable_by(|left, right| left.value.cmp(&right.value));
     facets
 }
 
 fn normalize_camera_facet_value(value: &str) -> Option<String> {
-    let trimmed = value.trim();
+    let mut trimmed = value.trim();
+    while let Some(without_empty) = trimmed.strip_suffix("\"\"") {
+        let without_empty = without_empty.trim_end();
+        let Some(without_comma) = without_empty.strip_suffix(',') else {
+            break;
+        };
+        trimmed = without_comma.trim_end();
+    }
     let unquoted = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
         &trimmed[1..trimmed.len() - 1]
     } else {
@@ -231,7 +263,10 @@ fn normalize_camera_facet_value(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod search_facet_tests {
-    use super::{FacetValueInfo, SearchFacets, camera_facet_values, normalize_camera_facet_value};
+    use super::{
+        FacetValueInfo, SearchFacets, camera_facet_values, exact_facet_values,
+        normalize_camera_facet_value,
+    };
     use crate::public::db::tree::state::OrdinalSet;
     use std::collections::HashMap;
 
@@ -250,10 +285,15 @@ mod search_facet_tests {
             normalize_camera_facet_value("\"Sony").as_deref(),
             Some("\"Sony")
         );
+        assert_eq!(
+            normalize_camera_facet_value(" \"OPPO\", \"\",\"\",  \"\" ").as_deref(),
+            Some("OPPO")
+        );
+        assert_eq!(normalize_camera_facet_value("\"\", \"\", \"\""), None);
     }
 
     #[test]
-    fn keeps_ascii_case_variants_separate_after_display_normalization() {
+    fn merges_ascii_case_variants_and_uses_a_stable_representative() {
         let values = HashMap::from([
             (
                 "  \"Canon\"  ".to_owned(),
@@ -270,20 +310,34 @@ mod search_facet_tests {
             camera_facet_values(values.iter()),
             vec![
                 FacetValueInfo {
-                    value: "CANON".to_owned(),
-                    count: 1,
-                },
-                FacetValueInfo {
                     value: "Canon".to_owned(),
-                    count: 5,
+                    count: 6,
                 },
                 FacetValueInfo {
                     value: "NIKON".to_owned(),
+                    count: 2,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn regular_tags_remain_case_sensitive() {
+        let values = HashMap::from([
+            ("Family".to_owned(), OrdinalSet::from_ordinals([0], 16)),
+            ("family".to_owned(), OrdinalSet::from_ordinals([1, 2], 16)),
+        ]);
+
+        assert_eq!(
+            exact_facet_values(values.iter()),
+            vec![
+                FacetValueInfo {
+                    value: "Family".to_owned(),
                     count: 1,
                 },
                 FacetValueInfo {
-                    value: "nikon".to_owned(),
-                    count: 1,
+                    value: "family".to_owned(),
+                    count: 2,
                 },
             ]
         );
@@ -296,16 +350,10 @@ mod search_facet_tests {
                 value: "family".to_owned(),
                 count: 2,
             }],
-            makes: vec![
-                FacetValueInfo {
-                    value: "CANON".to_owned(),
-                    count: 1,
-                },
-                FacetValueInfo {
-                    value: "Canon".to_owned(),
-                    count: 3,
-                },
-            ],
+            makes: vec![FacetValueInfo {
+                value: "Canon".to_owned(),
+                count: 4,
+            }],
             models: vec![],
         };
 
@@ -313,10 +361,7 @@ mod search_facet_tests {
             serde_json::to_value(facets).unwrap(),
             serde_json::json!({
                 "tags": [{ "value": "family", "count": 2 }],
-                "makes": [
-                    { "value": "CANON", "count": 1 },
-                    { "value": "Canon", "count": 3 }
-                ],
+                "makes": [{ "value": "Canon", "count": 4 }],
                 "models": []
             })
         );
