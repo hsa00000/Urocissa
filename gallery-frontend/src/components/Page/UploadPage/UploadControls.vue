@@ -4,8 +4,6 @@ import type { AlbumInfo } from '@type/types'
 defineProps<{
   albums: readonly AlbumInfo[]
   tagSuggestions: readonly string[]
-  albumsLoading: boolean
-  tagsLoading: boolean
   hasActiveWork: boolean
 }>()
 
@@ -29,7 +27,6 @@ const emit = defineEmits<{
           <v-autocomplete
             v-model="presignedAlbumIds"
             :items="albums"
-            :loading="albumsLoading"
             item-title="displayName"
             item-value="albumId"
             label="Presigned albums"
@@ -51,7 +48,6 @@ const emit = defineEmits<{
           <v-combobox
             v-model="presignedTags"
             :items="tagSuggestions"
-            :loading="tagsLoading"
             label="Presigned tags"
             density="compact"
             variant="outlined"

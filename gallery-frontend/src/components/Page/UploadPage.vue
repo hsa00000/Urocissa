@@ -16,8 +16,6 @@ const searchFacetStore = useSearchFacetStore()
 const uploadStore = useUploadStore('mainId')
 
 const showFormats = shallowRef(false)
-const albumsLoading = shallowRef(false)
-const tagsLoading = shallowRef(false)
 const albumLoadComplete = shallowRef(albumStore.fetched)
 
 const albums = computed(() => Array.from(albumStore.albums.values()))
@@ -46,24 +44,15 @@ async function loadAlbums(): Promise<void> {
     return
   }
 
-  albumsLoading.value = true
   try {
     await albumStore.fetchAlbums()
   } finally {
-    albumsLoading.value = false
     albumLoadComplete.value = true
   }
 }
 
 async function loadTags(): Promise<void> {
-  if (searchFacetStore.fetched) return
-
-  tagsLoading.value = true
-  try {
-    await searchFacetStore.fetchFacets()
-  } finally {
-    tagsLoading.value = false
-  }
+  if (!searchFacetStore.fetched) await searchFacetStore.fetchFacets()
 }
 
 function sameValues(left: readonly string[], right: readonly string[]): boolean {
@@ -125,8 +114,6 @@ onBeforeUnmount(() => {
           v-model:presigned-tags="presignedTags"
           :albums="albums"
           :tag-suggestions="tagSuggestions"
-          :albums-loading="albumsLoading"
-          :tags-loading="tagsLoading"
           @show-formats="showFormats = true"
         />
       </div>

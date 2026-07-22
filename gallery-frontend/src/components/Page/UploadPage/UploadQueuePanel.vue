@@ -18,8 +18,6 @@ const presignedTags = defineModel<string[]>('presignedTags', { required: true })
 const props = defineProps<{
   albums: readonly AlbumInfo[]
   tagSuggestions: readonly string[]
-  albumsLoading: boolean
-  tagsLoading: boolean
 }>()
 
 const uploadStore = useUploadStore('mainId')
@@ -79,8 +77,6 @@ function retryAll(): void {
       v-model:presigned-tags="presignedTags"
       :albums="albums"
       :tag-suggestions="tagSuggestions"
-      :albums-loading="albumsLoading"
-      :tags-loading="tagsLoading"
       :has-active-work="uploadStore.hasActiveWork"
       @add-files="addFiles"
       @cancel-all="uploadStore.cancelAll"
