@@ -1,8 +1,13 @@
 use crate::tasks::{
     INDEX_COORDINATOR,
     actor::{
-        copy::CopyTask, deduplicate::DeduplicateTask, delete_in_update::DeleteTask, hash::HashTask,
-        index::IndexTask, open_file::OpenFileTask, video::VideoTask,
+        copy::CopyTask,
+        deduplicate::{DeduplicateTask, PresignedMetadata},
+        delete_in_update::DeleteTask,
+        hash::HashTask,
+        index::IndexTask,
+        open_file::OpenFileTask,
+        video::VideoTask,
     },
 };
 use anyhow::Result;
@@ -16,6 +21,17 @@ pub async fn index_for_watch(
     path: PathBuf,
     presigned_album_id_opt: Option<ArrayString<64>>,
 ) -> Result<()> {
+    let mut presigned = PresignedMetadata::default();
+    if let Some(album_id) = presigned_album_id_opt {
+        presigned.album_ids.insert(album_id);
+    }
+    index_with_presigned_metadata(path, presigned).await
+}
+
+pub async fn index_with_presigned_metadata(
+    path: PathBuf,
+    presigned: PresignedMetadata,
+) -> Result<()> {
     let path = path.clean();
     let file = INDEX_COORDINATOR
         .execute_waiting(OpenFileTask::new(path.clone()))
@@ -28,11 +44,7 @@ pub async fn index_for_watch(
     let _media_guard = lock_media(hash).await;
 
     let abstract_data_opt = INDEX_COORDINATOR
-        .execute_waiting(DeduplicateTask::new(
-            path.clone(),
-            hash,
-            presigned_album_id_opt,
-        ))
+        .execute_waiting(DeduplicateTask::new(path.clone(), hash, presigned))
         .await??;
 
     // If the file is already in the database, we can skip further processing.

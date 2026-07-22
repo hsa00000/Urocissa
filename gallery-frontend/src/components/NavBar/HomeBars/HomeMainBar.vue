@@ -4,9 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTheme } from 'vuetify'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useFilterStore } from '@/store/filterStore'
-import { useUploadStore } from '@/store/uploadStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
+import { useUploadStore } from '@/store/uploadStore'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
 import GallerySearchControl from '@/components/Search/GallerySearchControl.vue'
@@ -14,15 +14,29 @@ import BtnCreateAlbum from '@Menu/MenuButton/BtnCreateAlbum.vue'
 
 const showDrawer = inject<Ref<boolean>>('showDrawer')
 const albumStore = useAlbumStore('mainId')
-const uploadStore = useUploadStore('mainId')
 const filterStore = useFilterStore('mainId')
 const constStore = useConstStore('mainId')
 const collectionStore = useCollectionStore('mainId')
+const uploadStore = useUploadStore('mainId')
 const vuetifyTheme = useTheme()
 const route = useRoute()
 const router = useRouter()
 const searchQuery = shallowRef<string | null>(null)
 const loading = shallowRef(false)
+const isUploadPage = computed(() => route.name === 'upload')
+const showUploadProgress = computed(
+  () => uploadStore.currentRunTotalCount > 0 && uploadStore.hasActiveWork
+)
+const showCompletedUploadError = computed(
+  () => uploadStore.currentRunIsComplete && uploadStore.currentRunErrorCount > 0
+)
+const uploadProgress = computed(() => {
+  const percent = uploadStore.currentRunProgressPercent
+  return uploadStore.hasActiveWork && percent >= 100 ? 99 : percent
+})
+const uploadProgressColor = computed(() =>
+  uploadStore.currentRunErrorCount > 0 ? 'error' : 'primary'
+)
 
 const themeIsLight = computed<boolean>({
   get: () => constStore.theme === 'light',
@@ -54,6 +68,10 @@ async function handleSearch(query: string): Promise<void> {
   })
 }
 
+function navigateToUpload(): void {
+  void router.push({ name: 'upload' })
+}
+
 watchEffect(() => {
   searchQuery.value =
     typeof filterStore.searchString === 'string' ? filterStore.searchString : null
@@ -82,10 +100,12 @@ watchEffect(() => {
         </v-card>
 
         <GallerySearchControl
+          v-if="!isUploadPage"
           v-model="searchQuery"
           :half-width="route.meta.level === 3"
           @search="handleSearch"
         />
+        <v-spacer v-else />
 
         <v-btn
           v-if="route.meta.level === 1"
@@ -94,15 +114,62 @@ watchEffect(() => {
           @click="themeIsLight = !themeIsLight"
         />
         <BtnCreateAlbum v-if="route.meta.level === 1" v-model="loading" />
-        <v-btn
-          v-if="route.meta.level === 1"
-          icon="mdi-upload"
-          :loading="loading"
-          @click="uploadStore.triggerFileInput(undefined)"
-        />
+        <div v-if="route.meta.level === 1" class="upload-btn-container">
+          <v-btn
+            icon
+            class="upload-btn"
+            :color="isUploadPage ? 'primary' : undefined"
+            aria-label="Open upload page"
+            data-testid="navbar-upload-btn"
+            @click="navigateToUpload"
+          >
+            <v-icon icon="mdi-upload" />
+
+            <v-progress-circular
+              v-if="showUploadProgress"
+              :model-value="uploadProgress"
+              :color="uploadProgressColor"
+              size="40"
+              width="3"
+              class="upload-progress-overlay"
+              aria-hidden="true"
+            />
+
+            <v-progress-circular
+              v-else-if="showCompletedUploadError"
+              :model-value="100"
+              color="error"
+              size="40"
+              width="3"
+              class="upload-progress-overlay"
+              aria-hidden="true"
+            />
+          </v-btn>
+        </div>
       </v-toolbar>
 
       <EditBar v-else />
     </template>
   </HomeBarTemplate>
 </template>
+
+<style scoped>
+.upload-btn-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-btn {
+  position: relative;
+}
+
+.upload-progress-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+</style>

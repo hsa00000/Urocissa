@@ -15,7 +15,7 @@
     <EditAlbumsModal v-if="modalStore.showEditAlbumsModal" />
     <EditBatchTagsModal v-if="modalStore.showBatchEditTagsModal" />
     <EditBatchAlbumsModal v-if="modalStore.showBatchEditAlbumsModal" />
-    <UploadModal v-if="modalStore.showUploadModal" />
+    <UploadModal v-if="modalStore.showUploadModal && route.name !== 'upload'" />
     <SettingModal v-if="modalStore.showSettingModal" />
     <ReindexModal />
   </v-app>

@@ -8,26 +8,29 @@ use crate::{
 use anyhow::Result;
 use arrayvec::ArrayString;
 use mini_executor::Task;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PresignedMetadata {
+    pub album_ids: HashSet<ArrayString<64>>,
+    pub tags: HashSet<String>,
+}
+
 pub struct DeduplicateTask {
     pub path: PathBuf,
     pub hash: ArrayString<64>,
-    pub presigned_album_id_opt: Option<ArrayString<64>>,
+    pub presigned: PresignedMetadata,
 }
 
 impl DeduplicateTask {
-    pub fn new(
-        path: PathBuf,
-        hash: ArrayString<64>,
-        presigned_album_id_opt: Option<ArrayString<64>>,
-    ) -> Self {
+    pub fn new(path: PathBuf, hash: ArrayString<64>, presigned: PresignedMetadata) -> Self {
         Self {
             path,
             hash,
-            presigned_album_id_opt,
+            presigned,
         }
     }
 }
@@ -56,7 +59,7 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
             .alias_mut()
             .and_then(Vec::pop)
             .ok_or_else(|| anyhow::anyhow!("new duplicate record has no file alias"))?;
-        let album_id = task.presigned_album_id_opt;
+        let PresignedMetadata { album_ids, tags } = task.presigned.clone();
         let (slot_ref, _) = load_logical_media(task.hash)?;
         let publisher = ArtifactPublisher::new(format!("deduplicate-{}", Uuid::new_v4()));
         publish_media_mutation(slot_ref, task.hash, publisher, move |latest| {
@@ -64,22 +67,22 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
                 .alias_mut()
                 .ok_or_else(|| anyhow::anyhow!("duplicate target is not media"))?
                 .push(file_modify);
-            if let Some(album_id) = album_id {
-                latest
-                    .albums_mut()
-                    .ok_or_else(|| anyhow::anyhow!("duplicate target is not media"))?
-                    .insert(album_id);
-            }
+            latest
+                .albums_mut()
+                .ok_or_else(|| anyhow::anyhow!("duplicate target is not media"))?
+                .extend(album_ids);
+            latest.tag_mut().extend(tags);
             Ok(())
         })?;
         warn!("File already exists in the database:\n{:#?}", abstract_data);
         Ok(None)
     } else {
-        if let Some(album_id) = task.presigned_album_id_opt
-            && let Some(albums) = abstract_data.albums_mut()
-        {
-            albums.insert(album_id);
+        if let Some(albums) = abstract_data.albums_mut() {
+            albums.extend(task.presigned.album_ids.iter().cloned());
         }
+        abstract_data
+            .tag_mut()
+            .extend(task.presigned.tags.iter().cloned());
         Ok(Some(abstract_data))
     }
 }

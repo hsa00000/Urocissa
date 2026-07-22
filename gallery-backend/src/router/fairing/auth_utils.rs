@@ -220,6 +220,14 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>,
 
 /// Try to authorize upload via share headers with upload permission
 pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
+    // Shared links may only presign the one album represented by the share.
+    // Multi-album and tag presets require normal administrator authentication.
+    if req.query_value::<&str>("presigned_album_ids_opt").is_some()
+        || req.query_value::<&str>("presigned_tags_opt").is_some()
+    {
+        return false;
+    }
+
     if let Some(album_id) = req.headers().get_one("x-album-id")
         && let Some(share_id) = req.headers().get_one("x-share-id")
         && let Ok(durable) = TREE.store.read(|table| {

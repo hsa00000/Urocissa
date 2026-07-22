@@ -27,6 +27,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_page::redirect_to_login,
         get_page::unauthorized,
         get_page::home,
+        get_page::upload,
         get_page::home_view,
         get_page::tags,
         get_page::favorite,

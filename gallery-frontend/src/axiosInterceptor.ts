@@ -147,11 +147,18 @@ export function setupMainAxiosInterceptor() {
 
     // Only attach share headers if both IDs exist
     if (typeof shareStore.albumId === 'string' && typeof shareStore.shareId === 'string') {
-      config.headers.set(HEADERS.ALBUM_ID, shareStore.albumId)
-      config.headers.set(HEADERS.SHARE_ID, shareStore.shareId)
+      if (!config.headers.has(HEADERS.ALBUM_ID)) {
+        config.headers.set(HEADERS.ALBUM_ID, shareStore.albumId)
+      }
+      if (!config.headers.has(HEADERS.SHARE_ID)) {
+        config.headers.set(HEADERS.SHARE_ID, shareStore.shareId)
+      }
 
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (shareStore.password !== null && shareStore.password !== undefined && shareStore.password !== '') {
+      if (
+        !config.headers.has(HEADERS.SHARE_PASSWORD) &&
+        shareStore.password !== null &&
+        shareStore.password !== ''
+      ) {
         config.headers.set(HEADERS.SHARE_PASSWORD, shareStore.password)
       }
     }

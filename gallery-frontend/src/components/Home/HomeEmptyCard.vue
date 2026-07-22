@@ -44,7 +44,7 @@
             rounded="lg"
             width="100%"
             v-bind="hoverProps"
-            @click="uploadStore.triggerFileInput(route.params.hash)"
+            @click="openAlbumUpload(route.params.hash)"
           >
             <v-icon class="mb-5" color="grey" size="100">mdi-cloud-upload</v-icon>
             <v-card-item>
@@ -86,7 +86,6 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useModalStore } from '@/store/modalStore'
-import { useUploadStore } from '@/store/uploadStore'
 import { createEmptyAlbum } from '@utils/createAlbums'
 import { navigateToAlbum } from '@/route/navigator'
 import type { IsolationId } from '@type/types'
@@ -98,9 +97,16 @@ const props = defineProps<{
 const route = useRoute()
 const router = useRouter()
 
-const uploadStore = useUploadStore('mainId')
 const collectionStore = useCollectionStore(props.isolationId)
 const modalStore = useModalStore('mainId')
+
+function openUploadPage(): void {
+  void router.push({ name: 'upload' })
+}
+
+function openAlbumUpload(albumId: string): void {
+  void router.push({ name: 'upload', query: { albumId } })
+}
 
 type ClickHandler = (() => void | Promise<void>) | undefined
 
@@ -172,9 +178,7 @@ const ui = computed<UIState>(() => {
         hasHoverEffect: true,
         message: 'Upload some photos here!',
         icon: 'mdi-image-plus',
-        onClick: () => {
-          uploadStore.triggerFileInput(undefined)
-        }
+        onClick: openUploadPage
       }
 
     case 'albums':

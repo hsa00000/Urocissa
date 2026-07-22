@@ -46,12 +46,15 @@ SOFTWARE.
 import { useMessageStore } from '@/store/messageStore'
 import { useShareStore } from '@/store/shareStore'
 import { useUploadStore } from '@/store/uploadStore'
+import type { UploadTarget } from '@/store/uploadStore'
+import { useAlbumStore } from '@/store/albumStore'
 import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 const uploadStore = useUploadStore('mainId')
 const shareStore = useShareStore('mainId')
 const messageStore = useMessageStore('mainId')
+const albumStore = useAlbumStore('mainId')
 const visible = ref(false)
 const lastTarget = ref<EventTarget | null>(null)
 const route = useRoute()
@@ -106,22 +109,40 @@ function onDrop(e: DragEvent) {
   const hashParam = route.params.hash
   const isLevel3RouteWithHash = route.meta.level === 3 && typeof hashParam === 'string'
 
-  // 4. Determine presignedAlbumId (guaranteed to be string | undefined)
-  let presignedAlbumId: string | undefined
+  // 4. Snapshot the destination and share authorization for this queued batch.
+  let target: UploadTarget | undefined
   if (isSharedAlbum) {
     const sresolveShareAllowUpload = shareStore.resolvedShare?.share.showUpload
     if (sresolveShareAllowUpload !== true) {
       messageStore.error('Public uploads are not allowed for this album share setting.')
       return
     }
-    presignedAlbumId = albumId
+    target = {
+      albums: [{ id: albumId, name: shareStore.resolvedShare?.albumTitle }],
+      share: {
+        albumId,
+        shareId,
+        password: shareStore.password
+      }
+    }
   } else if (isLevel3RouteWithHash) {
-    presignedAlbumId = hashParam
+    target = {
+      albums: [{ id: hashParam, name: albumStore.albums.get(hashParam)?.displayName }]
+    }
+  } else if (route.name === 'upload') {
+    const albums = uploadStore.presignAlbumIds.flatMap((presignedAlbumId) => {
+      const album = albumStore.albums.get(presignedAlbumId)
+      return album === undefined ? [] : [{ id: album.albumId, name: album.displayName }]
+    })
+    const tags = [
+      ...new Set(uploadStore.presignTags.map((tag) => tag.trim()).filter((tag) => tag !== ''))
+    ]
+    if (albums.length > 0 || tags.length > 0) target = { albums, tags }
   }
 
-  // 5. Perform upload (catch uses unknown to satisfy ESLint rule)
-  uploadStore.fileUpload(files, presignedAlbumId).catch((err: unknown) => {
-    console.error('Error occurred:', err)
+  // 5. Upload-page drops are already visible in the queue, so only other routes show the summary panel.
+  uploadStore.enqueueFiles(files, target, {
+    showSummaryPanel: route.name !== 'upload'
   })
 }
 onMounted(() => {

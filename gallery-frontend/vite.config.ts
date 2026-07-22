@@ -75,7 +75,15 @@ export default defineConfig({
       },
       '/upload': {
         target: 'http://127.0.0.1:5673',
-        changeOrigin: true
+        changeOrigin: true,
+        bypass: (request) => {
+          if (
+            (request.method === 'GET' || request.method === 'HEAD') &&
+            request.headers.accept?.includes('text/html') === true
+          ) {
+            return '/index.html'
+          }
+        }
       },
       '/create_album': {
         target: 'http://127.0.0.1:5673',

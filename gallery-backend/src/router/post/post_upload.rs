@@ -4,7 +4,8 @@ use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_upload::GuardUpload;
 use crate::router::{AppResult, GuardResult};
-use crate::workflow::index_for_watch;
+use crate::tasks::actor::deduplicate::PresignedMetadata;
+use crate::workflow::index_with_presigned_metadata;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rocket::form::{Errors, Form};
@@ -31,11 +32,56 @@ fn get_filename(file: &TempFile<'_>) -> String {
         .unwrap_or_default()
 }
 
-#[post("/upload?<presigned_album_id_opt>", data = "<form>")]
+fn parse_presigned_list(raw: Option<String>, field: &str) -> AppResult<Vec<String>> {
+    raw.map_or_else(
+        || Ok(Vec::new()),
+        |value| {
+            serde_json::from_str::<Vec<String>>(&value).map_err(|error| {
+                AppError::new(
+                    ErrorKind::InvalidInput,
+                    format!("Invalid {field} JSON array: {error}"),
+                )
+            })
+        },
+    )
+}
+
+fn build_presigned_metadata(
+    presigned_album_id_opt: Option<String>,
+    presigned_album_ids_opt: Option<String>,
+    presigned_tags_opt: Option<String>,
+) -> AppResult<PresignedMetadata> {
+    let mut metadata = PresignedMetadata::default();
+    let mut album_ids = parse_presigned_list(presigned_album_ids_opt, "presigned albums")?;
+    if let Some(album_id) = presigned_album_id_opt {
+        album_ids.push(album_id);
+    }
+
+    for album_id in album_ids {
+        let parsed = ArrayString::from(&album_id)
+            .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Album ID exceeds 64 bytes"))?;
+        metadata.album_ids.insert(parsed);
+    }
+
+    for tag in parse_presigned_list(presigned_tags_opt, "presigned tags")? {
+        let tag = tag.trim();
+        if !tag.is_empty() {
+            metadata.tags.insert(tag.to_owned());
+        }
+    }
+    Ok(metadata)
+}
+
+#[post(
+    "/upload?<presigned_album_id_opt>&<presigned_album_ids_opt>&<presigned_tags_opt>",
+    data = "<form>"
+)]
 pub async fn upload(
     auth: GuardResult<GuardUpload>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     presigned_album_id_opt: Option<String>,
+    presigned_album_ids_opt: Option<String>,
+    presigned_tags_opt: Option<String>,
     form: Result<Form<UploadForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
     let _ = auth?;
@@ -54,13 +100,11 @@ pub async fn upload(
         }
     };
 
-    let album_id: Option<ArrayString<64>> = match presigned_album_id_opt {
-        Some(s) => Some(
-            ArrayString::from(&s)
-                .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Album ID exceeds 64 bytes"))?,
-        ),
-        None => None,
-    };
+    let presigned = build_presigned_metadata(
+        presigned_album_id_opt,
+        presigned_album_ids_opt,
+        presigned_tags_opt,
+    )?;
 
     // Ensure strict 1:1 mapping between files and metadata
     if inner_form.files.len() != inner_form.last_modified.len() {
@@ -79,7 +123,7 @@ pub async fn upload(
             || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str())
         {
             let final_path = save_file(file, filename, extension, last_modified).await?;
-            index_for_watch(PathBuf::from(final_path), album_id)
+            index_with_presigned_metadata(PathBuf::from(final_path), presigned.clone())
                 .await
                 .or_raise(|| (ErrorKind::Internal, "Failed to index file"))?;
         } else {
@@ -92,6 +136,39 @@ pub async fn upload(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod presigned_metadata_tests {
+    use super::build_presigned_metadata;
+
+    #[test]
+    fn merges_legacy_and_json_presets() {
+        let metadata = build_presigned_metadata(
+            Some("legacy-album".to_owned()),
+            Some(r#"["album-a","album-b","album-a"]"#.to_owned()),
+            Some(r#"[" first ","second","first",""]"#.to_owned()),
+        )
+        .unwrap();
+
+        assert_eq!(metadata.album_ids.len(), 3);
+        assert!(
+            metadata
+                .album_ids
+                .iter()
+                .any(|id| id.as_str() == "legacy-album")
+        );
+        assert!(metadata.album_ids.iter().any(|id| id.as_str() == "album-a"));
+        assert!(metadata.album_ids.iter().any(|id| id.as_str() == "album-b"));
+        assert_eq!(metadata.tags.len(), 2);
+        assert!(metadata.tags.contains("first"));
+        assert!(metadata.tags.contains("second"));
+    }
+
+    #[test]
+    fn rejects_malformed_presigned_json() {
+        assert!(build_presigned_metadata(None, Some("not-json".to_owned()), None).is_err());
+    }
 }
 
 /// Persists the temporary file to disk with the correct modification time.

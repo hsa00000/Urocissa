@@ -1,103 +1,101 @@
-<template>
-  <v-card
-    class="mx-auto position-fixed"
-    append-icon=""
-    :title="`${uploadStore.status}`"
-    :subtitle="`${humanizeDuration(uploadStore.remainingTime * 1000, {
-      units: ['h', 'm', 's'],
-      largest: 1,
-      round: true
-    })} remaining`"
-    variant="elevated"
-    id="upload-vcard"
-    retain-focus
-    :style="{
-      bottom: '50px',
-      left: '50px',
-      zIndex: 50000
-    }"
-  >
-    <template #prepend>
-      <div class="progress-container">
-        <Transition name="fade-scale" mode="out-in">
-          <v-progress-circular
-            key="progress-{{uploadStore.status}}"
-            color="primary"
-            :model-value="circularValue"
-            :indeterminate="uploadStore.status === 'Processing'"
-            class="ma-4"
-          >
-            <Transition name="fade-scale" mode="out-in">
-              <v-icon :key="uploadStore.status" :icon="circularIcon" />
-            </Transition>
-          </v-progress-circular>
-        </Transition>
-      </div>
-    </template>
-    <template #append>
-      <v-btn
-        variant="outlined"
-        class="ma-4"
-        style="width: 100px"
-        @click="modalStore.showUploadModal = false"
-        v-if="uploadStore.status === 'Completed' || uploadStore.status === 'Canceled'"
-      >
-        Close
-      </v-btn>
-      <v-btn
-        v-else
-        variant="outlined"
-        class="ma-4"
-        style="width: 100px"
-        @click="uploadStore.cancelUpload()"
-      >
-        Cancel
-      </v-btn>
-    </template>
-  </v-card>
-</template>
 <script setup lang="ts">
-/**
- * This modal is used for displaying upload information.
- */
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import humanizeDuration from 'humanize-duration'
 import { useModalStore } from '@/store/modalStore'
 import { useUploadStore } from '@/store/uploadStore'
-import humanizeDuration from 'humanize-duration'
-import { computed } from 'vue'
+
+const router = useRouter()
 const uploadStore = useUploadStore('mainId')
 const modalStore = useModalStore('mainId')
 
-const circularValue = computed(() => {
-  if (uploadStore.status === 'Uploading') {
-    return uploadStore.percentComplete
-  } else if (uploadStore.status === 'Completed') {
-    return 0
-  } else {
-    return undefined
+const title = computed(() => {
+  if (uploadStore.hasActiveWork) {
+    return `Uploading ${uploadStore.currentRunCompletedCount + 1} of ${uploadStore.currentRunTotalCount}`
   }
+  if (uploadStore.currentRunErrorCount > 0) return 'Upload finished with errors'
+  return 'Upload complete'
 })
 
-const circularIcon = computed(() => {
-  if (uploadStore.status === 'Completed') {
-    return 'mdi-cloud-check-variant'
-  } else {
-    return 'mdi-cloud-upload'
-  }
+const subtitle = computed(() => {
+  const currentName = uploadStore.currentItem?.file.name
+  if (currentName !== undefined) return currentName
+  return `${uploadStore.currentRunSuccessCount} succeeded · ${uploadStore.currentRunErrorCount} issues`
 })
+
+const remainingLabel = computed(() => {
+  if (!uploadStore.hasActiveWork || uploadStore.remainingTime <= 0) return undefined
+  return `${humanizeDuration(uploadStore.remainingTime * 1000, {
+    units: ['h', 'm', 's'],
+    largest: 1,
+    round: true
+  })} remaining`
+})
+
+const statusIcon = computed(() => {
+  if (uploadStore.hasActiveWork) return 'mdi-cloud-upload'
+  if (uploadStore.currentRunErrorCount > 0) return 'mdi-alert-circle'
+  return 'mdi-cloud-check-variant'
+})
+
+const statusColor = computed(() => {
+  if (uploadStore.currentRunErrorCount > 0) return 'error'
+  return uploadStore.hasActiveWork ? 'primary' : 'success'
+})
+
+function showDetails(): void {
+  void router.push({ name: 'upload' })
+}
 </script>
+
+<template>
+  <v-card
+    id="upload-vcard"
+    class="upload-summary-card mx-auto position-fixed"
+    :title="title"
+    :subtitle="subtitle"
+    variant="elevated"
+  >
+    <template #prepend>
+      <v-progress-circular
+        :model-value="uploadStore.currentRunProgressPercent"
+        :color="statusColor"
+        size="48"
+        width="4"
+        class="ma-4"
+      >
+        <v-icon :icon="statusIcon" />
+      </v-progress-circular>
+    </template>
+
+    <v-card-text v-if="remainingLabel" class="pt-0 text-caption text-medium-emphasis">
+      {{ remainingLabel }}
+    </v-card-text>
+
+    <v-card-actions class="justify-end px-4 pb-4">
+      <v-btn variant="text" prepend-icon="mdi-format-list-bulleted" @click="showDetails">
+        Details
+      </v-btn>
+      <v-btn
+        v-if="uploadStore.hasActiveWork"
+        variant="outlined"
+        color="warning"
+        @click="uploadStore.cancelAll"
+      >
+        Cancel All
+      </v-btn>
+      <v-btn v-else variant="outlined" @click="modalStore.showUploadModal = false">
+        Close
+      </v-btn>
+    </v-card-actions>
+  </v-card>
+</template>
+
 <style scoped>
-.fade-scale-enter-active,
-.fade-scale-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
-}
-.fade-scale-enter-from,
-.fade-scale-leave-to {
-  opacity: 0;
-  transform: scale(0.8);
-}
-.fade-scale-enter-to,
-.fade-scale-leave-from {
-  opacity: 1;
-  transform: scale(1);
+.upload-summary-card {
+  left: 24px;
+  bottom: 24px;
+  z-index: 50000;
+  width: min(420px, calc(100vw - 48px));
 }
 </style>

@@ -114,6 +114,11 @@ pub async fn home() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+#[get("/upload")]
+pub async fn upload() -> AppResult<FrontendResponse> {
+    serve_file("index.html").await
+}
+
 #[get("/home/view/<_path..>")]
 pub async fn home_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
