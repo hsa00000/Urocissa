@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import humanizeDuration from 'humanize-duration'
+import { handlePriorityEscape } from '@/script/utils/priorityEscape'
 import { useModalStore } from '@/store/modalStore'
 import { useUploadStore } from '@/store/uploadStore'
 
@@ -46,6 +47,22 @@ const statusColor = computed(() => {
 function showDetails(): void {
   void router.push({ name: 'upload' })
 }
+
+function closePanel(): void {
+  modalStore.showUploadModal = false
+}
+
+function handleKeydown(event: KeyboardEvent): void {
+  handlePriorityEscape(event, closePanel)
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown, true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown, true)
+})
 </script>
 
 <template>
@@ -84,7 +101,7 @@ function showDetails(): void {
       >
         Cancel All
       </v-btn>
-      <v-btn v-else variant="outlined" @click="modalStore.showUploadModal = false">
+      <v-btn v-else variant="outlined" @click="closePanel">
         Close
       </v-btn>
     </v-card-actions>

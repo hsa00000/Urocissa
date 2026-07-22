@@ -6,6 +6,7 @@ import {
   type UploadPresentationOptions,
   type UploadTarget
 } from '@/store/uploadStore'
+import { useConfigStore } from '@/store/configStore'
 import UploadControls from './UploadControls.vue'
 import UploadQueueTable from './UploadQueueTable.vue'
 
@@ -21,8 +22,18 @@ const props = defineProps<{
 }>()
 
 const uploadStore = useUploadStore('mainId')
+const configStore = useConfigStore('mainId')
 const currentTab = shallowRef<'uploading' | 'success' | 'issues'>('uploading')
 const silentSummary: UploadPresentationOptions = { showSummaryPanel: false }
+
+const emptyStateTitle = computed(() =>
+  configStore.isMobile ? 'Choose photos and videos' : 'Drop photos and videos anywhere'
+)
+const emptyStateDescription = computed(() =>
+  configStore.isMobile
+    ? 'Choose files to start uploading immediately.'
+    : 'Paste clipboard images with Ctrl+V / Cmd+V, or choose files to start uploading.'
+)
 
 const tabs = computed(() => [
   {
@@ -107,9 +118,9 @@ function retryAll(): void {
         <div class="upload-tab-pane">
           <div v-if="uploadStore.uploadingItems.length === 0" class="upload-empty-state">
             <v-icon icon="mdi-cloud-upload-outline" size="72" color="medium-emphasis" />
-            <div class="text-h6 mt-3">Drop photos and videos anywhere</div>
+            <div class="text-h6 mt-3">{{ emptyStateTitle }}</div>
             <div class="text-body-2 text-medium-emphasis mt-1 mb-4">
-              Or choose files to start uploading immediately.
+              {{ emptyStateDescription }}
             </div>
             <v-btn color="primary" prepend-icon="mdi-plus" @click="addFiles">Choose Files</v-btn>
           </div>
