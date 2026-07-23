@@ -2,11 +2,12 @@
 import Sortable from 'sortablejs'
 import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, useId, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useDisplay } from 'vuetify'
+import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useSavedSearchStore } from '@/store/savedSearchStore'
 import SavedSearchDeleteDialog from './SavedSearchDeleteDialog.vue'
 import SavedSearchNameDialog from './SavedSearchNameDialog.vue'
+import { getSavedSearchDragTiming } from './savedSearchDrag'
 import { createSavedSearchLocation, isSavedSearchActive } from './savedSearchRoute'
 import type { SavedSearch } from '@/type/types'
 
@@ -20,7 +21,7 @@ const props = withDefaults(
 )
 
 const route = useRoute()
-const { mdAndUp } = useDisplay()
+const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
 const savedSearchStore = useSavedSearchStore()
 const savedSearchListId = useId()
@@ -33,6 +34,7 @@ let sortable: Sortable | null = null
 const interactionDisabled = computed(
   () => props.disabled || savedSearchStore.loading || savedSearchStore.mutating
 )
+const dragTiming = computed(() => getSavedSearchDragTiming(configStore.isMobile))
 const renameExistingNames = computed(() => {
   const currentId = renamingSearch.value?.id
   return savedSearchStore.searches
@@ -91,8 +93,7 @@ function createSortable(): void {
   sortable = Sortable.create(listElement, {
     animation: 180,
     dataIdAttr: 'data-saved-search-id',
-    delay: mdAndUp.value ? 0 : 350,
-    delayOnTouchOnly: false,
+    ...dragTiming.value,
     disabled: interactionDisabled.value,
     draggable: '.saved-search-item',
     dragClass: 'elevation-4',
@@ -116,8 +117,9 @@ watch(interactionDisabled, (disabled) => {
   sortable?.option('disabled', disabled)
 })
 
-watch(mdAndUp, (desktop) => {
-  sortable?.option('delay', desktop ? 0 : 350)
+watch(dragTiming, ({ delay, delayOnTouchOnly }) => {
+  sortable?.option('delay', delay)
+  sortable?.option('delayOnTouchOnly', delayOnTouchOnly)
 })
 
 onMounted(async () => {
@@ -137,6 +139,8 @@ onBeforeUnmount(() => {
     nav
     :disabled="props.disabled"
     data-testid="saved-search-list"
+    :data-drag-delay="dragTiming.delay"
+    :data-drag-delay-on-touch-only="dragTiming.delayOnTouchOnly"
     aria-label="Saved searches"
   >
     <v-list-item

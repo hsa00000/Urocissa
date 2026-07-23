@@ -1,16 +1,42 @@
+<script setup lang="ts">
+const internalValue = defineModel<boolean>({ required: true })
+
+withDefaults(
+  defineProps<{
+    title?: string
+    width?: string | number
+    /** External control of inner padding. Default: 'pa-4' (Standard) */
+    contentClass?: string
+    loading?: boolean
+    hideClose?: boolean
+    fullscreen?: boolean
+    transition?: string
+    id?: string
+  }>(),
+  {
+    title: '',
+    width: 450,
+    contentClass: 'pa-4',
+    loading: false,
+    hideClose: false,
+    fullscreen: false,
+    transition: 'dialog-transition',
+    id: undefined
+  }
+)
+</script>
+
 <template>
   <v-dialog
+    :id="id"
     v-model="internalValue"
     :max-width="width"
-    variant="flat"
     persistent
-    theme="dark"
     scrollable
     :fullscreen="fullscreen"
     :transition="transition"
-    :id="id"
   >
-    <v-card rounded="lg" class="d-flex flex-column" color="#212121">
+    <v-card color="surface" rounded="lg" class="d-flex flex-column">
       <slot name="header">
         <v-toolbar color="transparent" density="compact">
           <v-toolbar-title>
@@ -26,55 +52,26 @@
               density="comfortable"
               :disabled="loading"
               @click="internalValue = false"
-            ></v-btn>
+            />
           </template>
         </v-toolbar>
       </slot>
 
-      <v-progress-linear
-        v-if="loading"
-        indeterminate
-        color="primary"
-        height="2"
-      ></v-progress-linear>
-      <v-divider v-else class="border-opacity-25"></v-divider>
+      <v-progress-linear v-if="loading" indeterminate color="primary" height="2" />
+      <v-divider v-else class="border-opacity-25" />
 
       <v-card-text :class="['custom-scrollbar', contentClass]">
-        <slot></slot>
+        <slot />
       </v-card-text>
 
       <template v-if="$slots.actions">
         <v-card-actions>
-          <slot name="actions"></slot>
+          <slot name="actions" />
         </v-card-actions>
       </template>
     </v-card>
   </v-dialog>
 </template>
-
-<script setup lang="ts">
-import { computed } from 'vue'
-
-const props = defineProps({
-  modelValue: { type: Boolean, required: true },
-  title: { type: String, default: '' },
-  width: { type: [String, Number], default: 450 },
-  /** External control of inner padding. Default: 'pa-4' (Standard) */
-  contentClass: { type: String, default: 'pa-4' },
-  loading: { type: Boolean, default: false },
-  hideClose: { type: Boolean, default: false },
-  fullscreen: { type: Boolean, default: false },
-  transition: { type: String, default: 'dialog-transition' },
-  id: { type: String, default: undefined }
-})
-
-const emit = defineEmits(['update:modelValue'])
-
-const internalValue = computed({
-  get: () => props.modelValue,
-  set: (val) => { emit('update:modelValue', val); }
-})
-</script>
 
 <style scoped>
 .custom-scrollbar::-webkit-scrollbar {
@@ -84,7 +81,8 @@ const internalValue = computed({
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgb(var(--v-theme-on-surface));
+  opacity: var(--v-disabled-opacity);
   border-radius: 4px;
 }
 </style>
