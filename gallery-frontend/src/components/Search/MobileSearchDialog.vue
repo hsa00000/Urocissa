@@ -4,12 +4,19 @@ import SearchHistoryList from './SearchHistoryList.vue'
 const isOpen = defineModel<boolean>({ required: true })
 const searchQuery = defineModel<string | null>('searchQuery', { required: true })
 
-defineProps<{
-  history: readonly string[]
-}>()
+withDefaults(
+  defineProps<{
+    history: readonly string[]
+    canSave?: boolean
+  }>(),
+  {
+    canSave: false
+  }
+)
 
 const emit = defineEmits<{
   search: [query: string | null]
+  save: []
   selectHistory: [query: string]
   removeHistory: [index: number]
   clearHistory: []
@@ -42,6 +49,7 @@ function clearAndSearch(): void {
           variant="solo"
           flat
           rounded
+          label="Search"
           prepend-inner-icon="mdi-magnify"
           single-line
           hide-details
@@ -50,13 +58,30 @@ function clearAndSearch(): void {
           @click:clear="clearAndSearch"
           @keyup.enter="submitSearch"
         >
-          <template #label>
-            <span class="text-caption">Search</span>
+          <template #clear="{ props: clearProps }">
+            <v-btn
+              v-bind="clearProps"
+              icon="mdi-close-circle"
+              variant="text"
+              size="small"
+              tabindex="0"
+              aria-label="Clear search"
+            />
           </template>
         </v-text-field>
 
         <v-btn
+          icon="mdi-bookmark-plus-outline"
+          variant="text"
+          size="small"
+          aria-label="Save search"
+          :disabled="!canSave || (searchQuery?.trim() ?? '') === ''"
+          @click="emit('save')"
+        />
+        <v-btn
           icon="mdi-tune"
+          variant="text"
+          size="small"
           aria-label="Advanced search"
           @click="emit('openAdvancedSearch')"
         />

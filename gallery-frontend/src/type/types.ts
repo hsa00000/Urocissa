@@ -15,7 +15,9 @@ import {
   ShareSchema,
   ResolvedShareSchema,
   TokenResponseSchema,
-  BackendDataParser
+  BackendDataParser,
+  savedSearchContextSchema,
+  savedSearchSchema
 } from '@type/schemas'
 
 // Basic types
@@ -33,6 +35,8 @@ export type SubRow = z.infer<typeof SubRowSchema>
 export type Share = z.infer<typeof ShareSchema>
 export type ResolvedShare = z.infer<typeof ResolvedShareSchema>
 export type TokenResponse = z.infer<typeof TokenResponseSchema>
+export type SavedSearchContext = z.infer<typeof savedSearchContextSchema>
+export type SavedSearch = z.infer<typeof savedSearchSchema>
 
 // Core unified types (transformed)
 export type UnifiedData = z.infer<typeof BackendDataParser>

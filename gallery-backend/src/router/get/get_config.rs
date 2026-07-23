@@ -45,3 +45,24 @@ pub fn export_config_handler(auth: GuardResult<GuardAuth>) -> AppResult<(Content
     let json = serde_json::to_string_pretty(&*config).unwrap_or_default();
     Ok((ContentType::JSON, json))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::PublicConfigResponse;
+    use crate::public::structure::config::AppConfig;
+
+    #[test]
+    fn public_response_does_not_serialize_saved_searches() {
+        let config = AppConfig::default();
+        let response = PublicConfigResponse {
+            public: config.public,
+            has_password: false,
+            has_discord_hook: false,
+            has_auth_key: false,
+        };
+
+        let value = serde_json::to_value(response).unwrap();
+        assert!(value.get("savedSearches").is_none());
+        assert!(value.get("private").is_none());
+    }
+}

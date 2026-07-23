@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { BackendDataParser, PublicConfigSchema, searchFacetsSchema } from './schemas'
+import {
+  BackendDataParser,
+  PublicConfigSchema,
+  savedSearchListSchema,
+  searchFacetsSchema
+} from './schemas'
 
 const config = {
   address: '127.0.0.1',
@@ -96,5 +101,41 @@ describe('search facets schema', () => {
     expect(
       searchFacetsSchema.safeParse({ tags: [], makes: [{ value: 'Canon', count: -1 }] }).success
     ).toBe(false)
+  })
+})
+
+describe('saved search schema', () => {
+  const savedSearch = {
+    id: '020b6f4f-5c28-4f8c-81f8-bc22949f1ee8',
+    name: ' Family ',
+    context: 'favorite',
+    query: ' tag:family '
+  }
+
+  it('parses and trims a valid saved search response', () => {
+    expect(savedSearchListSchema.parse([savedSearch])).toEqual([
+      { ...savedSearch, name: 'Family', query: 'tag:family' }
+    ])
+    expect(
+      savedSearchListSchema.safeParse([
+        { ...savedSearch, name: '📷'.repeat(80), query: '🔎'.repeat(4096) }
+      ]).success
+    ).toBe(true)
+  })
+
+  it('rejects invalid contexts, empty values, and more than 50 entries', () => {
+    expect(savedSearchListSchema.safeParse([{ ...savedSearch, context: 'links' }]).success).toBe(
+      false
+    )
+    expect(savedSearchListSchema.safeParse([{ ...savedSearch, name: ' ' }]).success).toBe(false)
+    expect(
+      savedSearchListSchema.safeParse([{ ...savedSearch, name: '📷'.repeat(81) }]).success
+    ).toBe(false)
+    expect(
+      savedSearchListSchema.safeParse([{ ...savedSearch, query: '🔎'.repeat(4097) }]).success
+    ).toBe(false)
+    expect(savedSearchListSchema.safeParse(Array.from({ length: 51 }, () => savedSearch)).success).toBe(
+      false
+    )
   })
 })

@@ -9,9 +9,11 @@ import SearchHistoryList from './SearchHistoryList.vue'
 const props = withDefaults(
   defineProps<{
     halfWidth?: boolean
+    canSave?: boolean
   }>(),
   {
-    halfWidth: false
+    halfWidth: false,
+    canSave: false
   }
 )
 
@@ -19,6 +21,7 @@ const searchQuery = defineModel<string | null>({ required: true })
 
 const emit = defineEmits<{
   search: [query: string]
+  save: [query: string]
 }>()
 
 const { smAndDown } = useDisplay()
@@ -29,6 +32,9 @@ const showAdvancedSearch = shallowRef(false)
 let blurTimeout: ReturnType<typeof setTimeout> | null = null
 
 const desktopCardStyle = computed(() => ({ width: props.halfWidth ? '50%' : '100%' }))
+const saveDisabled = computed(
+  () => !props.canSave || (searchQuery.value?.trim() ?? '') === ''
+)
 
 function clearBlurTimeout(): void {
   if (blurTimeout === null) return
@@ -101,6 +107,16 @@ function submitAdvancedSearch(filterString: string): void {
   applySearch(filterString)
 }
 
+function saveCurrentSearch(): void {
+  const query = searchQuery.value?.trim() ?? ''
+  if (saveDisabled.value || query === '') return
+
+  searchQuery.value = query
+  closeSearchHistory()
+  showMobileSearch.value = false
+  emit('save', query)
+}
+
 onUnmounted(clearBlurTimeout)
 </script>
 
@@ -126,6 +142,7 @@ onUnmounted(clearBlurTimeout)
             rounded
             class="ma-0"
             bg-color="surface-light"
+            label="Search"
             autocomplete="off"
             clearable
             persistent-clear
@@ -142,11 +159,26 @@ onUnmounted(clearBlurTimeout)
             @focus="onSearchFocus"
             @blur="onSearchBlur"
           >
-            <template #label>
-              <span class="text-caption">Search</span>
+            <template #clear="{ props: clearProps }">
+              <v-btn
+                v-bind="clearProps"
+                icon="mdi-close-circle"
+                variant="text"
+                size="small"
+                tabindex="0"
+                aria-label="Clear search"
+              />
             </template>
-
             <template #append-inner>
+              <v-btn
+                icon="mdi-bookmark-plus-outline"
+                variant="text"
+                size="small"
+                aria-label="Save search"
+                :disabled="saveDisabled"
+                @mousedown.stop.prevent
+                @click.stop="saveCurrentSearch"
+              />
               <v-btn
                 icon="mdi-tune"
                 variant="text"
@@ -194,7 +226,9 @@ onUnmounted(clearBlurTimeout)
     v-model="showMobileSearch"
     v-model:search-query="searchQuery"
     :history="searchHistoryStore.history"
+    :can-save="props.canSave"
     @search="applySearch"
+    @save="saveCurrentSearch"
     @select-history="selectHistoryItem"
     @remove-history="removeHistoryItem"
     @clear-history="clearSearchHistory"

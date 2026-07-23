@@ -194,6 +194,41 @@ export const searchFacetsSchema = z.object({
   models: z.array(facetValueInfoSchema)
 })
 
+export const savedSearchContextSchema = z.enum([
+  'home',
+  'all',
+  'favorite',
+  'archived',
+  'trashed',
+  'albums',
+  'videos'
+])
+
+const savedSearchNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((value) => Array.from(value).length <= 80, {
+    message: 'Saved search name must be 80 characters or fewer'
+  })
+
+const savedSearchQuerySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((value) => Array.from(value).length <= 4096, {
+    message: 'Saved search query must be 4096 characters or fewer'
+  })
+
+export const savedSearchSchema = z.object({
+  id: z.uuid(),
+  name: savedSearchNameSchema,
+  context: savedSearchContextSchema,
+  query: savedSearchQuerySchema
+})
+
+export const savedSearchListSchema = z.array(savedSearchSchema).max(50)
+
 export const albumInfoSchema = z
   .object({
     albumId: z.string(),

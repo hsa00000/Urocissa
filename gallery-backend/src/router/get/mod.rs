@@ -57,6 +57,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_fs_completion::get_fs_completion,
         get_import::get_folder_import_status,
         get_reindex_jobs::get_reindex_jobs,
-        get_write_behind::get_write_behind_status
+        get_write_behind::get_write_behind_status,
+        crate::router::saved_searches::get_saved_searches
     ]
 }

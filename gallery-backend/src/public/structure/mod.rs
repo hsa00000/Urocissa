@@ -7,4 +7,5 @@ pub mod guard;
 pub mod image;
 pub mod object;
 pub mod response;
+pub mod saved_search;
 pub mod video;

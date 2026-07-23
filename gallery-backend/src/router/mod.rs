@@ -6,6 +6,7 @@ pub mod get;
 pub mod performance;
 pub mod post;
 pub mod put;
+pub mod saved_searches;
 pub mod selection;
 pub use crate::public::error::{AppError, ErrorKind};
 pub type AppResult<T> = Result<T, AppError>;

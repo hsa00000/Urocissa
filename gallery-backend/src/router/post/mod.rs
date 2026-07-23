@@ -16,6 +16,7 @@ pub fn generate_post_routes() -> Vec<Route> {
         create_share::create_share,
         import_config::import_config_handler,
         import_folder::start_folder_import_handler,
-        import_folder::cancel_folder_import_handler
+        import_folder::cancel_folder_import_handler,
+        crate::router::saved_searches::create_saved_search
     ]
 }

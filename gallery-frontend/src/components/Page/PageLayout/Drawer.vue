@@ -1,6 +1,26 @@
+<script setup lang="ts">
+import { computed, inject, onMounted, type Ref } from 'vue'
+import { useRoute } from 'vue-router'
+import SavedSearchSection from '@/components/SavedSearch/SavedSearchSection.vue'
+import { useInitializedStore } from '@/store/initializedStore'
+import { useModalStore } from '@/store/modalStore'
+import { useSavedSearchStore } from '@/store/savedSearchStore'
+
+const showDrawer = inject<Ref<boolean>>('showDrawer')
+const route = useRoute()
+const modalStore = useModalStore('mainId')
+const initializedStore = useInitializedStore('mainId')
+const savedSearchStore = useSavedSearchStore()
+const hasSavedSearches = computed(() => savedSearchStore.searches.length > 0)
+
+onMounted(() => {
+  void savedSearchStore.loadOnce()
+})
+</script>
+
 <template>
-  <v-navigation-drawer v-model="showDrawer" temporary touchless width="150" class="no-select">
-    <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized">
+  <v-navigation-drawer v-model="showDrawer" temporary touchless width="220" class="no-select">
+    <v-list :key="route.fullPath" nav :disabled="!initializedStore.initialized">
       <v-list-item slim to="/home" prepend-icon="mdi-home" title="Home"></v-list-item>
       <v-divider></v-divider>
       <v-list-item slim to="/favorite" prepend-icon="mdi-star" title="Favorite"></v-list-item>
@@ -23,12 +43,21 @@
       <v-divider></v-divider>
       <v-list-item slim to="/tags" prepend-icon="mdi-tag-multiple" title="Tags"></v-list-item>
       <v-list-item slim to="/links" prepend-icon="mdi-link" title="Links"></v-list-item>
-      <v-divider></v-divider>
+    </v-list>
+
+    <v-divider />
+    <SavedSearchSection
+      v-if="hasSavedSearches"
+      :disabled="!initializedStore.initialized"
+    />
+    <v-divider v-if="hasSavedSearches" />
+
+    <v-list nav :disabled="!initializedStore.initialized">
       <v-list-item
         slim
-        @click="modalStore.showSettingModal = true"
         prepend-icon="mdi-cog-outline"
         title="Settings"
+        @click="modalStore.showSettingModal = true"
       ></v-list-item>
     </v-list>
 
@@ -39,18 +68,3 @@
     </template>
   </v-navigation-drawer>
 </template>
-
-<script setup lang="ts">
-import { inject, type Ref } from 'vue'
-import { useRoute } from 'vue-router'
-import { useInitializedStore } from '@/store/initializedStore'
-import { useModalStore } from '@/store/modalStore'
-
-const showDrawer = inject<Ref<boolean>>('showDrawer')
-const route = useRoute()
-const modalStore = useModalStore('mainId')
-const initializedStore = useInitializedStore('mainId')
-</script>
-
-<style scoped>
-</style>

@@ -7,10 +7,19 @@ import { useFilterStore } from '@/store/filterStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
 import { useUploadStore } from '@/store/uploadStore'
+import { useMessageStore } from '@/store/messageStore'
+import { useSavedSearchStore } from '@/store/savedSearchStore'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
 import GallerySearchControl from '@/components/Search/GallerySearchControl.vue'
+import SavedSearchNameDialog from '@/components/SavedSearch/SavedSearchNameDialog.vue'
+import {
+  canSaveSearch,
+  getSavedSearchContext,
+  SAVED_SEARCH_ADDED_MESSAGE
+} from '@/components/SavedSearch/savedSearchRoute'
 import BtnCreateAlbum from '@Menu/MenuButton/BtnCreateAlbum.vue'
+import type { SavedSearchContext } from '@/type/types'
 
 const showDrawer = inject<Ref<boolean>>('showDrawer')
 const albumStore = useAlbumStore('mainId')
@@ -18,10 +27,17 @@ const filterStore = useFilterStore('mainId')
 const constStore = useConstStore('mainId')
 const collectionStore = useCollectionStore('mainId')
 const uploadStore = useUploadStore('mainId')
+const messageStore = useMessageStore('mainId')
+const savedSearchStore = useSavedSearchStore()
 const vuetifyTheme = useTheme()
 const route = useRoute()
 const router = useRouter()
 const searchQuery = shallowRef<string | null>(null)
+const showSaveSearchDialog = shallowRef(false)
+const pendingSavedSearch = shallowRef<{
+  context: SavedSearchContext
+  query: string
+} | null>(null)
 const loading = shallowRef(false)
 const isUploadPage = computed(() => route.name === 'upload')
 const showUploadProgress = computed(
@@ -36,6 +52,18 @@ const uploadProgress = computed(() => {
 })
 const uploadProgressColor = computed(() =>
   uploadStore.currentRunErrorCount > 0 ? 'error' : 'primary'
+)
+const savedSearchContext = computed(() => getSavedSearchContext(route))
+const canSaveCurrentSearch = computed(() =>
+  canSaveSearch(savedSearchContext.value, searchQuery.value)
+)
+const suggestedSavedSearchName = computed(() =>
+  Array.from(pendingSavedSearch.value?.query ?? '')
+    .slice(0, 80)
+    .join('')
+)
+const existingSavedSearchNames = computed(() =>
+  savedSearchStore.searches.map((search) => search.name)
 )
 
 const themeIsLight = computed<boolean>({
@@ -72,6 +100,31 @@ function navigateToUpload(): void {
   void router.push({ name: 'upload' })
 }
 
+function openSaveSearchDialog(query: string): void {
+  const context = savedSearchContext.value
+  const normalizedQuery = query.trim()
+  if (context === null || normalizedQuery === '') return
+
+  pendingSavedSearch.value = { context, query: normalizedQuery }
+  showSaveSearchDialog.value = true
+}
+
+async function saveSearch(name: string): Promise<void> {
+  const pending = pendingSavedSearch.value
+  if (pending === null) return
+
+  const succeeded = await savedSearchStore.create({
+    name,
+    context: pending.context,
+    query: pending.query
+  })
+  if (!succeeded) return
+
+  showSaveSearchDialog.value = false
+  pendingSavedSearch.value = null
+  messageStore.success(SAVED_SEARCH_ADDED_MESSAGE)
+}
+
 watchEffect(() => {
   searchQuery.value =
     typeof filterStore.searchString === 'string' ? filterStore.searchString : null
@@ -82,7 +135,12 @@ watchEffect(() => {
   <HomeBarTemplate isolation-id="mainId">
     <template #content>
       <v-toolbar v-if="!collectionStore.editModeOn" class="bg-surface">
-        <v-btn v-if="route.meta.level === 1" icon="mdi-menu" @click="toggleDrawer" />
+        <v-btn
+          v-if="route.meta.level === 1"
+          icon="mdi-menu"
+          aria-label="Open navigation drawer"
+          @click="toggleDrawer"
+        />
         <v-btn
           v-else
           icon="mdi mdi-arrow-left"
@@ -103,7 +161,9 @@ watchEffect(() => {
           v-if="!isUploadPage"
           v-model="searchQuery"
           :half-width="route.meta.level === 3"
+          :can-save="canSaveCurrentSearch"
           @search="handleSearch"
+          @save="openSaveSearchDialog"
         />
         <v-spacer v-else />
 
@@ -151,6 +211,16 @@ watchEffect(() => {
       <EditBar v-else />
     </template>
   </HomeBarTemplate>
+
+  <SavedSearchNameDialog
+    v-if="pendingSavedSearch !== null"
+    v-model="showSaveSearchDialog"
+    title="Save Search"
+    :initial-name="suggestedSavedSearchName"
+    :existing-names="existingSavedSearchNames"
+    :loading="savedSearchStore.mutating"
+    @submit="saveSearch"
+  />
 </template>
 
 <style scoped>
