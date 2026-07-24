@@ -8,7 +8,7 @@
     <v-container
       v-if="resolved.ready"
       :id="resolved.containerId"
-      :class="resolved.containerClass"
+      :class="wrapperContainerClass"
       fluid
     >
       <v-row justify="center" :class="wrapperRowClass">
@@ -81,7 +81,7 @@ const presetDefaults = {
   },
   card: {
     containerId: 'table-container',
-    containerClass: [baseContainerClass, 'bg-surface-light'],
+    containerClass: [baseContainerClass, 'bg-surface-light', 'overflow-y-auto'],
     cardClass: baseCardClass,
     col: { cols: 12, sm: 12, md: 10, lg: 8 },
     fillHeight: false,
@@ -115,6 +115,7 @@ const props = withDefaults(
     col?: PageCol
     fillHeight?: boolean
     centerContent?: boolean
+    alwaysShowVerticalScrollbar?: boolean
     /** extra class for v-col wrapper (Home needs pa-0) */
     colClass?: string | string[]
   }>(),
@@ -128,6 +129,7 @@ const props = withDefaults(
     col: undefined,
     fillHeight: undefined,
     centerContent: undefined,
+    alwaysShowVerticalScrollbar: false,
     colClass: undefined
   }
 )
@@ -192,6 +194,14 @@ const wrapperRowClass = computed(() => {
   return cls
 })
 
+const wrapperContainerClass = computed(() => {
+  const base = Array.isArray(resolved.value.containerClass)
+    ? [...resolved.value.containerClass]
+    : [resolved.value.containerClass]
+  if (props.alwaysShowVerticalScrollbar) base.push('overflow-y-scroll')
+  return base
+})
+
 const wrapperColClass = computed(() => {
   const cls: string[] = ['d-flex', 'w-100']
   cls.push(resolved.value.centerContent ? 'justify-center' : 'justify-start')
@@ -223,7 +233,6 @@ const wrapperCardClass = computed(() => {
   position: relative;
   padding: 4px;
   padding-top: 4px;
-  overflow-y: auto;
   height: 100%;
   width: 100%;
   min-height: 0;

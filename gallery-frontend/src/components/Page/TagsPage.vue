@@ -111,7 +111,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <PageTemplate preset="card" width="pane">
+  <PageTemplate preset="card" width="pane" always-show-vertical-scrollbar>
     <template #content>
       <v-card-text class="pb-2 d-flex flex-column align-center">
         <v-label
