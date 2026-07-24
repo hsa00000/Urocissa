@@ -1,4 +1,4 @@
-import { RouteLocationNormalizedLoaded, Router } from 'vue-router'
+import type { RouteLocationNormalizedLoaded, RouteLocationRaw, Router } from 'vue-router'
 import { inject } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import { escapeAndWrap } from '@utils/escape'
@@ -82,25 +82,45 @@ export function getScrollUpperBound(totalHeight: number, windowHeight: number): 
   return totalHeight - windowHeight - 4
 }
 
-export async function searchByTag(tag: string, router: Router) {
-  const { meta, params } = router.currentRoute.value
-  const searchQuery = { search: `tag:${escapeAndWrap(tag)}` }
+export type FacetSearchField = 'tag' | 'make' | 'model'
+
+interface FacetSearchRouteLike {
+  meta: {
+    baseName?: unknown
+  }
+  params: RouteLocationNormalizedLoaded['params']
+}
+
+export function createFacetSearchLocation(
+  field: FacetSearchField,
+  value: string,
+  route: FacetSearchRouteLike
+): RouteLocationRaw {
+  const searchQuery = { search: `${field}:${escapeAndWrap(value)}` }
 
   // if the current baseName is 'share', navigate back to the share root page
-  if (meta.baseName === 'share') {
-    const albumId = params.albumId as string
-    const shareId = params.shareId as string
-    await router.push({
+  if (route.meta.baseName === 'share') {
+    const albumId = route.params.albumId as string
+    const shareId = route.params.shareId as string
+    return {
       name: 'share',
       params: { albumId, shareId },
       query: searchQuery
-    })
+    }
   } else {
-    await router.push({
+    return {
       name: 'all',
       query: searchQuery
-    })
+    }
   }
+}
+
+export async function searchByFacet(field: FacetSearchField, value: string, router: Router) {
+  await router.push(createFacetSearchLocation(field, value, router.currentRoute.value))
+}
+
+export async function searchByTag(tag: string, router: Router) {
+  await searchByFacet('tag', tag, router)
 }
 
 /**
