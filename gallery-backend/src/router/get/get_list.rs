@@ -10,12 +10,18 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
 
-#[get("/get/get-search-facets")]
-pub async fn get_search_facets(auth: GuardResult<GuardAuth>) -> AppResult<Json<SearchFacets>> {
+#[get("/get/get-search-facets?<trashed>")]
+pub async fn get_search_facets(
+    auth: GuardResult<GuardAuth>,
+    trashed: Option<bool>,
+) -> AppResult<Json<SearchFacets>> {
     let _ = auth?;
     tokio::task::spawn_blocking(move || -> AppResult<Json<SearchFacets>> {
         let start_time = Instant::now();
-        let facets = TREE.read_search_facets();
+        let facets = match trashed {
+            Some(trashed) => TREE.read_search_facets_for_trash_state(trashed),
+            None => TREE.read_search_facets(),
+        };
         crate::perf_timing!(
             "get_list.read_search_facets_response",
             start_time,

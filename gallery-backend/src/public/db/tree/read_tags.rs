@@ -97,12 +97,32 @@ impl Tree {
     }
 
     pub fn read_search_facets(&self) -> SearchFacets {
+        self.read_search_facets_with_trash_scope(None)
+    }
+
+    pub fn read_search_facets_for_trash_state(&self, trashed: bool) -> SearchFacets {
+        self.read_search_facets_with_trash_scope(Some(trashed))
+    }
+
+    fn read_search_facets_with_trash_scope(&self, trashed: Option<bool>) -> SearchFacets {
         let start_time = Instant::now();
         let state = self.state.read().unwrap();
         let facets = SearchFacets {
-            tags: exact_facet_values(state.query.tags.iter()),
-            makes: camera_facet_values(state.query.makes.iter()),
-            models: camera_facet_values(state.query.models.iter()),
+            tags: exact_facet_values_for_scope(
+                state.query.tags.iter(),
+                &state.query.trashed,
+                trashed,
+            ),
+            makes: camera_facet_values_for_scope(
+                state.query.makes.iter(),
+                &state.query.trashed,
+                trashed,
+            ),
+            models: camera_facet_values_for_scope(
+                state.query.models.iter(),
+                &state.query.trashed,
+                trashed,
+            ),
         };
         crate::perf_timing!(
             "get_list.read_search_facets",
@@ -188,10 +208,21 @@ impl Tree {
 fn exact_facet_values<'a>(
     values: impl Iterator<Item = (&'a String, &'a super::state::OrdinalSet)>,
 ) -> Vec<FacetValueInfo> {
+    exact_facet_values_for_scope(values, &super::state::DenseBitmap::default(), None)
+}
+
+fn exact_facet_values_for_scope<'a>(
+    values: impl Iterator<Item = (&'a String, &'a super::state::OrdinalSet)>,
+    trashed_members: &super::state::DenseBitmap,
+    trashed: Option<bool>,
+) -> Vec<FacetValueInfo> {
     let mut facets = values
-        .map(|(value, members)| FacetValueInfo {
-            value: value.clone(),
-            count: members.len(),
+        .filter_map(|(value, members)| {
+            let count = count_members_in_trash_scope(members, trashed_members, trashed);
+            (count > 0).then(|| FacetValueInfo {
+                value: value.clone(),
+                count,
+            })
         })
         .collect::<Vec<_>>();
     facets.sort_unstable_by(|left, right| left.value.cmp(&right.value));
@@ -200,6 +231,14 @@ fn exact_facet_values<'a>(
 
 fn camera_facet_values<'a>(
     values: impl Iterator<Item = (&'a String, &'a super::state::OrdinalSet)>,
+) -> Vec<FacetValueInfo> {
+    camera_facet_values_for_scope(values, &super::state::DenseBitmap::default(), None)
+}
+
+fn camera_facet_values_for_scope<'a>(
+    values: impl Iterator<Item = (&'a String, &'a super::state::OrdinalSet)>,
+    trashed_members: &super::state::DenseBitmap,
+    trashed: Option<bool>,
 ) -> Vec<FacetValueInfo> {
     #[derive(Default)]
     struct Aggregate {
@@ -212,7 +251,10 @@ fn camera_facet_values<'a>(
         let Some(value) = normalize_camera_facet_value(raw_value) else {
             continue;
         };
-        let member_count = members.len();
+        let member_count = count_members_in_trash_scope(members, trashed_members, trashed);
+        if member_count == 0 {
+            continue;
+        }
         let aggregate = aggregates.entry(value.to_ascii_lowercase()).or_default();
         aggregate.count = aggregate.count.saturating_add(member_count);
         let spelling_count = aggregate.spellings.entry(value).or_default();
@@ -243,6 +285,20 @@ fn camera_facet_values<'a>(
     facets
 }
 
+fn count_members_in_trash_scope(
+    members: &super::state::OrdinalSet,
+    trashed_members: &super::state::DenseBitmap,
+    trashed: Option<bool>,
+) -> usize {
+    match trashed {
+        None => members.len(),
+        Some(expected) => members
+            .iter()
+            .filter(|ordinal| trashed_members.contains(*ordinal) == expected)
+            .count(),
+    }
+}
+
 fn normalize_camera_facet_value(value: &str) -> Option<String> {
     let mut trimmed = value.trim();
     while let Some(without_empty) = trimmed.strip_suffix("\"\"") {
@@ -264,8 +320,8 @@ fn normalize_camera_facet_value(value: &str) -> Option<String> {
 #[cfg(test)]
 mod search_facet_tests {
     use super::{
-        FacetValueInfo, SearchFacets, camera_facet_values, exact_facet_values,
-        normalize_camera_facet_value,
+        FacetValueInfo, SearchFacets, camera_facet_values, camera_facet_values_for_scope,
+        exact_facet_values, exact_facet_values_for_scope, normalize_camera_facet_value,
     };
     use crate::public::db::tree::state::OrdinalSet;
     use std::collections::HashMap;
@@ -338,6 +394,82 @@ mod search_facet_tests {
                 FacetValueInfo {
                     value: "family".to_owned(),
                     count: 2,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn filters_exact_facets_by_trash_state_and_omits_empty_values() {
+        let values = HashMap::from([
+            ("shared".to_owned(), OrdinalSet::from_ordinals([0, 1], 16)),
+            ("active-only".to_owned(), OrdinalSet::from_ordinals([2], 16)),
+            (
+                "trashed-only".to_owned(),
+                OrdinalSet::from_ordinals([3], 16),
+            ),
+        ]);
+        let mut trashed_members = super::super::state::DenseBitmap::default();
+        trashed_members.set(1, true);
+        trashed_members.set(3, true);
+
+        assert_eq!(
+            exact_facet_values_for_scope(values.iter(), &trashed_members, Some(false)),
+            vec![
+                FacetValueInfo {
+                    value: "active-only".to_owned(),
+                    count: 1,
+                },
+                FacetValueInfo {
+                    value: "shared".to_owned(),
+                    count: 1,
+                },
+            ]
+        );
+        assert_eq!(
+            exact_facet_values_for_scope(values.iter(), &trashed_members, Some(true)),
+            vec![
+                FacetValueInfo {
+                    value: "shared".to_owned(),
+                    count: 1,
+                },
+                FacetValueInfo {
+                    value: "trashed-only".to_owned(),
+                    count: 1,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn filters_camera_facets_before_case_variant_aggregation() {
+        let values = HashMap::from([
+            ("Canon".to_owned(), OrdinalSet::from_ordinals([0, 1], 16)),
+            ("CANON".to_owned(), OrdinalSet::from_ordinals([2], 16)),
+            ("Nikon".to_owned(), OrdinalSet::from_ordinals([3], 16)),
+        ]);
+        let mut trashed_members = super::super::state::DenseBitmap::default();
+        trashed_members.set(1, true);
+        trashed_members.set(2, true);
+        trashed_members.set(3, true);
+
+        assert_eq!(
+            camera_facet_values_for_scope(values.iter(), &trashed_members, Some(false)),
+            vec![FacetValueInfo {
+                value: "Canon".to_owned(),
+                count: 1,
+            }]
+        );
+        assert_eq!(
+            camera_facet_values_for_scope(values.iter(), &trashed_members, Some(true)),
+            vec![
+                FacetValueInfo {
+                    value: "CANON".to_owned(),
+                    count: 2,
+                },
+                FacetValueInfo {
+                    value: "Nikon".to_owned(),
+                    count: 1,
                 },
             ]
         );

@@ -39,6 +39,30 @@ describe('search facet store', () => {
     expect(store.fetched).toBe(true)
   })
 
+  it('loads scoped facets without replacing the shared aggregate state', async () => {
+    const get = vi.spyOn(axios, 'get').mockResolvedValue({
+      status: 200,
+      data: {
+        tags: [
+          { value: 'zebra', count: 1 },
+          { value: 'alpha', count: 2 }
+        ],
+        makes: [],
+        models: []
+      }
+    })
+    const store = useSearchFacetStore()
+
+    const facets = await store.fetchFacetsForTrashState(true)
+
+    expect(get).toHaveBeenCalledWith('/get/get-search-facets', { params: { trashed: true } })
+    expect(facets?.tags.map((facet) => facet.value)).toEqual(['alpha', 'zebra'])
+    expect(store.tags).toEqual([])
+    expect(store.makes).toEqual([])
+    expect(store.models).toEqual([])
+    expect(store.fetched).toBe(false)
+  })
+
   it('preserves camera metadata values that differ only by case', async () => {
     vi.spyOn(axios, 'get').mockResolvedValue({
       status: 200,

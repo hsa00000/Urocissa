@@ -17,11 +17,11 @@ function selectValue(value: string): void {
 </script>
 
 <template>
-  <v-table hover>
+  <v-table hover class="facet-table">
     <thead>
       <tr>
         <th scope="col">{{ props.valueLabel }}</th>
-        <th scope="col">Number of items</th>
+        <th scope="col" class="facet-count-column text-end">Items</th>
       </tr>
     </thead>
     <tbody>
@@ -39,8 +39,18 @@ function selectValue(value: string): void {
             {{ item.value }}
           </v-btn>
         </td>
-        <td>{{ item.count }}</td>
+        <td class="text-end">{{ item.count }}</td>
       </tr>
     </tbody>
   </v-table>
 </template>
+
+<style scoped>
+.facet-table :deep(table) {
+  table-layout: fixed;
+}
+
+.facet-count-column {
+  width: 96px;
+}
+</style>

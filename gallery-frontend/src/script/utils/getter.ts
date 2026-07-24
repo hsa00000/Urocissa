@@ -83,6 +83,7 @@ export function getScrollUpperBound(totalHeight: number, windowHeight: number): 
 }
 
 export type FacetSearchField = 'tag' | 'make' | 'model'
+export type FacetSearchScope = 'all' | 'trashed'
 
 interface FacetSearchRouteLike {
   meta: {
@@ -94,7 +95,8 @@ interface FacetSearchRouteLike {
 export function createFacetSearchLocation(
   field: FacetSearchField,
   value: string,
-  route: FacetSearchRouteLike
+  route: FacetSearchRouteLike,
+  scope?: FacetSearchScope
 ): RouteLocationRaw {
   const searchQuery = { search: `${field}:${escapeAndWrap(value)}` }
 
@@ -108,19 +110,25 @@ export function createFacetSearchLocation(
       query: searchQuery
     }
   } else {
+    const target = scope ?? (route.meta.baseName === 'trashed' ? 'trashed' : 'all')
     return {
-      name: 'all',
+      name: target,
       query: searchQuery
     }
   }
 }
 
-export async function searchByFacet(field: FacetSearchField, value: string, router: Router) {
-  await router.push(createFacetSearchLocation(field, value, router.currentRoute.value))
+export async function searchByFacet(
+  field: FacetSearchField,
+  value: string,
+  router: Router,
+  scope?: FacetSearchScope
+) {
+  await router.push(createFacetSearchLocation(field, value, router.currentRoute.value, scope))
 }
 
-export async function searchByTag(tag: string, router: Router) {
-  await searchByFacet('tag', tag, router)
+export async function searchByTag(tag: string, router: Router, scope?: FacetSearchScope) {
+  await searchByFacet('tag', tag, router, scope)
 }
 
 /**

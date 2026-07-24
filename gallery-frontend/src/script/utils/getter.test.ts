@@ -8,9 +8,9 @@ import {
 } from './getter'
 
 function route(
-  baseName: 'share' | 'tags',
+  baseName: 'share' | 'tags' | 'trashed',
   params: Record<string, string> = {}
-): { meta: { baseName: 'share' | 'tags' }; params: Record<string, string> } {
+): { meta: { baseName: 'share' | 'tags' | 'trashed' }; params: Record<string, string> } {
   return { meta: { baseName }, params }
 }
 
@@ -61,6 +61,20 @@ describe('facet search routes', () => {
     expect(push).toHaveBeenCalledWith({
       name: 'all',
       query: { search: 'model:"R5"' }
+    })
+  })
+
+  it('uses the selected scope for facet searches', () => {
+    expect(createFacetSearchLocation('tag', 'family', route('tags'), 'trashed')).toEqual({
+      name: 'trashed',
+      query: { search: 'tag:"family"' }
+    })
+  })
+
+  it('keeps tag searches in the trashed scope from trashed detail pages', () => {
+    expect(createFacetSearchLocation('tag', 'family', route('trashed'))).toEqual({
+      name: 'trashed',
+      query: { search: 'tag:"family"' }
     })
   })
 })

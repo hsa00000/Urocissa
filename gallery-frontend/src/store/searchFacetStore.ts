@@ -1,4 +1,4 @@
-import type { FacetValueInfo } from '@type/types'
+import type { FacetValueInfo, SearchFacets } from '@type/types'
 import { searchFacetsSchema } from '@type/schemas'
 import axios from 'axios'
 import { defineStore } from 'pinia'
@@ -9,6 +9,14 @@ function sortFacetValues(values: readonly FacetValueInfo[]): FacetValueInfo[] {
   return [...values].sort((left, right) => left.value.localeCompare(right.value))
 }
 
+function sortFacets(facets: SearchFacets): SearchFacets {
+  return {
+    tags: sortFacetValues(facets.tags),
+    makes: sortFacetValues(facets.makes),
+    models: sortFacetValues(facets.models)
+  }
+}
+
 export const useSearchFacetStore = defineStore('searchFacets', () => {
   const tags = shallowRef<FacetValueInfo[]>([])
   const makes = shallowRef<FacetValueInfo[]>([])
@@ -16,18 +24,25 @@ export const useSearchFacetStore = defineStore('searchFacets', () => {
   const fetched = shallowRef(false)
   let pendingFetch: Promise<void> | null = null
 
+  async function requestFacets(trashed?: boolean): Promise<SearchFacets> {
+    const response =
+      trashed === undefined
+        ? await axios.get('/get/get-search-facets')
+        : await axios.get('/get/get-search-facets', { params: { trashed } })
+    if (response.status !== 200) {
+      throw new Error('Network response was not ok')
+    }
+
+    return sortFacets(searchFacetsSchema.parse(response.data))
+  }
+
   async function fetchFacets(): Promise<void> {
     if (fetched.value) return
     if (pendingFetch !== null) return pendingFetch
 
     pendingFetch = (async () => {
       await tryWithMessageStore('mainId', async () => {
-        const response = await axios.get('/get/get-search-facets')
-        if (response.status !== 200) {
-          throw new Error('Network response was not ok')
-        }
-
-        const facets = searchFacetsSchema.parse(response.data)
+        const facets = await requestFacets()
         tags.value = sortFacetValues(facets.tags)
         makes.value = sortFacetValues(facets.makes)
         models.value = sortFacetValues(facets.models)
@@ -40,6 +55,10 @@ export const useSearchFacetStore = defineStore('searchFacets', () => {
     } finally {
       pendingFetch = null
     }
+  }
+
+  async function fetchFacetsForTrashState(trashed: boolean): Promise<SearchFacets | undefined> {
+    return tryWithMessageStore('mainId', () => requestFacets(trashed))
   }
 
   function applyTags(nextTags: readonly FacetValueInfo[]): void {
@@ -64,6 +83,7 @@ export const useSearchFacetStore = defineStore('searchFacets', () => {
     models,
     fetched,
     fetchFacets,
+    fetchFacetsForTrashState,
     applyTags,
     addOptimisticTag,
     clearAll
