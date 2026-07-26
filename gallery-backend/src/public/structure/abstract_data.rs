@@ -1,22 +1,15 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs::metadata;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
 use std::time::UNIX_EPOCH;
 
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use rand::RngExt;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::public::constant::VALID_IMAGE_EXTENSIONS;
-
-/// Regex for parsing timestamps from filenames (e.g., `20231225_143052`)
-static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b(\d{4})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})\b").unwrap()
-});
 
 use super::{
     album::AlbumCombined,
@@ -25,6 +18,83 @@ use super::{
     object::{ObjectSchema, ObjectType, next_mutation_timestamp},
     video::{VideoCombined, VideoMetadata},
 };
+
+fn parse_filename_datetime(file_name: &str) -> Option<NaiveDateTime> {
+    let [year, month, day, hour, minute, second] = first_filename_timestamp_parts(file_name)?;
+    let date = NaiveDate::from_ymd_opt(year as i32, month, day)?;
+    let time = NaiveTime::from_hms_opt(hour, minute, second)?;
+    Some(NaiveDateTime::new(date, time))
+}
+
+fn first_filename_timestamp_parts(file_name: &str) -> Option<[u32; 6]> {
+    let bytes = file_name.as_bytes();
+    let mut start = 0;
+    let mut previous_is_word = false;
+    while start < bytes.len() {
+        let byte = bytes[start];
+        if byte.is_ascii() {
+            let is_word = byte.is_ascii_alphanumeric() || byte == b'_';
+            if byte.is_ascii_digit()
+                && !previous_is_word
+                && let Some((parts, end)) = timestamp_parts_at(file_name, start)
+                && word_boundary_after(file_name, end)
+            {
+                return Some(parts);
+            }
+            previous_is_word = is_word;
+            start += 1;
+        } else {
+            let character = file_name[start..].chars().next()?;
+            previous_is_word = regex_syntax::is_word_character(character);
+            start += character.len_utf8();
+        }
+    }
+    None
+}
+
+fn timestamp_parts_at(file_name: &str, start: usize) -> Option<([u32; 6], usize)> {
+    let bytes = file_name.as_bytes();
+    let mut cursor = start;
+    let mut parts = [0_u32; 6];
+    parts[0] = take_ascii_digits(bytes, &mut cursor, 4)?;
+    for part in &mut parts[1..] {
+        if !bytes.get(cursor).is_some_and(u8::is_ascii_digit) {
+            let separator = file_name.get(cursor..)?.chars().next()?;
+            if separator.is_ascii_alphanumeric() {
+                return None;
+            }
+            cursor += separator.len_utf8();
+        }
+        *part = take_ascii_digits(bytes, &mut cursor, 2)?;
+    }
+    Some((parts, cursor))
+}
+
+fn take_ascii_digits(bytes: &[u8], cursor: &mut usize, count: usize) -> Option<u32> {
+    let digits = bytes.get(*cursor..cursor.checked_add(count)?)?;
+    if !digits.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    *cursor += count;
+    Some(
+        digits
+            .iter()
+            .fold(0_u32, |value, digit| value * 10 + u32::from(*digit - b'0')),
+    )
+}
+
+fn word_boundary_after(value: &str, byte_index: usize) -> bool {
+    let Some(&byte) = value.as_bytes().get(byte_index) else {
+        return true;
+    };
+    if byte.is_ascii() {
+        return !byte.is_ascii_alphanumeric() && byte != b'_';
+    }
+    value[byte_index..]
+        .chars()
+        .next()
+        .is_none_or(|character| !regex_syntax::is_word_character(character))
+}
 
 pub fn thumbnail_file_name(hash: &str, cache_version: u32) -> String {
     if cache_version == 0 {
@@ -85,6 +155,235 @@ mod thumbnail_identity_tests {
         ] {
             assert_eq!(parse_thumbnail_stem(&stem), None);
         }
+    }
+}
+
+#[cfg(test)]
+mod filename_timestamp_tests {
+    use std::hint::black_box;
+    use std::sync::LazyLock;
+    use std::time::{Duration, Instant};
+
+    use chrono::TimeZone;
+    use regex::Regex;
+
+    use super::*;
+
+    static LEGACY_FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r"\b(\d{4})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})\b",
+        )
+        .unwrap()
+    });
+
+    fn legacy_parse_filename_datetime(file_name: &str) -> Option<NaiveDateTime> {
+        let captures = LEGACY_FILE_NAME_TIME_REGEX.captures(file_name)?;
+        let year = captures[1].parse::<i32>().ok()?;
+        let month = captures[2].parse::<u32>().ok()?;
+        let day = captures[3].parse::<u32>().ok()?;
+        let hour = captures[4].parse::<u32>().ok()?;
+        let minute = captures[5].parse::<u32>().ok()?;
+        let second = captures[6].parse::<u32>().ok()?;
+        Some(NaiveDateTime::new(
+            NaiveDate::from_ymd_opt(year, month, day)?,
+            NaiveTime::from_hms_opt(hour, minute, second)?,
+        ))
+    }
+
+    #[test]
+    fn allocation_free_filename_parser_matches_legacy_ascii_grammar() {
+        let cases = [
+            "20231225143052.jpg",
+            "IMG-2023-12-25_14-30-52.jpg",
+            "☃2023年12月25日14時30分52.jpg",
+            "prefix 2023 12 25 14 30 52 suffix",
+            "IMG_20231225_143052.jpg",
+            "圖20231225143052.jpg",
+            "20231225143052圖.jpg",
+            "2023--12-25-14-30-52.jpg",
+            "2023a12-25-14-30-52.jpg",
+            "nothing-to-parse.jpg",
+            "20240229112233.jpg",
+            "20230229112233.jpg",
+            "00000101000000.jpg",
+        ];
+        for case in cases {
+            assert_eq!(
+                parse_filename_datetime(case),
+                legacy_parse_filename_datetime(case),
+                "{case}"
+            );
+        }
+
+        let separators = ["", "_", "-", ".", " ", "年", "☃"];
+        let prefixes = ["", "IMG-", "IMG_", "圖", "☃", "x "];
+        let suffixes = [".jpg", "-copy.jpg", "_copy.jpg", "圖.jpg", "☃.jpg"];
+        let mut random = 0x7A17_51A9_2026_0718_u64;
+        for index in 0..10_000_u32 {
+            random = random
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1);
+            let year = 1990 + random as u32 % 60;
+            let month = 1 + (random >> 8) as u32 % 14;
+            let day = 1 + (random >> 16) as u32 % 35;
+            let hour = (random >> 24) as u32 % 27;
+            let minute = (random >> 32) as u32 % 65;
+            let second = (random >> 40) as u32 % 65;
+            let separator = separators[index as usize % separators.len()];
+            let prefix = prefixes[(random as usize >> 5) % prefixes.len()];
+            let suffix = suffixes[(random as usize >> 11) % suffixes.len()];
+            let case = format!(
+                "{prefix}{year:04}{separator}{month:02}{separator}{day:02}{separator}{hour:02}{separator}{minute:02}{separator}{second:02}{suffix}"
+            );
+            assert_eq!(
+                parse_filename_datetime(&case),
+                legacy_parse_filename_datetime(&case),
+                "{case}"
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_first_syntactic_match_blocks_later_filename_match() {
+        let file_name = "20230230120000_then_20230301120000.jpg";
+        assert_eq!(legacy_parse_filename_datetime(file_name), None);
+        assert_eq!(parse_filename_datetime(file_name), None);
+    }
+
+    fn media_with_aliases(aliases: &[(&str, i64, i64)]) -> AbstractData {
+        let id = ArrayString::<64>::from("filename-timestamp-test").unwrap();
+        let mut metadata = ImageMetadata::new(id, 1, 1, 1, "jpg".to_owned());
+        metadata.alias = aliases
+            .iter()
+            .map(|(file, modified, scan_time)| FileModify {
+                file: (*file).to_owned(),
+                modified: *modified,
+                scan_time: *scan_time,
+            })
+            .collect();
+        AbstractData::Image(ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata,
+        })
+    }
+
+    #[test]
+    fn filename_alias_future_and_priority_semantics_are_preserved() {
+        let mut media = media_with_aliases(&[
+            ("C:/gallery/20200102_030405.jpg", 900, 100),
+            ("C:/gallery/20211231_235959.jpg", 800, 200),
+        ]);
+        let expected_filename = chrono::Local
+            .from_local_datetime(
+                &NaiveDate::from_ymd_opt(2021, 12, 31)
+                    .unwrap()
+                    .and_hms_opt(23, 59, 59)
+                    .unwrap(),
+            )
+            .unwrap()
+            .timestamp_millis();
+        assert_eq!(media.compute_timestamp(&["filename"]), expected_filename);
+        assert_eq!(media.compute_timestamp(&["scan_time"]), 200);
+        assert_eq!(media.compute_timestamp(&["modified"]), 800);
+
+        media.exif_vec_mut().unwrap().insert(
+            "DateTimeOriginal".to_owned(),
+            "2019-02-03 04:05:06".to_owned(),
+        );
+        let expected_exif = chrono::Local
+            .from_local_datetime(
+                &NaiveDate::from_ymd_opt(2019, 2, 3)
+                    .unwrap()
+                    .and_hms_opt(4, 5, 6)
+                    .unwrap(),
+            )
+            .unwrap()
+            .timestamp_millis();
+        assert_eq!(
+            media.compute_timestamp(&["DateTimeOriginal", "filename"]),
+            expected_exif
+        );
+
+        let future = media_with_aliases(&[("C:/gallery/99991231_235959.jpg", 300, 400)]);
+        assert_eq!(future.compute_timestamp(&["filename", "scan_time"]), 400);
+        let invalid_first = media_with_aliases(&[(
+            "C:/gallery/20230230120000_then_20230301120000.jpg",
+            500,
+            600,
+        )]);
+        assert_eq!(
+            invalid_first.compute_timestamp(&["filename", "modified"]),
+            500
+        );
+    }
+
+    fn median(mut samples: Vec<Duration>) -> Duration {
+        samples.sort_unstable();
+        samples[samples.len() / 2]
+    }
+
+    fn measure<T>(mut operation: impl FnMut() -> T) -> Duration {
+        for _ in 0..2 {
+            black_box(operation());
+        }
+        median(
+            (0..9)
+                .map(|_| {
+                    let started = Instant::now();
+                    black_box(operation());
+                    started.elapsed()
+                })
+                .collect(),
+        )
+    }
+
+    #[test]
+    #[ignore = "local 1M filename timestamp parser microbenchmark"]
+    fn benchmark_million_fixture_filename_timestamps() {
+        const ITEM_COUNT: usize = 1_000_000;
+        let fixtures = (0..4_096_u64)
+            .map(|index| {
+                if index % 16 == 0 {
+                    format!(
+                        "IMG-2023-{:02}-{:02}_{:02}-{:02}-{:02}.jpg",
+                        1 + index % 12,
+                        1 + index % 28,
+                        index % 24,
+                        index % 60,
+                        (index * 7) % 60
+                    )
+                } else {
+                    let value = index.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                    format!("{value:016x}{value:016x}{value:016x}{value:016x}.jpg")
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let legacy = measure(|| {
+            (0..ITEM_COUNT).fold(0_usize, |count, index| {
+                count
+                    + usize::from(
+                        legacy_parse_filename_datetime(black_box(
+                            &fixtures[index % fixtures.len()],
+                        ))
+                        .is_some(),
+                    )
+            })
+        });
+        let optimized = measure(|| {
+            (0..ITEM_COUNT).fold(0_usize, |count, index| {
+                count
+                    + usize::from(
+                        parse_filename_datetime(black_box(&fixtures[index % fixtures.len()]))
+                            .is_some(),
+                    )
+            })
+        });
+        eprintln!(
+            "filename timestamp legacy={legacy:?} optimized={optimized:?} speedup={:.2}x",
+            legacy.as_secs_f64() / optimized.as_secs_f64()
+        );
+        assert!(optimized < legacy);
     }
 }
 
@@ -216,24 +515,10 @@ impl AbstractData {
                     let mut max_time: Option<NaiveDateTime> = None;
 
                     for file_modify in alias {
-                        let path = PathBuf::from(&file_modify.file);
-
-                        if let Some(file_name) = path.file_name()
+                        if let Some(file_name) = Path::new(&file_modify.file).file_name()
                             && let Some(file_name_str) = file_name.to_str()
-                            && let Some(caps) = FILE_NAME_TIME_REGEX.captures(file_name_str)
-                            && let (Ok(year), Ok(month), Ok(day), Ok(hour), Ok(minute), Ok(second)) = (
-                                caps[1].parse::<i32>(),
-                                caps[2].parse::<u32>(),
-                                caps[3].parse::<u32>(),
-                                caps[4].parse::<u32>(),
-                                caps[5].parse::<u32>(),
-                                caps[6].parse::<u32>(),
-                            )
-                            && let Some(date) = NaiveDate::from_ymd_opt(year, month, day)
-                            && let Some(time) = NaiveTime::from_hms_opt(hour, minute, second)
+                            && let Some(datetime) = parse_filename_datetime(file_name_str)
                         {
-                            let datetime = NaiveDateTime::new(date, time);
-
                             if datetime <= now_time {
                                 max_time = Some(max_time.map_or(datetime, |t| t.max(datetime)));
                             }

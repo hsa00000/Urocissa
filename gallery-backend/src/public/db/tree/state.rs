@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::hash::{BuildHasherDefault, Hasher};
 use std::iter::FusedIterator;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, LazyLock};
@@ -171,20 +172,54 @@ impl<T> RecordArena<T> {
 }
 
 #[derive(Debug, Default)]
+struct U64IdentityHasher(u64);
+
+impl Hasher for U64IdentityHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        // HashMap's u64 key implementation calls `write_u64`. Keep a
+        // deterministic fallback for completeness without weakening that
+        // identity fast path.
+        self.0 = bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x100_0000_01b3)
+        });
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = value;
+    }
+}
+
+type FingerprintMap<V> = HashMap<u64, V, BuildHasherDefault<U64IdentityHasher>>;
+
+#[derive(Debug, Default)]
 pub struct IdIndex {
-    primary: HashMap<u64, u32>,
-    collisions: HashMap<u64, Vec<u32>>,
+    primary: FingerprintMap<u32>,
+    collisions: FingerprintMap<Vec<u32>>,
 }
 
 impl IdIndex {
     fn with_record_capacity(record_count: usize) -> Self {
         Self {
-            primary: HashMap::with_capacity(record_count),
-            collisions: HashMap::new(),
+            primary: FingerprintMap::with_capacity_and_hasher(
+                record_count,
+                BuildHasherDefault::default(),
+            ),
+            collisions: FingerprintMap::default(),
         }
     }
 
     fn fingerprint(id: &str) -> u64 {
+        if let Some(fingerprint) = canonical_hex_fingerprint(id) {
+            return fingerprint;
+        }
+        Self::legacy_fingerprint(id)
+    }
+
+    fn legacy_fingerprint(id: &str) -> u64 {
         let bytes = blake3::hash(id.as_bytes());
         u64::from_le_bytes(bytes.as_bytes()[..8].try_into().expect("eight-byte slice"))
     }
@@ -280,6 +315,58 @@ impl IdIndex {
                 .map(|bucket| bucket.capacity() * std::mem::size_of::<u32>())
                 .sum::<usize>()
     }
+}
+
+fn canonical_hex_fingerprint(id: &str) -> Option<u64> {
+    let bytes: &[u8; 64] = id.as_bytes().try_into().ok()?;
+    if !is_canonical_lower_hex(bytes) {
+        return None;
+    }
+    Some(bytes[..16].iter().copied().fold(0_u64, |value, byte| {
+        let nibble = (byte & 0x0f) + (byte >> 6) * 9;
+        (value << 4) | u64::from(nibble)
+    }))
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn is_canonical_lower_hex(bytes: &[u8; 64]) -> bool {
+    use std::arch::x86_64::{
+        __m128i, _mm_and_si128, _mm_cmpgt_epi8, _mm_loadu_si128, _mm_movemask_epi8, _mm_or_si128,
+        _mm_set1_epi8,
+    };
+
+    // SAFETY: x86-64 guarantees SSE2. Each unaligned load stays within the
+    // supplied 64-byte array, and these intrinsics do not mutate memory.
+    unsafe {
+        let slash = _mm_set1_epi8(b'/' as i8);
+        let colon = _mm_set1_epi8(b':' as i8);
+        let backtick = _mm_set1_epi8(b'`' as i8);
+        let g = _mm_set1_epi8(b'g' as i8);
+        for offset in [0, 16, 32, 48] {
+            let characters = _mm_loadu_si128(bytes.as_ptr().add(offset).cast::<__m128i>());
+            let decimal = _mm_and_si128(
+                _mm_cmpgt_epi8(characters, slash),
+                _mm_cmpgt_epi8(colon, characters),
+            );
+            let lower_hex = _mm_and_si128(
+                _mm_cmpgt_epi8(characters, backtick),
+                _mm_cmpgt_epi8(g, characters),
+            );
+            if _mm_movemask_epi8(_mm_or_si128(decimal, lower_hex)) != 0xffff {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+#[inline]
+fn is_canonical_lower_hex(bytes: &[u8; 64]) -> bool {
+    bytes
+        .iter()
+        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -4025,6 +4112,114 @@ mod tests {
             index.primary.get(&wrong_fingerprint).copied(),
             Some(slot.index())
         );
+    }
+
+    #[test]
+    fn canonical_id_fingerprint_uses_hex_prefix_and_noncanonical_falls_back() {
+        let canonical = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        assert_eq!(
+            canonical_hex_fingerprint(canonical),
+            Some(0x0123_4567_89ab_cdef)
+        );
+        assert_eq!(IdIndex::fingerprint(canonical), 0x0123_4567_89ab_cdef);
+
+        for noncanonical in [
+            "short-id",
+            "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
+            "g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg",
+        ] {
+            assert_eq!(canonical_hex_fingerprint(noncanonical), None);
+            assert_eq!(
+                IdIndex::fingerprint(noncanonical),
+                IdIndex::legacy_fingerprint(noncanonical)
+            );
+        }
+
+        let mut hasher = U64IdentityHasher::default();
+        hasher.write_u64(0xDEAD_BEEF_0123_4567);
+        assert_eq!(hasher.finish(), 0xDEAD_BEEF_0123_4567);
+    }
+
+    #[test]
+    fn canonical_prefix_collision_still_verifies_full_id_and_collapses() {
+        let first_id = "0123456789abcdef000000000000000000000000000000000000000000000000";
+        let second_id = "0123456789abcdef111111111111111111111111111111111111111111111111";
+        assert_eq!(
+            IdIndex::fingerprint(first_id),
+            IdIndex::fingerprint(second_id)
+        );
+
+        let mut arena = RecordArena::default();
+        let first = arena.allocate(cache_record(first_id, 1));
+        let second = arena.allocate(cache_record(second_id, 2));
+        let mut index = IdIndex::default();
+        index.insert(first_id, first);
+        index.insert(second_id, second);
+
+        assert_eq!(index.find(first_id, &arena), Some(first));
+        assert_eq!(index.find(second_id, &arena), Some(second));
+        assert_eq!(index.collisions.len(), 1);
+        assert!(index.remove(second_id, second, &arena));
+        assert!(index.collisions.is_empty());
+        assert_eq!(index.find(first_id, &arena), Some(first));
+        assert_eq!(index.find(second_id, &arena), None);
+    }
+
+    #[cfg(feature = "performance-test")]
+    #[test]
+    #[ignore = "local 1M canonical ID fingerprint microbenchmark"]
+    fn benchmark_million_canonical_id_fingerprints() {
+        use std::hint::black_box;
+        use std::time::{Duration, Instant};
+
+        const ITEM_COUNT: usize = 1_000_000;
+
+        fn median(mut samples: Vec<Duration>) -> Duration {
+            samples.sort_unstable();
+            samples[samples.len() / 2]
+        }
+
+        fn measure<T>(mut operation: impl FnMut() -> T) -> Duration {
+            for _ in 0..2 {
+                black_box(operation());
+            }
+            median(
+                (0..9)
+                    .map(|_| {
+                        let started = Instant::now();
+                        black_box(operation());
+                        started.elapsed()
+                    })
+                    .collect(),
+            )
+        }
+
+        let ids = (0..4_096_u64)
+            .map(|value| {
+                let mixed = value.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                format!("{value:016x}{mixed:016x}{value:016x}{mixed:016x}")
+            })
+            .collect::<Vec<_>>();
+        assert!(ids.iter().all(|id| id.len() == 64));
+
+        let legacy = measure(|| {
+            (0..ITEM_COUNT).fold(0_u64, |checksum, index| {
+                checksum.wrapping_add(IdIndex::legacy_fingerprint(black_box(
+                    &ids[index % ids.len()],
+                )))
+            })
+        });
+        let optimized = measure(|| {
+            (0..ITEM_COUNT).fold(0_u64, |checksum, index| {
+                checksum.wrapping_add(IdIndex::fingerprint(black_box(&ids[index % ids.len()])))
+            })
+        });
+        eprintln!(
+            "canonical ID fingerprint legacy={legacy:?} optimized={optimized:?} speedup={:.2}x",
+            legacy.as_secs_f64() / optimized.as_secs_f64()
+        );
+        assert!(optimized < legacy);
     }
 
     #[cfg(feature = "performance-test")]

@@ -4948,6 +4948,7 @@ dependencies = [
  "rayon",
  "redb",
  "regex",
+ "regex-syntax",
  "reqwest",
  "rocket",
  "rocket_seek_stream",
