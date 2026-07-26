@@ -7,7 +7,7 @@ macro_rules! perf_timing {
     ($operation:expr, $start:expr, $($arg:tt)*) => {{
         let elapsed = $start.elapsed();
         let duration = format!("{:?}", elapsed);
-        let duration_ns = elapsed.as_nanos().min(u64::MAX as u128) as u64;
+        let duration_ns = u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX);
         log::info!(
             operation = $operation,
             duration_ns = duration_ns,
@@ -25,7 +25,7 @@ macro_rules! perf_duration {
     ($operation:expr, $elapsed:expr, $($arg:tt)*) => {{
         let elapsed = $elapsed;
         let duration = format!("{:?}", elapsed);
-        let duration_ns = elapsed.as_nanos().min(u64::MAX as u128) as u64;
+        let duration_ns = u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX);
         log::info!(
             operation = $operation,
             duration_ns = duration_ns,

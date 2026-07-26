@@ -137,6 +137,9 @@ fn snapshot_target_set(
     })
 }
 
+// Owning this small view keeps the Redb value guard visibly scoped to the
+// complete bulk resolution operation.
+#[allow(clippy::needless_pass_by_value)]
 fn resolve_pinned_selection(
     snapshot: PinnedSnapshotView<'_>,
     timestamp: i64,

@@ -346,6 +346,7 @@ impl From<&AbstractData> for V6AbstractData {
 }
 
 impl From<AbstractData> for V6AbstractData {
+    #[allow(clippy::too_many_lines)]
     fn from(value: AbstractData) -> Self {
         match value {
             AbstractData::Image(ImageCombined { object, metadata }) => {

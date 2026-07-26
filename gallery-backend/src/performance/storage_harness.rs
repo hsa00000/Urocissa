@@ -308,7 +308,7 @@ fn benchmark_v6(path: &Path, expected: u64, sample: usize) -> Result<FormatSampl
     let build_started = Instant::now();
     let records = reader
         .values()?
-        .map(|entry| entry.map(|value| value.into_value()));
+        .map(|entry| entry.map(crate::storage::store::RecordValue::into_value));
     let state = TreeState::try_from_records_with_capacity(
         records,
         usize::try_from(expected).context("V6 fixture count exceeds usize")?,

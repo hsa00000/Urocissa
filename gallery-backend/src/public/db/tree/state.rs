@@ -268,9 +268,9 @@ impl IdIndex {
         slot_ref: SlotRef,
         arena: &RecordArena<CacheRecord>,
     ) -> bool {
-        if !arena
+        if arena
             .get(slot_ref)
-            .is_some_and(|record| record.id.as_str() == id)
+            .is_none_or(|record| record.id.as_str() != id)
         {
             return false;
         }
@@ -330,6 +330,7 @@ fn canonical_hex_fingerprint(id: &str) -> Option<u64> {
 
 #[cfg(target_arch = "x86_64")]
 #[inline]
+#[allow(clippy::cast_ptr_alignment)]
 fn is_canonical_lower_hex(bytes: &[u8; 64]) -> bool {
     use std::arch::x86_64::{
         __m128i, _mm_and_si128, _mm_cmpgt_epi8, _mm_loadu_si128, _mm_movemask_epi8, _mm_or_si128,
@@ -339,10 +340,10 @@ fn is_canonical_lower_hex(bytes: &[u8; 64]) -> bool {
     // SAFETY: x86-64 guarantees SSE2. Each unaligned load stays within the
     // supplied 64-byte array, and these intrinsics do not mutate memory.
     unsafe {
-        let slash = _mm_set1_epi8(b'/' as i8);
-        let colon = _mm_set1_epi8(b':' as i8);
-        let backtick = _mm_set1_epi8(b'`' as i8);
-        let g = _mm_set1_epi8(b'g' as i8);
+        let slash = _mm_set1_epi8(b'/'.cast_signed());
+        let colon = _mm_set1_epi8(b':'.cast_signed());
+        let backtick = _mm_set1_epi8(b'`'.cast_signed());
+        let g = _mm_set1_epi8(b'g'.cast_signed());
         for offset in [0, 16, 32, 48] {
             let characters = _mm_loadu_si128(bytes.as_ptr().add(offset).cast::<__m128i>());
             let decimal = _mm_and_si128(
@@ -371,10 +372,6 @@ fn is_canonical_lower_hex(bytes: &[u8; 64]) -> bool {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ExtId(u32);
-
-impl ExtId {
-    const UNINTERNED: Self = Self(0);
-}
 
 #[derive(Debug, Default)]
 struct ExtensionInterner {
@@ -565,6 +562,115 @@ impl CacheRecord {
                 .iter()
                 .map(String::capacity)
                 .sum::<usize>()
+    }
+}
+
+#[derive(Clone, Copy)]
+struct AlbumMemberRef<'a> {
+    id: ArrayString<64>,
+    object_type: ObjectType,
+    timestamp: i64,
+    size: u64,
+    thumbhash: Option<&'a [u8]>,
+    cache_version: u32,
+}
+
+impl<'a> AlbumMemberRef<'a> {
+    fn from_cache(record: &'a CacheRecord) -> Self {
+        Self {
+            id: record.id,
+            object_type: record.object_type,
+            timestamp: record.timestamp,
+            size: record.size,
+            thumbhash: record.thumbhash.as_deref(),
+            cache_version: record.cache_version,
+        }
+    }
+
+    fn from_abstract_data(data: &'a AbstractData, timestamp: i64) -> Self {
+        let (object, object_type, size) = match data {
+            AbstractData::Image(image) => (&image.object, ObjectType::Image, image.metadata.size),
+            AbstractData::Video(video) => (&video.object, ObjectType::Video, video.metadata.size),
+            AbstractData::Album(album) => (&album.object, ObjectType::Album, 0),
+        };
+        crate::public::structure::object::observe_mutation_timestamp(object.update_at);
+        Self {
+            id: object.id,
+            object_type,
+            timestamp,
+            size,
+            thumbhash: object.thumbhash.as_deref(),
+            cache_version: object.cache_version,
+        }
+    }
+}
+
+struct AlbumAccumulator<'a> {
+    current_cover: Option<ArrayString<64>>,
+    item_count: usize,
+    item_size: u64,
+    start_time: Option<i64>,
+    end_time: Option<i64>,
+    current_cover_member: Option<AlbumMemberRef<'a>>,
+    newest: Option<AlbumMemberRef<'a>>,
+}
+
+impl<'a> AlbumAccumulator<'a> {
+    fn new(current_cover: Option<ArrayString<64>>) -> Self {
+        Self {
+            current_cover,
+            item_count: 0,
+            item_size: 0,
+            start_time: None,
+            end_time: None,
+            current_cover_member: None,
+            newest: None,
+        }
+    }
+
+    fn push(&mut self, member: AlbumMemberRef<'a>) {
+        if member.object_type == ObjectType::Album {
+            return;
+        }
+        self.item_count += 1;
+        self.item_size = self.item_size.saturating_add(member.size);
+        self.start_time = Some(
+            self.start_time
+                .map_or(member.timestamp, |value| value.min(member.timestamp)),
+        );
+        self.end_time = Some(
+            self.end_time
+                .map_or(member.timestamp, |value| value.max(member.timestamp)),
+        );
+        if self.current_cover == Some(member.id) {
+            self.current_cover_member = Some(member);
+        }
+        if self.newest.is_none_or(|candidate| {
+            member.timestamp > candidate.timestamp
+                || (member.timestamp == candidate.timestamp && member.id < candidate.id)
+        }) {
+            self.newest = Some(member);
+        }
+    }
+
+    fn finish(self, mut album: AlbumCombined, changed_at: i64) -> AlbumCombined {
+        album.metadata.item_count = self.item_count;
+        album.metadata.item_size = self.item_size;
+        album.metadata.start_time = self.start_time;
+        album.metadata.end_time = self.end_time;
+        album.metadata.last_modified_time = changed_at;
+        album.object.touch_update_at(changed_at);
+
+        if self.item_count == 0 {
+            album.metadata.cover = None;
+            album.object.thumbhash = None;
+            album.object.cache_version = 0;
+        } else if let Some(member) = self.current_cover_member.or(self.newest) {
+            album.metadata.cover = Some(member.id);
+            album.object.thumbhash = member.thumbhash.map(<[u8]>::to_vec);
+            album.object.cache_version = member.cache_version;
+        }
+        album
     }
 }
 
@@ -1382,7 +1488,8 @@ impl CompactMembershipCounts {
             self.values[ordinal as usize] = u16::MAX;
             self.overflow.insert(ordinal, count);
         } else {
-            self.values[ordinal as usize] = count as u16;
+            self.values[ordinal as usize] =
+                u16::try_from(count).expect("compact count fits after overflow check");
             self.overflow.remove(&ordinal);
         }
     }
@@ -2054,6 +2161,9 @@ impl TreeState {
         state.finish_unsorted_order(order)
     }
 
+    // Compatibility constructor retained for callers that do not have a
+    // trustworthy record-count hint.
+    #[allow(dead_code)]
     pub fn try_from_records<E>(
         records: impl IntoIterator<Item = Result<AbstractData, E>>,
     ) -> Result<Self, E> {
@@ -2716,16 +2826,8 @@ impl TreeState {
         excluded: &TargetSet,
         changed_at: i64,
     ) -> Option<AlbumCombined> {
-        let mut album = self.albums.get(&album_id)?.clone();
-        let current_cover = album.metadata.cover;
-        let mut item_count = 0_usize;
-        let mut item_size = 0_u64;
-        let mut start_time = None::<i64>;
-        let mut end_time = None::<i64>;
-        let mut cover_is_member = false;
-        let mut cover_thumbhash = None;
-        let mut cover_cache_version = 0;
-        let mut newest = None::<&CacheRecord>;
+        let album = self.albums.get(&album_id)?.clone();
+        let mut accumulator = AlbumAccumulator::new(album.metadata.cover);
         for record in self
             .query
             .albums
@@ -2736,44 +2838,10 @@ impl TreeState {
             .filter_map(|ordinal| self.slot_for_ordinal(ordinal))
             .filter(|slot_ref| !excluded.contains(*slot_ref))
             .filter_map(|slot_ref| self.get(slot_ref))
-            .filter(|record| record.object_type != ObjectType::Album)
         {
-            item_count += 1;
-            item_size = item_size.saturating_add(record.size);
-            start_time =
-                Some(start_time.map_or(record.timestamp, |value| value.min(record.timestamp)));
-            end_time = Some(end_time.map_or(record.timestamp, |value| value.max(record.timestamp)));
-            if current_cover == Some(record.id) {
-                cover_is_member = true;
-                cover_thumbhash = record.thumbhash_vec();
-                cover_cache_version = record.cache_version;
-            }
-            if newest.is_none_or(|candidate| {
-                record.timestamp > candidate.timestamp
-                    || (record.timestamp == candidate.timestamp && record.id < candidate.id)
-            }) {
-                newest = Some(record);
-            }
+            accumulator.push(AlbumMemberRef::from_cache(record));
         }
-        album.metadata.item_count = item_count;
-        album.metadata.item_size = item_size;
-        album.metadata.start_time = start_time;
-        album.metadata.end_time = end_time;
-        album.metadata.last_modified_time = changed_at;
-        album.object.touch_update_at(changed_at);
-        if item_count == 0 {
-            album.metadata.cover = None;
-            album.object.thumbhash = None;
-            album.object.cache_version = 0;
-        } else if cover_is_member {
-            album.object.thumbhash = cover_thumbhash;
-            album.object.cache_version = cover_cache_version;
-        } else if let Some(record) = newest {
-            album.metadata.cover = Some(record.id);
-            album.object.thumbhash = record.thumbhash_vec();
-            album.object.cache_version = record.cache_version;
-        }
-        Some(album)
+        Some(accumulator.finish(album, changed_at))
     }
 
     /// Recalculate an album as if one stable slot already contained `data`.
@@ -2786,13 +2854,10 @@ impl TreeState {
         data: &AbstractData,
         changed_at: i64,
     ) -> Option<AlbumCombined> {
-        let mut album = self.albums.get(&album_id)?.clone();
-        let current_cover = album.metadata.cover;
-        let override_record = CacheRecord::from_abstract_data(
+        let album = self.albums.get(&album_id)?.clone();
+        let override_record = AlbumMemberRef::from_abstract_data(
             data,
             data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST),
-            // Aggregate-only records never participate in expression matching.
-            ExtId::UNINTERNED,
         );
         let override_is_member = data
             .albums()
@@ -2803,7 +2868,7 @@ impl TreeState {
             AbstractData::Album(album) => album.object.is_trashed,
         };
         let mut saw_override = false;
-        let mut records = Vec::<CacheRecord>::new();
+        let mut accumulator = AlbumAccumulator::new(album.metadata.cover);
         for slot_ref in self
             .query
             .albums
@@ -2815,7 +2880,7 @@ impl TreeState {
             if slot_ref == override_slot {
                 saw_override = true;
                 if override_is_member && !override_is_trashed {
-                    records.push(override_record.clone());
+                    accumulator.push(override_record);
                 }
                 continue;
             }
@@ -2823,62 +2888,13 @@ impl TreeState {
                 continue;
             }
             if let Some(record) = self.get(slot_ref) {
-                records.push(record.clone());
+                accumulator.push(AlbumMemberRef::from_cache(record));
             }
         }
         if override_is_member && !override_is_trashed && !saw_override {
-            records.push(override_record);
+            accumulator.push(override_record);
         }
-        let mut item_count = 0_usize;
-        let mut item_size = 0_u64;
-        let mut start_time = None::<i64>;
-        let mut end_time = None::<i64>;
-        let mut cover_is_member = false;
-        let mut cover_thumbhash = None;
-        let mut cover_cache_version = 0;
-        let mut newest = None::<CacheRecord>;
-
-        for record in &records {
-            if record.object_type == ObjectType::Album {
-                continue;
-            }
-            item_count += 1;
-            item_size = item_size.saturating_add(record.size);
-            start_time =
-                Some(start_time.map_or(record.timestamp, |value| value.min(record.timestamp)));
-            end_time = Some(end_time.map_or(record.timestamp, |value| value.max(record.timestamp)));
-            if current_cover == Some(record.id) {
-                cover_is_member = true;
-                cover_thumbhash = record.thumbhash_vec();
-                cover_cache_version = record.cache_version;
-            }
-            if newest.as_ref().is_none_or(|candidate| {
-                record.timestamp > candidate.timestamp
-                    || (record.timestamp == candidate.timestamp && record.id < candidate.id)
-            }) {
-                newest = Some(record.clone());
-            }
-        }
-
-        album.metadata.item_count = item_count;
-        album.metadata.item_size = item_size;
-        album.metadata.start_time = start_time;
-        album.metadata.end_time = end_time;
-        album.metadata.last_modified_time = changed_at;
-        album.object.touch_update_at(changed_at);
-        if item_count == 0 {
-            album.metadata.cover = None;
-            album.object.thumbhash = None;
-            album.object.cache_version = 0;
-        } else if cover_is_member {
-            album.object.thumbhash = cover_thumbhash;
-            album.object.cache_version = cover_cache_version;
-        } else if let Some(record) = newest {
-            album.metadata.cover = Some(record.id);
-            album.object.thumbhash = record.thumbhash.map(Vec::from);
-            album.object.cache_version = record.cache_version;
-        }
-        Some(album)
+        Some(accumulator.finish(album, changed_at))
     }
 }
 
@@ -3172,9 +3188,137 @@ mod tests {
             size: 1,
             thumbhash: None,
             cache_version: 0,
-            ext_id: ExtId::UNINTERNED,
+            ext_id: ExtId::default(),
             path_aliases: Vec::new(),
         }
+    }
+
+    fn naive_finish_album(
+        mut album: AlbumCombined,
+        records: &[CacheRecord],
+        changed_at: i64,
+    ) -> AlbumCombined {
+        let current_cover = album.metadata.cover;
+        let mut item_count = 0_usize;
+        let mut item_size = 0_u64;
+        let mut start_time = None::<i64>;
+        let mut end_time = None::<i64>;
+        let mut cover = None::<&CacheRecord>;
+        let mut newest = None::<&CacheRecord>;
+        for record in records
+            .iter()
+            .filter(|record| record.object_type != ObjectType::Album)
+        {
+            item_count += 1;
+            item_size = item_size.saturating_add(record.size);
+            start_time =
+                Some(start_time.map_or(record.timestamp, |value| value.min(record.timestamp)));
+            end_time = Some(end_time.map_or(record.timestamp, |value| value.max(record.timestamp)));
+            if current_cover == Some(record.id) {
+                cover = Some(record);
+            }
+            if newest.is_none_or(|candidate| {
+                record.timestamp > candidate.timestamp
+                    || (record.timestamp == candidate.timestamp && record.id < candidate.id)
+            }) {
+                newest = Some(record);
+            }
+        }
+
+        album.metadata.item_count = item_count;
+        album.metadata.item_size = item_size;
+        album.metadata.start_time = start_time;
+        album.metadata.end_time = end_time;
+        album.metadata.last_modified_time = changed_at;
+        album.object.touch_update_at(changed_at);
+        if item_count == 0 {
+            album.metadata.cover = None;
+            album.object.thumbhash = None;
+            album.object.cache_version = 0;
+        } else if let Some(record) = cover.or(newest) {
+            album.metadata.cover = Some(record.id);
+            album.object.thumbhash = record.thumbhash_vec();
+            album.object.cache_version = record.cache_version;
+        }
+        album
+    }
+
+    fn naive_album_aggregate_excluding(
+        state: &TreeState,
+        album_id: ArrayString<64>,
+        excluded: &TargetSet,
+        changed_at: i64,
+    ) -> Option<AlbumCombined> {
+        let album = state.albums.get(&album_id)?.clone();
+        let records = state
+            .query
+            .albums
+            .get(&album_id)
+            .into_iter()
+            .flat_map(|members| members.iter())
+            .filter(|ordinal| !state.query.trashed.contains(*ordinal))
+            .filter_map(|ordinal| state.slot_for_ordinal(ordinal))
+            .filter(|slot_ref| !excluded.contains(*slot_ref))
+            .filter_map(|slot_ref| state.get(slot_ref))
+            .cloned()
+            .collect::<Vec<_>>();
+        Some(naive_finish_album(album, &records, changed_at))
+    }
+
+    fn naive_album_aggregate_with_override(
+        state: &TreeState,
+        album_id: ArrayString<64>,
+        override_slot: SlotRef,
+        data: &AbstractData,
+        changed_at: i64,
+    ) -> Option<AlbumCombined> {
+        let album = state.albums.get(&album_id)?.clone();
+        let override_record = CacheRecord::from_abstract_data(
+            data,
+            data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST),
+            ExtId::default(),
+        );
+        let override_is_member = data
+            .albums()
+            .is_some_and(|albums| albums.contains(&album_id));
+        let override_is_trashed = match data {
+            AbstractData::Image(image) => image.object.is_trashed,
+            AbstractData::Video(video) => video.object.is_trashed,
+            AbstractData::Album(album) => album.object.is_trashed,
+        };
+        let mut saw_override = false;
+        let mut records = Vec::<CacheRecord>::new();
+        for slot_ref in state
+            .query
+            .albums
+            .get(&album_id)
+            .into_iter()
+            .flat_map(|members| members.iter())
+            .filter_map(|ordinal| state.slot_for_ordinal(ordinal))
+        {
+            if slot_ref == override_slot {
+                saw_override = true;
+                if override_is_member && !override_is_trashed {
+                    records.push(override_record.clone());
+                }
+                continue;
+            }
+            if state.query.trashed.contains(slot_ref.index()) {
+                continue;
+            }
+            if let Some(record) = state.get(slot_ref) {
+                records.push(record.clone());
+            }
+        }
+        if override_is_member && !override_is_trashed && !saw_override {
+            records.push(override_record);
+        }
+        Some(naive_finish_album(album, &records, changed_at))
+    }
+
+    fn assert_album_eq(left: &AlbumCombined, right: &AlbumCombined) {
+        assert_eq!(left.object, right.object);
+        assert_eq!(left.metadata, right.metadata);
     }
 
     #[test]
@@ -3207,7 +3351,7 @@ mod tests {
         let path_pointer = data.alias()[0].file.as_ptr();
         let thumbhash_pointer = data.thumbhash().unwrap().as_ptr();
 
-        let (record, album) = CacheRecord::from_abstract_data_owned(data, 123, ExtId::UNINTERNED);
+        let (record, album) = CacheRecord::from_abstract_data_owned(data, 123, ExtId::default());
 
         assert!(album.is_none());
         assert_eq!(record.path_aliases[0].as_ptr(), path_pointer);
@@ -3300,7 +3444,7 @@ mod tests {
     #[test]
     fn ordinal_set_random_bulk_union_and_difference_match_reference_set() {
         let universe = 4_096;
-        let mut random = 0xB01D_5E7_u64;
+        let mut random = 0x0B01_D5E7_u64;
         let mut actual = OrdinalSet::default();
         let mut expected = BTreeSet::new();
         for _ in 0..250 {
@@ -3309,7 +3453,7 @@ mod tests {
                 random = random
                     .wrapping_mul(2_862_933_555_777_941_757)
                     .wrapping_add(3_037_000_493);
-                values.insert((random % universe as u64) as u32);
+                values.insert(u32::try_from(random % u64::try_from(universe).unwrap()).unwrap());
             }
             let operand = OrdinalSet::from_ordinals(values.iter().copied(), universe);
             let mut changed = Vec::new();
@@ -3635,6 +3779,319 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
+    fn streaming_album_aggregates_match_randomized_naive_oracle() {
+        let album_id = ArrayString::<64>::from("album-streaming-oracle").unwrap();
+        let media = (0..96_u64)
+            .map(|index| {
+                let id =
+                    ArrayString::<64>::from(format!("oracle-media-{index:03}").as_str()).unwrap();
+                let mut object = ObjectSchema::new(
+                    id,
+                    if index % 2 == 0 {
+                        ObjectType::Image
+                    } else {
+                        ObjectType::Video
+                    },
+                );
+                object.is_trashed = index % 7 == 0;
+                object.cache_version = u32::try_from(index).unwrap();
+                if index % 4 == 0 {
+                    object.thumbhash = Some(vec![u8::try_from(index).unwrap(), 0xA5]);
+                }
+                let size = if index == 5 {
+                    u64::MAX - 3
+                } else {
+                    index * 17 + 1
+                };
+                let date = format!(
+                    "2020-{:02}-{:02} {:02}:{:02}:{:02}",
+                    1 + index % 12,
+                    1 + index % 28,
+                    index % 6,
+                    index % 10,
+                    index % 10
+                );
+                if index % 2 == 0 {
+                    let mut metadata = crate::public::structure::image::ImageMetadata::new(
+                        id,
+                        size,
+                        10,
+                        20,
+                        "jpg".to_owned(),
+                    );
+                    if index % 3 != 0 {
+                        metadata.albums.insert(album_id);
+                    }
+                    metadata
+                        .exif_vec
+                        .insert("DateTimeOriginal".to_owned(), date);
+                    AbstractData::Image(crate::public::structure::image::ImageCombined {
+                        object,
+                        metadata,
+                    })
+                } else {
+                    let mut metadata = crate::public::structure::video::VideoMetadata::new(
+                        id,
+                        size,
+                        10,
+                        20,
+                        "mp4".to_owned(),
+                    );
+                    if index % 3 != 0 {
+                        metadata.albums.insert(album_id);
+                    }
+                    metadata
+                        .exif_vec
+                        .insert("DateTimeOriginal".to_owned(), date);
+                    AbstractData::Video(crate::public::structure::video::VideoCombined {
+                        object,
+                        metadata,
+                    })
+                }
+            })
+            .collect::<Vec<_>>();
+        let album = Album::new(album_id, None).into_abstract_data();
+        let mut records = media.clone();
+        records.push(album);
+        let mut state = TreeState::from_records(records);
+        let slots = media
+            .iter()
+            .map(|record| state.find(record.hash().as_str()).unwrap())
+            .collect::<Vec<_>>();
+
+        // A malformed self-membership remains excluded just like any other
+        // Album object; this also exercises the accumulator's type guard.
+        let album_slot = state.find(album_id.as_str()).unwrap();
+        let universe = state.arena.capacity();
+        state
+            .query
+            .albums
+            .entry(album_id)
+            .or_default()
+            .insert(album_slot.index(), universe);
+
+        let missing_cover = ArrayString::<64>::from("missing-cover").unwrap();
+        let mut random = 0x9E37_79B9_7F4A_7C15_u64;
+        for round in 0..128_usize {
+            random ^= random << 13;
+            random ^= random >> 7;
+            random ^= random << 17;
+            state.albums.get_mut(&album_id).unwrap().metadata.cover = match round % 4 {
+                0 => None,
+                1 => Some(media[round % media.len()].hash()),
+                2 => Some(missing_cover),
+                _ => Some(media[7].hash()),
+            };
+
+            let excluded_slots = if round % 11 == 0 {
+                slots.clone()
+            } else {
+                slots
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter(|(index, _)| (random >> (index % 32)).trailing_zeros() >= 3)
+                    .map(|(_, slot_ref)| slot_ref)
+                    .collect()
+            };
+            let excluded = TargetSet::from_slot_refs(excluded_slots, universe);
+            let changed_at = crate::public::structure::object::next_mutation_timestamp();
+            let expected =
+                naive_album_aggregate_excluding(&state, album_id, &excluded, changed_at).unwrap();
+            let actual = state
+                .album_aggregate_excluding(album_id, &excluded, changed_at)
+                .unwrap();
+            assert_album_eq(&actual, &expected);
+
+            let selected = usize::try_from(random % u64::try_from(media.len()).unwrap()).unwrap();
+            let mut updated = media[selected].clone();
+            if random & 1 == 0 {
+                updated.albums_mut().unwrap().insert(album_id);
+            } else {
+                updated.albums_mut().unwrap().remove(&album_id);
+            }
+            updated.set_trashed(random & 2 != 0);
+            updated.set_size(if random & 4 == 0 {
+                u64::MAX
+            } else {
+                random & 0x00ff_ffff
+            });
+            updated.set_thumbhash(vec![
+                u8::try_from(round).unwrap(),
+                u8::try_from((random >> 8) & 0xff).unwrap(),
+                0x5A,
+            ]);
+            updated.set_cache_version(u32::try_from(round).unwrap() + 1000);
+            if let Some(exif) = updated.exif_vec_mut() {
+                exif.insert(
+                    "DateTimeOriginal".to_owned(),
+                    format!("2021-01-01 00:{:02}:{:02}", round % 60, selected % 60),
+                );
+            }
+            let changed_at = crate::public::structure::object::next_mutation_timestamp();
+            let expected = naive_album_aggregate_with_override(
+                &state,
+                album_id,
+                slots[selected],
+                &updated,
+                changed_at,
+            )
+            .unwrap();
+            let actual = state
+                .album_aggregate_with_override(album_id, slots[selected], &updated, changed_at)
+                .unwrap();
+            assert_album_eq(&actual, &expected);
+        }
+    }
+
+    #[test]
+    fn album_accumulator_scratch_remains_constant_for_one_million_members() {
+        const MEMBER_COUNT: usize = 1_000_000;
+        assert!(std::mem::size_of::<AlbumAccumulator<'static>>() <= 64 * 1024);
+
+        let mut record = cache_record("constant-album-member", 123);
+        record.size = u64::MAX;
+        record.thumbhash = Some(vec![1, 2, 3].into_boxed_slice());
+        record.cache_version = 9;
+        let mut accumulator = AlbumAccumulator::new(Some(record.id));
+        for _ in 0..MEMBER_COUNT {
+            accumulator.push(AlbumMemberRef::from_cache(&record));
+        }
+        assert_eq!(accumulator.item_count, MEMBER_COUNT);
+        assert_eq!(accumulator.item_size, u64::MAX);
+
+        let album_id = ArrayString::<64>::from("constant-album").unwrap();
+        let AbstractData::Album(album) = Album::new(album_id, None).into_abstract_data() else {
+            unreachable!()
+        };
+        let aggregate = accumulator.finish(album, 456);
+        assert_eq!(aggregate.metadata.item_count, MEMBER_COUNT);
+        assert_eq!(aggregate.metadata.cover, Some(record.id));
+        assert_eq!(aggregate.object.thumbhash, Some(vec![1, 2, 3]));
+        assert_eq!(aggregate.object.cache_version, 9);
+    }
+
+    #[cfg(feature = "performance-test")]
+    #[test]
+    #[ignore = "local 100k-member album override microbenchmark"]
+    #[allow(clippy::too_many_lines)]
+    fn benchmark_streaming_album_override_aggregate() {
+        use std::hint::black_box;
+        use std::time::{Duration, Instant};
+
+        const MEMBER_COUNT: usize = 100_000;
+
+        fn median(mut samples: Vec<Duration>) -> Duration {
+            samples.sort_unstable();
+            samples[samples.len() / 2]
+        }
+
+        fn measure<T>(mut operation: impl FnMut() -> T) -> Duration {
+            for _ in 0..2 {
+                black_box(operation());
+            }
+            median(
+                (0..9)
+                    .map(|_| {
+                        let started = Instant::now();
+                        black_box(operation());
+                        started.elapsed()
+                    })
+                    .collect(),
+            )
+        }
+
+        let album_id = ArrayString::<64>::from("album-aggregate-benchmark").unwrap();
+        let AbstractData::Album(mut album) = Album::new(album_id, None).into_abstract_data() else {
+            unreachable!()
+        };
+        let mut state = TreeState::default();
+        let mut ordinals = Vec::with_capacity(MEMBER_COUNT);
+        let mut override_slot = SlotRef::new(0, 0);
+        let mut override_id = ArrayString::<64>::new();
+        for index in 0..MEMBER_COUNT {
+            let id =
+                ArrayString::<64>::from(format!("album-bench-member-{index:06}").as_str()).unwrap();
+            let mut record = cache_record(id.as_str(), i64::try_from(index % 4096).unwrap());
+            record.size = u64::try_from(index).unwrap() + 1;
+            record.cache_version = u32::try_from(index).unwrap();
+            let slot_ref = state.arena.allocate(record);
+            if index == MEMBER_COUNT / 2 {
+                override_slot = slot_ref;
+                override_id = id;
+                album.metadata.cover = Some(id);
+            }
+            ordinals.push(slot_ref.index());
+        }
+        state.query.albums.insert(
+            album_id,
+            OrdinalSet::from_ordinals(ordinals, state.arena.capacity()),
+        );
+        state.albums.insert(album_id, album);
+
+        let mut metadata = crate::public::structure::image::ImageMetadata::new(
+            override_id,
+            999_999,
+            10,
+            20,
+            "jpg".to_owned(),
+        );
+        metadata.albums.insert(album_id);
+        let mut object = ObjectSchema::new(override_id, ObjectType::Image);
+        object.thumbhash = Some(vec![9, 8, 7]);
+        object.cache_version = 42;
+        let override_data = AbstractData::Image(crate::public::structure::image::ImageCombined {
+            object,
+            metadata,
+        });
+        let changed_at = crate::public::structure::object::next_mutation_timestamp();
+
+        let expected = naive_album_aggregate_with_override(
+            &state,
+            album_id,
+            override_slot,
+            &override_data,
+            changed_at,
+        )
+        .unwrap();
+        let actual = state
+            .album_aggregate_with_override(album_id, override_slot, &override_data, changed_at)
+            .unwrap();
+        assert_album_eq(&actual, &expected);
+
+        let legacy = measure(|| {
+            naive_album_aggregate_with_override(
+                black_box(&state),
+                album_id,
+                override_slot,
+                black_box(&override_data),
+                changed_at,
+            )
+            .unwrap()
+        });
+        let streaming = measure(|| {
+            state
+                .album_aggregate_with_override(
+                    album_id,
+                    override_slot,
+                    black_box(&override_data),
+                    changed_at,
+                )
+                .unwrap()
+        });
+        eprintln!(
+            "album override legacy={legacy:?} streaming={streaming:?} speedup={:.2}x \
+             legacy_scratch={} streaming_scratch={}",
+            legacy.as_secs_f64() / streaming.as_secs_f64(),
+            MEMBER_COUNT * std::mem::size_of::<CacheRecord>(),
+            std::mem::size_of::<AlbumAccumulator<'static>>()
+        );
+        assert!(streaming < legacy);
+        assert!(std::mem::size_of::<AlbumAccumulator<'static>>() <= 64 * 1024);
+    }
+
+    #[test]
     fn cached_album_object_edits_publish_the_same_mutation_timestamp() {
         let album_id = ArrayString::<64>::from("cached-album-object").unwrap();
         let album = Album::new(album_id, None).into_abstract_data();
@@ -3853,6 +4310,7 @@ mod tests {
     #[cfg(feature = "performance-test")]
     #[test]
     #[ignore = "local 1M TargetSet/OrdinalSet microbenchmark"]
+    #[allow(clippy::too_many_lines)]
     fn benchmark_specialized_set_iteration_and_intersections() {
         use std::hint::black_box;
         use std::time::{Duration, Instant};
@@ -3918,7 +4376,7 @@ mod tests {
             all_words,
             (0..ITEM_COUNT)
                 .step_by(997)
-                .map(|ordinal| (ordinal as u32, 2))
+                .map(|ordinal| (u32::try_from(ordinal).unwrap(), 2))
                 .collect(),
         );
         assert_eq!(
@@ -4408,7 +4866,7 @@ mod tests {
         let optimized_rebuild = || -> anyhow::Result<TreeState> {
             let records = reader
                 .values()?
-                .map(|entry| entry.map(|value| value.into_value()));
+                .map(|entry| entry.map(crate::storage::store::RecordValue::into_value));
             TreeState::try_from_records_with_capacity(records, RECORDS)
         };
 

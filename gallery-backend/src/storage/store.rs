@@ -403,6 +403,9 @@ impl RecordWriter<'_> {
         self.insert_v6_at(key, V6AbstractData::from(value))
     }
 
+    // Ownership is intentional: write callers transfer the converted record
+    // instead of retaining it or cloning its dynamic fields.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn insert_v6_at(&mut self, key: &str, value: V6AbstractData) -> Result<()> {
         if value.id() != key {
             return Err(anyhow!(
@@ -637,6 +640,7 @@ mod tests {
     #[cfg(feature = "performance-test")]
     #[test]
     #[ignore = "local V6 codec allocation microbenchmark"]
+    #[allow(clippy::too_many_lines)]
     fn raw_reusable_codec_microbench_beats_typed_value_reference() -> Result<()> {
         use std::hint::black_box;
 

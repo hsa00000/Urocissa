@@ -21,7 +21,7 @@ use super::{
 
 fn parse_filename_datetime(file_name: &str) -> Option<NaiveDateTime> {
     let [year, month, day, hour, minute, second] = first_filename_timestamp_parts(file_name)?;
-    let date = NaiveDate::from_ymd_opt(year as i32, month, day)?;
+    let date = NaiveDate::from_ymd_opt(i32::try_from(year).ok()?, month, day)?;
     let time = NaiveTime::from_hms_opt(hour, minute, second)?;
     Some(NaiveDateTime::new(date, time))
 }
@@ -223,15 +223,17 @@ mod filename_timestamp_tests {
             random = random
                 .wrapping_mul(6_364_136_223_846_793_005)
                 .wrapping_add(1);
-            let year = 1990 + random as u32 % 60;
-            let month = 1 + (random >> 8) as u32 % 14;
-            let day = 1 + (random >> 16) as u32 % 35;
-            let hour = (random >> 24) as u32 % 27;
-            let minute = (random >> 32) as u32 % 65;
-            let second = (random >> 40) as u32 % 65;
-            let separator = separators[index as usize % separators.len()];
-            let prefix = prefixes[(random as usize >> 5) % prefixes.len()];
-            let suffix = suffixes[(random as usize >> 11) % suffixes.len()];
+            let year = 1990 + u32::try_from(random % 60).unwrap();
+            let month = 1 + u32::try_from((random >> 8) % 14).unwrap();
+            let day = 1 + u32::try_from((random >> 16) % 35).unwrap();
+            let hour = u32::try_from((random >> 24) % 27).unwrap();
+            let minute = u32::try_from((random >> 32) % 65).unwrap();
+            let second = u32::try_from((random >> 40) % 65).unwrap();
+            let separator = separators[usize::try_from(index).unwrap() % separators.len()];
+            let prefix = prefixes
+                [usize::try_from((random >> 5) % u64::try_from(prefixes.len()).unwrap()).unwrap()];
+            let suffix = suffixes
+                [usize::try_from((random >> 11) % u64::try_from(suffixes.len()).unwrap()).unwrap()];
             let case = format!(
                 "{prefix}{year:04}{separator}{month:02}{separator}{day:02}{separator}{hour:02}{separator}{minute:02}{separator}{second:02}{suffix}"
             );
@@ -518,10 +520,9 @@ impl AbstractData {
                         if let Some(file_name) = Path::new(&file_modify.file).file_name()
                             && let Some(file_name_str) = file_name.to_str()
                             && let Some(datetime) = parse_filename_datetime(file_name_str)
+                            && datetime <= now_time
                         {
-                            if datetime <= now_time {
-                                max_time = Some(max_time.map_or(datetime, |t| t.max(datetime)));
-                            }
+                            max_time = Some(max_time.map_or(datetime, |t| t.max(datetime)));
                         }
                     }
 
