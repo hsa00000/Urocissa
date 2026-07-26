@@ -249,10 +249,7 @@ async fn delete_durable_selection(targets: TargetSet, structural_epoch: u64) -> 
             .albums
             .iter()
             .filter(|(album_id, members)| {
-                !selected_album_ids.contains(*album_id)
-                    && members
-                        .iter()
-                        .any(|ordinal| targets.ordinals().contains(ordinal))
+                !selected_album_ids.contains(*album_id) && members.intersects(targets.ordinals())
             })
             .map(|(album_id, _)| *album_id)
             .collect::<Vec<_>>();

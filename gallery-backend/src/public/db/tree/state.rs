@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::iter::FusedIterator;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, LazyLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -570,21 +571,8 @@ impl DenseBitmap {
         self.len
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = u32> + '_ {
-        self.words
-            .iter()
-            .enumerate()
-            .flat_map(|(word_index, word)| {
-                let mut remaining = *word;
-                std::iter::from_fn(move || {
-                    if remaining == 0 {
-                        return None;
-                    }
-                    let bit = remaining.trailing_zeros();
-                    remaining &= remaining - 1;
-                    Some(u32::try_from(word_index).expect("bitmap index") * 64 + bit)
-                })
-            })
+    pub fn iter(&self) -> DenseBitmapIter<'_> {
+        DenseBitmapIter::new(self)
     }
 
     fn union_with(&mut self, other: &Self, mut changed: impl FnMut(u32)) {
@@ -620,6 +608,47 @@ impl DenseBitmap {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DenseBitmapIter<'a> {
+    words: &'a [u64],
+    word_index: usize,
+    remaining_word: u64,
+    remaining_len: usize,
+}
+
+impl<'a> DenseBitmapIter<'a> {
+    fn new(bitmap: &'a DenseBitmap) -> Self {
+        Self {
+            words: &bitmap.words,
+            word_index: 0,
+            remaining_word: bitmap.words.first().copied().unwrap_or_default(),
+            remaining_len: bitmap.len,
+        }
+    }
+}
+
+impl Iterator for DenseBitmapIter<'_> {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.remaining_word == 0 {
+            self.word_index += 1;
+            self.remaining_word = *self.words.get(self.word_index)?;
+        }
+        let bit = self.remaining_word.trailing_zeros();
+        self.remaining_word &= self.remaining_word - 1;
+        self.remaining_len -= 1;
+        Some(u32::try_from(self.word_index).expect("bitmap index") * u64::BITS + bit)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining_len, Some(self.remaining_len))
+    }
+}
+
+impl ExactSizeIterator for DenseBitmapIter<'_> {}
+impl FusedIterator for DenseBitmapIter<'_> {}
+
 fn visit_word_bits(word_index: usize, mut bits: u64, visit: &mut impl FnMut(u32)) {
     while bits != 0 {
         let bit = bits.trailing_zeros();
@@ -640,6 +669,40 @@ impl Default for OrdinalSet {
     }
 }
 
+pub enum OrdinalSetIter<'a> {
+    Sparse(std::iter::Copied<std::slice::Iter<'a, u32>>),
+    Dense(DenseBitmapIter<'a>),
+}
+
+impl Iterator for OrdinalSetIter<'_> {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Sparse(iterator) => iterator.next(),
+            Self::Dense(iterator) => iterator.next(),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            Self::Sparse(iterator) => iterator.size_hint(),
+            Self::Dense(iterator) => iterator.size_hint(),
+        }
+    }
+}
+
+impl ExactSizeIterator for OrdinalSetIter<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Sparse(iterator) => iterator.len(),
+            Self::Dense(iterator) => iterator.len(),
+        }
+    }
+}
+
+impl FusedIterator for OrdinalSetIter<'_> {}
+
 impl OrdinalSet {
     pub fn contains(&self, ordinal: u32) -> bool {
         match self {
@@ -657,6 +720,31 @@ impl OrdinalSet {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn intersects(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Sparse(left), Self::Sparse(right)) => {
+                let (mut left_index, mut right_index) = (0, 0);
+                while left_index < left.len() && right_index < right.len() {
+                    match left[left_index].cmp(&right[right_index]) {
+                        Ordering::Less => left_index += 1,
+                        Ordering::Greater => right_index += 1,
+                        Ordering::Equal => return true,
+                    }
+                }
+                false
+            }
+            (Self::Dense(left), Self::Dense(right)) => left
+                .words
+                .iter()
+                .zip(&right.words)
+                .any(|(left, right)| left & right != 0),
+            (Self::Sparse(sparse), Self::Dense(dense))
+            | (Self::Dense(dense), Self::Sparse(sparse)) => {
+                sparse.iter().any(|ordinal| dense.contains(*ordinal))
+            }
+        }
     }
 
     pub fn max(&self) -> Option<u32> {
@@ -706,10 +794,10 @@ impl OrdinalSet {
         changed
     }
 
-    pub fn iter(&self) -> Box<dyn Iterator<Item = u32> + '_> {
+    pub fn iter(&self) -> OrdinalSetIter<'_> {
         match self {
-            Self::Sparse(items) => Box::new(items.iter().copied()),
-            Self::Dense(bitmap) => Box::new(bitmap.iter()),
+            Self::Sparse(items) => OrdinalSetIter::Sparse(items.iter().copied()),
+            Self::Dense(bitmap) => OrdinalSetIter::Dense(bitmap.iter()),
         }
     }
 
@@ -888,7 +976,13 @@ impl OrdinalSet {
                 *self = Self::Dense(bitmap);
             }
             Self::Dense(bitmap) if bitmap.count() <= dense_threshold => {
-                *self = Self::Sparse(bitmap.iter().collect());
+                // ExactSizeIterator lets `collect` reserve the exact current
+                // cardinality. Preserve Vec's natural growth class so a facet
+                // that later receives a few more members does not immediately
+                // grow past the capacity used by the legacy iterator.
+                let mut items = Vec::with_capacity(natural_vec_capacity::<u32>(bitmap.count()));
+                items.extend(bitmap.iter());
+                *self = Self::Sparse(items);
             }
             _ => {}
         }
@@ -939,6 +1033,66 @@ impl TargetSetBuilder {
             + self.generation_overrides.capacity() * std::mem::size_of::<(u32, u32)>()
     }
 }
+
+pub enum TargetSetIter<'a> {
+    GenerationOne(OrdinalSetIter<'a>),
+    WithOverrides {
+        ordinals: OrdinalSetIter<'a>,
+        overrides: &'a [(u32, u32)],
+        override_index: usize,
+    },
+}
+
+impl Iterator for TargetSetIter<'_> {
+    type Item = SlotRef;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::GenerationOne(ordinals) => {
+                ordinals.next().map(|ordinal| SlotRef::new(ordinal, 1))
+            }
+            Self::WithOverrides {
+                ordinals,
+                overrides,
+                override_index,
+            } => {
+                let ordinal = ordinals.next()?;
+                while overrides
+                    .get(*override_index)
+                    .is_some_and(|(override_ordinal, _)| *override_ordinal < ordinal)
+                {
+                    *override_index += 1;
+                }
+                let generation = overrides
+                    .get(*override_index)
+                    .filter(|(override_ordinal, _)| *override_ordinal == ordinal)
+                    .map_or(1, |(_, generation)| {
+                        *override_index += 1;
+                        *generation
+                    });
+                Some(SlotRef::new(ordinal, generation))
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            Self::GenerationOne(ordinals) | Self::WithOverrides { ordinals, .. } => {
+                ordinals.size_hint()
+            }
+        }
+    }
+}
+
+impl ExactSizeIterator for TargetSetIter<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::GenerationOne(ordinals) | Self::WithOverrides { ordinals, .. } => ordinals.len(),
+        }
+    }
+}
+
+impl FusedIterator for TargetSetIter<'_> {}
 
 impl TargetSet {
     pub fn from_slot_refs(slot_refs: impl IntoIterator<Item = SlotRef>, universe: usize) -> Self {
@@ -1031,15 +1185,16 @@ impl TargetSet {
         self.ordinals.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = SlotRef> + '_ {
-        self.ordinals.iter().map(|ordinal| {
-            let generation = self
-                .generation_overrides
-                .binary_search_by_key(&ordinal, |(index, _)| *index)
-                .ok()
-                .map_or(1, |index| self.generation_overrides[index].1);
-            SlotRef::new(ordinal, generation)
-        })
+    pub fn iter(&self) -> TargetSetIter<'_> {
+        if self.generation_overrides.is_empty() {
+            TargetSetIter::GenerationOne(self.ordinals.iter())
+        } else {
+            TargetSetIter::WithOverrides {
+                ordinals: self.ordinals.iter(),
+                overrides: &self.generation_overrides,
+                override_index: 0,
+            }
+        }
     }
 
     pub fn contains(&self, slot_ref: SlotRef) -> bool {
@@ -2358,7 +2513,7 @@ impl TreeState {
             .query
             .albums
             .iter()
-            .filter(|(_, members)| targets.iter().any(|ordinal| members.contains(ordinal)))
+            .filter(|(_, members)| targets.intersects(members))
             .map(|(album_id, _)| *album_id)
             .collect::<Vec<_>>();
         let mut updated = affected
@@ -3482,6 +3637,100 @@ mod tests {
     }
 
     #[test]
+    fn ordinal_set_intersects_handles_sparse_dense_and_word_boundaries() {
+        let sparse_left = OrdinalSet::Sparse(vec![1, 63, 129]);
+        let sparse_overlap = OrdinalSet::Sparse(vec![2, 63, 130]);
+        let sparse_disjoint = OrdinalSet::Sparse(vec![0, 65, 128]);
+        assert!(sparse_left.intersects(&sparse_overlap));
+        assert!(!sparse_left.intersects(&sparse_disjoint));
+
+        let mut dense_left = DenseBitmap::default();
+        for ordinal in [1, 64, 127, 192] {
+            dense_left.set(ordinal, true);
+        }
+        let dense_left = OrdinalSet::Dense(dense_left);
+        let mut dense_overlap = DenseBitmap::default();
+        for ordinal in [0, 64, 128] {
+            dense_overlap.set(ordinal, true);
+        }
+        let dense_overlap = OrdinalSet::Dense(dense_overlap);
+        let mut dense_disjoint = DenseBitmap::default();
+        for ordinal in [2, 63, 65, 191] {
+            dense_disjoint.set(ordinal, true);
+        }
+        let dense_disjoint = OrdinalSet::Dense(dense_disjoint);
+
+        assert!(dense_left.intersects(&dense_overlap));
+        assert!(!dense_left.intersects(&dense_disjoint));
+        assert!(sparse_left.intersects(&dense_left));
+        assert!(dense_left.intersects(&sparse_left));
+        assert!(!sparse_disjoint.intersects(&dense_left));
+        assert!(!dense_left.intersects(&sparse_disjoint));
+        assert!(!OrdinalSet::default().intersects(&dense_left));
+        assert!(!dense_left.intersects(&OrdinalSet::default()));
+    }
+
+    #[test]
+    fn concrete_set_iterators_are_exact_fused_and_preserve_overrides() {
+        fn assert_exact_fused<I: ExactSizeIterator + FusedIterator>(_iterator: &I) {}
+
+        for ordinals in [
+            OrdinalSet::Sparse(vec![1, 63, 64, 130]),
+            OrdinalSet::Dense({
+                let mut bitmap = DenseBitmap::default();
+                for ordinal in [1, 63, 64, 130] {
+                    bitmap.set(ordinal, true);
+                }
+                bitmap
+            }),
+        ] {
+            let mut iterator = ordinals.iter();
+            assert_exact_fused(&iterator);
+            assert_eq!(iterator.size_hint(), (4, Some(4)));
+            assert_eq!(iterator.next(), Some(1));
+            assert_eq!(iterator.len(), 3);
+            assert_eq!(iterator.collect::<Vec<_>>(), vec![63, 64, 130]);
+        }
+
+        let common = TargetSet::from_unique_slot_refs(
+            [0, 1, 63, 64, 130].map(|ordinal| SlotRef::new(ordinal, 1)),
+            192,
+        );
+        assert!(matches!(common.iter(), TargetSetIter::GenerationOne(_)));
+        assert_eq!(
+            common.iter().collect::<Vec<_>>(),
+            [0, 1, 63, 64, 130].map(|ordinal| SlotRef::new(ordinal, 1))
+        );
+
+        let overrides = TargetSet::from_unique_slot_refs(
+            [
+                SlotRef::new(0, 2),
+                SlotRef::new(1, 1),
+                SlotRef::new(63, 3),
+                SlotRef::new(64, 1),
+                SlotRef::new(130, 4),
+            ],
+            192,
+        );
+        let mut iterator = overrides.iter();
+        assert_exact_fused(&iterator);
+        assert_eq!(iterator.size_hint(), (5, Some(5)));
+        assert_eq!(
+            iterator.by_ref().collect::<Vec<_>>(),
+            vec![
+                SlotRef::new(0, 2),
+                SlotRef::new(1, 1),
+                SlotRef::new(63, 3),
+                SlotRef::new(64, 1),
+                SlotRef::new(130, 4),
+            ]
+        );
+        assert_eq!(iterator.next(), None);
+        assert_eq!(iterator.next(), None);
+        assert_eq!(iterator.size_hint(), (0, Some(0)));
+    }
+
+    #[test]
     fn dense_target_flag_round_trip_reports_every_changed_ordinal() {
         let universe = 1_024;
         let targets = TargetSet::from_unique_slot_refs(
@@ -3512,6 +3761,154 @@ mod tests {
             },
         );
         assert_eq!(indexes.favorite.count(), 0);
+    }
+
+    #[cfg(feature = "performance-test")]
+    #[test]
+    #[ignore = "local 1M TargetSet/OrdinalSet microbenchmark"]
+    fn benchmark_specialized_set_iteration_and_intersections() {
+        use std::hint::black_box;
+        use std::time::{Duration, Instant};
+
+        const ITEM_COUNT: usize = 1_000_000;
+
+        fn median(mut samples: Vec<Duration>) -> Duration {
+            samples.sort_unstable();
+            samples[samples.len() / 2]
+        }
+
+        fn measure<T>(mut operation: impl FnMut() -> T) -> Duration {
+            for _ in 0..2 {
+                black_box(operation());
+            }
+            median(
+                (0..9)
+                    .map(|_| {
+                        let started = Instant::now();
+                        black_box(operation());
+                        started.elapsed()
+                    })
+                    .collect(),
+            )
+        }
+
+        fn legacy_target_checksum(targets: &TargetSet) -> u64 {
+            let ordinals: Box<dyn Iterator<Item = u32> + '_> = match &targets.ordinals {
+                OrdinalSet::Sparse(items) => Box::new(items.iter().copied()),
+                OrdinalSet::Dense(bitmap) => Box::new(bitmap.iter()),
+            };
+            ordinals.fold(0_u64, |checksum, ordinal| {
+                let generation = targets
+                    .generation_overrides
+                    .binary_search_by_key(&ordinal, |(index, _)| *index)
+                    .ok()
+                    .map_or(1, |index| targets.generation_overrides[index].1);
+                checksum.wrapping_add(SlotRef::new(ordinal, generation).raw())
+            })
+        }
+
+        fn specialized_target_checksum(targets: &TargetSet) -> u64 {
+            targets.iter().fold(0_u64, |checksum, slot_ref| {
+                checksum.wrapping_add(slot_ref.raw())
+            })
+        }
+
+        fn legacy_intersects(left: &OrdinalSet, right: &OrdinalSet) -> bool {
+            let ordinals: Box<dyn Iterator<Item = u32> + '_> = match left {
+                OrdinalSet::Sparse(items) => Box::new(items.iter().copied()),
+                OrdinalSet::Dense(bitmap) => Box::new(bitmap.iter()),
+            };
+            ordinals.into_iter().any(|ordinal| right.contains(ordinal))
+        }
+
+        let mut all_words = vec![u64::MAX; ITEM_COUNT.div_ceil(64)];
+        let trailing = ITEM_COUNT % 64;
+        if trailing != 0 {
+            *all_words.last_mut().unwrap() = (1_u64 << trailing) - 1;
+        }
+        let generation_one = TargetSet::from_dense_parts(all_words.clone(), Vec::new());
+        let with_overrides = TargetSet::from_dense_parts(
+            all_words,
+            (0..ITEM_COUNT)
+                .step_by(997)
+                .map(|ordinal| (ordinal as u32, 2))
+                .collect(),
+        );
+        assert_eq!(
+            legacy_target_checksum(&generation_one),
+            specialized_target_checksum(&generation_one)
+        );
+        assert_eq!(
+            legacy_target_checksum(&with_overrides),
+            specialized_target_checksum(&with_overrides)
+        );
+
+        let legacy_generation_one =
+            measure(|| black_box(legacy_target_checksum(black_box(&generation_one))));
+        let specialized_generation_one =
+            measure(|| black_box(specialized_target_checksum(black_box(&generation_one))));
+        let legacy_overrides =
+            measure(|| black_box(legacy_target_checksum(black_box(&with_overrides))));
+        let specialized_overrides =
+            measure(|| black_box(specialized_target_checksum(black_box(&with_overrides))));
+
+        let dense_even = OrdinalSet::Dense(DenseBitmap::from_words(vec![
+            0x5555_5555_5555_5555;
+            ITEM_COUNT.div_ceil(64)
+        ]));
+        let dense_odd = OrdinalSet::Dense(DenseBitmap::from_words(vec![
+            0xAAAA_AAAA_AAAA_AAAA;
+            ITEM_COUNT.div_ceil(64)
+        ]));
+        assert!(!legacy_intersects(&dense_even, &dense_odd));
+        assert!(!dense_even.intersects(&dense_odd));
+        let legacy_dense_intersects = measure(|| {
+            black_box(legacy_intersects(
+                black_box(&dense_even),
+                black_box(&dense_odd),
+            ))
+        });
+        let specialized_dense_intersects =
+            measure(|| black_box(dense_even.intersects(black_box(&dense_odd))));
+
+        let sparse_left = OrdinalSet::Sparse(
+            (0..30_000)
+                .map(|index| u32::try_from(index * 32).unwrap())
+                .collect(),
+        );
+        let sparse_right = OrdinalSet::Sparse(
+            (0..30_000)
+                .map(|index| u32::try_from(index * 32 + 1).unwrap())
+                .collect(),
+        );
+        assert!(!legacy_intersects(&sparse_left, &sparse_right));
+        assert!(!sparse_left.intersects(&sparse_right));
+        let legacy_sparse_intersects =
+            measure(|| black_box(legacy_intersects(&sparse_left, &sparse_right)));
+        let specialized_sparse_intersects =
+            measure(|| black_box(sparse_left.intersects(&sparse_right)));
+
+        let mixed_dense = OrdinalSet::Dense(DenseBitmap::from_words(vec![
+            0xAAAA_AAAA_AAAA_AAAA;
+            ITEM_COUNT.div_ceil(64)
+        ]));
+        assert!(!legacy_intersects(&sparse_left, &mixed_dense));
+        assert!(!sparse_left.intersects(&mixed_dense));
+        let legacy_mixed_intersects =
+            measure(|| black_box(legacy_intersects(&sparse_left, &mixed_dense)));
+        let specialized_mixed_intersects =
+            measure(|| black_box(sparse_left.intersects(&mixed_dense)));
+
+        eprintln!(
+            "sets gen1 legacy={legacy_generation_one:?} specialized={specialized_generation_one:?}; \
+             overrides legacy={legacy_overrides:?} specialized={specialized_overrides:?}; \
+             dense legacy={legacy_dense_intersects:?} specialized={specialized_dense_intersects:?}; \
+             sparse legacy={legacy_sparse_intersects:?} specialized={specialized_sparse_intersects:?}; \
+             mixed legacy={legacy_mixed_intersects:?} specialized={specialized_mixed_intersects:?}"
+        );
+        assert!(specialized_generation_one < legacy_generation_one);
+        assert!(specialized_overrides < legacy_overrides);
+        assert!(specialized_dense_intersects.saturating_mul(2) <= legacy_dense_intersects);
     }
 
     #[cfg(feature = "performance-test")]

@@ -66,11 +66,7 @@ pub async fn edit_flags(
                 .query
                 .albums
                 .iter()
-                .filter(|(_, members)| {
-                    members
-                        .iter()
-                        .any(|ordinal| targets.ordinals().contains(ordinal))
-                })
+                .filter(|(_, members)| members.intersects(targets.ordinals()))
                 .map(|(album_id, _)| *album_id)
                 .collect::<BTreeSet<_>>()
         } else {
@@ -144,11 +140,7 @@ pub async fn edit_flags(
             .query
             .albums
             .iter()
-            .filter(|(_, members)| {
-                members
-                    .iter()
-                    .any(|ordinal| targets.ordinals().contains(ordinal))
-            })
+            .filter(|(_, members)| members.intersects(targets.ordinals()))
             .map(|(album_id, _)| *album_id)
             .collect::<BTreeSet<_>>()
     } else {
