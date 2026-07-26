@@ -22,7 +22,7 @@ use crate::router::{AppResult, GuardResult};
 pub struct CreateAlbum {
     pub title: Option<String>,
     #[serde(default)]
-    pub elements_index: Vec<usize>,
+    pub elements_index: Vec<u32>,
     #[serde(default)]
     pub selection: Option<SelectionDescriptor>,
     pub timestamp: i64,
@@ -51,7 +51,7 @@ pub async fn create_non_empty_album(
         .selection
         .unwrap_or_else(|| SelectionDescriptor::explicit(data.elements_index));
     let resolved =
-        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, &selection))
+        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, selection))
             .await
             .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
     create_album(

@@ -794,6 +794,42 @@ pub struct TargetSet {
     generation_overrides: Vec<(u32, u32)>,
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct TargetSetBuilder {
+    ordinals: DenseBitmap,
+    generation_overrides: Vec<(u32, u32)>,
+}
+
+impl TargetSetBuilder {
+    pub(crate) fn insert(&mut self, slot_ref: SlotRef) -> bool {
+        if !self.ordinals.set(slot_ref.index(), true) {
+            return false;
+        }
+        if slot_ref.generation() != 1 {
+            self.generation_overrides
+                .push((slot_ref.index(), slot_ref.generation()));
+        }
+        true
+    }
+
+    pub(crate) fn finish(mut self, universe: usize) -> TargetSet {
+        self.generation_overrides
+            .sort_unstable_by_key(|(ordinal, _)| *ordinal);
+        let mut ordinals = OrdinalSet::Dense(self.ordinals);
+        ordinals.rebalance(universe);
+        TargetSet {
+            ordinals,
+            generation_overrides: self.generation_overrides,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn estimated_bytes(&self) -> usize {
+        self.ordinals.words.capacity() * std::mem::size_of::<u64>()
+            + self.generation_overrides.capacity() * std::mem::size_of::<(u32, u32)>()
+    }
+}
+
 impl TargetSet {
     pub fn from_slot_refs(slot_refs: impl IntoIterator<Item = SlotRef>, universe: usize) -> Self {
         let mut slots = slot_refs.into_iter().collect::<Vec<_>>();
@@ -815,20 +851,11 @@ impl TargetSet {
         slot_refs: impl IntoIterator<Item = SlotRef>,
         universe: usize,
     ) -> Self {
-        let mut bitmap = DenseBitmap::default();
-        let mut generation_overrides = Vec::new();
+        let mut builder = TargetSetBuilder::default();
         for slot_ref in slot_refs {
-            if bitmap.set(slot_ref.index(), true) && slot_ref.generation() != 1 {
-                generation_overrides.push((slot_ref.index(), slot_ref.generation()));
-            }
+            builder.insert(slot_ref);
         }
-        generation_overrides.sort_unstable_by_key(|(ordinal, _)| *ordinal);
-        let mut ordinals = OrdinalSet::Dense(bitmap);
-        ordinals.rebalance(universe);
-        Self {
-            ordinals,
-            generation_overrides,
-        }
+        builder.finish(universe)
     }
 
     pub fn from_dense_parts(words: Vec<u64>, generation_overrides: Vec<(u32, u32)>) -> Self {

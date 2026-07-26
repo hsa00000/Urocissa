@@ -19,7 +19,7 @@ use crate::router::{AppResult, GuardResult};
 #[serde(rename_all = "camelCase")]
 pub struct EditAlbumsData {
     #[serde(default)]
-    index_array: Vec<usize>,
+    index_array: Vec<u32>,
     #[serde(default)]
     selection: Option<SelectionDescriptor>,
     add_albums_array: Vec<ArrayString<64>>,
@@ -40,7 +40,7 @@ pub async fn edit_album(
         .selection
         .unwrap_or_else(|| SelectionDescriptor::explicit(data.index_array));
     let resolved =
-        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, &selection))
+        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, selection))
             .await
             .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
     let mut add = data.add_albums_array.into_iter().collect::<BTreeSet<_>>();

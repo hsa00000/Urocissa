@@ -17,7 +17,7 @@ use crate::router::{AppResult, GuardResult};
 #[serde(rename_all = "camelCase")]
 pub struct EditTagsData {
     #[serde(default)]
-    index_array: Vec<usize>,
+    index_array: Vec<u32>,
     #[serde(default)]
     selection: Option<SelectionDescriptor>,
     add_tags_array: Vec<String>,
@@ -38,7 +38,7 @@ pub async fn edit_tag(
         .selection
         .unwrap_or_else(|| SelectionDescriptor::explicit(data.index_array));
     let resolved =
-        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, &selection))
+        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, selection))
             .await
             .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
 

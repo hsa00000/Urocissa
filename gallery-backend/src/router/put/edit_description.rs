@@ -15,7 +15,7 @@ use crate::router::{AppResult, GuardResult};
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SetUserDefinedDescription {
-    pub index: usize,
+    pub index: u32,
     #[serde(default)]
     pub selection: Option<SelectionDescriptor>,
     pub description: Option<String>,
@@ -38,7 +38,7 @@ pub async fn set_user_defined_description(
         .selection
         .unwrap_or_else(|| SelectionDescriptor::explicit(vec![data.index]));
     let resolved =
-        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, &selection))
+        tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, selection))
             .await
             .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
     if resolved.len != 1 {

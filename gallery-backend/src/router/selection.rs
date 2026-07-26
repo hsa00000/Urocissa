@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use crate::operations::open_db::open_tree_snapshot_table;
 use crate::public::db::tree::TREE;
-use crate::public::db::tree::state::{SlotRef, TargetSet};
+use crate::public::db::tree::state::{SlotRef, TargetSet, TargetSetBuilder};
 use crate::public::error::{AppError, ErrorKind};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -13,12 +13,12 @@ use crate::public::error::{AppError, ErrorKind};
     rename_all_fields = "camelCase"
 )]
 pub enum SelectionDescriptor {
-    Explicit { indices: Vec<usize> },
-    AllExcept { excluded_indices: Vec<usize> },
+    Explicit { indices: Vec<u32> },
+    AllExcept { excluded_indices: Vec<u32> },
 }
 
 impl SelectionDescriptor {
-    pub fn explicit(indices: Vec<usize>) -> Self {
+    pub fn explicit(indices: Vec<u32>) -> Self {
         Self::Explicit { indices }
     }
 }
@@ -32,22 +32,24 @@ pub struct ResolvedSelection {
 
 #[derive(Debug, PartialEq, Eq)]
 enum NormalizedSelection {
-    Explicit(Vec<usize>),
-    AllExcept(Vec<usize>),
+    Explicit(Vec<u32>),
+    AllExcept(Vec<u32>),
 }
 
 fn normalize_selection(
-    selection: &SelectionDescriptor,
+    selection: SelectionDescriptor,
     snapshot_len: usize,
 ) -> Result<NormalizedSelection, AppError> {
-    let (values, explicit) = match selection {
+    let (mut values, explicit) = match selection {
         SelectionDescriptor::Explicit { indices } => (indices, true),
         SelectionDescriptor::AllExcept { excluded_indices } => (excluded_indices, false),
     };
-    let mut values = values.clone();
     values.sort_unstable();
     values.dedup();
-    if values.last().is_some_and(|index| *index >= snapshot_len) {
+    if values
+        .last()
+        .is_some_and(|index| *index as usize >= snapshot_len)
+    {
         return Err(AppError::new(
             ErrorKind::Conflict,
             "selection contains an out-of-range index",
@@ -64,7 +66,7 @@ fn normalize_selection(
 /// complete generational identity set before any mutation is published.
 pub fn resolve_selection(
     timestamp: i64,
-    selection: &SelectionDescriptor,
+    selection: SelectionDescriptor,
 ) -> Result<ResolvedSelection, AppError> {
     let started = Instant::now();
     let snapshot = open_tree_snapshot_table(timestamp).map_err(|error| {
@@ -96,24 +98,24 @@ pub fn resolve_selection(
         ));
     }
 
-    let targets = match &normalized {
+    let resolve_index = |index: u32| {
+        snapshot
+            .get_slot_ref(index as usize)
+            .map(SlotRef::from_raw)
+            .map_err(|error| {
+                AppError::from_err(
+                    ErrorKind::Conflict,
+                    anyhow::anyhow!("stale selection index {index}: {error}"),
+                )
+            })
+    };
+    let targets = match normalized {
         NormalizedSelection::Explicit(indices) => {
-            let slots = indices
-                .iter()
-                .copied()
-                .map(|index| {
-                    snapshot
-                        .get_slot_ref(index)
-                        .map(SlotRef::from_raw)
-                        .map_err(|error| {
-                            AppError::from_err(
-                                ErrorKind::Conflict,
-                                anyhow::anyhow!("stale selection index {index}: {error}"),
-                            )
-                        })
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            TargetSet::from_unique_slot_refs(slots, universe)
+            let mut targets = TargetSetBuilder::default();
+            for index in indices {
+                targets.insert(resolve_index(index)?);
+            }
+            targets.finish(universe)
         }
         NormalizedSelection::AllExcept(excluded) => {
             let mut targets = snapshot.target_set().map_err(|error| {
@@ -122,15 +124,11 @@ pub fn resolve_selection(
                     anyhow::anyhow!("invalid selection target bitmap: {error}"),
                 )
             })?;
-            let excluded_targets = TargetSet::from_unique_slot_refs(
-                excluded
-                    .iter()
-                    .copied()
-                    .map(|index| snapshot.get_slot_ref(index).map(SlotRef::from_raw))
-                    .collect::<anyhow::Result<Vec<_>>>()?,
-                universe,
-            );
-            targets.subtract(&excluded_targets);
+            let mut excluded_targets = TargetSetBuilder::default();
+            for index in excluded {
+                excluded_targets.insert(resolve_index(index)?);
+            }
+            targets.subtract(&excluded_targets.finish(universe));
             targets
         }
     };
@@ -150,6 +148,8 @@ pub fn resolve_selection(
 
 #[cfg(test)]
 mod tests {
+    use crate::public::db::tree::state::{SlotRef, TargetSetBuilder};
+
     use super::{NormalizedSelection, SelectionDescriptor, normalize_selection};
 
     #[test]
@@ -170,7 +170,7 @@ mod tests {
     fn explicit_and_all_except_values_are_sorted_deduplicated_and_bounded() {
         assert_eq!(
             normalize_selection(
-                &SelectionDescriptor::Explicit {
+                SelectionDescriptor::Explicit {
                     indices: vec![4, 1, 4, 2],
                 },
                 5,
@@ -180,7 +180,7 @@ mod tests {
         );
         assert_eq!(
             normalize_selection(
-                &SelectionDescriptor::AllExcept {
+                SelectionDescriptor::AllExcept {
                     excluded_indices: vec![3, 1, 3],
                 },
                 5,
@@ -189,7 +189,34 @@ mod tests {
             NormalizedSelection::AllExcept(vec![1, 3])
         );
         assert!(
-            normalize_selection(&SelectionDescriptor::Explicit { indices: vec![5] }, 5,).is_err()
+            normalize_selection(SelectionDescriptor::Explicit { indices: vec![5] }, 5,).is_err()
         );
+    }
+
+    #[test]
+    fn million_item_selection_stays_within_the_working_memory_gate() {
+        const ITEM_COUNT: u32 = 1_000_000;
+        const MEMORY_GATE_BYTES: usize = 4 * 1024 * 1024 + 256 * 1024;
+
+        let normalized = normalize_selection(
+            SelectionDescriptor::Explicit {
+                indices: (0..ITEM_COUNT).rev().collect(),
+            },
+            ITEM_COUNT as usize,
+        )
+        .unwrap();
+        let NormalizedSelection::Explicit(indices) = normalized else {
+            panic!("explicit selection changed mode");
+        };
+        let mut targets = TargetSetBuilder::default();
+        for ordinal in indices.iter().copied() {
+            targets.insert(SlotRef::new(ordinal, 1));
+        }
+        let working_bytes =
+            indices.capacity() * std::mem::size_of::<u32>() + targets.estimated_bytes();
+        let targets = targets.finish(ITEM_COUNT as usize);
+
+        assert_eq!(targets.len(), ITEM_COUNT as usize);
+        assert!(working_bytes <= MEMORY_GATE_BYTES);
     }
 }
