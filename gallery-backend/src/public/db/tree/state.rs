@@ -897,10 +897,72 @@ impl TargetSet {
 }
 
 #[derive(Debug, Default)]
+struct CompactMembershipCounts {
+    values: Vec<u16>,
+    overflow: HashMap<u32, u32>,
+}
+
+impl CompactMembershipCounts {
+    fn ensure_ordinal(&mut self, ordinal: u32) {
+        let len = ordinal as usize + 1;
+        if self.values.len() < len {
+            self.values.resize(len, 0);
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    fn get(&self, ordinal: u32) -> u32 {
+        self.overflow.get(&ordinal).copied().unwrap_or_else(|| {
+            self.values
+                .get(ordinal as usize)
+                .copied()
+                .unwrap_or_default()
+                .into()
+        })
+    }
+
+    fn set(&mut self, ordinal: u32, count: u32) {
+        self.ensure_ordinal(ordinal);
+        if count > u32::from(u16::MAX) {
+            self.values[ordinal as usize] = u16::MAX;
+            self.overflow.insert(ordinal, count);
+        } else {
+            self.values[ordinal as usize] = count as u16;
+            self.overflow.remove(&ordinal);
+        }
+    }
+
+    fn clear(&mut self, ordinal: u32) {
+        self.set(ordinal, 0);
+    }
+
+    fn increment(&mut self, ordinal: u32) -> u32 {
+        let count = self.get(ordinal).saturating_add(1);
+        self.set(ordinal, count);
+        count
+    }
+
+    fn decrement(&mut self, ordinal: u32) -> u32 {
+        let count = self.get(ordinal).saturating_sub(1);
+        self.set(ordinal, count);
+        count
+    }
+
+    #[cfg(feature = "performance-test")]
+    fn estimated_dynamic_bytes(&self) -> usize {
+        self.values.capacity() * std::mem::size_of::<u16>()
+            + hash_map_allocation_bytes::<u32, u32>(self.overflow.capacity())
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct StringFacetIndex {
     values: HashMap<String, OrdinalSet>,
     has_any: DenseBitmap,
-    membership_count: Vec<u32>,
+    membership_count: CompactMembershipCounts,
 }
 
 impl StringFacetIndex {
@@ -917,10 +979,7 @@ impl StringFacetIndex {
     }
 
     fn ensure_ordinal(&mut self, ordinal: u32) {
-        let len = ordinal as usize + 1;
-        if self.membership_count.len() < len {
-            self.membership_count.resize(len, 0);
-        }
+        self.membership_count.ensure_ordinal(ordinal);
     }
 
     fn insert_values<'a>(
@@ -941,13 +1000,13 @@ impl StringFacetIndex {
                 count = count.saturating_add(1);
             }
         }
-        self.membership_count[ordinal as usize] = count;
+        self.membership_count.set(ordinal, count);
         self.has_any.set(ordinal, count > 0);
     }
 
     fn remove_record(&mut self, ordinal: u32, universe: usize) {
         self.ensure_ordinal(ordinal);
-        self.membership_count[ordinal as usize] = 0;
+        self.membership_count.clear(ordinal);
         self.has_any.set(ordinal, false);
         self.values.retain(|_, members| {
             members.remove(ordinal, universe);
@@ -958,7 +1017,7 @@ impl StringFacetIndex {
     fn remove_targets(&mut self, targets: &OrdinalSet, universe: usize) {
         for ordinal in targets.iter() {
             self.ensure_ordinal(ordinal);
-            self.membership_count[ordinal as usize] = 0;
+            self.membership_count.clear(ordinal);
             self.has_any.set(ordinal, false);
         }
         self.values.retain(|_, members| {
@@ -982,9 +1041,7 @@ impl StringFacetIndex {
             let membership_count = &mut self.membership_count;
             let has_any = &mut self.has_any;
             members.union_with(targets, universe, |ordinal| {
-                let count = &mut membership_count[ordinal as usize];
-                *count = count.saturating_add(1);
-                if *count == 1 {
+                if membership_count.increment(ordinal) == 1 {
                     has_any.set(ordinal, true);
                 }
             });
@@ -994,9 +1051,7 @@ impl StringFacetIndex {
                 let membership_count = &mut self.membership_count;
                 let has_any = &mut self.has_any;
                 members.subtract_with(targets, universe, |ordinal| {
-                    let count = &mut membership_count[ordinal as usize];
-                    *count = count.saturating_sub(1);
-                    if *count == 0 {
+                    if membership_count.decrement(ordinal) == 0 {
                         has_any.set(ordinal, false);
                     }
                 });
@@ -1026,7 +1081,79 @@ impl StringFacetIndex {
                 .iter()
                 .map(|(value, members)| value.capacity() + members.estimated_bytes())
                 .sum::<usize>()
-            + self.membership_count.capacity() * std::mem::size_of::<u32>()
+            + self.membership_count.estimated_dynamic_bytes()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct SingleStringFacetIndex {
+    values: HashMap<String, OrdinalSet>,
+    has_any: DenseBitmap,
+}
+
+impl SingleStringFacetIndex {
+    pub fn get(&self, value: &str) -> Option<&OrdinalSet> {
+        self.values.get(value)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &OrdinalSet)> {
+        self.values.iter()
+    }
+
+    pub fn has_any(&self) -> &DenseBitmap {
+        &self.has_any
+    }
+
+    fn insert_value(&mut self, ordinal: u32, value: Option<&String>, universe: usize) {
+        if let Some(value) = value {
+            self.values
+                .entry(value.clone())
+                .or_default()
+                .insert(ordinal, universe);
+            self.has_any.set(ordinal, true);
+        } else {
+            self.has_any.set(ordinal, false);
+        }
+    }
+
+    fn remove_record(&mut self, ordinal: u32, universe: usize) {
+        self.has_any.set(ordinal, false);
+        self.values.retain(|_, members| {
+            members.remove(ordinal, universe);
+            !members.is_empty()
+        });
+    }
+
+    fn remove_targets(&mut self, targets: &OrdinalSet, universe: usize) {
+        for ordinal in targets.iter() {
+            self.has_any.set(ordinal, false);
+        }
+        self.values.retain(|_, members| {
+            members.subtract(targets, universe);
+            !members.is_empty()
+        });
+    }
+
+    fn matching_members_ascii(&self, value: &str, universe: usize) -> OrdinalSet {
+        let needle = value.to_ascii_lowercase();
+        let mut matches = OrdinalSet::default();
+        for (candidate, members) in &self.values {
+            if contains_ascii_lowercase(candidate, &needle) {
+                matches.union_with(members, universe, |_| {});
+            }
+        }
+        matches
+    }
+
+    #[cfg(feature = "performance-test")]
+    fn estimated_dynamic_bytes(&self) -> usize {
+        self.has_any.words.capacity() * std::mem::size_of::<u64>()
+            + hash_map_allocation_bytes::<String, OrdinalSet>(self.values.capacity())
+            + self
+                .values
+                .iter()
+                .map(|(value, members)| value.capacity() + members.estimated_bytes())
+                .sum::<usize>()
     }
 }
 
@@ -1037,10 +1164,10 @@ pub struct QueryIndexes {
     pub trashed: DenseBitmap,
     pub has_any_album: DenseBitmap,
     pub tags: StringFacetIndex,
-    pub makes: StringFacetIndex,
-    pub models: StringFacetIndex,
+    pub makes: SingleStringFacetIndex,
+    pub models: SingleStringFacetIndex,
     pub albums: HashMap<ArrayString<64>, OrdinalSet>,
-    album_membership_count: Vec<u32>,
+    album_membership_count: CompactMembershipCounts,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1076,14 +1203,11 @@ impl QueryIndexes {
             + bitmap_bytes
             + facet_bytes
             + album_bytes
-            + self.album_membership_count.capacity() * std::mem::size_of::<u32>()
+            + self.album_membership_count.estimated_dynamic_bytes()
     }
 
     fn ensure_ordinal(&mut self, ordinal: u32) {
-        let len = ordinal as usize + 1;
-        if self.album_membership_count.len() < len {
-            self.album_membership_count.resize(len, 0);
-        }
+        self.album_membership_count.ensure_ordinal(ordinal);
     }
 
     fn insert_record(&mut self, ordinal: u32, data: &AbstractData, universe: usize) {
@@ -1094,12 +1218,12 @@ impl QueryIndexes {
         self.tags
             .insert_values(ordinal, data.tag().iter(), universe);
         let exif = data.exif_vec();
-        self.makes.insert_values(
+        self.makes.insert_value(
             ordinal,
             exif.and_then(|values| values.get("Make")),
             universe,
         );
-        self.models.insert_values(
+        self.models.insert_value(
             ordinal,
             exif.and_then(|values| values.get("Model")),
             universe,
@@ -1111,11 +1235,11 @@ impl QueryIndexes {
                     .or_default()
                     .insert(ordinal, universe);
             }
-            self.album_membership_count[ordinal as usize] =
-                u32::try_from(albums.len()).unwrap_or(u32::MAX);
+            self.album_membership_count
+                .set(ordinal, u32::try_from(albums.len()).unwrap_or(u32::MAX));
             self.has_any_album.set(ordinal, !albums.is_empty());
         } else {
-            self.album_membership_count[ordinal as usize] = 0;
+            self.album_membership_count.clear(ordinal);
         }
     }
 
@@ -1125,7 +1249,7 @@ impl QueryIndexes {
         self.trashed.set(ordinal, false);
         self.has_any_album.set(ordinal, false);
         self.ensure_ordinal(ordinal);
-        self.album_membership_count[ordinal as usize] = 0;
+        self.album_membership_count.clear(ordinal);
         self.tags.remove_record(ordinal, universe);
         self.makes.remove_record(ordinal, universe);
         self.models.remove_record(ordinal, universe);
@@ -1142,7 +1266,7 @@ impl QueryIndexes {
             self.trashed.set(ordinal, false);
             self.has_any_album.set(ordinal, false);
             self.ensure_ordinal(ordinal);
-            self.album_membership_count[ordinal as usize] = 0;
+            self.album_membership_count.clear(ordinal);
         }
         self.tags.remove_targets(targets, universe);
         self.makes.remove_targets(targets, universe);
@@ -1206,9 +1330,7 @@ impl QueryIndexes {
             let membership_count = &mut self.album_membership_count;
             let has_any = &mut self.has_any_album;
             members.union_with(targets, universe, |ordinal| {
-                let count = &mut membership_count[ordinal as usize];
-                *count = count.saturating_add(1);
-                if *count == 1 {
+                if membership_count.increment(ordinal) == 1 {
                     has_any.set(ordinal, true);
                 }
             });
@@ -1218,9 +1340,7 @@ impl QueryIndexes {
                 let membership_count = &mut self.album_membership_count;
                 let has_any = &mut self.has_any_album;
                 members.subtract_with(targets, universe, |ordinal| {
-                    let count = &mut membership_count[ordinal as usize];
-                    *count = count.saturating_sub(1);
-                    if *count == 0 {
+                    if membership_count.decrement(ordinal) == 0 {
                         has_any.set(ordinal, false);
                     }
                 });
@@ -1232,6 +1352,24 @@ impl QueryIndexes {
             started,
             "Apply album membership batch"
         );
+    }
+
+    fn matching_camera_members_ascii(&self, value: &str) -> OrdinalSet {
+        let universe = self.album_membership_count.len();
+        let mut matches = self.makes.matching_members_ascii(value, universe);
+        let models = self.models.matching_members_ascii(value, universe);
+        matches.union_with(&models, universe, |_| {});
+        matches
+    }
+
+    fn matching_make_members_ascii(&self, value: &str) -> OrdinalSet {
+        self.makes
+            .matching_members_ascii(value, self.album_membership_count.len())
+    }
+
+    fn matching_model_members_ascii(&self, value: &str) -> OrdinalSet {
+        self.models
+            .matching_members_ascii(value, self.album_membership_count.len())
     }
 }
 
@@ -2153,6 +2291,7 @@ enum CompiledExpressionNode<'a> {
     HiddenAlbumExists(bool),
     Any {
         needle: String,
+        camera_members: OrdinalSet,
         tag_members: Option<&'a OrdinalSet>,
         include_paths: bool,
         include_album_type: bool,
@@ -2216,13 +2355,13 @@ impl<'a> CompiledExpressionNode<'a> {
             },
             Expression::Ext(ext) => Self::Ext(ext.to_ascii_lowercase()),
             Expression::Model(FilterValue::Value(model)) => {
-                Self::OwnedMembership(indexes.models.matching_members_ascii(model))
+                Self::OwnedMembership(indexes.matching_model_members_ascii(model))
             }
             Expression::Model(FilterValue::Exists(exists)) => {
                 Self::Bitmap(indexes.models.has_any(), *exists)
             }
             Expression::Make(FilterValue::Value(make)) => {
-                Self::OwnedMembership(indexes.makes.matching_members_ascii(make))
+                Self::OwnedMembership(indexes.matching_make_members_ascii(make))
             }
             Expression::Make(FilterValue::Exists(exists)) => {
                 Self::Bitmap(indexes.makes.has_any(), *exists)
@@ -2247,6 +2386,7 @@ impl<'a> CompiledExpressionNode<'a> {
             }
             Expression::Any(value) => Self::Any {
                 needle: value.to_ascii_lowercase(),
+                camera_members: indexes.matching_camera_members_ascii(value),
                 tag_members: hidden_metadata_album
                     .is_none()
                     .then(|| indexes.tags.get(value))
@@ -2287,20 +2427,14 @@ impl<'a> CompiledExpressionNode<'a> {
             Self::HiddenAlbumExists(exists) => record.object_type != ObjectType::Album && *exists,
             Self::Any {
                 needle,
+                camera_members,
                 tag_members,
                 include_paths,
                 include_album_type,
             } => {
                 contains_ascii_lowercase(record.id.as_str(), needle)
                     || contains_ascii_lowercase(&record.ext, needle)
-                    || record
-                        .make
-                        .as_deref()
-                        .is_some_and(|value| contains_ascii_lowercase(value, needle))
-                    || record
-                        .model
-                        .as_deref()
-                        .is_some_and(|value| contains_ascii_lowercase(value, needle))
+                    || camera_members.contains(ordinal)
                     || match record.object_type {
                         ObjectType::Image => "image".contains(needle),
                         ObjectType::Video => "video".contains(needle),
@@ -2497,8 +2631,8 @@ mod tests {
         );
         assert_eq!(indexes.tags.get("first").unwrap().len(), 128);
         assert_eq!(indexes.tags.get("second").unwrap().len(), 128);
-        assert_eq!(indexes.tags.membership_count[63], 1);
-        assert_eq!(indexes.tags.membership_count[64], 2);
+        assert_eq!(indexes.tags.membership_count.get(63), 1);
+        assert_eq!(indexes.tags.membership_count.get(64), 2);
         assert!(indexes.tags.has_any().contains(191));
 
         indexes.edit_tags(
@@ -2510,8 +2644,26 @@ mod tests {
         assert!(!indexes.tags.has_any().contains(63));
         assert!(!indexes.tags.has_any().contains(64));
         assert!(indexes.tags.has_any().contains(128));
-        assert_eq!(indexes.tags.membership_count[64], 0);
-        assert_eq!(indexes.tags.membership_count[128], 1);
+        assert_eq!(indexes.tags.membership_count.get(64), 0);
+        assert_eq!(indexes.tags.membership_count.get(128), 1);
+    }
+
+    #[test]
+    fn compact_membership_counts_preserve_overflow_boundaries() {
+        let mut counts = CompactMembershipCounts::default();
+        counts.set(7, u32::from(u16::MAX) - 1);
+        assert_eq!(counts.increment(7), u32::from(u16::MAX));
+        assert!(!counts.overflow.contains_key(&7));
+
+        assert_eq!(counts.increment(7), u32::from(u16::MAX) + 1);
+        assert_eq!(counts.overflow.get(&7), Some(&(u32::from(u16::MAX) + 1)));
+
+        assert_eq!(counts.decrement(7), u32::from(u16::MAX));
+        assert!(!counts.overflow.contains_key(&7));
+        assert_eq!(counts.decrement(7), u32::from(u16::MAX) - 1);
+
+        counts.clear(7);
+        assert_eq!(counts.get(7), 0);
     }
 
     #[test]
@@ -2534,6 +2686,12 @@ mod tests {
         let make = Expression::Make(FilterValue::Value("canon".to_owned()));
         assert!(state.matches(first_slot, &make, None));
         assert!(state.matches(second_slot, &make, None));
+        let any_make = Expression::Any("canon".to_owned());
+        assert!(state.matches(first_slot, &any_make, None));
+        assert!(state.matches(second_slot, &any_make, None));
+        let any_model = Expression::Any("r6".to_owned());
+        assert!(!state.matches(first_slot, &any_model, None));
+        assert!(state.matches(second_slot, &any_model, None));
 
         let impossible_pair = Expression::And(vec![
             Expression::Make(FilterValue::Value("Canon".to_owned())),
@@ -2565,6 +2723,8 @@ mod tests {
                 .unwrap()
                 .contains(first_slot.index())
         );
+        assert!(state.matches(first_slot, &Expression::Any("sony".to_owned()), None));
+        assert!(!state.matches(first_slot, &Expression::Any("canon".to_owned()), None));
 
         state.remove(second_slot).unwrap();
         assert!(state.query.makes.get("CANON").is_none());
