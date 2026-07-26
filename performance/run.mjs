@@ -863,6 +863,10 @@ async function runBrowserJourney({ port, token, sampleDir, sampleIndex, headed, 
 
   await phase('edit-single-trash-restore', async () => {
     await performActionAndWaitForApiResponse(page, 'Media actions', 'Delete', 'PUT', '/put/edit_flags')
+    const deletedAudit = await audit({ itemId })
+    assertBenchmark(deletedAudit.item?.isTrashed === true, 'single delete did not reach backend state')
+    await navigateToCollection(`${baseUrl}/trashed/view/${itemId}`)
+    await page.getByRole('button', { name: 'Media actions' }).waitFor({ state: 'visible' })
     await performActionAndWaitForApiResponse(page, 'Media actions', 'Restore', 'PUT', '/put/edit_flags')
   })
   itemAudit = await audit({ itemId })
@@ -1147,21 +1151,43 @@ async function performDialogAndWaitForApiResponse(page, dialog, method, path, ac
 }
 
 async function performActionAndWaitForApiResponse(page, menuName, actionName, method, path) {
-  return performAndWaitForApiResponse(
-    page,
-    method,
-    path,
-    () => openAction(page, menuName, actionName)
-  )
+  try {
+    return await performAndWaitForApiResponse(
+      page,
+      method,
+      path,
+      () => openAction(page, menuName, actionName)
+    )
+  } catch (error) {
+    const diagnostics = await page
+      .evaluate(() => ({
+        route: location.pathname,
+        snackbars: Array.from(document.querySelectorAll('.v-snackbar'))
+          .map((element) => element.textContent?.trim() ?? '')
+          .filter(Boolean),
+        activeOverlays: Array.from(document.querySelectorAll('.v-overlay--active'))
+          .map((element) => element.textContent?.trim() ?? '')
+          .filter(Boolean)
+      }))
+      .catch(() => null)
+    throw new Error(
+      `${menuName}/${actionName}: ${error instanceof Error ? error.message : String(error)}` +
+        (diagnostics ? ` diagnostics=${JSON.stringify(diagnostics)}` : ''),
+      { cause: error }
+    )
+  }
 }
 
 async function openAction(page, menuName, actionName) {
   await page.getByRole('button', { name: menuName }).click()
-  const action = page
+  const actionLabel = page
     .locator('.v-overlay--active .v-list-item')
     .getByText(actionName, { exact: true })
     .last()
-  await action.waitFor({ state: 'visible' })
+  await actionLabel.waitFor({ state: 'visible' })
+  const action = actionLabel.locator(
+    'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " v-list-item ")][1]'
+  )
   await action.click()
 }
 
