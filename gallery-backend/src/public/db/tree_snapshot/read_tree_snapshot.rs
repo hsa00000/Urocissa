@@ -36,6 +36,68 @@ impl TreeSnapshot {
     }
 }
 
+pub(crate) enum PinnedSnapshotView<'a> {
+    Memory(&'a PendingTreeSnapshot),
+    Redb(SnapshotBlobView<'a>),
+}
+
+impl PinnedSnapshotView<'_> {
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Self::Memory(snapshot) => snapshot.ordinals.len(),
+            Self::Redb(snapshot) => snapshot.len(),
+        }
+    }
+
+    pub(crate) fn structural_epoch(&self) -> u64 {
+        match self {
+            Self::Memory(snapshot) => snapshot.structural_epoch,
+            Self::Redb(snapshot) => snapshot.structural_epoch(),
+        }
+    }
+
+    pub(crate) fn universe(&self) -> usize {
+        match self {
+            Self::Memory(snapshot) => snapshot.universe,
+            Self::Redb(snapshot) => snapshot.universe(),
+        }
+    }
+
+    pub(crate) fn target_set(&self) -> Result<TargetSet> {
+        match self {
+            Self::Memory(snapshot) => Ok(snapshot.targets.clone()),
+            Self::Redb(snapshot) => snapshot.target_set(),
+        }
+    }
+
+    pub(crate) fn slot_ref(&self, index: usize) -> Result<SlotRef> {
+        match self {
+            Self::Memory(snapshot) => {
+                let ordinal = *snapshot
+                    .ordinals
+                    .get(index)
+                    .context(format!("Failed to find slot reference at index {index}"))?;
+                snapshot
+                    .targets
+                    .slot_ref_for_ordinal(ordinal)
+                    .context("tree snapshot target bitmap is inconsistent")
+            }
+            Self::Redb(snapshot) => snapshot.slot_ref(index),
+        }
+    }
+
+    pub(crate) fn for_each_selected_slot_ref(
+        &self,
+        indices: &[u32],
+        mut visit: impl FnMut(SlotRef),
+    ) -> Result<()> {
+        for index in indices {
+            visit(self.slot_ref(*index as usize)?);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub enum MyCow {
     DashMap(Ref<'static, i64, PendingTreeSnapshot>),
@@ -47,6 +109,28 @@ pub enum MyCow {
 }
 
 impl MyCow {
+    pub(crate) fn with_pinned_view<R>(
+        &self,
+        operation: impl FnOnce(PinnedSnapshotView<'_>) -> R,
+    ) -> Result<R> {
+        match self {
+            Self::DashMap(data) => Ok(operation(PinnedSnapshotView::Memory(data.value()))),
+            Self::Redb {
+                table,
+                timestamp,
+                layout,
+            } => {
+                let value = table
+                    .get(*timestamp)?
+                    .context(format!("tree snapshot {timestamp} disappeared"))?;
+                // The read-only Redb transaction pins immutable bytes. They were
+                // checksum-verified once when this snapshot handle was opened.
+                let view = SnapshotBlobView::from_verified_layout(value.value(), *layout);
+                Ok(operation(PinnedSnapshotView::Redb(view)))
+            }
+        }
+    }
+
     pub fn len(&self) -> usize {
         match self {
             Self::DashMap(data) => data.value().ordinals.len(),
@@ -184,5 +268,54 @@ impl MyCow {
         // checksum-verified once when this snapshot handle was opened.
         let view = SnapshotBlobView::from_verified_layout(value.value(), *layout);
         Ok(operation(&view))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redb_snapshot_uses_one_pinned_view_for_bulk_resolution() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let database = redb::Database::create(directory.path().join("snapshot.redb"))?;
+        let slots = [SlotRef::new(5, 1), SlotRef::new(1, 4), SlotRef::new(9, 1)];
+        let expected_targets = TargetSet::from_unique_slot_refs(slots, 16);
+        let snapshot = PendingTreeSnapshot {
+            structural_epoch: 77,
+            universe: 16,
+            ordinals: slots.iter().map(|slot_ref| slot_ref.index()).collect(),
+            targets: expected_targets.clone(),
+            scrollbar: Vec::new(),
+        };
+        let (bytes, layout) = snapshot.encode_with_layout()?;
+        let write = database.begin_write()?;
+        {
+            let mut table = write.open_table(TREE_SNAPSHOT_TABLE)?;
+            table.insert(123, bytes.as_slice())?;
+        }
+        write.commit()?;
+
+        let read = database.begin_read()?;
+        let table = read.open_table(TREE_SNAPSHOT_TABLE)?;
+        let snapshot = MyCow::Redb {
+            table,
+            timestamp: 123,
+            layout,
+        };
+        let resolved = snapshot.with_pinned_view(|view| -> Result<_> {
+            assert_eq!(view.len(), 3);
+            assert_eq!(view.structural_epoch(), 77);
+            assert_eq!(view.universe(), 16);
+            let mut resolved = Vec::new();
+            view.for_each_selected_slot_ref(&[2, 0, 1], |slot_ref| {
+                resolved.push(slot_ref);
+            })?;
+            Ok((resolved, view.target_set()?))
+        })??;
+
+        assert_eq!(resolved.0, vec![slots[2], slots[0], slots[1]]);
+        assert_eq!(resolved.1, expected_targets);
+        Ok(())
     }
 }
