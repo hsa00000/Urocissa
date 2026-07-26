@@ -7,14 +7,19 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { compareSummaries } from './compare.mjs'
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const backendDir = join(repoRoot, 'gallery-backend')
 const frontendDir = join(repoRoot, 'gallery-frontend')
-const backendBinary = join(
-  backendDir,
-  'target',
-  'dev-release',
-  process.platform === 'win32' ? 'urocissa.exe' : 'urocissa'
+const backendBinary = resolve(
+  process.env.UROCISSA_PERF_BACKEND ??
+    join(
+      backendDir,
+      'target',
+      'dev-release',
+      process.platform === 'win32' ? 'urocissa.exe' : 'urocissa'
+    )
 )
 const artifactRoot = join(repoRoot, '.performance')
 const defaultSeed = 20260718n
@@ -94,17 +99,30 @@ async function main() {
     const resultDir = join(artifactRoot, 'results', timestamp())
     const current = await runSuite({ resultDir, count, samples, seed, headed })
     const comparison = compareSummaries(baseline, current)
+    const timingAdvisory = process.env.UROCISSA_PERF_ALLOW_TIMING_JITTER === '1'
     current.comparison = comparison
     await writeFile(join(resultDir, 'summary.json'), JSON.stringify(current, null, 2))
     await writeFile(join(resultDir, 'report.md'), renderReport(current, comparison))
     console.log(renderConsoleSummary(current, comparison))
-    if (!current.correctness.ok) process.exitCode = 1
+    if (!current.correctness.ok || (!comparison.passed && !timingAdvisory)) {
+      process.exitCode = 1
+    }
+    if (timingAdvisory && !comparison.passed) {
+      console.log('timing jitter is advisory for this run')
+    }
     return
   }
 
   const resultDir = command === 'baseline'
     ? join(artifactRoot, 'baseline', 'latest')
     : join(artifactRoot, 'smoke', timestamp())
+  if (command === 'baseline') {
+    await Promise.all([
+      rm(join(resultDir, 'samples'), { recursive: true, force: true }),
+      rm(join(resultDir, 'summary.json'), { force: true }),
+      rm(join(resultDir, 'report.md'), { force: true })
+    ])
+  }
   const summary = await runSuite({ resultDir, count, samples, seed, headed })
   await writeFile(join(resultDir, 'summary.json'), JSON.stringify(summary, null, 2))
   await writeFile(join(resultDir, 'report.md'), renderReport(summary))
@@ -1307,7 +1325,9 @@ async function readBrowserMetrics(page) {
 async function readEvents(path) {
   if (!existsSync(path)) return []
   const text = await readFile(path, 'utf8')
-  return text.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line))
+  const events = text.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line))
+  const latestStart = events.findLastIndex((event) => event.sequence === 0)
+  return latestStart === -1 ? events : events.slice(latestStart)
 }
 
 function aggregateSamples(samples) {
@@ -1396,23 +1416,6 @@ function snakeToCamel(value) {
   return value.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
 }
 
-function compareSummaries(baseline, current) {
-  if (baseline.schemaVersion !== current.schemaVersion) {
-    throw new Error(`incompatible benchmark schemas: baseline=${baseline.schemaVersion}, current=${current.schemaVersion}`)
-  }
-  const keys = new Set([...Object.keys(baseline.aggregates ?? {}), ...Object.keys(current.aggregates ?? {})])
-  const metrics = {}
-  for (const key of keys) {
-    const before = baseline.aggregates?.[key]?.median ?? null
-    const after = current.aggregates?.[key]?.median ?? null
-    const delta = before && after ? after - before : null
-    const relative = before && after ? delta / before : null
-    const threshold = key.startsWith('browser.') ? 10 : 1
-    metrics[key] = { baseline: before, current: after, delta, relative, notable: relative != null && delta >= threshold && relative >= 0.1 }
-  }
-  return { metrics, notableRegressions: Object.entries(metrics).filter(([, value]) => value.notable).map(([key]) => key) }
-}
-
 function renderReport(summary, comparison = null) {
   const lines = [`# Urocissa performance report`, '', `- Generated: ${summary.generatedAt}`, `- Samples: ${summary.samples.length}`, `- Fixture: ${summary.environment.fixture.count} records`, `- Correctness: ${summary.correctness.ok ? 'PASS' : 'FAIL'}`, '']
   if (summary.correctness.errors.length) lines.push('## Correctness errors', '', ...summary.correctness.errors.map((error) => `- ${error}`), '')
@@ -1429,14 +1432,21 @@ function renderReport(summary, comparison = null) {
         `| ${key} | ${formatMetric(key, value.baseline)} | ${formatMetric(key, value.current)} | ${formatMetricDelta(key, value.delta, value.relative)} |`
       )
     }
-    lines.push('', `Notable regressions: ${comparison.notableRegressions.length || 'none'}`)
+    lines.push(
+      '',
+      `Noise-adjusted zero-regression gate: ${comparison.passed ? 'PASS' : 'FAIL'}`,
+      `Timing/throughput regressions: ${comparison.notableRegressions.length || 'none'}`
+    )
   }
   return `${lines.join('\n')}\n`
 }
 
 function renderConsoleSummary(summary, comparison = null) {
   const lines = [`correctness: ${summary.correctness.ok ? 'PASS' : 'FAIL'}`, `samples: ${summary.samples.length}`, `fixture: ${summary.environment.fixture.count}`]
-  if (comparison) lines.push(`notable timing regressions: ${comparison.notableRegressions.length || 'none'}`)
+  if (comparison) {
+    lines.push(`zero-regression gate: ${comparison.passed ? 'PASS' : 'FAIL'}`)
+    lines.push(`timing/throughput regressions: ${comparison.notableRegressions.length || 'none'}`)
+  }
   return lines.join('\n')
 }
 

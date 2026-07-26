@@ -510,18 +510,18 @@ mod enabled {
             expected_trashed += usize::from(item.is_trashed());
             batch.push(item);
             if batch.len() == 4_096 || index + 1 == request.count as u64 {
+                let batch_len = batch.len();
                 let insert_start = Instant::now();
                 TREE.store.write(|writer| {
-                    for item in &batch {
-                        writer.insert(item).map_err(|error| {
+                    for item in batch.drain(..) {
+                        writer.insert_owned(item).map_err(|error| {
                             AppError::new(ErrorKind::Database, error.to_string())
                         })?;
                     }
                     Ok::<(), AppError>(())
                 })?;
                 insert_ns = insert_ns.saturating_add(elapsed_ns(insert_start));
-                inserted += batch.len();
-                batch.clear();
+                inserted += batch_len;
             }
         }
 

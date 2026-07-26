@@ -169,7 +169,7 @@ fn migrate_batch(store: &DataStore, batch: Vec<(String, LegacyAbstractData)>) ->
         for (key, legacy) in batch {
             let value = V6AbstractData::from_v5(legacy)
                 .with_context(|| format!("failed to convert V5 record {key}"))?;
-            writer.insert_v6_at(&key, &value)?;
+            writer.insert_v6_at(&key, value)?;
         }
         Ok::<(), anyhow::Error>(())
     })?;

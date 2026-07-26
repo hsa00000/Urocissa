@@ -15,6 +15,7 @@ use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::AlbumCombined;
 use crate::public::structure::config::{APP_CONFIG, WriteBehindConfig};
+use crate::storage::store::RecordWriter;
 use crate::storage::v6::V6AbstractData;
 
 pub const FLUSH_CHUNK_SIZE: usize = 8_192;
@@ -933,6 +934,22 @@ struct FlushStats {
     chunks: usize,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct DetailedTargetTiming {
+    decode: Duration,
+    overlay: Duration,
+    encode_insert: Duration,
+    commit: Duration,
+}
+
+impl DetailedTargetTiming {
+    fn add_write(&mut self, timing: crate::storage::store::RecordWriteTiming) {
+        self.decode = self.decode.saturating_add(timing.decode);
+        self.encode_insert = self.encode_insert.saturating_add(timing.encode_insert);
+        self.commit = self.commit.saturating_add(timing.commit);
+    }
+}
+
 fn persist_batch(batch: &DirtyBatch) -> anyhow::Result<FlushStats> {
     let batch_started = Instant::now();
     let mut stats = FlushStats {
@@ -963,7 +980,29 @@ fn persist_batch(batch: &DirtyBatch) -> anyhow::Result<FlushStats> {
     );
 
     let targets_started = Instant::now();
-    persist_target_records(batch, &structural_album_ids, &mut stats)?;
+    let target_timing = persist_target_records(batch, &structural_album_ids, &mut stats)?;
+    if crate::performance::detailed_timing_enabled() {
+        crate::perf_duration!(
+            "write_behind.flush.targets.decode",
+            target_timing.decode,
+            "Decode target records"
+        );
+        crate::perf_duration!(
+            "write_behind.flush.targets.overlay",
+            target_timing.overlay,
+            "Apply target overlays"
+        );
+        crate::perf_duration!(
+            "write_behind.flush.targets.encode_insert",
+            target_timing.encode_insert,
+            "Encode and insert target records"
+        );
+        crate::perf_duration!(
+            "write_behind.flush.targets.commit",
+            target_timing.commit,
+            "Commit target record transactions"
+        );
+    }
     crate::perf_timing!(
         "write_behind.flush.targets",
         targets_started,
@@ -1019,9 +1058,9 @@ fn persist_album_creates(batch: &DirtyBatch, stats: &mut FlushStats) -> anyhow::
         before_flush_commit()?;
         TREE.store.write(|writer| {
             for album in &chunk {
-                writer.insert_at(
+                writer.insert_at_owned(
                     album.object.id.as_str(),
-                    &AbstractData::Album((**album).clone()),
+                    AbstractData::Album((**album).clone()),
                 )?;
             }
             Ok::<(), anyhow::Error>(())
@@ -1036,7 +1075,9 @@ fn persist_target_records(
     batch: &DirtyBatch,
     structural_album_ids: &BTreeSet<ArrayString<64>>,
     stats: &mut FlushStats,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<DetailedTargetTiming> {
+    let detailed = crate::performance::detailed_timing_enabled();
+    let mut timing = DetailedTargetTiming::default();
     let universe = TREE.state.read().unwrap().arena.capacity();
     let mut targets = TargetSet::default();
     for operation in &batch.operations {
@@ -1088,20 +1129,53 @@ fn persist_target_records(
             continue;
         }
         before_flush_commit()?;
-        TREE.store.write(|writer| {
-            for (slot_ref, id) in &records {
-                let mut record = writer.get_v6(id.as_str())?;
-                apply_v6_overlay(&mut record, Some(*slot_ref), id.as_str(), &batch.operations);
-                if let Some(record) = record {
-                    writer.insert_v6_at(id.as_str(), &record)?;
-                }
-            }
-            Ok::<(), anyhow::Error>(())
-        })?;
+        if detailed {
+            let (overlay, write_timing) = TREE
+                .store
+                .write_profiled(|writer| persist_target_chunk_profiled(writer, &records, batch))?;
+            timing.overlay = timing.overlay.saturating_add(overlay);
+            timing.add_write(write_timing);
+        } else {
+            TREE.store
+                .write(|writer| persist_target_chunk(writer, &records, batch))?;
+        }
         stats.unique_records = stats.unique_records.saturating_add(records.len());
         stats.chunks = stats.chunks.saturating_add(1);
     }
+    Ok(timing)
+}
+
+fn persist_target_chunk(
+    writer: &mut RecordWriter<'_>,
+    records: &[(crate::public::db::tree::state::SlotRef, ArrayString<64>)],
+    batch: &DirtyBatch,
+) -> anyhow::Result<()> {
+    for (slot_ref, id) in records {
+        let mut record = writer.get_v6(id.as_str())?;
+        apply_v6_overlay(&mut record, Some(*slot_ref), id.as_str(), &batch.operations);
+        if let Some(record) = record {
+            writer.insert_v6_at(id.as_str(), record)?;
+        }
+    }
     Ok(())
+}
+
+fn persist_target_chunk_profiled(
+    writer: &mut RecordWriter<'_>,
+    records: &[(crate::public::db::tree::state::SlotRef, ArrayString<64>)],
+    batch: &DirtyBatch,
+) -> anyhow::Result<Duration> {
+    let mut overlay = Duration::ZERO;
+    for (slot_ref, id) in records {
+        let mut record = writer.get_v6_profiled(id.as_str())?;
+        let overlay_started = Instant::now();
+        apply_v6_overlay(&mut record, Some(*slot_ref), id.as_str(), &batch.operations);
+        overlay = overlay.saturating_add(overlay_started.elapsed());
+        if let Some(record) = record {
+            writer.insert_v6_at_profiled(id.as_str(), record)?;
+        }
+    }
+    Ok(overlay)
 }
 
 fn persist_structural_albums(
@@ -1130,7 +1204,7 @@ fn persist_structural_albums(
                 let mut record = writer.get_v6(album_id.as_str())?;
                 apply_v6_overlay(&mut record, *slot_ref, album_id.as_str(), &batch.operations);
                 if let Some(record) = record {
-                    writer.insert_v6_at(album_id.as_str(), &record)?;
+                    writer.insert_v6_at(album_id.as_str(), record)?;
                 } else {
                     writer.remove(album_id.as_str())?;
                 }

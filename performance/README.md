@@ -22,6 +22,12 @@ node performance\run.mjs smoke --count 100000 --samples 1
 node performance\run.mjs storage --count 1000000 --samples 3
 ```
 
+Set `UROCISSA_PERF_BACKEND` to compare a separately built backend binary.
+Comparison runs normally return a non-zero exit code when the noise-floor timing
+gate fails. For explicitly approved diagnostic runs, set
+`UROCISSA_PERF_ALLOW_TIMING_JITTER=1` to keep those timing findings advisory;
+correctness failures still fail the command.
+
 On a Linux VPS, the storage-only harness is a single command and does not install
 Playwright or build the frontend:
 
@@ -84,7 +90,7 @@ The runner builds the backend with `--profile dev-release --features performance
 - entering the test album and setting a cover; and
 - warm reloading and auditing the persisted final state.
 
-Every timed UI edit measures RAM publication: it waits for its target response, application API quiet, and the backend barrier without forcing Redb durability. Logical audits run outside those intervals. A separate `write-behind-drain` phase measures Redb materialization and requires logical/disk audits to match before warm reload. The runner then injects a one-shot write-behind chunk failure, terminates the process before retry, restarts it, and verifies the exact committed marker prefix from Redb. The fixture is finally deleted by the restarted process, and both disk and memory must contain zero records. Use `UROCISSA_PERF_SKIP_BUILD=1` only when the dev-release backend and frontend have already been rebuilt for the current source.
+Every timed UI edit measures RAM publication: it waits for its target response, application API quiet, and the backend barrier without forcing Redb durability. Logical audits run outside those intervals. A separate `write-behind-drain` phase measures Redb materialization and requires logical/disk audits to match before warm reload. The runner then injects a one-shot write-behind chunk failure, terminates the process before retry, restarts it, and verifies the exact committed marker prefix from Redb. The fixture is finally deleted by the restarted process, and both disk and memory must contain zero records. Use `UROCISSA_PERF_SKIP_BUILD=1` only when the dev-release backend and frontend have already been rebuilt for the current source. Set `UROCISSA_PERF_DETAILED_TIMING=1` only for profiling; it adds `write_behind.flush.targets.decode`, `.overlay`, `.encode_insert`, and `.commit` events and is intentionally excluded from formal timing comparisons.
 
 The artifact schema is version 7 and includes the complete RAM-first edit and write-behind workload, the selected 8,192-record flush chunk size, and fixed Redb cache budgets in `environment`: 128 MiB main, 32 MiB tree snapshot, 16 MiB query snapshot, 8 MiB expire, and 128 MiB migration source/repair (the migration destination uses the 128 MiB main policy). The report records 100 ms sampled current/global/phase peak RSS, cache usage/evictions/hits/misses, and estimated arena/index/query/snapshot/write-behind component memory. Derived tree/query snapshots remain on internal schema 6: one fixed-width ordinal/selection bitmap blob per tree snapshot plus cached scrollbar boundaries and structural-epoch validation. Incompatible temp/query caches are deleted at startup. Schema 6 and older benchmark baselines are intentionally incompatible with comparison runs. Generate a fresh schema 7 baseline after upgrading:
 
@@ -100,6 +106,12 @@ Reports are written under `.performance/` (ignored by Git):
 - `results/<timestamp>/` contains comparison output and raw JSONL backend events/logs.
 - `smoke/<timestamp>/` contains quick-run artifacts and a browser screenshot.
 
-The report includes median, p95, and max timings for the fixture API, restart, every read/edit browser phase, HTTP method and route latency for GET/POST/PUT/DELETE requests, deletion, and structured backend operations such as `get_data.read_range`, `prefetch.filter_items`, and `tree_snapshot.flush_disk`. Phase status metrics also expose pending/active/flushing record work, estimated drain time, recent flush records/chunks, and EWMA flush throughput. Long tasks, frame gaps, paints, and heap readings are reset for each phase instead of accumulating across the journey. A comparison marks a timing as notable when it is at least 10% slower and exceeds the absolute noise floor (10 ms for browser phases, 1 ms for server operations). Correctness failures always fail the run independently of timing thresholds.
+The report includes median, p95, and max timings for the fixture API, restart, every read/edit browser phase, HTTP method and route latency for GET/POST/PUT/DELETE requests, deletion, and structured backend operations such as `get_data.read_range`, `prefetch.filter_items`, and `tree_snapshot.flush_disk`. Phase status metrics also expose pending/active/flushing record work, estimated drain time, recent flush records/chunks, and EWMA flush throughput. Long tasks, frame gaps, paints, and heap readings are reset for each phase instead of accumulating across the journey. A comparison fails when a timing regression exceeds the absolute noise floor (10 ms for browser phases, 1 ms for server operations); there is no additional percentage allowance. Correctness failures always fail the run independently of timing thresholds.
+
+`optimization-gate.mjs` combines comparison, storage, and one or more
+`edit-memory.mjs` artifacts into an ignored `optimization-gate.json`. Pass
+`--timing-advisory` only when timing jitter has been explicitly waived; the
+artifact still records every regression while correctness, schema, cache, and
+memory checks remain blocking.
 
 The benchmark-only fixture, barrier, drain, phase, status, audit, and restart-probe routes are protected by a per-run `X-Urocissa-Perf-Token` and only operate when `UROCISSA_PERF_ROOT` points to a directory containing `.urocissa-performance-root`. `POST /__perf/audit` accepts `view: "logical" | "disk"`; `POST /__perf/restart-probe` is the isolated failure-injection entry point. These routes are compiled only with the `performance-test` feature, so production builds do not expose them.

@@ -288,7 +288,7 @@ async fn delete_durable_selection(targets: TargetSet, structural_epoch: u64) -> 
                                 data.touch_update_at(changed_at);
                             }
                         }
-                        writer.insert_at(member_id.as_str(), &data)?;
+                        writer.insert_at_owned(member_id.as_str(), data)?;
                     }
                 }
                 for slot_ref in targets.iter() {
@@ -297,9 +297,9 @@ async fn delete_durable_selection(targets: TargetSet, structural_epoch: u64) -> 
                     }
                 }
                 for album in &affected_album_patches {
-                    writer.insert_at(
+                    writer.insert_at_owned(
                         album.object.id.as_str(),
-                        &AbstractData::Album(album.clone()),
+                        AbstractData::Album(album.clone()),
                     )?;
                 }
                 Ok::<(), anyhow::Error>(())

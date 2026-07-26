@@ -35,6 +35,14 @@ pub enum V6AbstractData {
     Album(V6AlbumCombined),
 }
 
+/// Borrowed Redb view over a frozen V6 bitcode payload.
+///
+/// The type name intentionally matches [`V6AbstractData`] so existing V6
+/// tables can be opened without a migration while codec ownership remains in
+/// the store layer.
+#[derive(Debug)]
+pub(crate) struct RawV6Bytes;
+
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct V6ImageCombined {
     pub object: V6ObjectSchema,
@@ -152,6 +160,39 @@ impl Value for V6AbstractData {
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a> {
         bitcode::encode(value)
+    }
+
+    fn type_name() -> TypeName {
+        TypeName::new("AbstractDataV6")
+    }
+}
+
+impl Value for RawV6Bytes {
+    type SelfType<'a>
+        = &'a [u8]
+    where
+        Self: 'a;
+    type AsBytes<'a>
+        = &'a [u8]
+    where
+        Self: 'a;
+
+    fn fixed_width() -> Option<usize> {
+        None
+    }
+
+    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+    where
+        Self: 'a,
+    {
+        data
+    }
+
+    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
+    where
+        Self: 'b,
+    {
+        value
     }
 
     fn type_name() -> TypeName {
@@ -300,6 +341,131 @@ impl From<&AbstractData> for V6AbstractData {
                         .collect(),
                 },
             }),
+        }
+    }
+}
+
+impl From<AbstractData> for V6AbstractData {
+    fn from(value: AbstractData) -> Self {
+        match value {
+            AbstractData::Image(ImageCombined { object, metadata }) => {
+                Self::Image(V6ImageCombined {
+                    object: V6ObjectSchema {
+                        id: object.id,
+                        obj_type: v6_object_type(object.obj_type),
+                        pending: object.pending,
+                        thumbhash: object.thumbhash,
+                        cache_version: object.cache_version,
+                        description: object.description,
+                        tags: object.tags,
+                        is_favorite: object.is_favorite,
+                        is_archived: object.is_archived,
+                        is_trashed: object.is_trashed,
+                        update_at: object.update_at,
+                    },
+                    metadata: V6ImageMetadata {
+                        id: metadata.id,
+                        size: metadata.size,
+                        width: metadata.width,
+                        height: metadata.height,
+                        ext: metadata.ext,
+                        phash: metadata.phash,
+                        albums: metadata.albums,
+                        exif_vec: metadata.exif_vec,
+                        alias: metadata
+                            .alias
+                            .into_iter()
+                            .map(|value| V6FileModify {
+                                file: value.file,
+                                modified: value.modified,
+                                scan_time: value.scan_time,
+                            })
+                            .collect(),
+                    },
+                })
+            }
+            AbstractData::Video(VideoCombined { object, metadata }) => {
+                Self::Video(V6VideoCombined {
+                    object: V6ObjectSchema {
+                        id: object.id,
+                        obj_type: v6_object_type(object.obj_type),
+                        pending: object.pending,
+                        thumbhash: object.thumbhash,
+                        cache_version: object.cache_version,
+                        description: object.description,
+                        tags: object.tags,
+                        is_favorite: object.is_favorite,
+                        is_archived: object.is_archived,
+                        is_trashed: object.is_trashed,
+                        update_at: object.update_at,
+                    },
+                    metadata: V6VideoMetadata {
+                        id: metadata.id,
+                        size: metadata.size,
+                        width: metadata.width,
+                        height: metadata.height,
+                        ext: metadata.ext,
+                        duration: metadata.duration,
+                        albums: metadata.albums,
+                        exif_vec: metadata.exif_vec,
+                        alias: metadata
+                            .alias
+                            .into_iter()
+                            .map(|value| V6FileModify {
+                                file: value.file,
+                                modified: value.modified,
+                                scan_time: value.scan_time,
+                            })
+                            .collect(),
+                    },
+                })
+            }
+            AbstractData::Album(AlbumCombined { object, metadata }) => {
+                Self::Album(V6AlbumCombined {
+                    object: V6ObjectSchema {
+                        id: object.id,
+                        obj_type: v6_object_type(object.obj_type),
+                        pending: object.pending,
+                        thumbhash: object.thumbhash,
+                        cache_version: object.cache_version,
+                        description: object.description,
+                        tags: object.tags,
+                        is_favorite: object.is_favorite,
+                        is_archived: object.is_archived,
+                        is_trashed: object.is_trashed,
+                        update_at: object.update_at,
+                    },
+                    metadata: V6AlbumMetadata {
+                        id: metadata.id,
+                        title: metadata.title,
+                        created_time: metadata.created_time,
+                        start_time: metadata.start_time,
+                        end_time: metadata.end_time,
+                        last_modified_time: metadata.last_modified_time,
+                        cover: metadata.cover,
+                        item_count: metadata.item_count,
+                        item_size: metadata.item_size,
+                        share_list: metadata
+                            .share_list
+                            .into_iter()
+                            .map(|(id, value)| {
+                                (
+                                    id,
+                                    V6Share {
+                                        url: value.url,
+                                        description: value.description,
+                                        password: value.password,
+                                        show_metadata: value.show_metadata,
+                                        show_download: value.show_download,
+                                        show_upload: value.show_upload,
+                                        exp: value.exp,
+                                    },
+                                )
+                            })
+                            .collect(),
+                    },
+                })
+            }
         }
     }
 }
@@ -579,6 +745,7 @@ mod tests {
     #[test]
     fn v6_type_name_is_frozen() {
         assert_eq!(V6AbstractData::type_name().name(), "AbstractDataV6");
+        assert_eq!(RawV6Bytes::type_name(), V6AbstractData::type_name());
     }
 
     #[test]
@@ -590,5 +757,14 @@ mod tests {
         let domain = decoded.into_domain().unwrap();
         assert_eq!(domain.cache_version(), 37);
         assert_eq!(V6AbstractData::from(&domain), golden_fixture());
+    }
+
+    #[test]
+    fn owned_conversion_matches_borrowed_conversion() {
+        let domain = golden_fixture().into_domain().unwrap();
+        assert_eq!(
+            V6AbstractData::from(domain.clone()),
+            V6AbstractData::from(&domain)
+        );
     }
 }

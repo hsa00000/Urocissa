@@ -17,6 +17,24 @@ macro_rules! perf_timing {
     }};
 }
 
+/// Emit a pre-aggregated performance duration without taking another
+/// `Instant`. This is used by opt-in detailed profiling where the measured
+/// sub-operations are accumulated inside a transaction.
+#[macro_export]
+macro_rules! perf_duration {
+    ($operation:expr, $elapsed:expr, $($arg:tt)*) => {{
+        let elapsed = $elapsed;
+        let duration = format!("{:?}", elapsed);
+        let duration_ns = elapsed.as_nanos().min(u64::MAX as u128) as u64;
+        log::info!(
+            operation = $operation,
+            duration_ns = duration_ns,
+            duration = &*duration;
+            $($arg)*
+        );
+    }};
+}
+
 #[cfg(feature = "performance-test")]
 mod memory;
 
@@ -47,6 +65,14 @@ pub fn set_phase(phase: &str) {
     memory::set_phase();
 }
 
+#[cfg(feature = "performance-test")]
+pub fn detailed_timing_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("UROCISSA_PERF_DETAILED_TIMING").is_ok_and(|value| value == "1")
+    })
+}
+
 #[cfg(not(feature = "performance-test"))]
 pub fn initialize() {}
 
@@ -56,6 +82,11 @@ pub fn record_log(_record: &log::Record<'_>) {}
 #[cfg(not(feature = "performance-test"))]
 #[allow(dead_code)]
 pub fn set_phase(_phase: &str) {}
+
+#[cfg(not(feature = "performance-test"))]
+pub const fn detailed_timing_enabled() -> bool {
+    false
+}
 
 #[cfg(not(feature = "performance-test"))]
 #[allow(dead_code)]
