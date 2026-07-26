@@ -2,7 +2,7 @@ use redb::Builder;
 
 const MIB: usize = 1024 * 1024;
 
-pub const MAIN_CACHE_BYTES: usize = 256 * MIB;
+pub const MAIN_CACHE_BYTES: usize = 128 * MIB;
 pub const TREE_SNAPSHOT_CACHE_BYTES: usize = 32 * MIB;
 pub const QUERY_SNAPSHOT_CACHE_BYTES: usize = 16 * MIB;
 pub const EXPIRE_CACHE_BYTES: usize = 8 * MIB;
@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn cache_budgets_match_the_four_gib_policy() {
-        assert_eq!(CacheClass::Main.limit_bytes(), 256 * MIB);
+        assert_eq!(CacheClass::Main.limit_bytes(), 128 * MIB);
         assert_eq!(CacheClass::TreeSnapshot.limit_bytes(), 32 * MIB);
         assert_eq!(CacheClass::QuerySnapshot.limit_bytes(), 16 * MIB);
         assert_eq!(CacheClass::Expire.limit_bytes(), 8 * MIB);

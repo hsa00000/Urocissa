@@ -22,12 +22,12 @@ const defaultCount = 100_000
 const defaultSamples = 3
 const viewport = { width: 1440, height: 900 }
 const redbCacheBudgets = Object.freeze({
-  mainBytes: 256 * 1024 ** 2,
+  mainBytes: 128 * 1024 ** 2,
   treeSnapshotBytes: 32 * 1024 ** 2,
   querySnapshotBytes: 16 * 1024 ** 2,
   expireBytes: 8 * 1024 ** 2,
   migrationSourceBytes: 128 * 1024 ** 2,
-  migrationDestinationBytes: 256 * 1024 ** 2
+  migrationDestinationBytes: 128 * 1024 ** 2
 })
 const editMarkers = Object.freeze({
   albumTitle: 'Urocissa Performance Album',
