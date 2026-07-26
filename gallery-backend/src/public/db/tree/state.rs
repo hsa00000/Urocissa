@@ -229,6 +229,53 @@ impl IdIndex {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ExtId(u32);
+
+impl ExtId {
+    const UNINTERNED: Self = Self(0);
+}
+
+#[derive(Debug, Default)]
+struct ExtensionInterner {
+    ids: HashMap<String, ExtId>,
+}
+
+impl ExtensionInterner {
+    fn intern(&mut self, extension: &str) -> ExtId {
+        if let Some(id) = self.ids.get(extension) {
+            return *id;
+        }
+        let id = ExtId(
+            u32::try_from(self.ids.len())
+                .expect("extension interner exceeded u32 capacity")
+                .checked_add(1)
+                .expect("extension interner exhausted reserved IDs"),
+        );
+        self.ids.insert(extension.to_owned(), id);
+        id
+    }
+
+    fn matching_ids_ascii(&self, value: &str) -> Vec<ExtId> {
+        let needle = value.to_ascii_lowercase();
+        let mut matches = self
+            .ids
+            .iter()
+            .filter_map(|(candidate, id)| {
+                contains_ascii_lowercase(candidate, &needle).then_some(*id)
+            })
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches
+    }
+
+    #[cfg(feature = "performance-test")]
+    fn estimated_dynamic_bytes(&self) -> usize {
+        hash_map_allocation_bytes::<String, ExtId>(self.ids.capacity())
+            + self.ids.keys().map(String::capacity).sum::<usize>()
+    }
+}
+
 /// Fields needed for sorting, filtering, layout and album aggregates. Mutable
 /// metadata lives in `QueryIndexes`; descriptions remain sparse dirty patches.
 #[derive(Debug, Clone)]
@@ -239,16 +286,14 @@ pub struct CacheRecord {
     pub width: u32,
     pub height: u32,
     pub size: u64,
-    pub thumbhash: Option<Vec<u8>>,
+    pub thumbhash: Option<Box<[u8]>>,
     pub cache_version: u32,
-    pub ext: String,
-    pub make: Option<String>,
-    pub model: Option<String>,
+    pub ext_id: ExtId,
     pub path_aliases: Vec<String>,
 }
 
 impl CacheRecord {
-    pub fn from_abstract_data(data: &AbstractData, timestamp: i64) -> Self {
+    pub fn from_abstract_data(data: &AbstractData, timestamp: i64, ext_id: ExtId) -> Self {
         let update_at = match data {
             AbstractData::Image(image) => image.object.update_at,
             AbstractData::Video(video) => video.object.update_at,
@@ -260,7 +305,6 @@ impl CacheRecord {
             AbstractData::Video(video) => (ObjectType::Video, video.metadata.size),
             AbstractData::Album(_) => (ObjectType::Album, 0),
         };
-        let exif = data.exif_vec();
         Self {
             id: data.hash(),
             object_type,
@@ -268,17 +312,21 @@ impl CacheRecord {
             width: data.width(),
             height: data.height(),
             size,
-            thumbhash: data.thumbhash().cloned(),
+            thumbhash: data
+                .thumbhash()
+                .map(|value| value.clone().into_boxed_slice()),
             cache_version: data.cache_version(),
-            ext: data.ext().to_owned(),
-            make: exif.and_then(|values| values.get("Make").cloned()),
-            model: exif.and_then(|values| values.get("Model").cloned()),
+            ext_id,
             path_aliases: data
                 .alias()
                 .iter()
                 .map(|alias| alias.file.clone())
                 .collect(),
         }
+    }
+
+    pub fn thumbhash_vec(&self) -> Option<Vec<u8>> {
+        self.thumbhash.as_deref().map(<[u8]>::to_vec)
     }
 
     pub fn reduced(&self, slot_ref: SlotRef) -> ReducedData {
@@ -293,10 +341,7 @@ impl CacheRecord {
 
     #[cfg(feature = "performance-test")]
     fn estimated_dynamic_bytes(&self) -> usize {
-        self.thumbhash.as_ref().map_or(0, Vec::capacity)
-            + self.ext.capacity()
-            + self.make.as_ref().map_or(0, String::capacity)
-            + self.model.as_ref().map_or(0, String::capacity)
+        self.thumbhash.as_ref().map_or(0, |value| value.len())
             + self.path_aliases.capacity() * std::mem::size_of::<String>()
             + self
                 .path_aliases
@@ -1168,6 +1213,7 @@ pub struct QueryIndexes {
     pub models: SingleStringFacetIndex,
     pub albums: HashMap<ArrayString<64>, OrdinalSet>,
     album_membership_count: CompactMembershipCounts,
+    extensions: ExtensionInterner,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1191,7 +1237,8 @@ impl QueryIndexes {
         .sum::<usize>();
         let facet_bytes = self.tags.estimated_dynamic_bytes()
             + self.makes.estimated_dynamic_bytes()
-            + self.models.estimated_dynamic_bytes();
+            + self.models.estimated_dynamic_bytes()
+            + self.extensions.estimated_dynamic_bytes();
         let album_bytes =
             hash_map_allocation_bytes::<ArrayString<64>, OrdinalSet>(self.albums.capacity())
                 + self
@@ -1371,6 +1418,14 @@ impl QueryIndexes {
         self.models
             .matching_members_ascii(value, self.album_membership_count.len())
     }
+
+    fn intern_extension(&mut self, extension: &str) -> ExtId {
+        self.extensions.intern(extension)
+    }
+
+    fn matching_extension_ids_ascii(&self, value: &str) -> Vec<ExtId> {
+        self.extensions.matching_ids_ascii(value)
+    }
 }
 
 fn object_flags(data: &AbstractData) -> (bool, bool, bool) {
@@ -1461,7 +1516,8 @@ impl TreeState {
 
     fn push_unsorted(&mut self, data: AbstractData) {
         let timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
-        let record = CacheRecord::from_abstract_data(&data, timestamp);
+        let ext_id = self.query.intern_extension(data.ext());
+        let record = CacheRecord::from_abstract_data(&data, timestamp, ext_id);
         self.track_record_added(&record);
         let id = record.id;
         let slot_ref = self.arena.allocate(record);
@@ -1573,7 +1629,8 @@ impl TreeState {
 
     pub fn insert(&mut self, data: &AbstractData) -> SlotRef {
         let timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
-        let record = CacheRecord::from_abstract_data(data, timestamp);
+        let ext_id = self.query.intern_extension(data.ext());
+        let record = CacheRecord::from_abstract_data(data, timestamp, ext_id);
         self.track_record_added(&record);
         let id = record.id;
         let slot_ref = self.arena.allocate(record);
@@ -1636,11 +1693,12 @@ impl TreeState {
 
     pub fn replace_static(&mut self, slot_ref: SlotRef, data: &AbstractData) -> Option<()> {
         let old = self.arena.get(slot_ref)?.clone();
-        let new_timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
-        let new = CacheRecord::from_abstract_data(data, new_timestamp);
-        if old.id != new.id {
+        if old.id != data.hash() {
             return None;
         }
+        let new_timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
+        let ext_id = self.query.intern_extension(data.ext());
+        let new = CacheRecord::from_abstract_data(data, new_timestamp, ext_id);
         self.query
             .remove_record(slot_ref.index(), self.arena.capacity());
         self.query
@@ -1719,7 +1777,8 @@ impl TreeState {
         for data in insert_list {
             let id = data.hash();
             let timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
-            let next_record = CacheRecord::from_abstract_data(data, timestamp);
+            let ext_id = self.query.intern_extension(data.ext());
+            let next_record = CacheRecord::from_abstract_data(data, timestamp, ext_id);
             if let Some(slot_ref) = self.find(id.as_str()) {
                 let Some(old_timestamp) = self.get(slot_ref).map(|record| record.timestamp) else {
                     continue;
@@ -1857,7 +1916,7 @@ impl TreeState {
                     cover_candidate = Some((
                         record.timestamp,
                         record.id,
-                        record.thumbhash.clone(),
+                        record.thumbhash_vec(),
                         record.cache_version,
                     ));
                 }
@@ -1995,7 +2054,7 @@ impl TreeState {
                         cover_candidate = Some((
                             record.timestamp,
                             record.id,
-                            record.thumbhash.clone(),
+                            record.thumbhash_vec(),
                             record.cache_version,
                         ));
                     }
@@ -2076,7 +2135,7 @@ impl TreeState {
             end_time = Some(end_time.map_or(record.timestamp, |value| value.max(record.timestamp)));
             if current_cover == Some(record.id) {
                 cover_is_member = true;
-                cover_thumbhash.clone_from(&record.thumbhash);
+                cover_thumbhash = record.thumbhash_vec();
                 cover_cache_version = record.cache_version;
             }
             if newest.is_none_or(|candidate| {
@@ -2101,7 +2160,7 @@ impl TreeState {
             album.object.cache_version = cover_cache_version;
         } else if let Some(record) = newest {
             album.metadata.cover = Some(record.id);
-            album.object.thumbhash.clone_from(&record.thumbhash);
+            album.object.thumbhash = record.thumbhash_vec();
             album.object.cache_version = record.cache_version;
         }
         Some(album)
@@ -2122,6 +2181,8 @@ impl TreeState {
         let override_record = CacheRecord::from_abstract_data(
             data,
             data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST),
+            // Aggregate-only records never participate in expression matching.
+            ExtId::UNINTERNED,
         );
         let override_is_member = data
             .albums()
@@ -2178,7 +2239,7 @@ impl TreeState {
             end_time = Some(end_time.map_or(record.timestamp, |value| value.max(record.timestamp)));
             if current_cover == Some(record.id) {
                 cover_is_member = true;
-                cover_thumbhash.clone_from(&record.thumbhash);
+                cover_thumbhash = record.thumbhash_vec();
                 cover_cache_version = record.cache_version;
             }
             if newest.as_ref().is_none_or(|candidate| {
@@ -2204,7 +2265,7 @@ impl TreeState {
             album.object.cache_version = cover_cache_version;
         } else if let Some(record) = newest {
             album.metadata.cover = Some(record.id);
-            album.object.thumbhash = record.thumbhash;
+            album.object.thumbhash = record.thumbhash.map(Vec::from);
             album.object.cache_version = record.cache_version;
         }
         Some(album)
@@ -2286,12 +2347,13 @@ enum CompiledExpressionNode<'a> {
         video: bool,
         album: bool,
     },
-    Ext(String),
+    Ext(Vec<ExtId>),
     Path(String),
     HiddenAlbumExists(bool),
     Any {
         needle: String,
         camera_members: OrdinalSet,
+        extension_ids: Vec<ExtId>,
         tag_members: Option<&'a OrdinalSet>,
         include_paths: bool,
         include_album_type: bool,
@@ -2353,7 +2415,7 @@ impl<'a> CompiledExpressionNode<'a> {
                 video: ext_type.contains("video"),
                 album: hidden_metadata_album.is_none() && ext_type.contains("album"),
             },
-            Expression::Ext(ext) => Self::Ext(ext.to_ascii_lowercase()),
+            Expression::Ext(ext) => Self::Ext(indexes.matching_extension_ids_ascii(ext)),
             Expression::Model(FilterValue::Value(model)) => {
                 Self::OwnedMembership(indexes.matching_model_members_ascii(model))
             }
@@ -2387,6 +2449,7 @@ impl<'a> CompiledExpressionNode<'a> {
             Expression::Any(value) => Self::Any {
                 needle: value.to_ascii_lowercase(),
                 camera_members: indexes.matching_camera_members_ascii(value),
+                extension_ids: indexes.matching_extension_ids_ascii(value),
                 tag_members: hidden_metadata_album
                     .is_none()
                     .then(|| indexes.tags.get(value))
@@ -2419,7 +2482,7 @@ impl<'a> CompiledExpressionNode<'a> {
                 ObjectType::Video => *video,
                 ObjectType::Album => *album,
             },
-            Self::Ext(needle) => contains_ascii_lowercase(&record.ext, needle),
+            Self::Ext(extension_ids) => extension_ids.binary_search(&record.ext_id).is_ok(),
             Self::Path(needle) => record
                 .path_aliases
                 .iter()
@@ -2428,12 +2491,13 @@ impl<'a> CompiledExpressionNode<'a> {
             Self::Any {
                 needle,
                 camera_members,
+                extension_ids,
                 tag_members,
                 include_paths,
                 include_album_type,
             } => {
                 contains_ascii_lowercase(record.id.as_str(), needle)
-                    || contains_ascii_lowercase(&record.ext, needle)
+                    || extension_ids.binary_search(&record.ext_id).is_ok()
                     || camera_members.contains(ordinal)
                     || match record.object_type {
                         ObjectType::Image => "image".contains(needle),
@@ -2479,11 +2543,16 @@ mod tests {
             size: 1,
             thumbhash: None,
             cache_version: 0,
-            ext: "jpg".to_owned(),
-            make: None,
-            model: None,
+            ext_id: ExtId::UNINTERNED,
             path_aliases: Vec::new(),
         }
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn cache_record_layout_stays_compact() {
+        assert_eq!(std::mem::size_of::<CacheRecord>(), 144);
+        assert_eq!(std::mem::size_of::<ArenaSlot<CacheRecord>>(), 152);
     }
 
     fn camera_record(index: u64, make: &str, model: &str) -> AbstractData {
@@ -2729,6 +2798,58 @@ mod tests {
         state.remove(second_slot).unwrap();
         assert!(state.query.makes.get("CANON").is_none());
         assert!(state.query.models.get("R6").is_none());
+    }
+
+    #[test]
+    fn extension_ids_preserve_case_insensitive_query_and_album_semantics() {
+        let mut mixed_case = camera_record(20, "", "");
+        let mut lowercase = camera_record(21, "", "");
+        let mut empty = camera_record(22, "", "");
+        if let AbstractData::Image(image) = &mut mixed_case {
+            image.metadata.ext = "JpG".to_owned();
+        }
+        if let AbstractData::Image(image) = &mut lowercase {
+            image.metadata.ext = "jpg".to_owned();
+        }
+        if let AbstractData::Image(image) = &mut empty {
+            image.metadata.ext.clear();
+        }
+        let album_id = ArrayString::<64>::from("extension-album").unwrap();
+        let album = Album::new(album_id, None).into_abstract_data();
+        let mixed_id = mixed_case.hash();
+        let lowercase_id = lowercase.hash();
+        let empty_id = empty.hash();
+        let mut state = TreeState::from_records([mixed_case.clone(), lowercase, empty, album]);
+        let mixed_slot = state.find(mixed_id.as_str()).unwrap();
+        let lowercase_slot = state.find(lowercase_id.as_str()).unwrap();
+        let empty_slot = state.find(empty_id.as_str()).unwrap();
+        let album_slot = state.find(album_id.as_str()).unwrap();
+
+        assert_ne!(
+            state.get(mixed_slot).unwrap().ext_id,
+            state.get(lowercase_slot).unwrap().ext_id
+        );
+        let jpg = Expression::Ext("JPG".to_owned());
+        assert!(state.matches(mixed_slot, &jpg, None));
+        assert!(state.matches(lowercase_slot, &jpg, None));
+        assert!(!state.matches(empty_slot, &jpg, None));
+        assert!(!state.matches(album_slot, &jpg, None));
+        assert!(state.matches(mixed_slot, &Expression::Any("pG".to_owned()), None));
+
+        let empty_query = Expression::Ext(String::new());
+        for slot_ref in [mixed_slot, lowercase_slot, empty_slot, album_slot] {
+            assert!(state.matches(slot_ref, &empty_query, None));
+        }
+
+        if let AbstractData::Image(image) = &mut mixed_case {
+            image.metadata.ext = "png".to_owned();
+        }
+        state.replace_static(mixed_slot, &mixed_case).unwrap();
+        assert!(!state.matches(mixed_slot, &jpg, None));
+        assert!(state.matches(mixed_slot, &Expression::Ext("PnG".to_owned()), None));
+
+        state.remove(lowercase_slot).unwrap();
+        assert!(!state.matches(mixed_slot, &jpg, None));
     }
 
     #[test]

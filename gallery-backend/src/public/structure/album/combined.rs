@@ -55,7 +55,7 @@ impl AlbumCombined {
             .map(|record| MediaItemInfo {
                 hash: record.id,
                 size: record.size,
-                thumbhash: record.thumbhash.clone(),
+                thumbhash: record.thumbhash_vec(),
                 cache_version: record.cache_version,
                 timestamp: record.timestamp,
             })

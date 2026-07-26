@@ -249,7 +249,7 @@ pub async fn set_album_cover(
         AppError::new(ErrorKind::NotFound, "album not found")
     })?;
     album.metadata.cover = Some(cover.id);
-    album.object.thumbhash = cover.thumbhash;
+    album.object.thumbhash = cover.thumbhash_vec();
     album.object.cache_version = cover.cache_version;
     album.object.touch_update_at(changed_at);
     let album = album.clone();
