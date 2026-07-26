@@ -70,8 +70,10 @@ pub fn update_tree_from_reader(data_table: &RecordReader) -> Result<(usize, usiz
 }
 
 fn tree_state_from_reader(data_table: &RecordReader) -> Result<TreeState> {
-    let records = data_table.iter()?.map(|guard| {
-        let (_, value) = guard?;
+    let record_count = usize::try_from(data_table.len()?)
+        .context("V6 record count exceeds this platform's address space")?;
+    let records = data_table.values()?.map(|guard| {
+        let value = guard?;
         let mut abstract_data = value.into_value();
         // Retain only EXIF fields that are used by query search.
         if let Some(exif_vec) = abstract_data.exif_vec_mut() {
@@ -79,7 +81,7 @@ fn tree_state_from_reader(data_table: &RecordReader) -> Result<TreeState> {
         }
         Ok::<_, anyhow::Error>(abstract_data)
     });
-    TreeState::try_from_records(records)
+    TreeState::try_from_records_with_capacity(records, record_count)
 }
 
 #[cfg(test)]

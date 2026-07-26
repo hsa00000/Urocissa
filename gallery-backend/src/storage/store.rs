@@ -33,6 +33,11 @@ pub struct RecordIter<'a> {
     codec: Buffer,
 }
 
+pub struct RecordValuesIter<'a> {
+    inner: redb::Range<'a, &'static str, RawV6Bytes>,
+    codec: Buffer,
+}
+
 #[derive(Debug)]
 pub struct RecordKey(String);
 
@@ -246,6 +251,18 @@ impl RecordReader {
             codec: Buffer::new(),
         })
     }
+
+    /// Iterate decoded values without allocating an owned key for every row.
+    ///
+    /// The borrowed Redb key remains available while decoding so corrupt
+    /// payload and conversion errors still identify the exact record.
+    #[allow(clippy::iter_not_returning_iterator)]
+    pub fn values(&self) -> Result<RecordValuesIter<'_>> {
+        Ok(RecordValuesIter {
+            inner: self.table.iter()?,
+            codec: Buffer::new(),
+        })
+    }
 }
 
 impl Iterator for RecordIter<'_> {
@@ -285,6 +302,46 @@ impl RecordIter<'_> {
             .into_domain()
             .with_context(|| format!("failed to convert V6 record {key}"))?;
         Ok((RecordKey(key), RecordValue(value)))
+    }
+}
+
+impl Iterator for RecordValuesIter<'_> {
+    type Item = Result<RecordValue>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let entry = self.inner.next()?;
+        Some(self.decode_entry(entry))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl DoubleEndedIterator for RecordValuesIter<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let entry = self.inner.next_back()?;
+        Some(self.decode_entry(entry))
+    }
+}
+
+impl RecordValuesIter<'_> {
+    fn decode_entry(
+        &mut self,
+        entry: redb::Result<(
+            redb::AccessGuard<'_, &'static str>,
+            redb::AccessGuard<'_, RawV6Bytes>,
+        )>,
+    ) -> Result<RecordValue> {
+        let (key, value) = entry?;
+        let key = key.value();
+        let value = self
+            .codec
+            .decode::<V6AbstractData>(value.value())
+            .map_err(|error| anyhow!("failed to decode V6 record {key}: {error}"))?
+            .into_domain()
+            .with_context(|| format!("failed to convert V6 record {key}"))?;
+        Ok(RecordValue(value))
     }
 }
 
@@ -485,6 +542,52 @@ mod tests {
     }
 
     #[test]
+    fn values_iterator_matches_keyed_iterator_without_losing_order() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("values.redb");
+        let first = fixture("a-values-record", 4);
+        let second = fixture("b-values-record", 64);
+        let store = DataStore::initialize_empty(&path)?;
+        store.write(|writer| {
+            writer.insert_v6_at(first.id(), first.clone())?;
+            writer.insert_v6_at(second.id(), second.clone())?;
+            Ok::<(), anyhow::Error>(())
+        })?;
+
+        let reader = store.reader()?;
+        let keyed = reader
+            .iter()?
+            .map(|entry| {
+                let (key, value) = entry?;
+                Ok::<_, anyhow::Error>((
+                    key.value().to_owned(),
+                    V6AbstractData::from(value.into_value()),
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let values = reader
+            .values()?
+            .map(|entry| entry.map(RecordValue::into_value).map(V6AbstractData::from))
+            .collect::<Result<Vec<_>>>()?;
+
+        assert_eq!(
+            keyed
+                .iter()
+                .map(|(key, _)| key.as_str())
+                .collect::<Vec<_>>(),
+            vec![first.id(), second.id()]
+        );
+        assert_eq!(
+            keyed
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect::<Vec<_>>(),
+            values
+        );
+        Ok(())
+    }
+
+    #[test]
     fn corrupt_raw_payload_returns_contextual_decode_error() -> Result<()> {
         let directory = tempfile::tempdir()?;
         let path = directory.path().join("corrupt.redb");
@@ -499,6 +602,13 @@ mod tests {
         let error = store
             .reader()?
             .get("corrupt-record")
+            .expect_err("corrupt payload must fail");
+        assert!(error.to_string().contains("corrupt-record"));
+        let error = store
+            .reader()?
+            .values()?
+            .next()
+            .expect("corrupt row")
             .expect_err("corrupt payload must fail");
         assert!(error.to_string().contains("corrupt-record"));
         Ok(())

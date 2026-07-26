@@ -264,7 +264,10 @@ fn benchmark_v5(path: &Path, expected: u64, sample: usize) -> Result<FormatSampl
         let (_, value) = entry?;
         V6AbstractData::from_v5(value.value())?.into_domain()
     });
-    let state = TreeState::try_from_records(records)?;
+    let state = TreeState::try_from_records_with_capacity(
+        records,
+        usize::try_from(expected).context("V5 fixture count exceeds usize")?,
+    )?;
     ensure_count("V5 TreeState", state.len() as u64, expected)?;
     let tree_state_with_decode_ms = elapsed_ms(build_started);
     let peak_rss_bytes = performance::memory_snapshot().phase_peak_rss_bytes;
@@ -296,17 +299,20 @@ fn benchmark_v6(path: &Path, expected: u64, sample: usize) -> Result<FormatSampl
     ensure_count("V6", count, expected)?;
 
     let decode_started = Instant::now();
-    for entry in reader.iter()? {
-        let (_, value) = entry?;
+    for entry in reader.values()? {
+        let value = entry?;
         black_box(value.into_value().cache_version());
     }
     let decode_scan_ms = elapsed_ms(decode_started);
 
     let build_started = Instant::now();
     let records = reader
-        .iter()?
-        .map(|entry| entry.map(|(_, value)| value.into_value()));
-    let state = TreeState::try_from_records(records)?;
+        .values()?
+        .map(|entry| entry.map(|value| value.into_value()));
+    let state = TreeState::try_from_records_with_capacity(
+        records,
+        usize::try_from(expected).context("V6 fixture count exceeds usize")?,
+    )?;
     ensure_count("V6 TreeState", state.len() as u64, expected)?;
     let tree_state_with_decode_ms = elapsed_ms(build_started);
     let peak_rss_bytes = performance::memory_snapshot().phase_peak_rss_bytes;

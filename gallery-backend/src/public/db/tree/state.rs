@@ -25,6 +25,12 @@ fn next_structural_epoch() -> u64 {
     NEXT_STRUCTURAL_EPOCH.fetch_add(1, AtomicOrdering::Relaxed)
 }
 
+#[allow(dead_code)]
+fn exact_size_hint(iterator: &impl Iterator) -> usize {
+    let (lower, upper) = iterator.size_hint();
+    upper.filter(|upper| *upper == lower).unwrap_or(lower)
+}
+
 /// A stable arena reference. Reusing a slot always changes its generation, so a
 /// reference captured by an old selection can never silently point at a new
 /// object.
@@ -76,7 +82,27 @@ impl<T> Default for RecordArena<T> {
     }
 }
 
+fn natural_vec_capacity<T>(len: usize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let minimum = match std::mem::size_of::<T>() {
+        1 => 8,
+        2..=1024 => 4,
+        _ => 1,
+    };
+    len.checked_next_power_of_two().unwrap_or(len).max(minimum)
+}
+
 impl<T> RecordArena<T> {
+    fn with_record_capacity(record_count: usize) -> Self {
+        Self {
+            slots: Vec::with_capacity(natural_vec_capacity::<ArenaSlot<T>>(record_count)),
+            free: Vec::new(),
+            len: 0,
+        }
+    }
+
     pub fn allocate(&mut self, value: T) -> SlotRef {
         self.len += 1;
         if let Some(index) = self.free.pop() {
@@ -150,6 +176,13 @@ pub struct IdIndex {
 }
 
 impl IdIndex {
+    fn with_record_capacity(record_count: usize) -> Self {
+        Self {
+            primary: HashMap::with_capacity(record_count),
+            collisions: HashMap::new(),
+        }
+    }
+
     fn fingerprint(id: &str) -> u64 {
         let bytes = blake3::hash(id.as_bytes());
         u64::from_le_bytes(bytes.as_bytes()[..8].try_into().expect("eight-byte slice"))
@@ -341,6 +374,83 @@ impl CacheRecord {
                 .iter()
                 .map(|alias| alias.file.clone())
                 .collect(),
+        }
+    }
+
+    fn from_abstract_data_owned(
+        data: AbstractData,
+        timestamp: i64,
+        ext_id: ExtId,
+    ) -> (Self, Option<AlbumCombined>) {
+        match data {
+            AbstractData::Image(image) => {
+                crate::public::structure::object::observe_mutation_timestamp(
+                    image.object.update_at,
+                );
+                let record = Self {
+                    id: image.object.id,
+                    object_type: ObjectType::Image,
+                    timestamp,
+                    width: image.metadata.width,
+                    height: image.metadata.height,
+                    size: image.metadata.size,
+                    thumbhash: image.object.thumbhash.map(Vec::into_boxed_slice),
+                    cache_version: image.object.cache_version,
+                    ext_id,
+                    path_aliases: image
+                        .metadata
+                        .alias
+                        .into_iter()
+                        .map(|alias| alias.file)
+                        .collect(),
+                };
+                (record, None)
+            }
+            AbstractData::Video(video) => {
+                crate::public::structure::object::observe_mutation_timestamp(
+                    video.object.update_at,
+                );
+                let record = Self {
+                    id: video.object.id,
+                    object_type: ObjectType::Video,
+                    timestamp,
+                    width: video.metadata.width,
+                    height: video.metadata.height,
+                    size: video.metadata.size,
+                    thumbhash: video.object.thumbhash.map(Vec::into_boxed_slice),
+                    cache_version: video.object.cache_version,
+                    ext_id,
+                    path_aliases: video
+                        .metadata
+                        .alias
+                        .into_iter()
+                        .map(|alias| alias.file)
+                        .collect(),
+                };
+                (record, None)
+            }
+            AbstractData::Album(album) => {
+                crate::public::structure::object::observe_mutation_timestamp(
+                    album.object.update_at,
+                );
+                let record = Self {
+                    id: album.object.id,
+                    object_type: ObjectType::Album,
+                    timestamp,
+                    width: 300,
+                    height: 300,
+                    size: 0,
+                    thumbhash: album
+                        .object
+                        .thumbhash
+                        .as_ref()
+                        .map(|value| value.clone().into_boxed_slice()),
+                    cache_version: album.object.cache_version,
+                    ext_id,
+                    path_aliases: Vec::new(),
+                };
+                (record, Some(album))
+            }
         }
     }
 
@@ -994,6 +1104,15 @@ struct CompactMembershipCounts {
 }
 
 impl CompactMembershipCounts {
+    fn with_record_capacity(record_count: usize) -> Self {
+        let mut values = Vec::with_capacity(natural_vec_capacity::<u16>(record_count));
+        values.resize(record_count, 0);
+        Self {
+            values,
+            overflow: HashMap::new(),
+        }
+    }
+
     fn ensure_ordinal(&mut self, ordinal: u32) {
         let len = ordinal as usize + 1;
         if self.values.len() < len {
@@ -1074,6 +1193,32 @@ impl StringFacetIndex {
     }
 
     fn insert_values<'a>(
+        &mut self,
+        ordinal: u32,
+        values: impl IntoIterator<Item = &'a String>,
+        universe: usize,
+    ) {
+        self.ensure_ordinal(ordinal);
+        let mut count = 0_u32;
+        for value in values {
+            let inserted = if let Some(members) = self.values.get_mut(value) {
+                members.insert(ordinal, universe)
+            } else {
+                let mut members = OrdinalSet::default();
+                let inserted = members.insert(ordinal, universe);
+                self.values.insert(value.clone(), members);
+                inserted
+            };
+            if inserted {
+                count = count.saturating_add(1);
+            }
+        }
+        self.membership_count.set(ordinal, count);
+        self.has_any.set(ordinal, count > 0);
+    }
+
+    #[cfg(test)]
+    fn insert_values_legacy<'a>(
         &mut self,
         ordinal: u32,
         values: impl IntoIterator<Item = &'a String>,
@@ -1163,6 +1308,12 @@ impl StringFacetIndex {
         matches
     }
 
+    fn rebalance(&mut self, universe: usize) {
+        for members in self.values.values_mut() {
+            members.rebalance(universe);
+        }
+    }
+
     #[cfg(feature = "performance-test")]
     fn estimated_dynamic_bytes(&self) -> usize {
         self.has_any.words.capacity() * std::mem::size_of::<u64>()
@@ -1196,6 +1347,22 @@ impl SingleStringFacetIndex {
     }
 
     fn insert_value(&mut self, ordinal: u32, value: Option<&String>, universe: usize) {
+        if let Some(value) = value {
+            if let Some(members) = self.values.get_mut(value) {
+                members.insert(ordinal, universe);
+            } else {
+                let mut members = OrdinalSet::default();
+                members.insert(ordinal, universe);
+                self.values.insert(value.clone(), members);
+            }
+            self.has_any.set(ordinal, true);
+        } else {
+            self.has_any.set(ordinal, false);
+        }
+    }
+
+    #[cfg(test)]
+    fn insert_value_legacy(&mut self, ordinal: u32, value: Option<&String>, universe: usize) {
         if let Some(value) = value {
             self.values
                 .entry(value.clone())
@@ -1236,6 +1403,12 @@ impl SingleStringFacetIndex {
         matches
     }
 
+    fn rebalance(&mut self, universe: usize) {
+        for members in self.values.values_mut() {
+            members.rebalance(universe);
+        }
+    }
+
     #[cfg(feature = "performance-test")]
     fn estimated_dynamic_bytes(&self) -> usize {
         self.has_any.words.capacity() * std::mem::size_of::<u64>()
@@ -1270,6 +1443,17 @@ pub struct FlagPatch {
 }
 
 impl QueryIndexes {
+    fn with_record_capacity(record_count: usize) -> Self {
+        Self {
+            tags: StringFacetIndex {
+                membership_count: CompactMembershipCounts::with_record_capacity(record_count),
+                ..StringFacetIndex::default()
+            },
+            album_membership_count: CompactMembershipCounts::with_record_capacity(record_count),
+            ..Self::default()
+        }
+    }
+
     #[cfg(feature = "performance-test")]
     fn estimated_bytes(&self) -> usize {
         let bitmap_bytes = [
@@ -1305,18 +1489,65 @@ impl QueryIndexes {
 
     fn insert_record(&mut self, ordinal: u32, data: &AbstractData, universe: usize) {
         self.ensure_ordinal(ordinal);
-        self.favorite.set(ordinal, object_flags(data).0);
-        self.archived.set(ordinal, object_flags(data).1);
-        self.trashed.set(ordinal, object_flags(data).2);
-        self.tags
-            .insert_values(ordinal, data.tag().iter(), universe);
-        let exif = data.exif_vec();
+        let (object, tags, exif, albums) = match data {
+            AbstractData::Image(image) => (
+                &image.object,
+                &image.object.tags,
+                Some(&image.metadata.exif_vec),
+                Some(&image.metadata.albums),
+            ),
+            AbstractData::Video(video) => (
+                &video.object,
+                &video.object.tags,
+                Some(&video.metadata.exif_vec),
+                Some(&video.metadata.albums),
+            ),
+            AbstractData::Album(album) => (&album.object, &album.object.tags, None, None),
+        };
+        self.favorite.set(ordinal, object.is_favorite);
+        self.archived.set(ordinal, object.is_archived);
+        self.trashed.set(ordinal, object.is_trashed);
+        self.tags.insert_values(ordinal, tags.iter(), universe);
         self.makes.insert_value(
             ordinal,
             exif.and_then(|values| values.get("Make")),
             universe,
         );
         self.models.insert_value(
+            ordinal,
+            exif.and_then(|values| values.get("Model")),
+            universe,
+        );
+        if let Some(albums) = albums {
+            for album in albums {
+                self.albums
+                    .entry(*album)
+                    .or_default()
+                    .insert(ordinal, universe);
+            }
+            self.album_membership_count
+                .set(ordinal, u32::try_from(albums.len()).unwrap_or(u32::MAX));
+            self.has_any_album.set(ordinal, !albums.is_empty());
+        } else {
+            self.album_membership_count.clear(ordinal);
+        }
+    }
+
+    #[cfg(test)]
+    fn insert_record_legacy(&mut self, ordinal: u32, data: &AbstractData, universe: usize) {
+        self.ensure_ordinal(ordinal);
+        self.favorite.set(ordinal, object_flags(data).0);
+        self.archived.set(ordinal, object_flags(data).1);
+        self.trashed.set(ordinal, object_flags(data).2);
+        self.tags
+            .insert_values_legacy(ordinal, data.tag().iter(), universe);
+        let exif = data.exif_vec();
+        self.makes.insert_value_legacy(
+            ordinal,
+            exif.and_then(|values| values.get("Make")),
+            universe,
+        );
+        self.models.insert_value_legacy(
             ordinal,
             exif.and_then(|values| values.get("Model")),
             universe,
@@ -1472,8 +1703,18 @@ impl QueryIndexes {
     fn matching_extension_ids_ascii(&self, value: &str) -> Vec<ExtId> {
         self.extensions.matching_ids_ascii(value)
     }
+
+    fn finish_rebuild(&mut self, universe: usize) {
+        self.tags.rebalance(universe);
+        self.makes.rebalance(universe);
+        self.models.rebalance(universe);
+        for members in self.albums.values_mut() {
+            members.rebalance(universe);
+        }
+    }
 }
 
+#[cfg(test)]
 fn object_flags(data: &AbstractData) -> (bool, bool, bool) {
     match data {
         AbstractData::Image(value) => (
@@ -1522,6 +1763,23 @@ impl Default for TreeState {
 }
 
 impl TreeState {
+    fn with_record_capacity(record_count: usize) -> Self {
+        assert!(
+            u32::try_from(record_count).is_ok(),
+            "record arena exceeded u32 capacity"
+        );
+        Self {
+            arena: RecordArena::with_record_capacity(record_count),
+            id_index: IdIndex::with_record_capacity(record_count),
+            order: Arc::default(),
+            query: QueryIndexes::with_record_capacity(record_count),
+            albums: HashMap::new(),
+            #[cfg(feature = "performance-test")]
+            record_dynamic_bytes: 0,
+            structural_epoch: next_structural_epoch(),
+        }
+    }
+
     pub fn edit_cached_album_objects(
         &mut self,
         targets: &TargetSet,
@@ -1543,43 +1801,107 @@ impl TreeState {
     }
 
     pub fn from_records(records: impl IntoIterator<Item = AbstractData>) -> Self {
-        let mut state = Self::default();
+        let records = records.into_iter();
+        let record_count = exact_size_hint(&records);
+        let mut state = Self::with_record_capacity(record_count);
+        let mut order = Vec::with_capacity(natural_vec_capacity::<SlotRef>(record_count));
         for data in records {
-            state.push_unsorted(data);
+            order.push(state.push_unsorted_owned(data));
         }
-        state.finish_unsorted()
+        state.query.finish_rebuild(state.arena.capacity());
+        state.finish_unsorted_order(order)
     }
 
     pub fn try_from_records<E>(
         records: impl IntoIterator<Item = Result<AbstractData, E>>,
     ) -> Result<Self, E> {
+        let records = records.into_iter();
+        let record_count = exact_size_hint(&records);
+        Self::try_from_records_with_capacity(records, record_count)
+    }
+
+    pub(crate) fn try_from_records_with_capacity<E>(
+        records: impl IntoIterator<Item = Result<AbstractData, E>>,
+        record_count: usize,
+    ) -> Result<Self, E> {
+        let mut state = Self::with_record_capacity(record_count);
+        let mut order = Vec::with_capacity(natural_vec_capacity::<SlotRef>(record_count));
+        for data in records {
+            order.push(state.push_unsorted_owned(data?));
+        }
+        state.query.finish_rebuild(state.arena.capacity());
+        Ok(state.finish_unsorted_order(order))
+    }
+
+    #[cfg(test)]
+    fn from_records_legacy_owned(records: Vec<AbstractData>) -> Self {
         let mut state = Self::default();
         for data in records {
-            state.push_unsorted(data?);
+            state.push_unsorted_borrowed_legacy(&data);
+        }
+        state.finish_unsorted()
+    }
+
+    #[cfg(test)]
+    fn try_from_records_legacy_owned<E>(
+        records: impl IntoIterator<Item = Result<AbstractData, E>>,
+    ) -> Result<Self, E> {
+        let mut state = Self::default();
+        for data in records {
+            let data = data?;
+            state.push_unsorted_borrowed_legacy(&data);
         }
         Ok(state.finish_unsorted())
     }
 
-    fn push_unsorted(&mut self, data: AbstractData) {
+    #[cfg(test)]
+    fn push_unsorted_borrowed_legacy(&mut self, data: &AbstractData) {
         let timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
         let ext_id = self.query.intern_extension(data.ext());
-        let record = CacheRecord::from_abstract_data(&data, timestamp, ext_id);
+        let record = CacheRecord::from_abstract_data(data, timestamp, ext_id);
         self.track_record_added(&record);
         let id = record.id;
         let slot_ref = self.arena.allocate(record);
         self.id_index.insert(id.as_str(), slot_ref);
-        if let AbstractData::Album(album) = &data {
+        if let AbstractData::Album(album) = data {
             self.albums.insert(album.object.id, album.clone());
         }
         let universe = self.arena.capacity();
-        self.query.insert_record(slot_ref.index(), &data, universe);
+        self.query
+            .insert_record_legacy(slot_ref.index(), data, universe);
         Arc::make_mut(&mut self.order).push(slot_ref);
+    }
+
+    fn push_unsorted_owned(&mut self, data: AbstractData) -> SlotRef {
+        let timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
+        let ext_id = self.query.intern_extension(data.ext());
+        let ordinal =
+            u32::try_from(self.arena.capacity()).expect("record arena exceeded u32 capacity");
+        let universe = self.arena.capacity().saturating_add(1);
+        self.query.insert_record(ordinal, &data, universe);
+        let (record, album) = CacheRecord::from_abstract_data_owned(data, timestamp, ext_id);
+        self.track_record_added(&record);
+        let id = record.id;
+        let slot_ref = self.arena.allocate(record);
+        debug_assert_eq!(slot_ref.index(), ordinal);
+        self.id_index.insert(id.as_str(), slot_ref);
+        if let Some(album) = album {
+            self.albums.insert(album.object.id, album);
+        }
+        slot_ref
     }
 
     fn finish_unsorted(mut self) -> Self {
         let arena = &self.arena;
         Arc::make_mut(&mut self.order)
             .sort_unstable_by(|left, right| compare_slots(arena, *left, *right));
+        self
+    }
+
+    fn finish_unsorted_order(mut self, mut order: Vec<SlotRef>) -> Self {
+        let arena = &self.arena;
+        order.sort_unstable_by(|left, right| compare_occupied_slots(arena, *left, *right));
+        self.order = Arc::new(order);
         self
     }
 
@@ -2354,6 +2676,25 @@ fn compare_slots(arena: &RecordArena<CacheRecord>, left: SlotRef, right: SlotRef
     }
 }
 
+fn compare_occupied_slots(
+    arena: &RecordArena<CacheRecord>,
+    left: SlotRef,
+    right: SlotRef,
+) -> Ordering {
+    let left = arena.slots[left.index() as usize]
+        .value
+        .as_ref()
+        .expect("rebuild order only contains occupied slots");
+    let right = arena.slots[right.index() as usize]
+        .value
+        .as_ref()
+        .expect("rebuild order only contains occupied slots");
+    right
+        .timestamp
+        .cmp(&left.timestamp)
+        .then_with(|| left.id.cmp(&right.id))
+}
+
 pub fn sort_and_merge(
     arena: &RecordArena<CacheRecord>,
     existing: &mut Vec<SlotRef>,
@@ -2599,6 +2940,39 @@ mod tests {
     fn cache_record_layout_stays_compact() {
         assert_eq!(std::mem::size_of::<CacheRecord>(), 144);
         assert_eq!(std::mem::size_of::<ArenaSlot<CacheRecord>>(), 152);
+    }
+
+    #[test]
+    fn owned_media_cache_record_reuses_thumbhash_and_path_allocations() {
+        let id = ArrayString::<64>::from("owned-media").unwrap();
+        let mut metadata =
+            crate::public::structure::image::ImageMetadata::new(id, 9, 10, 11, "jpg".to_owned());
+        let mut path = String::with_capacity(128);
+        path.push_str("C:/gallery/owned-media.jpg");
+        metadata
+            .alias
+            .push(crate::public::structure::common::FileModify {
+                file: path,
+                modified: 1,
+                scan_time: 2,
+            });
+        let mut object = ObjectSchema::new(id, ObjectType::Image);
+        object.thumbhash = Some(vec![1, 2, 3, 4, 5]);
+        let data = AbstractData::Image(crate::public::structure::image::ImageCombined {
+            object,
+            metadata,
+        });
+        let path_pointer = data.alias()[0].file.as_ptr();
+        let thumbhash_pointer = data.thumbhash().unwrap().as_ptr();
+
+        let (record, album) = CacheRecord::from_abstract_data_owned(data, 123, ExtId::UNINTERNED);
+
+        assert!(album.is_none());
+        assert_eq!(record.path_aliases[0].as_ptr(), path_pointer);
+        assert_eq!(
+            record.thumbhash.as_ref().unwrap().as_ptr(),
+            thumbhash_pointer
+        );
     }
 
     fn camera_record(index: u64, make: &str, model: &str) -> AbstractData {
@@ -3280,6 +3654,203 @@ mod tests {
 
         state = TreeState::default();
         assert_eq!(state.memory_usage(), empty);
+    }
+
+    #[cfg(feature = "performance-test")]
+    #[test]
+    fn owned_preallocated_rebuild_matches_legacy_borrowed_results() {
+        let mut records = (0..512)
+            .map(|index| AbstractData::generate_performance_data(index, 20_260_718))
+            .collect::<Vec<_>>();
+        records.push(
+            Album::new(
+                ArrayString::<64>::from("owned-rebuild-album").unwrap(),
+                Some("Owned rebuild".to_owned()),
+            )
+            .into_abstract_data(),
+        );
+
+        let legacy = TreeState::from_records_legacy_owned(records.clone());
+        let optimized = TreeState::from_records(records);
+
+        let ordered = |state: &TreeState| {
+            state
+                .order
+                .iter()
+                .map(|slot_ref| {
+                    let record = state.get(*slot_ref).unwrap();
+                    (
+                        record.id,
+                        record.object_type,
+                        record.timestamp,
+                        slot_ref.generation(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ordered(&optimized), ordered(&legacy));
+        assert!(
+            optimized
+                .order
+                .iter()
+                .all(|slot_ref| slot_ref.generation() == 1)
+        );
+        assert!(
+            legacy
+                .order
+                .iter()
+                .all(|slot_ref| slot_ref.generation() == 1)
+        );
+
+        for expression in [
+            Expression::Favorite(true),
+            Expression::Archived(true),
+            Expression::Trashed(true),
+            Expression::Ext("JPG".to_owned()),
+            Expression::Any("perf-tag-3".to_owned()),
+            Expression::ExtType("video".to_owned()),
+        ] {
+            let matching_ids = |state: &TreeState| {
+                state
+                    .order
+                    .iter()
+                    .filter(|slot_ref| state.matches(**slot_ref, &expression, None))
+                    .map(|slot_ref| state.get(*slot_ref).unwrap().id)
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(matching_ids(&optimized), matching_ids(&legacy));
+        }
+
+        let album_id = ArrayString::<64>::from("owned-rebuild-album").unwrap();
+        assert_eq!(
+            serde_json::to_value(optimized.albums.get(&album_id)).unwrap(),
+            serde_json::to_value(legacy.albums.get(&album_id)).unwrap()
+        );
+        assert_eq!(optimized.memory_usage(), legacy.memory_usage());
+    }
+
+    #[cfg(feature = "performance-test")]
+    #[test]
+    fn rebuild_preallocation_matches_natural_capacity_classes() {
+        for record_count in [0_usize, 1, 3, 4, 5, 127, 128, 129] {
+            let records = (0..record_count)
+                .map(|index| AbstractData::generate_performance_data(index as u64, 73))
+                .collect::<Vec<_>>();
+            let legacy = TreeState::from_records_legacy_owned(records.clone());
+            let optimized = TreeState::from_records(records);
+            assert_eq!(
+                optimized.arena.slots.capacity(),
+                legacy.arena.slots.capacity(),
+                "arena capacity for {record_count} records"
+            );
+            assert_eq!(
+                optimized.order.capacity(),
+                legacy.order.capacity(),
+                "order capacity for {record_count} records"
+            );
+            assert_eq!(
+                optimized.id_index.primary.capacity(),
+                legacy.id_index.primary.capacity(),
+                "ID index capacity for {record_count} records"
+            );
+            assert_eq!(
+                optimized.query.tags.membership_count.values.capacity(),
+                legacy.query.tags.membership_count.values.capacity(),
+                "tag count capacity for {record_count} records"
+            );
+            assert_eq!(
+                optimized.query.album_membership_count.values.capacity(),
+                legacy.query.album_membership_count.values.capacity(),
+                "album count capacity for {record_count} records"
+            );
+        }
+
+        let initial = (0..128)
+            .map(|index| AbstractData::generate_performance_data(index, 73))
+            .collect::<Vec<_>>();
+        let mut state = TreeState::from_records(initial);
+        let arena_capacity = state.arena.slots.capacity();
+        let order_capacity = state.order.capacity();
+        state.insert(&AbstractData::generate_performance_data(128, 73));
+        assert!(state.arena.slots.capacity() <= arena_capacity.saturating_mul(2));
+        assert!(state.order.capacity() <= order_capacity.saturating_mul(2));
+        assert_eq!(state.len(), 129);
+    }
+
+    #[cfg(feature = "performance-test")]
+    #[test]
+    #[ignore = "local TreeState owned rebuild microbenchmark"]
+    fn owned_preallocated_rebuild_beats_legacy_borrowed_reference() -> anyhow::Result<()> {
+        use std::hint::black_box;
+        use std::time::Duration;
+
+        use crate::storage::DataStore;
+
+        const RECORDS: usize = 100_000;
+        const SAMPLES: usize = 9;
+
+        fn median(mut values: Vec<Duration>) -> Duration {
+            values.sort_unstable();
+            values[values.len() / 2]
+        }
+
+        let fixture = (0..RECORDS)
+            .map(|index| AbstractData::generate_performance_data(index as u64, 20_260_718))
+            .collect::<Vec<_>>();
+        let directory = tempfile::tempdir()?;
+        let store = DataStore::initialize_empty(&directory.path().join("rebuild.redb"))?;
+        store.write(|writer| {
+            for record in &fixture {
+                writer.insert(record)?;
+            }
+            Ok::<(), anyhow::Error>(())
+        })?;
+        let reader = store.reader()?;
+
+        let legacy_rebuild = || -> anyhow::Result<TreeState> {
+            let records = reader
+                .iter()?
+                .map(|entry| entry.map(|(_, value)| value.into_value()));
+            TreeState::try_from_records_legacy_owned(records)
+        };
+        let optimized_rebuild = || -> anyhow::Result<TreeState> {
+            let records = reader
+                .values()?
+                .map(|entry| entry.map(|value| value.into_value()));
+            TreeState::try_from_records_with_capacity(records, RECORDS)
+        };
+
+        black_box(legacy_rebuild()?);
+        black_box(optimized_rebuild()?);
+
+        let mut legacy_samples = Vec::with_capacity(SAMPLES);
+        let mut optimized_samples = Vec::with_capacity(SAMPLES);
+        for sample in 0..SAMPLES {
+            if sample.is_multiple_of(2) {
+                let started = Instant::now();
+                black_box(legacy_rebuild()?);
+                legacy_samples.push(started.elapsed());
+                let started = Instant::now();
+                black_box(optimized_rebuild()?);
+                optimized_samples.push(started.elapsed());
+            } else {
+                let started = Instant::now();
+                black_box(optimized_rebuild()?);
+                optimized_samples.push(started.elapsed());
+                let started = Instant::now();
+                black_box(legacy_rebuild()?);
+                legacy_samples.push(started.elapsed());
+            }
+        }
+
+        let legacy = median(legacy_samples);
+        let optimized = median(optimized_samples);
+        eprintln!("TreeState rebuild microbench: legacy={legacy:?} optimized={optimized:?}");
+        assert!(
+            optimized <= legacy,
+            "owned preallocated rebuild regressed against the legacy reference"
+        );
+        Ok(())
     }
 
     #[test]
