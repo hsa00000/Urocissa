@@ -7,6 +7,7 @@ use super::{SCROLLBAR_METADATA_TABLE, TreeSnapshot};
 use crate::public::structure::response::row::ScrollBarData;
 use crate::storage::codec;
 
+#[cfg(test)]
 pub fn build_scrollbar(timestamps: impl IntoIterator<Item = i64>) -> Vec<ScrollBarData> {
     let mut result = Vec::new();
     let mut last_year_month = None;
@@ -22,11 +23,7 @@ fn push_boundary(
     index: usize,
     timestamp: i64,
 ) {
-    let datetime = Utc
-        .timestamp_millis_opt(timestamp)
-        .single()
-        .expect("record timestamp must be representable");
-    let year_month = (datetime.year(), datetime.month());
+    let year_month = timestamp_year_month(timestamp);
     if *last_year_month == Some(year_month) {
         return;
     }
@@ -37,6 +34,14 @@ fn push_boundary(
         month: year_month.1 as usize,
         index,
     });
+}
+
+pub(crate) fn timestamp_year_month(timestamp: i64) -> (i32, u32) {
+    let datetime = Utc
+        .timestamp_millis_opt(timestamp)
+        .single()
+        .expect("record timestamp must be representable");
+    (datetime.year(), datetime.month())
 }
 
 impl TreeSnapshot {
