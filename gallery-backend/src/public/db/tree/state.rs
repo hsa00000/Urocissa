@@ -145,8 +145,8 @@ impl<T> RecordArena<T> {
 
 #[derive(Debug, Default)]
 pub struct IdIndex {
-    primary: HashMap<u64, SlotRef>,
-    collisions: HashMap<u64, Vec<SlotRef>>,
+    primary: HashMap<u64, u32>,
+    collisions: HashMap<u64, Vec<u32>>,
 }
 
 impl IdIndex {
@@ -158,50 +158,67 @@ impl IdIndex {
     pub fn insert(&mut self, id: &str, slot_ref: SlotRef) {
         use std::collections::hash_map::Entry;
         let fingerprint = Self::fingerprint(id);
+        let ordinal = slot_ref.index();
         if let Some(bucket) = self.collisions.get_mut(&fingerprint) {
-            if !bucket.contains(&slot_ref) {
-                bucket.push(slot_ref);
+            if !bucket.contains(&ordinal) {
+                bucket.push(ordinal);
             }
             return;
         }
         match self.primary.entry(fingerprint) {
             Entry::Vacant(entry) => {
-                entry.insert(slot_ref);
+                entry.insert(ordinal);
             }
             Entry::Occupied(entry) => {
                 let existing = *entry.get();
-                if existing != slot_ref {
-                    self.collisions
-                        .insert(fingerprint, vec![existing, slot_ref]);
+                if existing != ordinal {
+                    self.collisions.insert(fingerprint, vec![existing, ordinal]);
                 }
             }
         }
     }
 
     pub fn find(&self, id: &str, arena: &RecordArena<CacheRecord>) -> Option<SlotRef> {
-        let matches = |slot_ref: &SlotRef| {
+        let matching_slot = |ordinal: &u32| {
+            let slot_ref = arena.slot_at_ordinal(*ordinal)?;
             arena
-                .get(*slot_ref)
+                .get(slot_ref)
                 .is_some_and(|record| record.id.as_str() == id)
+                .then_some(slot_ref)
         };
         let fingerprint = Self::fingerprint(id);
         if let Some(bucket) = self.collisions.get(&fingerprint) {
-            return bucket.iter().find(|slot_ref| matches(slot_ref)).copied();
+            return bucket.iter().find_map(matching_slot);
         }
-        let slot_ref = self.primary.get(&fingerprint)?;
-        matches(slot_ref).then_some(*slot_ref)
+        self.primary.get(&fingerprint).and_then(matching_slot)
     }
 
-    pub fn remove(&mut self, id: &str, slot_ref: SlotRef) {
+    pub fn remove(
+        &mut self,
+        id: &str,
+        slot_ref: SlotRef,
+        arena: &RecordArena<CacheRecord>,
+    ) -> bool {
+        if !arena
+            .get(slot_ref)
+            .is_some_and(|record| record.id.as_str() == id)
+        {
+            return false;
+        }
         let fingerprint = Self::fingerprint(id);
+        let ordinal = slot_ref.index();
         if let Some(bucket) = self.collisions.get_mut(&fingerprint) {
-            bucket.retain(|item| *item != slot_ref);
+            let previous_len = bucket.len();
+            bucket.retain(|item| *item != ordinal);
+            if bucket.len() == previous_len {
+                return false;
+            }
             let remaining = bucket.first().copied();
             if bucket.len() > 1 {
                 if let Some(remaining) = remaining {
                     self.primary.insert(fingerprint, remaining);
                 }
-                return;
+                return true;
             }
             self.collisions.remove(&fingerprint);
             if let Some(remaining) = remaining {
@@ -209,22 +226,24 @@ impl IdIndex {
             } else {
                 self.primary.remove(&fingerprint);
             }
-            return;
+            return true;
         }
-        if self.primary.get(&fingerprint) == Some(&slot_ref) {
+        if self.primary.get(&fingerprint) == Some(&ordinal) {
             self.primary.remove(&fingerprint);
+            return true;
         }
+        false
     }
 
     #[cfg(feature = "performance-test")]
     fn estimated_bytes(&self) -> usize {
         std::mem::size_of::<Self>()
-            + hash_map_allocation_bytes::<u64, SlotRef>(self.primary.capacity())
-            + hash_map_allocation_bytes::<u64, Vec<SlotRef>>(self.collisions.capacity())
+            + hash_map_allocation_bytes::<u64, u32>(self.primary.capacity())
+            + hash_map_allocation_bytes::<u64, Vec<u32>>(self.collisions.capacity())
             + self
                 .collisions
                 .values()
-                .map(|bucket| bucket.capacity() * std::mem::size_of::<SlotRef>())
+                .map(|bucket| bucket.capacity() * std::mem::size_of::<u32>())
                 .sum::<usize>()
     }
 }
@@ -1652,7 +1671,7 @@ impl TreeState {
 
     pub fn remove(&mut self, slot_ref: SlotRef) -> Option<CacheRecord> {
         let id = self.arena.get(slot_ref)?.id;
-        self.id_index.remove(id.as_str(), slot_ref);
+        self.id_index.remove(id.as_str(), slot_ref, &self.arena);
         self.query
             .remove_record(slot_ref.index(), self.arena.capacity());
         self.albums.remove(&id);
@@ -1675,7 +1694,7 @@ impl TreeState {
             let Some(id) = self.arena.get(slot_ref).map(|record| record.id) else {
                 continue;
             };
-            self.id_index.remove(id.as_str(), slot_ref);
+            self.id_index.remove(id.as_str(), slot_ref, &self.arena);
             self.albums.remove(&id);
             if let Some(record) = self.arena.remove(slot_ref) {
                 self.track_record_removed(&record);
@@ -1765,7 +1784,7 @@ impl TreeState {
             let Some(id) = self.arena.get(*slot_ref).map(|record| record.id) else {
                 continue;
             };
-            self.id_index.remove(id.as_str(), *slot_ref);
+            self.id_index.remove(id.as_str(), *slot_ref, &self.arena);
             self.albums.remove(&id);
             if let Some(record) = self.arena.remove(*slot_ref) {
                 self.track_record_removed(&record);
@@ -3135,14 +3154,19 @@ mod tests {
         let second = arena.allocate(cache_record("second", 1));
         let mut index = IdIndex::default();
         let fingerprint = IdIndex::fingerprint("second");
-        index.primary.insert(fingerprint, first);
-        index.collisions.insert(fingerprint, vec![first, second]);
+        index.primary.insert(fingerprint, first.index());
+        index
+            .collisions
+            .insert(fingerprint, vec![first.index(), second.index()]);
         assert_eq!(index.find("second", &arena), Some(second));
         assert_eq!(index.find("missing", &arena), None);
 
-        index.remove("second", second);
+        assert!(index.remove("second", second, &arena));
         assert!(!index.collisions.contains_key(&fingerprint));
-        assert_eq!(index.primary.get(&fingerprint), Some(&first));
+        assert_eq!(
+            index.primary.get(&fingerprint).copied(),
+            Some(first.index())
+        );
         assert_eq!(index.find("second", &arena), None);
     }
 
@@ -3154,7 +3178,7 @@ mod tests {
         index.insert("primary", slot);
         assert_eq!(index.find("primary", &arena), Some(slot));
         assert!(index.collisions.is_empty());
-        index.remove("primary", slot);
+        assert!(index.remove("primary", slot, &arena));
         assert_eq!(index.find("primary", &arena), None);
         assert!(index.primary.is_empty());
     }
@@ -3170,6 +3194,39 @@ mod tests {
         assert_eq!(stale.index(), replacement.index());
         assert_ne!(stale.generation(), replacement.generation());
         assert_eq!(index.find("stale", &arena), None);
+    }
+
+    #[test]
+    fn id_index_stale_remove_cannot_delete_a_reused_slot() {
+        let mut arena = RecordArena::default();
+        let stale = arena.allocate(cache_record("same-id", 1));
+        let mut index = IdIndex::default();
+        index.insert("same-id", stale);
+        assert!(arena.remove(stale).is_some());
+
+        let replacement = arena.allocate(cache_record("same-id", 2));
+        index.insert("same-id", replacement);
+        assert_eq!(stale.index(), replacement.index());
+        assert_ne!(stale.generation(), replacement.generation());
+
+        assert!(!index.remove("same-id", stale, &arena));
+        assert_eq!(index.find("same-id", &arena), Some(replacement));
+        assert!(index.remove("same-id", replacement, &arena));
+    }
+
+    #[test]
+    fn id_index_remove_verifies_the_full_id() {
+        let mut arena = RecordArena::default();
+        let slot = arena.allocate(cache_record("actual", 1));
+        let mut index = IdIndex::default();
+        let wrong_fingerprint = IdIndex::fingerprint("wrong");
+        index.primary.insert(wrong_fingerprint, slot.index());
+
+        assert!(!index.remove("wrong", slot, &arena));
+        assert_eq!(
+            index.primary.get(&wrong_fingerprint).copied(),
+            Some(slot.index())
+        );
     }
 
     #[cfg(feature = "performance-test")]
