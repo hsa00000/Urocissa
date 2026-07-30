@@ -157,10 +157,10 @@ function submitSearch(): void {
           class="d-flex"
           aria-label="Media type"
         >
-          <v-btn value="all" class="flex-grow-1">All</v-btn>
-          <v-btn value="image" class="flex-grow-1">Image</v-btn>
-          <v-btn value="video" class="flex-grow-1">Video</v-btn>
-          <v-btn v-if="props.includeAlbumMediaType" value="album" class="flex-grow-1">
+          <v-btn value="all" class="flex-1-1-0">All</v-btn>
+          <v-btn value="image" class="flex-1-1-0">Image</v-btn>
+          <v-btn value="video" class="flex-1-1-0">Video</v-btn>
+          <v-btn v-if="props.includeAlbumMediaType" value="album" class="flex-1-1-0">
             Album
           </v-btn>
         </v-btn-toggle>
@@ -180,9 +180,9 @@ function submitSearch(): void {
           class="d-flex"
           aria-label="Sort order"
         >
-          <v-btn value="descending" class="flex-grow-1">Descending</v-btn>
-          <v-btn value="ascending" class="flex-grow-1">Ascending</v-btn>
-          <v-btn value="random" class="flex-grow-1">Random</v-btn>
+          <v-btn value="descending" class="flex-1-1-0">Descending</v-btn>
+          <v-btn value="ascending" class="flex-1-1-0">Ascending</v-btn>
+          <v-btn value="random" class="flex-1-1-0">Random</v-btn>
         </v-btn-toggle>
       </v-card-text>
 
