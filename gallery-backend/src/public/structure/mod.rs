@@ -3,6 +3,7 @@ pub mod album;
 pub mod common;
 pub mod config;
 pub mod expression;
+pub mod gallery_sort_order;
 pub mod guard;
 pub mod image;
 pub mod object;

@@ -9,6 +9,7 @@ import { useConstStore } from '@/store/constStore'
 import { useUploadStore } from '@/store/uploadStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useSavedSearchStore } from '@/store/savedSearchStore'
+import { useRerenderStore } from '@/store/rerenderStore'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
 import GallerySearchControl from '@/components/Search/GallerySearchControl.vue'
@@ -19,7 +20,11 @@ import {
   SAVED_SEARCH_ADDED_MESSAGE
 } from '@/components/SavedSearch/savedSearchRoute'
 import BtnCreateAlbum from '@Menu/MenuButton/BtnCreateAlbum.vue'
-import type { SavedSearchContext } from '@/type/types'
+import type { GallerySortOrder, SavedSearchContext } from '@/type/types'
+import {
+  parseGallerySortOrder,
+  type GallerySearchSubmission
+} from '@/script/utils/gallerySort'
 
 const showDrawer = inject<Ref<boolean>>('showDrawer')
 const albumStore = useAlbumStore('mainId')
@@ -29,6 +34,7 @@ const collectionStore = useCollectionStore('mainId')
 const uploadStore = useUploadStore('mainId')
 const messageStore = useMessageStore('mainId')
 const savedSearchStore = useSavedSearchStore()
+const rerenderStore = useRerenderStore('mainId')
 const vuetifyTheme = useTheme()
 const route = useRoute()
 const router = useRouter()
@@ -37,6 +43,7 @@ const showSaveSearchDialog = shallowRef(false)
 const pendingSavedSearch = shallowRef<{
   context: SavedSearchContext
   query: string
+  sortOrder: GallerySortOrder
 } | null>(null)
 const loading = shallowRef(false)
 const isUploadPage = computed(() => route.name === 'upload')
@@ -54,6 +61,7 @@ const uploadProgressColor = computed(() =>
   uploadStore.currentRunErrorCount > 0 ? 'error' : 'primary'
 )
 const savedSearchContext = computed(() => getSavedSearchContext(route))
+const currentSortOrder = computed(() => parseGallerySortOrder(route.query.sort))
 const canSaveCurrentSearch = computed(() =>
   canSaveSearch(savedSearchContext.value, searchQuery.value)
 )
@@ -80,7 +88,11 @@ function toggleDrawer(): void {
   showDrawer.value = !showDrawer.value
 }
 
-async function handleSearch(query: string): Promise<void> {
+async function applySearchState({
+  query: rawQuery,
+  sortOrder
+}: GallerySearchSubmission): Promise<void> {
+  const query = rawQuery.trim()
   filterStore.searchString = query === '' ? null : query
 
   const nextQuery = { ...route.query }
@@ -89,10 +101,42 @@ async function handleSearch(query: string): Promise<void> {
   } else {
     nextQuery.search = query
   }
+  delete nextQuery.reverse
+  if (sortOrder === 'descending') {
+    delete nextQuery.sort
+  } else {
+    nextQuery.sort = sortOrder
+  }
 
-  await router.replace({
+  const location = {
     path: route.path,
     query: nextQuery
+  }
+  if (
+    sortOrder === 'random' &&
+    router.resolve(location).fullPath === route.fullPath
+  ) {
+    rerenderStore.rerenderHome()
+    return
+  }
+
+  await router.replace(location)
+}
+
+async function handleSearch(query: string): Promise<void> {
+  await applySearchState({ query, sortOrder: currentSortOrder.value })
+}
+
+async function handleAdvancedSearch(
+  submission: GallerySearchSubmission
+): Promise<void> {
+  await applySearchState(submission)
+}
+
+async function handleSort(sortOrder: GallerySortOrder): Promise<void> {
+  await applySearchState({
+    query: searchQuery.value ?? '',
+    sortOrder
   })
 }
 
@@ -105,7 +149,11 @@ function openSaveSearchDialog(query: string): void {
   const normalizedQuery = query.trim()
   if (context === null || normalizedQuery === '') return
 
-  pendingSavedSearch.value = { context, query: normalizedQuery }
+  pendingSavedSearch.value = {
+    context,
+    query: normalizedQuery,
+    sortOrder: currentSortOrder.value
+  }
   showSaveSearchDialog.value = true
 }
 
@@ -116,7 +164,8 @@ async function saveSearch(name: string): Promise<void> {
   const succeeded = await savedSearchStore.create({
     name,
     context: pending.context,
-    query: pending.query
+    query: pending.query,
+    sortOrder: pending.sortOrder
   })
   if (!succeeded) return
 
@@ -160,9 +209,12 @@ watchEffect(() => {
         <GallerySearchControl
           v-if="!isUploadPage"
           v-model="searchQuery"
+          :sort-order="currentSortOrder"
           :half-width="route.meta.level === 3"
           :can-save="canSaveCurrentSearch"
           @search="handleSearch"
+          @advanced-search="handleAdvancedSearch"
+          @sort="handleSort"
           @save="openSaveSearchDialog"
         />
         <v-spacer v-else />

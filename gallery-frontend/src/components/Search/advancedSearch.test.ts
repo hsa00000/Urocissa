@@ -12,6 +12,8 @@ function criteria(overrides: Partial<AdvancedSearchCriteria> = {}): AdvancedSear
 describe('advanced search filter builder', () => {
   it('returns an empty filter when every criterion is empty or all', () => {
     expect(buildAdvancedSearchFilter(criteria())).toBe('')
+    expect(createEmptyAdvancedSearchCriteria().sortOrder).toBe('descending')
+    expect(createEmptyAdvancedSearchCriteria('random').sortOrder).toBe('random')
   })
 
   it('returns a single atomic expression without an and wrapper', () => {
@@ -35,7 +37,8 @@ describe('advanced search filter builder', () => {
           extension: 'jpg',
           cameraMake: 'Canon',
           cameraModel: 'R5',
-          mediaType: 'album'
+          mediaType: 'album',
+          sortOrder: 'ascending'
         })
       )
     ).toBe(

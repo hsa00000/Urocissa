@@ -8,6 +8,7 @@ use crate::public::db::tree_snapshot::{PendingTreeSnapshot, TREE_SNAPSHOT};
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::album::ResolvedShare;
 use crate::public::structure::expression::{AlbumFilterValue, Expression};
+use crate::public::structure::gallery_sort_order::GallerySortOrder;
 use crate::public::structure::response::row::ScrollBarData;
 use crate::router::AppResult;
 use crate::router::GuardResult;
@@ -21,6 +22,7 @@ use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 use anyhow::Result;
 use bitcode::{Decode, Encode};
 use chrono::{TimeZone, Utc};
+use rand::seq::SliceRandom;
 use rayon::iter::ParallelIterator;
 use rayon::slice::ParallelSlice;
 use rocket::serde::json::Json;
@@ -220,6 +222,38 @@ fn merge_match_chunks(
     Ok((ordinals, targets.finish(universe), scrollbar))
 }
 
+fn build_random_snapshot(
+    matches: Vec<SlotRef>,
+    structural_epoch: u64,
+    universe: usize,
+    locate_slot: Option<SlotRef>,
+) -> Result<(PendingTreeSnapshot, Option<usize>), AppError> {
+    let locate_to_index =
+        locate_slot.and_then(|target| matches.iter().position(|slot_ref| *slot_ref == target));
+    let mut ordinals = Vec::with_capacity(matches.len());
+    let mut targets = TargetSetBuilder::default();
+    for slot_ref in matches {
+        if !targets.insert(slot_ref) {
+            return Err(AppError::new(
+                ErrorKind::Internal,
+                "tree order contains a duplicate slot ordinal",
+            ));
+        }
+        ordinals.push(slot_ref.index());
+    }
+
+    Ok((
+        PendingTreeSnapshot {
+            structural_epoch,
+            universe,
+            ordinals,
+            targets: targets.finish(universe),
+            scrollbar: Vec::new(),
+        },
+        locate_to_index,
+    ))
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Encode, Decode)]
 #[serde(rename_all = "camelCase")]
 pub struct Prefetch {
@@ -306,6 +340,7 @@ fn filter_items(
     expression_option: Option<Expression>,
     resolved_share_option: Option<&ResolvedShare>,
     locate_option: Option<&String>,
+    sort_order: GallerySortOrder,
 ) -> Result<(PendingTreeSnapshot, Option<usize>), AppError> {
     let filter_items_start_time = Instant::now();
 
@@ -329,36 +364,113 @@ fn filter_items(
     );
 
     let locate_slot = locate_option.and_then(|hash| tree_guard.find(hash));
-    let collect_chunk = |slot_refs: &[SlotRef]| {
+    if sort_order == GallerySortOrder::Random {
+        let collect_random_chunk = |slot_refs: &[SlotRef]| {
+            let mut matches = Vec::new();
+            for slot_ref in slot_refs {
+                let Some(record) = tree_guard.get(*slot_ref) else {
+                    continue;
+                };
+                if compiled_expression
+                    .as_ref()
+                    .is_some_and(|expression| !expression.matches(record, slot_ref.index()))
+                {
+                    continue;
+                }
+                matches.push(*slot_ref);
+            }
+            matches
+        };
+        let mut matches = if tree_guard.order.len() >= PARALLEL_FILTER_THRESHOLD {
+            QUERY_RAYON_POOL
+                .install(|| {
+                    tree_guard
+                        .order
+                        .par_chunks(PARALLEL_FILTER_CHUNK_ITEMS)
+                        .map(collect_random_chunk)
+                        .collect::<Vec<_>>()
+                })
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+        } else {
+            collect_random_chunk(tree_guard.order.as_slice())
+        };
+        matches.shuffle(&mut rand::rng());
+
+        crate::perf_timing!(
+            "prefetch.filter_items",
+            filter_items_start_time,
+            "Filter and shuffle items"
+        );
+
+        let snapshot_start = Instant::now();
+        let result = build_random_snapshot(
+            matches,
+            tree_guard.structural_epoch(),
+            tree_guard.arena.capacity(),
+            locate_slot,
+        );
+        crate::perf_timing!(
+            "prefetch.build_compact_snapshot",
+            snapshot_start,
+            "Build randomized compact snapshot order and target bitmap"
+        );
+        return result;
+    }
+
+    let collect_chunk = |slot_refs: &[SlotRef], reverse: bool| {
         let mut chunk = PrefetchMatchChunk::default();
-        for slot_ref in slot_refs {
+        let mut push_if_matching = |slot_ref: &SlotRef| {
             let Some(record) = tree_guard.get(*slot_ref) else {
-                continue;
+                return;
             };
             if compiled_expression
                 .as_ref()
                 .is_some_and(|expression| !expression.matches(record, slot_ref.index()))
             {
-                continue;
+                return;
             }
             chunk.push(
                 *slot_ref,
                 record.timestamp,
                 locate_slot.is_some_and(|target| target == *slot_ref),
             );
+        };
+        if reverse {
+            for slot_ref in slot_refs.iter().rev() {
+                push_if_matching(slot_ref);
+            }
+        } else {
+            for slot_ref in slot_refs {
+                push_if_matching(slot_ref);
+            }
         }
         chunk
     };
     let chunks = if tree_guard.order.len() >= PARALLEL_FILTER_THRESHOLD {
-        QUERY_RAYON_POOL.install(|| {
-            tree_guard
-                .order
-                .par_chunks(PARALLEL_FILTER_CHUNK_ITEMS)
-                .map(collect_chunk)
-                .collect::<Vec<_>>()
-        })
+        match sort_order {
+            GallerySortOrder::Descending => QUERY_RAYON_POOL.install(|| {
+                tree_guard
+                    .order
+                    .par_chunks(PARALLEL_FILTER_CHUNK_ITEMS)
+                    .map(|chunk| collect_chunk(chunk, false))
+                    .collect::<Vec<_>>()
+            }),
+            GallerySortOrder::Ascending => QUERY_RAYON_POOL.install(|| {
+                tree_guard
+                    .order
+                    .par_rchunks(PARALLEL_FILTER_CHUNK_ITEMS)
+                    .map(|chunk| collect_chunk(chunk, true))
+                    .collect::<Vec<_>>()
+            }),
+            GallerySortOrder::Random => unreachable!("random sorting returns before chunking"),
+        }
     } else {
-        vec![collect_chunk(tree_guard.order.as_slice())]
+        vec![collect_chunk(
+            tree_guard.order.as_slice(),
+            sort_order == GallerySortOrder::Ascending,
+        )]
     };
 
     crate::perf_timing!(
@@ -396,7 +508,11 @@ fn filter_items(
     ))
 }
 
-fn build_cache_key(expression_option: Option<&Expression>, locate_option: Option<&String>) -> u64 {
+fn build_cache_key(
+    expression_option: Option<&Expression>,
+    locate_option: Option<&String>,
+    sort_order: GallerySortOrder,
+) -> u64 {
     let cache_key_start_time = Instant::now();
 
     let mut hasher = DefaultHasher::new();
@@ -405,6 +521,7 @@ fn build_cache_key(expression_option: Option<&Expression>, locate_option: Option
         .load(Ordering::Relaxed)
         .hash(&mut hasher);
     locate_option.hash(&mut hasher);
+    sort_order.hash(&mut hasher);
     let query_hash = hasher.finish();
 
     crate::perf_timing!(
@@ -414,6 +531,15 @@ fn build_cache_key(expression_option: Option<&Expression>, locate_option: Option
     );
 
     query_hash
+}
+
+fn query_cache_key(
+    expression_option: Option<&Expression>,
+    locate_option: Option<&String>,
+    sort_order: GallerySortOrder,
+) -> Option<u64> {
+    (sort_order != GallerySortOrder::Random)
+        .then(|| build_cache_key(expression_option, locate_option, sort_order))
 }
 
 fn insert_data_into_tree_snapshot(snapshot: PendingTreeSnapshot) -> (i64, usize) {
@@ -438,7 +564,7 @@ fn create_json_response(
     timestamp_millis: i64,
     locate_to_index: Option<usize>,
     reduced_data_vector_length: usize,
-    query_hash: u64,
+    query_hash: Option<u64>,
     resolved_share_option: Option<ResolvedShare>,
 ) -> Json<PrefetchReturn> {
     let json_start_time = Instant::now();
@@ -450,8 +576,10 @@ fn create_json_response(
     );
 
     // Cache the result
-    QUERY_SNAPSHOT.in_memory.insert(query_hash, prefetch);
-    BATCH_COORDINATOR.execute_batch_detached(FlushQuerySnapshotTask);
+    if let Some(query_hash) = query_hash {
+        QUERY_SNAPSHOT.in_memory.insert(query_hash, prefetch);
+        BATCH_COORDINATOR.execute_batch_detached(FlushQuerySnapshotTask);
+    }
 
     // Build response
     let claims = ClaimsTimestamp::new(resolved_share_option, timestamp_millis);
@@ -478,15 +606,18 @@ fn execute_prefetch_logic(
     expression_option: Option<Expression>,
     locate_option: Option<&String>,
     mut resolved_share_option: Option<ResolvedShare>,
+    sort_order: GallerySortOrder,
 ) -> Result<Json<PrefetchReturn>, AppError> {
     // Start timer
     let start_time = Instant::now();
 
     // Step 1: Build cache key for response creation
-    let query_hash = build_cache_key(expression_option.as_ref(), locate_option);
+    let query_hash = query_cache_key(expression_option.as_ref(), locate_option, sort_order);
 
     // Step 2: Check if query cache is available
-    if let Some(cached_response) = check_query_cache(query_hash, &mut resolved_share_option) {
+    if let Some(query_hash) = query_hash
+        && let Some(cached_response) = check_query_cache(query_hash, &mut resolved_share_option)
+    {
         return Ok(cached_response);
     }
 
@@ -495,6 +626,7 @@ fn execute_prefetch_logic(
         expression_option,
         resolved_share_option.as_ref(),
         locate_option,
+        sort_order,
     )?;
 
     // Step 6: Insert data into TREE_SNAPSHOT
@@ -519,16 +651,27 @@ fn execute_prefetch_logic(
     Ok(json)
 }
 
-#[post("/get/prefetch?<locate>", format = "json", data = "<query_data>")]
+#[post(
+    "/get/prefetch?<locate>&<sort>",
+    format = "json",
+    data = "<query_data>"
+)]
 pub async fn prefetch(
     auth_guard: GuardResult<GuardShare>,
     query_data: Option<Json<Expression>>,
     locate: Option<String>,
+    sort: Option<String>,
 ) -> AppResult<Json<PrefetchReturn>> {
     let auth_guard = auth_guard?;
     // Combine album filter (if any) with the client‑supplied query.
     let mut combined_expression_option = query_data.map(rocket::serde::json::Json::into_inner);
     let resolved_share_option = auth_guard.claims.get_share();
+    let sort_order = sort
+        .as_deref()
+        .map(str::parse)
+        .transpose()
+        .map_err(|message| AppError::new(ErrorKind::InvalidInput, message))?
+        .unwrap_or_default();
 
     if let Some(resolved_share) = &resolved_share_option {
         let album_filter_expression =
@@ -548,6 +691,7 @@ pub async fn prefetch(
             combined_expression_option,
             locate.as_ref(),
             resolved_share_option,
+            sort_order,
         )
     })
     .await
@@ -561,11 +705,13 @@ mod tests {
     use chrono::{TimeZone, Utc};
 
     use super::{
-        PARALLEL_FILTER_CHUNK_ITEMS, PrefetchMatchChunk, merge_match_chunks, summarize_match_chunks,
+        PARALLEL_FILTER_CHUNK_ITEMS, PrefetchMatchChunk, build_random_snapshot, merge_match_chunks,
+        query_cache_key, summarize_match_chunks,
     };
     use crate::public::db::tree::state::SlotRef;
     use crate::public::db::tree_snapshot::read_scrollbar::build_scrollbar;
     use crate::public::db::tree_snapshot::{PendingTreeSnapshot, SnapshotBlobView};
+    use crate::public::structure::gallery_sort_order::GallerySortOrder;
     use crate::public::structure::response::row::ScrollBarData;
 
     fn timestamp(year: i32, month: u32, day: u32) -> i64 {
@@ -682,6 +828,67 @@ mod tests {
         assert_eq!(split_locate, None);
         assert_eq!(single, split);
         assert_eq!(single.2, build_scrollbar(timestamps));
+    }
+
+    #[test]
+    fn ascending_chunks_are_the_exact_reverse_with_reversed_scrollbar_metadata() {
+        let descending_timestamps = vec![
+            timestamp(2026, 3, 1),
+            timestamp(2026, 2, 1),
+            timestamp(2026, 1, 1),
+        ];
+        let ascending_entries = descending_timestamps
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(index, timestamp)| {
+                (
+                    SlotRef::new(u32::try_from(index).unwrap(), 1),
+                    *timestamp,
+                    index == 1,
+                )
+            })
+            .collect::<Vec<_>>();
+        let chunks = vec![
+            chunk(&ascending_entries[..2]),
+            chunk(&ascending_entries[2..]),
+        ];
+        let (total, locate_to) = summarize_match_chunks(&chunks);
+        let (ordinals, _, scrollbar) = merge_match_chunks(chunks, total, 3).unwrap();
+
+        assert_eq!(ordinals, vec![2, 1, 0]);
+        assert_eq!(locate_to, Some(1));
+        assert_eq!(
+            scrollbar,
+            build_scrollbar(descending_timestamps.into_iter().rev())
+        );
+    }
+
+    #[test]
+    fn randomized_snapshot_preserves_the_permutation_locate_and_generations() {
+        let shuffled = vec![SlotRef::new(9, 3), SlotRef::new(65, 1), SlotRef::new(7, 2)];
+        let (snapshot, locate_to) =
+            build_random_snapshot(shuffled.clone(), 42, 128, Some(SlotRef::new(7, 2))).unwrap();
+
+        assert_eq!(snapshot.ordinals, vec![9, 65, 7]);
+        assert_eq!(snapshot.targets.len(), shuffled.len());
+        assert_eq!(
+            snapshot.targets.slot_ref_for_ordinal(9),
+            Some(SlotRef::new(9, 3))
+        );
+        assert_eq!(locate_to, Some(2));
+        assert!(snapshot.scrollbar.is_empty());
+    }
+
+    #[test]
+    fn deterministic_sorts_have_distinct_cache_keys_and_random_bypasses_cache() {
+        let descending = query_cache_key(None, None, GallerySortOrder::Descending);
+        let ascending = query_cache_key(None, None, GallerySortOrder::Ascending);
+
+        assert!(descending.is_some());
+        assert!(ascending.is_some());
+        assert_ne!(descending, ascending);
+        assert_eq!(query_cache_key(None, None, GallerySortOrder::Random), None);
     }
 
     #[test]

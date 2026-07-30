@@ -6,14 +6,17 @@ import {
   canSaveSearch,
   createSavedSearchLocation,
   getSavedSearchContext,
-  isSavedSearchActive
+  isSavedSearchActive,
+  shouldRefreshSavedSearch
 } from './savedSearchRoute'
+import { savedSearchSchema } from '@/type/schemas'
 
 const search: SavedSearch = {
   id: '020b6f4f-5c28-4f8c-81f8-bc22949f1ee8',
   name: 'Family',
   context: 'favorite',
-  query: 'tag:family'
+  query: 'tag:family',
+  sortOrder: 'descending'
 }
 
 function route(baseName: string, query: LocationQuery = {}) {
@@ -34,9 +37,15 @@ describe('saved search routes', () => {
       name: 'favorite',
       query: { search: 'tag:family' }
     })
+    expect(
+      createSavedSearchLocation({ ...search, sortOrder: 'ascending' })
+    ).toEqual({
+      name: 'favorite',
+      query: { search: 'tag:family', sort: 'ascending' }
+    })
   })
 
-  it('matches context and query exactly', () => {
+  it('matches context, query, and normalized sort exactly', () => {
     expect(isSavedSearchActive(search, route('favorite', { search: 'tag:family' }))).toBe(true)
     expect(
       isSavedSearchActive(
@@ -46,6 +55,49 @@ describe('saved search routes', () => {
     ).toBe(true)
     expect(isSavedSearchActive(search, route('home', { search: 'tag:family' }))).toBe(false)
     expect(isSavedSearchActive(search, route('favorite', { search: 'other' }))).toBe(false)
+    expect(
+      isSavedSearchActive(search, route('favorite', {
+        search: 'tag:family',
+        sort: 'ascending'
+      }))
+    ).toBe(false)
+    expect(
+      isSavedSearchActive(
+        { ...search, sortOrder: 'random' },
+        route('favorite', { search: 'tag:family', sort: 'random' })
+      )
+    ).toBe(true)
+  })
+
+  it('defaults legacy saved searches to descending', () => {
+    expect(
+      savedSearchSchema.parse({
+        id: search.id,
+        name: search.name,
+        context: search.context,
+        query: search.query
+      }).sortOrder
+    ).toBe('descending')
+  })
+
+  it('refreshes an already-open random saved search without refreshing deterministic sorts', () => {
+    const randomSearch = { ...search, sortOrder: 'random' as const }
+
+    expect(
+      shouldRefreshSavedSearch(
+        randomSearch,
+        '/favorite?search=tag:family&sort=random',
+        '/favorite?search=tag:family&sort=random'
+      )
+    ).toBe(true)
+    expect(
+      shouldRefreshSavedSearch(
+        randomSearch,
+        '/home',
+        '/favorite?search=tag:family&sort=random'
+      )
+    ).toBe(false)
+    expect(shouldRefreshSavedSearch(search, '/favorite', '/favorite')).toBe(false)
   })
 
   it('keeps the required success snackbar copy stable', () => {

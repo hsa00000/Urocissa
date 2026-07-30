@@ -1,5 +1,6 @@
 import type { RouteLocationRaw } from 'vue-router'
 import type { SavedSearch, SavedSearchContext } from '@/type/types'
+import { parseGallerySortOrder } from '@/script/utils/gallerySort'
 
 const contextSet = new Set<SavedSearchContext>([
   'home',
@@ -17,6 +18,7 @@ interface SavedSearchRouteLike {
   }
   query: {
     search?: unknown
+    sort?: unknown
   }
 }
 
@@ -37,12 +39,27 @@ export function canSaveSearch(
 }
 
 export function createSavedSearchLocation(search: SavedSearch): RouteLocationRaw {
+  const query: Record<string, string> = { search: search.query }
+  if (search.sortOrder !== 'descending') query.sort = search.sortOrder
+
   return {
     name: search.context,
-    query: { search: search.query }
+    query
   }
 }
 
 export function isSavedSearchActive(search: SavedSearch, route: SavedSearchRouteLike): boolean {
-  return getSavedSearchContext(route) === search.context && route.query.search === search.query
+  return (
+    getSavedSearchContext(route) === search.context &&
+    route.query.search === search.query &&
+    parseGallerySortOrder(route.query.sort) === search.sortOrder
+  )
+}
+
+export function shouldRefreshSavedSearch(
+  search: SavedSearch,
+  currentFullPath: string,
+  targetFullPath: string
+): boolean {
+  return search.sortOrder === 'random' && currentFullPath === targetFullPath
 }

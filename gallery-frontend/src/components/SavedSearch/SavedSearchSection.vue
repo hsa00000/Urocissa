@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import Sortable from 'sortablejs'
 import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, useId, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useSavedSearchStore } from '@/store/savedSearchStore'
+import { useRerenderStore } from '@/store/rerenderStore'
 import SavedSearchDeleteDialog from './SavedSearchDeleteDialog.vue'
 import SavedSearchNameDialog from './SavedSearchNameDialog.vue'
 import { getSavedSearchDragTiming } from './savedSearchDrag'
-import { createSavedSearchLocation, isSavedSearchActive } from './savedSearchRoute'
+import {
+  createSavedSearchLocation,
+  isSavedSearchActive,
+  shouldRefreshSavedSearch
+} from './savedSearchRoute'
 import type { SavedSearch } from '@/type/types'
 
 const props = withDefaults(
@@ -21,9 +26,11 @@ const props = withDefaults(
 )
 
 const route = useRoute()
+const router = useRouter()
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
 const savedSearchStore = useSavedSearchStore()
+const rerenderStore = useRerenderStore('mainId')
 const savedSearchListId = useId()
 const renamingSearch = shallowRef<SavedSearch | null>(null)
 const deletingSearch = shallowRef<SavedSearch | null>(null)
@@ -62,6 +69,13 @@ async function renameSearch(name: string): Promise<void> {
 function openDeleteDialog(search: SavedSearch): void {
   deletingSearch.value = search
   showDeleteDialog.value = true
+}
+
+function refreshActiveRandomSearch(search: SavedSearch): void {
+  const targetFullPath = router.resolve(createSavedSearchLocation(search)).fullPath
+  if (shouldRefreshSavedSearch(search, route.fullPath, targetFullPath)) {
+    rerenderStore.rerenderHome()
+  }
 }
 
 async function deleteSearch(): Promise<void> {
@@ -154,6 +168,7 @@ onBeforeUnmount(() => {
       class="saved-search-item"
       prepend-icon="mdi-bookmark-outline"
       slim
+      @click="refreshActiveRandomSearch(search)"
     >
       <template #append>
         <v-menu>

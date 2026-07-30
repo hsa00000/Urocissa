@@ -114,7 +114,12 @@ describe('saved search schema', () => {
 
   it('parses and trims a valid saved search response', () => {
     expect(savedSearchListSchema.parse([savedSearch])).toEqual([
-      { ...savedSearch, name: 'Family', query: 'tag:family' }
+      {
+        ...savedSearch,
+        name: 'Family',
+        query: 'tag:family',
+        sortOrder: 'descending'
+      }
     ])
     expect(
       savedSearchListSchema.safeParse([
@@ -128,6 +133,9 @@ describe('saved search schema', () => {
       false
     )
     expect(savedSearchListSchema.safeParse([{ ...savedSearch, name: ' ' }]).success).toBe(false)
+    expect(
+      savedSearchListSchema.safeParse([{ ...savedSearch, sortOrder: 'newest' }]).success
+    ).toBe(false)
     expect(
       savedSearchListSchema.safeParse([{ ...savedSearch, name: '📷'.repeat(81) }]).success
     ).toBe(false)

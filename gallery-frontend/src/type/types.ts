@@ -53,7 +53,7 @@ export interface SlicedData {
   hashToken: string
 }
 
-export type Sorting = 'ascending' | 'descending' | 'random' | 'similar'
+export type GallerySortOrder = 'descending' | 'ascending' | 'random'
 export type IsolationId = 'mainId' | 'subId' | 'tempId' | 'shareId'
 export type FetchDataMethod = 'batch' | 'single'
 export type MessageColor = 'error' | 'success' | 'info'

@@ -5,9 +5,16 @@ import { useSearchHistoryStore } from '@/store/searchHistoryStore'
 import AdvancedSearchDialog from './AdvancedSearchDialog.vue'
 import MobileSearchDialog from './MobileSearchDialog.vue'
 import SearchHistoryList from './SearchHistoryList.vue'
+import type { GallerySortOrder } from '@/type/types'
+import {
+  getQuickSortPresentation,
+  nextQuickSortOrder,
+  type GallerySearchSubmission
+} from '@/script/utils/gallerySort'
 
 const props = withDefaults(
   defineProps<{
+    sortOrder: GallerySortOrder
     halfWidth?: boolean
     canSave?: boolean
   }>(),
@@ -21,6 +28,8 @@ const searchQuery = defineModel<string | null>({ required: true })
 
 const emit = defineEmits<{
   search: [query: string]
+  advancedSearch: [submission: GallerySearchSubmission]
+  sort: [sortOrder: GallerySortOrder]
   save: [query: string]
 }>()
 
@@ -32,6 +41,9 @@ const showAdvancedSearch = shallowRef(false)
 let blurTimeout: ReturnType<typeof setTimeout> | null = null
 
 const desktopCardStyle = computed(() => ({ width: props.halfWidth ? '50%' : '100%' }))
+const quickSortPresentation = computed(() =>
+  getQuickSortPresentation(props.sortOrder)
+)
 const saveDisabled = computed(
   () => !props.canSave || (searchQuery.value?.trim() ?? '') === ''
 )
@@ -60,7 +72,7 @@ function onSearchBlur(): void {
   }, 200)
 }
 
-function applySearch(rawQuery: string | null): void {
+function commitSearch(rawQuery: string | null): string {
   const query = rawQuery?.trim() ?? ''
   searchQuery.value = query === '' ? null : query
 
@@ -68,6 +80,11 @@ function applySearch(rawQuery: string | null): void {
 
   closeSearchHistory()
   showMobileSearch.value = false
+  return query
+}
+
+function applySearch(rawQuery: string | null): void {
+  const query = commitSearch(rawQuery)
   emit('search', query)
 }
 
@@ -103,8 +120,18 @@ function openAdvancedSearchFromMobile(): void {
   showAdvancedSearch.value = true
 }
 
-function submitAdvancedSearch(filterString: string): void {
-  applySearch(filterString)
+function submitAdvancedSearch(submission: GallerySearchSubmission): void {
+  const query = commitSearch(submission.query)
+  emit('advancedSearch', { query, sortOrder: submission.sortOrder })
+}
+
+function changeSort(sortOrder: GallerySortOrder): void {
+  showMobileSearch.value = false
+  emit('sort', sortOrder)
+}
+
+function toggleSort(): void {
+  changeSort(nextQuickSortOrder(props.sortOrder))
 }
 
 function saveCurrentSearch(): void {
@@ -187,6 +214,14 @@ onUnmounted(clearBlurTimeout)
                 @mousedown.stop.prevent
                 @click.stop="openAdvancedSearch"
               />
+              <v-btn
+                :icon="quickSortPresentation.icon"
+                variant="text"
+                size="small"
+                :aria-label="quickSortPresentation.ariaLabel"
+                @mousedown.stop.prevent
+                @click.stop="toggleSort"
+              />
             </template>
           </v-text-field>
         </template>
@@ -218,6 +253,7 @@ onUnmounted(clearBlurTimeout)
   <AdvancedSearchDialog
     v-if="showAdvancedSearch"
     v-model="showAdvancedSearch"
+    :sort-order="props.sortOrder"
     @search="submitAdvancedSearch"
   />
 
@@ -226,6 +262,7 @@ onUnmounted(clearBlurTimeout)
     v-model="showMobileSearch"
     v-model:search-query="searchQuery"
     :history="searchHistoryStore.history"
+    :sort-order="props.sortOrder"
     :can-save="props.canSave"
     @search="applySearch"
     @save="saveCurrentSearch"
@@ -233,6 +270,7 @@ onUnmounted(clearBlurTimeout)
     @remove-history="removeHistoryItem"
     @clear-history="clearSearchHistory"
     @open-advanced-search="openAdvancedSearchFromMobile"
+    @sort="changeSort"
   />
 </template>
 

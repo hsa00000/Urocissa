@@ -204,6 +204,8 @@ export const savedSearchContextSchema = z.enum([
   'videos'
 ])
 
+export const gallerySortOrderSchema = z.enum(['descending', 'ascending', 'random'])
+
 const savedSearchNameSchema = z
   .string()
   .trim()
@@ -224,7 +226,8 @@ export const savedSearchSchema = z.object({
   id: z.uuid(),
   name: savedSearchNameSchema,
   context: savedSearchContextSchema,
-  query: savedSearchQuerySchema
+  query: savedSearchQuerySchema,
+  sortOrder: gallerySortOrderSchema.default('descending')
 })
 
 export const savedSearchListSchema = z.array(savedSearchSchema).max(50)

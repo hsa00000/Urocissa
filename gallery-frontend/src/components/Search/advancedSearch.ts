@@ -1,4 +1,5 @@
 import { escapeAndWrap } from '@utils/escape'
+import type { GallerySortOrder } from '@/type/types'
 
 export type AdvancedSearchMediaType = 'all' | 'image' | 'video' | 'album'
 
@@ -10,9 +11,12 @@ export interface AdvancedSearchCriteria {
   cameraMake: string | null
   cameraModel: string | null
   mediaType: AdvancedSearchMediaType
+  sortOrder: GallerySortOrder
 }
 
-export function createEmptyAdvancedSearchCriteria(): AdvancedSearchCriteria {
+export function createEmptyAdvancedSearchCriteria(
+  sortOrder: GallerySortOrder = 'descending'
+): AdvancedSearchCriteria {
   return {
     keyword: '',
     filename: '',
@@ -20,7 +24,8 @@ export function createEmptyAdvancedSearchCriteria(): AdvancedSearchCriteria {
     extension: '',
     cameraMake: null,
     cameraModel: null,
-    mediaType: 'all'
+    mediaType: 'all',
+    sortOrder
   }
 }
 

@@ -22,14 +22,16 @@ const first: SavedSearch = {
   id: '020b6f4f-5c28-4f8c-81f8-bc22949f1ee8',
   name: 'Family',
   context: 'favorite',
-  query: 'tag:family'
+  query: 'tag:family',
+  sortOrder: 'descending'
 }
 
 const second: SavedSearch = {
   id: '99ee3b9a-7bf2-461f-abeb-1ab4b33fe697',
   name: 'Recent videos',
   context: 'videos',
-  query: 'after:2026-01-01'
+  query: 'after:2026-01-01',
+  sortOrder: 'ascending'
 }
 
 function deferred<T>(): {
@@ -87,7 +89,12 @@ describe('saved search store', () => {
     const store = useSavedSearchStore()
 
     await expect(
-      store.create({ name: first.name, context: first.context, query: first.query })
+      store.create({
+        name: first.name,
+        context: first.context,
+        query: first.query,
+        sortOrder: first.sortOrder
+      })
     ).resolves.toBe(true)
     expect(store.searches).toEqual([first])
 
@@ -105,7 +112,12 @@ describe('saved search store', () => {
     const store = useSavedSearchStore()
 
     void store.loadOnce()
-    const creation = store.create({ name: first.name, context: first.context, query: first.query })
+    const creation = store.create({
+      name: first.name,
+      context: first.context,
+      query: first.query,
+      sortOrder: first.sortOrder
+    })
     expect(createSavedSearch).not.toHaveBeenCalled()
 
     pendingLoad.resolve([])

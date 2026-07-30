@@ -4,6 +4,8 @@ use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::public::structure::gallery_sort_order::GallerySortOrder;
+
 pub const MAX_SAVED_SEARCHES: usize = 50;
 pub const MAX_SAVED_SEARCH_NAME_CHARS: usize = 80;
 pub const MAX_SAVED_SEARCH_QUERY_CHARS: usize = 4_096;
@@ -27,15 +29,27 @@ pub struct SavedSearch {
     pub name: String,
     pub context: SavedSearchContext,
     pub query: String,
+    #[serde(default)]
+    pub sort_order: GallerySortOrder,
 }
 
 impl SavedSearch {
     pub fn new(name: String, context: SavedSearchContext, query: String) -> Self {
+        Self::new_with_sort(name, context, query, GallerySortOrder::default())
+    }
+
+    pub fn new_with_sort(
+        name: String,
+        context: SavedSearchContext,
+        query: String,
+        sort_order: GallerySortOrder,
+    ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             name,
             context,
             query,
+            sort_order,
         }
     }
 }
@@ -86,7 +100,7 @@ pub fn normalize_and_validate_saved_searches(searches: &mut Vec<SavedSearch>) ->
             "Saved search names must be unique"
         );
         ensure!(
-            targets.insert((search.context, search.query.clone())),
+            targets.insert((search.context, search.query.clone(), search.sort_order)),
             "Saved search targets must be unique"
         );
     }
@@ -131,6 +145,23 @@ mod tests {
         assert_eq!(
             serde_json::to_value(SavedSearchContext::Favorite).unwrap(),
             serde_json::json!("favorite")
+        );
+    }
+
+    #[test]
+    fn legacy_saved_search_defaults_to_descending() {
+        let decoded: SavedSearch = serde_json::from_value(serde_json::json!({
+            "id": "020b6f4f-5c28-4f8c-81f8-bc22949f1ee8",
+            "name": "Family",
+            "context": "favorite",
+            "query": "tag:family"
+        }))
+        .unwrap();
+
+        assert_eq!(decoded.sort_order, GallerySortOrder::Descending);
+        assert_eq!(
+            serde_json::to_value(decoded).unwrap()["sortOrder"],
+            serde_json::json!("descending")
         );
     }
 }

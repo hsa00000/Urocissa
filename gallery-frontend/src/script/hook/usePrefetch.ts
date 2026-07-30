@@ -12,6 +12,8 @@ import { fetchScrollbar } from '@/api/fetchScrollbar'
 import { useShareStore } from '@/store/shareStore'
 import { useTokenStore } from '@/store/tokenStore'
 import { RouteLocationNormalizedLoadedGeneric } from 'vue-router'
+import type { GallerySortOrder } from '@type/types'
+import { parseGallerySortOrder } from '@/script/utils/gallerySort'
 
 export function usePrefetch(
   filterJsonString: string | null,
@@ -26,7 +28,7 @@ export function usePrefetch(
         // Note: Check if 'priorityId' vs 'priority_id' matches your route definition in App.vue
         const priorityId =
           typeof route.query.priority_id === 'string' ? route.query.priority_id : ''
-        const reverse = typeof route.query.reverse === 'string' ? route.query.reverse : ''
+        const sortOrder = parseGallerySortOrder(route.query.sort)
         let locate: string | null = null
 
         // add locate to query string if user enter view page directly
@@ -45,7 +47,14 @@ export function usePrefetch(
         // Parallel Execution: Run Config chain and Prefetch chain simultaneously
         await Promise.all([
           processConfigChain(isolationId),
-          processPrefetchChain(filterJsonString, priorityId, reverse, locate, isolationId, route)
+          processPrefetchChain(
+            filterJsonString,
+            priorityId,
+            sortOrder,
+            locate,
+            isolationId,
+            route
+          )
         ])
 
         stopWatcher() // Stop the watcher after everything is done
@@ -71,13 +80,13 @@ async function processConfigChain(isolationId: IsolationId) {
 async function processPrefetchChain(
   filterJsonString: string | null,
   priorityId: string,
-  reverse: string,
+  sortOrder: GallerySortOrder,
   locate: string | null,
   isolationId: IsolationId,
   route: RouteLocationNormalizedLoadedGeneric
 ) {
   // 1. Fetch main data (Critical step)
-  const prefetchReturn = await prefetch(filterJsonString, priorityId, reverse, locate)
+  const prefetchReturn = await prefetch(filterJsonString, priorityId, sortOrder, locate)
 
   // 2. Sync Store immediately after prefetch returns
   // This updates the Token which fetchScrollbar relies on.

@@ -1,12 +1,19 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import SearchHistoryList from './SearchHistoryList.vue'
+import type { GallerySortOrder } from '@/type/types'
+import {
+  getQuickSortPresentation,
+  nextQuickSortOrder
+} from '@/script/utils/gallerySort'
 
 const isOpen = defineModel<boolean>({ required: true })
 const searchQuery = defineModel<string | null>('searchQuery', { required: true })
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     history: readonly string[]
+    sortOrder: GallerySortOrder
     canSave?: boolean
   }>(),
   {
@@ -21,7 +28,12 @@ const emit = defineEmits<{
   removeHistory: [index: number]
   clearHistory: []
   openAdvancedSearch: []
+  sort: [sortOrder: GallerySortOrder]
 }>()
+
+const quickSortPresentation = computed(() =>
+  getQuickSortPresentation(props.sortOrder)
+)
 
 function submitSearch(): void {
   emit('search', searchQuery.value)
@@ -30,6 +42,10 @@ function submitSearch(): void {
 function clearAndSearch(): void {
   searchQuery.value = null
   emit('search', null)
+}
+
+function toggleSort(): void {
+  emit('sort', nextQuickSortOrder(props.sortOrder))
 }
 </script>
 
@@ -75,7 +91,7 @@ function clearAndSearch(): void {
           variant="text"
           size="small"
           aria-label="Save search"
-          :disabled="!canSave || (searchQuery?.trim() ?? '') === ''"
+          :disabled="!props.canSave || (searchQuery?.trim() ?? '') === ''"
           @click="emit('save')"
         />
         <v-btn
@@ -84,6 +100,13 @@ function clearAndSearch(): void {
           size="small"
           aria-label="Advanced search"
           @click="emit('openAdvancedSearch')"
+        />
+        <v-btn
+          :icon="quickSortPresentation.icon"
+          variant="text"
+          size="small"
+          :aria-label="quickSortPresentation.ariaLabel"
+          @click="toggleSort"
         />
       </v-toolbar>
 

@@ -1,11 +1,16 @@
 import axios from 'axios'
 import { savedSearchListSchema } from '@/type/schemas'
-import type { SavedSearch, SavedSearchContext } from '@/type/types'
+import type {
+  GallerySortOrder,
+  SavedSearch,
+  SavedSearchContext
+} from '@/type/types'
 
 export interface CreateSavedSearchInput {
   name: string
   context: SavedSearchContext
   query: string
+  sortOrder: GallerySortOrder
 }
 
 function parseSavedSearches(value: unknown): SavedSearch[] {

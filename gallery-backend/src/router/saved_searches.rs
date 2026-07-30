@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::config::{APP_CONFIG, AppConfig};
+use crate::public::structure::gallery_sort_order::GallerySortOrder;
 use crate::public::structure::saved_search::{
     MAX_SAVED_SEARCHES, SavedSearch, SavedSearchContext, normalize_saved_search_name,
     normalize_saved_search_query,
@@ -19,6 +20,8 @@ pub struct CreateSavedSearchRequest {
     name: String,
     context: SavedSearchContext,
     query: String,
+    #[serde(default)]
+    sort_order: GallerySortOrder,
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,8 +130,13 @@ fn create_in(searches: &mut Vec<SavedSearch>, request: &CreateSavedSearchRequest
     let query = normalize_saved_search_query(&request.query)
         .map_err(|error| AppError::from_err(ErrorKind::InvalidInput, error))?;
     ensure_unique_name(searches, &name, None)?;
-    ensure_unique_target(searches, request.context, &query)?;
-    searches.push(SavedSearch::new(name, request.context, query));
+    ensure_unique_target(searches, request.context, &query, request.sort_order)?;
+    searches.push(SavedSearch::new_with_sort(
+        name,
+        request.context,
+        query,
+        request.sort_order,
+    ));
     Ok(())
 }
 
@@ -209,11 +217,11 @@ fn ensure_unique_target(
     searches: &[SavedSearch],
     context: SavedSearchContext,
     query: &str,
+    sort_order: GallerySortOrder,
 ) -> AppResult<()> {
-    if searches
-        .iter()
-        .any(|search| search.context == context && search.query == query)
-    {
+    if searches.iter().any(|search| {
+        search.context == context && search.query == query && search.sort_order == sort_order
+    }) {
         return Err(AppError::new(
             ErrorKind::Conflict,
             "An identical saved search already exists",
@@ -231,10 +239,20 @@ mod tests {
         context: SavedSearchContext,
         query: &str,
     ) -> CreateSavedSearchRequest {
+        create_request_with_sort(name, context, query, GallerySortOrder::Descending)
+    }
+
+    fn create_request_with_sort(
+        name: &str,
+        context: SavedSearchContext,
+        query: &str,
+        sort_order: GallerySortOrder,
+    ) -> CreateSavedSearchRequest {
         CreateSavedSearchRequest {
             name: name.to_owned(),
             context,
             query: query.to_owned(),
+            sort_order,
         }
     }
 
@@ -298,6 +316,18 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(target_error.kind, ErrorKind::Conflict);
+
+        create_in(
+            &mut searches,
+            &create_request_with_sort(
+                "Family oldest first",
+                SavedSearchContext::Home,
+                "tag:family",
+                GallerySortOrder::Ascending,
+            ),
+        )
+        .unwrap();
+        assert_eq!(searches.len(), 2);
     }
 
     #[test]

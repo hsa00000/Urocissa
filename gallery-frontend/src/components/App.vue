@@ -62,10 +62,10 @@ const routeKey = computed(() => {
   const search = typeof route.query.search === 'string' ? route.query.search : ''
   const locate = typeof route.query.locate === 'string' ? route.query.locate : ''
   const priorityId = typeof route.query.priority_id === 'string' ? route.query.priority_id : ''
-  const reverse = typeof route.query.reverse === 'string' ? route.query.reverse : ''
+  const sort = typeof route.query.sort === 'string' ? route.query.sort : ''
   const concurrencyNumber = constStore.concurrencyNumber
   const homeKey = rerenderStore.homeKey.toString()
-  return `${currentPage}-${search}-${locate}-${priorityId}-${reverse}-${concurrencyNumber}-${homeKey}`
+  return `${currentPage}-${search}-${locate}-${priorityId}-${sort}-${concurrencyNumber}-${homeKey}`
 })
 
 onBeforeMount(async () => {

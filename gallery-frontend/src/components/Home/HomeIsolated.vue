@@ -75,8 +75,8 @@ const priorityKey = computed(() => {
   return ''
 })
 
-const reverseKey = computed(() => {
-  const v = route.query.reverse
+const sortKey = computed(() => {
+  const v = route.query.sort
   if (typeof v === 'string') return v
   if (Array.isArray(v)) return v.join(',')
   return ''
@@ -86,7 +86,7 @@ const hashKey = computed(() => (typeof route.params.hash === 'string' ? route.pa
 
 // This forces ONLY the isolated Home to remount when subSearch changes
 const isolatedHomeKey = computed(() => {
-  return `isolated-${hashKey.value}-${subSearchKey.value}-${locateKey.value}-${priorityKey.value}-${reverseKey.value}`
+  return `isolated-${hashKey.value}-${subSearchKey.value}-${locateKey.value}-${priorityKey.value}-${sortKey.value}`
 })
 
 watch(
