@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, shallowRef, watchEffect, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useTheme } from 'vuetify'
+import { useDisplay, useTheme } from 'vuetify'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useFilterStore } from '@/store/filterStore'
 import { useAlbumStore } from '@/store/albumStore'
@@ -13,6 +13,7 @@ import { useRerenderStore } from '@/store/rerenderStore'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
 import GallerySearchControl from '@/components/Search/GallerySearchControl.vue'
+import { createGallerySearchRouteUpdate } from '@/components/Search/gallerySearchRoute'
 import SavedSearchNameDialog from '@/components/SavedSearch/SavedSearchNameDialog.vue'
 import {
   canSaveSearch,
@@ -36,6 +37,7 @@ const messageStore = useMessageStore('mainId')
 const savedSearchStore = useSavedSearchStore()
 const rerenderStore = useRerenderStore('mainId')
 const vuetifyTheme = useTheme()
+const { smAndDown } = useDisplay()
 const route = useRoute()
 const router = useRouter()
 const searchQuery = shallowRef<string | null>(null)
@@ -46,6 +48,7 @@ const pendingSavedSearch = shallowRef<{
   sortOrder: GallerySortOrder
 } | null>(null)
 const loading = shallowRef(false)
+const isLevelOne = computed(() => route.meta.level === 1)
 const isUploadPage = computed(() => route.name === 'upload')
 const showUploadProgress = computed(
   () => uploadStore.currentRunTotalCount > 0 && uploadStore.hasActiveWork
@@ -92,25 +95,16 @@ async function applySearchState({
   query: rawQuery,
   sortOrder
 }: GallerySearchSubmission): Promise<void> {
-  const query = rawQuery.trim()
-  filterStore.searchString = query === '' ? null : query
-
-  const nextQuery = { ...route.query }
-  if (query === '') {
-    delete nextQuery.search
-  } else {
-    nextQuery.search = query
-  }
-  delete nextQuery.reverse
-  if (sortOrder === 'descending') {
-    delete nextQuery.sort
-  } else {
-    nextQuery.sort = sortOrder
-  }
+  const { normalizedSearch, routeQuery } = createGallerySearchRouteUpdate(
+    route.query,
+    'search',
+    { query: rawQuery, sortOrder }
+  )
+  filterStore.searchString = normalizedSearch === '' ? null : normalizedSearch
 
   const location = {
     path: route.path,
-    query: nextQuery
+    query: routeQuery
   }
   if (
     sortOrder === 'random' &&
@@ -183,9 +177,12 @@ watchEffect(() => {
 <template>
   <HomeBarTemplate isolation-id="mainId">
     <template #content>
-      <v-toolbar v-if="!collectionStore.editModeOn" class="bg-surface">
+      <v-toolbar
+        v-if="!collectionStore.editModeOn"
+        class="position-relative bg-surface"
+      >
         <v-btn
-          v-if="route.meta.level === 1"
+          v-if="isLevelOne"
           icon="mdi-menu"
           aria-label="Open navigation drawer"
           @click="toggleDrawer"
@@ -212,21 +209,23 @@ watchEffect(() => {
           :sort-order="currentSortOrder"
           :half-width="route.meta.level === 3"
           :can-save="canSaveCurrentSearch"
+          :desktop-end-gap="isLevelOne ? 0 : 10"
+          :desktop-layout="isLevelOne ? 'center-quarter' : 'flow'"
           @search="handleSearch"
           @advanced-search="handleAdvancedSearch"
           @sort="handleSort"
           @save="openSaveSearchDialog"
         />
-        <v-spacer v-else />
+        <v-spacer v-if="isUploadPage || (isLevelOne && !smAndDown)" />
 
         <v-btn
-          v-if="route.meta.level === 1"
+          v-if="isLevelOne"
           class="d-none d-md-flex"
           :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
           @click="themeIsLight = !themeIsLight"
         />
-        <BtnCreateAlbum v-if="route.meta.level === 1" v-model="loading" />
-        <div v-if="route.meta.level === 1" class="upload-btn-container">
+        <BtnCreateAlbum v-if="isLevelOne" v-model="loading" />
+        <div v-if="isLevelOne" class="upload-btn-container">
           <v-btn
             icon
             class="upload-btn"

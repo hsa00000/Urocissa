@@ -15,9 +15,11 @@ const props = withDefaults(
     history: readonly string[]
     sortOrder: GallerySortOrder
     canSave?: boolean
+    showSaveAction?: boolean
   }>(),
   {
-    canSave: false
+    canSave: false,
+    showSaveAction: true
   }
 )
 
@@ -87,6 +89,7 @@ function toggleSort(): void {
         </v-text-field>
 
         <v-btn
+          v-if="props.showSaveAction"
           icon="mdi-bookmark-plus-outline"
           variant="text"
           size="small"

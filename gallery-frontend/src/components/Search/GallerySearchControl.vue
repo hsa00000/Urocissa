@@ -17,10 +17,20 @@ const props = withDefaults(
     sortOrder: GallerySortOrder
     halfWidth?: boolean
     canSave?: boolean
+    narrowActivator?: 'wide' | 'icon'
+    showSaveAction?: boolean
+    includeAlbumMediaType?: boolean
+    desktopEndGap?: number
+    desktopLayout?: 'flow' | 'center-quarter'
   }>(),
   {
     halfWidth: false,
-    canSave: false
+    canSave: false,
+    narrowActivator: 'wide',
+    showSaveAction: true,
+    includeAlbumMediaType: true,
+    desktopEndGap: 10,
+    desktopLayout: 'flow'
   }
 )
 
@@ -40,9 +50,26 @@ const showMobileSearch = shallowRef(false)
 const showAdvancedSearch = shallowRef(false)
 let blurTimeout: ReturnType<typeof setTimeout> | null = null
 
-const desktopCardStyle = computed(() => ({ width: props.halfWidth ? '50%' : '100%' }))
+const desktopIsCenteredQuarter = computed(
+  () => props.desktopLayout === 'center-quarter'
+)
+const desktopCardWidth = computed(() => {
+  if (desktopIsCenteredQuarter.value) return '25%'
+  return props.halfWidth ? '50%' : '100%'
+})
+const desktopInputStyle = computed(() => ({
+  marginInlineEnd: `${props.desktopEndGap}px`
+}))
 const quickSortPresentation = computed(() =>
   getQuickSortPresentation(props.sortOrder)
+)
+const hasActiveSearch = computed(() => (searchQuery.value?.trim() ?? '') !== '')
+const narrowActivatorIcon = computed(() =>
+  hasActiveSearch.value ? 'mdi-filter-check' : 'mdi-magnify'
+)
+const narrowActivatorColor = computed(() => (hasActiveSearch.value ? 'primary' : undefined))
+const narrowActivatorAriaLabel = computed(() =>
+  hasActiveSearch.value ? 'Search. Filter active.' : 'Search'
 )
 const saveDisabled = computed(
   () => !props.canSave || (searchQuery.value?.trim() ?? '') === ''
@@ -152,7 +179,9 @@ onUnmounted(clearBlurTimeout)
     v-if="!smAndDown"
     elevation="0"
     class="search-control-card"
-    :style="desktopCardStyle"
+    :width="desktopCardWidth"
+    :position="desktopIsCenteredQuarter ? 'absolute' : undefined"
+    :location="desktopIsCenteredQuarter ? 'center' : undefined"
   >
     <v-card-text class="pa-0 bg-surface">
       <v-menu
@@ -178,7 +207,7 @@ onUnmounted(clearBlurTimeout)
             prepend-inner-icon="mdi-magnify"
             single-line
             hide-details
-            style="margin-right: 10px"
+            :style="desktopInputStyle"
             v-bind="menuProps"
             @click:prepend-inner="submitCurrentSearch"
             @click:clear="clearAndSearch"
@@ -198,6 +227,7 @@ onUnmounted(clearBlurTimeout)
             </template>
             <template #append-inner>
               <v-btn
+                v-if="props.showSaveAction"
                 icon="mdi-bookmark-plus-outline"
                 variant="text"
                 size="small"
@@ -238,6 +268,14 @@ onUnmounted(clearBlurTimeout)
   </v-card>
 
   <v-btn
+    v-else-if="props.narrowActivator === 'icon'"
+    :icon="narrowActivatorIcon"
+    :color="narrowActivatorColor"
+    :aria-label="narrowActivatorAriaLabel"
+    @click="showMobileSearch = true"
+  />
+
+  <v-btn
     v-else
     variant="flat"
     color="surface-light"
@@ -254,6 +292,7 @@ onUnmounted(clearBlurTimeout)
     v-if="showAdvancedSearch"
     v-model="showAdvancedSearch"
     :sort-order="props.sortOrder"
+    :include-album-media-type="props.includeAlbumMediaType"
     @search="submitAdvancedSearch"
   />
 
@@ -264,6 +303,7 @@ onUnmounted(clearBlurTimeout)
     :history="searchHistoryStore.history"
     :sort-order="props.sortOrder"
     :can-save="props.canSave"
+    :show-save-action="props.showSaveAction"
     @search="applySearch"
     @save="saveCurrentSearch"
     @select-history="selectHistoryItem"

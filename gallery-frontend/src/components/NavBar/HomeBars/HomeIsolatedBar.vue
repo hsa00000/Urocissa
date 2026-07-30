@@ -1,85 +1,22 @@
-<template>
-  <HomeBarTemplate isolation-id="subId">
-    <template #content>
-      <v-toolbar v-if="!collectionStore.editModeOn" class="position-relative bg-surface">
-        <LeaveView />
-
-        <v-card elevation="0" class="title-card">
-          <v-card-title>
-            <v-text-field
-              class="album-title-field"
-              data-testid="album-title"
-              v-model="titleModel"
-              variant="plain"
-              @blur="editTitle(props.album, titleModel)"
-              :placeholder="titleModel === '' ? 'Untitled' : undefined"
-            />
-          </v-card-title>
-        </v-card>
-
-        <v-card elevation="0" class="search-card" v-if="false">
-          <v-card-text class="pa-0">
-            <v-text-field
-              id="nav-search-input-isolated"
-              v-model="searchQuery"
-              rounded
-              class="ma-0 mr-2"
-              bg-color="surface-light"
-              @click:prepend-inner="handleSearch"
-              @click:clear="handleSearch"
-              @keyup.enter="handleSearch"
-              clearable
-              persistent-clear
-              variant="solo"
-              flat
-              prepend-inner-icon="mdi-magnify"
-              single-line
-              hide-details
-            >
-              <template #label>
-                <span class="text-body-small">Search</span>
-              </template>
-            </v-text-field>
-          </v-card-text>
-        </v-card>
-        <v-spacer></v-spacer>
-        <v-btn
-          icon="mdi-share-variant"
-          aria-label="Share album"
-          @click="modalStore.showShareModal = true"
-        ></v-btn>
-        <v-btn
-          icon="mdi-image-plus"
-          aria-label="Add album items"
-          @click="modalStore.showHomeTempModal = true"
-        ></v-btn>
-      </v-toolbar>
-
-      <EditBar v-if="collectionStore.editModeOn" />
-
-      <HomeTemp v-if="modalStore.showHomeTempModal" :album="props.album"> </HomeTemp>
-      <CreateShareModal
-        v-if="modalStore.showShareModal"
-        :album-id="props.album.id"
-        :mode="'create'"
-      />
-    </template>
-  </HomeBarTemplate>
-</template>
-
 <script setup lang="ts">
+import { computed, shallowRef, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useDisplay } from 'vuetify'
+import type { GalleryAlbum, GallerySortOrder } from '@type/types'
+import type { GallerySearchSubmission } from '@/script/utils/gallerySort'
+import { parseGallerySortOrder } from '@/script/utils/gallerySort'
+import { createGallerySearchRouteUpdate } from '@/components/Search/gallerySearchRoute'
 import { useCollectionStore } from '@/store/collectionStore'
-import LeaveView from '@/components/Menu/MenuButton/BtnLeaveView.vue'
+import { useFilterStore } from '@/store/filterStore'
+import { useModalStore } from '@/store/modalStore'
+import { useRerenderStore } from '@/store/rerenderStore'
+import { editTitle } from '@utils/createAlbums'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import HomeTemp from '@/components/Home/HomeTemp.vue'
 import CreateShareModal from '@/components/Modal/CreateShareModal.vue'
+import LeaveView from '@/components/Menu/MenuButton/BtnLeaveView.vue'
 import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
-import { GalleryAlbum } from '@type/types'
-import { useModalStore } from '@/store/modalStore'
-import { Ref, ref, watch, watchEffect } from 'vue'
-import { editTitle } from '@utils/createAlbums'
-import { LocationQueryValue, useRoute, useRouter } from 'vue-router'
-import { useFilterStore } from '@/store/filterStore'
+import GallerySearchControl from '@/components/Search/GallerySearchControl.vue'
 
 const props = defineProps<{
   album: GalleryAlbum
@@ -88,45 +25,134 @@ const props = defineProps<{
 const modalStore = useModalStore('mainId')
 const collectionStore = useCollectionStore('subId')
 const filterStore = useFilterStore('subId')
+const rerenderStore = useRerenderStore('mainId')
 
 const route = useRoute()
 const router = useRouter()
+const { smAndDown } = useDisplay()
 
-const titleModel = ref('')
+const titleModel = shallowRef('')
+const searchQuery = shallowRef<string | null>(null)
+const currentSortOrder = computed(() => parseGallerySortOrder(route.query.sort))
 
-const searchQuery: Ref<LocationQueryValue | LocationQueryValue[] | undefined> = ref(null)
+async function applySearchState({
+  query: rawQuery,
+  sortOrder
+}: GallerySearchSubmission): Promise<void> {
+  const { normalizedSearch, routeQuery } = createGallerySearchRouteUpdate(
+    route.query,
+    'subSearch',
+    { query: rawQuery, sortOrder }
+  )
+  filterStore.searchString = normalizedSearch === '' ? null : normalizedSearch
 
-const handleSearch = async () => {
-  filterStore.searchString = searchQuery.value
-
-  const nextQuery = { ...route.query }
-
-  // remove key when cleared
-  const v = searchQuery.value
-  if (v === null || v === undefined || v === '') {
-    delete nextQuery.subSearch
-  } else {
-    nextQuery.subSearch = v
+  const location = {
+    path: route.path,
+    query: routeQuery
+  }
+  if (sortOrder === 'random' && router.resolve(location).fullPath === route.fullPath) {
+    rerenderStore.rerenderHomeIsolated()
+    return
   }
 
-  await router.replace({
-    path: route.path,
-    query: nextQuery
+  await router.replace(location)
+}
+
+async function handleSearch(query: string): Promise<void> {
+  await applySearchState({ query, sortOrder: currentSortOrder.value })
+}
+
+async function handleAdvancedSearch(submission: GallerySearchSubmission): Promise<void> {
+  await applySearchState(submission)
+}
+
+async function handleSort(sortOrder: GallerySortOrder): Promise<void> {
+  await applySearchState({
+    query: searchQuery.value ?? '',
+    sortOrder
   })
 }
 
 watch(
   () => props.album.title,
-  () => {
-    titleModel.value = props.album.title ?? ''
+  (title) => {
+    titleModel.value = title ?? ''
   },
   { immediate: true }
 )
 
-watchEffect(() => {
-  searchQuery.value = filterStore.searchString
-})
+watch(
+  () => route.query.subSearch,
+  (query) => {
+    searchQuery.value = typeof query === 'string' ? query : null
+  },
+  { immediate: true }
+)
 </script>
+
+<template>
+  <HomeBarTemplate isolation-id="subId">
+    <template #content>
+      <v-toolbar v-if="!collectionStore.editModeOn" class="position-relative bg-surface">
+        <LeaveView />
+
+        <v-card
+          variant="flat"
+          width="420"
+          min-width="0"
+          :max-width="smAndDown ? undefined : 'calc(37.5% - 56px)'"
+          class="flex-shrink-1"
+        >
+          <v-card-title>
+            <v-text-field
+              v-model="titleModel"
+              class="album-title-field"
+              data-testid="album-title"
+              variant="plain"
+              :placeholder="titleModel === '' ? 'Untitled' : undefined"
+              @blur="editTitle(props.album, titleModel)"
+            />
+          </v-card-title>
+        </v-card>
+
+        <GallerySearchControl
+          v-model="searchQuery"
+          :sort-order="currentSortOrder"
+          narrow-activator="icon"
+          desktop-layout="center-quarter"
+          :show-save-action="false"
+          :include-album-media-type="false"
+          :desktop-end-gap="0"
+          @search="handleSearch"
+          @advanced-search="handleAdvancedSearch"
+          @sort="handleSort"
+        />
+
+        <v-spacer />
+
+        <v-btn
+          icon="mdi-share-variant"
+          aria-label="Share album"
+          @click="modalStore.showShareModal = true"
+        />
+        <v-btn
+          icon="mdi-image-plus"
+          aria-label="Add album items"
+          @click="modalStore.showHomeTempModal = true"
+        />
+      </v-toolbar>
+
+      <EditBar v-else />
+
+      <HomeTemp v-if="modalStore.showHomeTempModal" :album="props.album" />
+      <CreateShareModal
+        v-if="modalStore.showShareModal"
+        :album-id="props.album.id"
+        mode="create"
+      />
+    </template>
+  </HomeBarTemplate>
+</template>
 
 <style scoped>
 .album-title-field :deep(input) {
@@ -135,15 +161,5 @@ watchEffect(() => {
   line-height: 1.175;
   letter-spacing: 0.0073529412em;
   margin-bottom: -8px;
-}
-
-.title-card {
-  flex: 0 1 420px; /* fixed-ish */
-  min-width: 240px;
-}
-
-.search-card {
-  flex: 1 1 auto; /* takes remaining space up to the buttons */
-  min-width: 260px;
 }
 </style>

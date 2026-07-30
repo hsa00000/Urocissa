@@ -12,9 +12,15 @@ import type { GallerySearchSubmission } from '@/script/utils/gallerySort'
 
 const isOpen = defineModel<boolean>({ required: true })
 
-const props = defineProps<{
-  sortOrder: GallerySortOrder
-}>()
+const props = withDefaults(
+  defineProps<{
+    sortOrder: GallerySortOrder
+    includeAlbumMediaType?: boolean
+  }>(),
+  {
+    includeAlbumMediaType: true
+  }
+)
 
 const emit = defineEmits<{
   search: [submission: GallerySearchSubmission]
@@ -154,7 +160,9 @@ function submitSearch(): void {
           <v-btn value="all" class="flex-grow-1">All</v-btn>
           <v-btn value="image" class="flex-grow-1">Image</v-btn>
           <v-btn value="video" class="flex-grow-1">Video</v-btn>
-          <v-btn value="album" class="flex-grow-1">Album</v-btn>
+          <v-btn v-if="props.includeAlbumMediaType" value="album" class="flex-grow-1">
+            Album
+          </v-btn>
         </v-btn-toggle>
 
         <v-label
