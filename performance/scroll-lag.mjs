@@ -1761,6 +1761,16 @@ async function runDesktopInteractionScenario(page) {
   const firstTile = page.locator('[data-testid="gallery-item"]').first()
   await firstTile.waitFor({ state: 'visible', timeout: 10_000 })
   const initialIndex = await firstTile.getAttribute('data-item-index')
+  const cursorState = await firstTile.evaluate((tile) => {
+    const image = tile.querySelector('[data-testid="open-item"]')
+    return {
+      tile: getComputedStyle(tile).cursor,
+      image: image === null ? null : getComputedStyle(image).cursor
+    }
+  })
+  const cursorEquivalent =
+    cursorState.tile === 'default' &&
+    (cursorState.image === null || cursorState.image === 'default')
 
   await Promise.all([
     page.waitForURL((url) => url.pathname.includes('/home/view/'), { timeout: 10_000 }),
@@ -1798,7 +1808,7 @@ async function runDesktopInteractionScenario(page) {
   const frameState = await finishFrameSampling(page)
   return {
     anchorStart: null,
-    behaviorEquivalent: openedItem && initialIndex !== null,
+    behaviorEquivalent: openedItem && initialIndex !== null && cursorEquivalent,
     frameMetrics: summarizePassiveFrames(frameState),
     physicalAnchorErrorPx: 0,
     applyScrollBudget: false,
@@ -1807,8 +1817,10 @@ async function runDesktopInteractionScenario(page) {
       inputSource: 'Playwright isolated Chromium pointer interaction',
       openedItem,
       selectedItem: true,
+      cursorEquivalent,
       initialIndex,
-      selectionIndex
+      selectionIndex,
+      cursorState
     }
   }
 }
