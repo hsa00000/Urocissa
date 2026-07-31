@@ -1,5 +1,6 @@
 import { IsolationId } from '@type/types'
 import { defineStore } from 'pinia'
+import { markRaw } from 'vue'
 
 export const useQueueStore = (isolationId: IsolationId) =>
   defineStore('queueStore' + isolationId, {
@@ -9,9 +10,11 @@ export const useQueueStore = (isolationId: IsolationId) =>
       original: Set<number>
       row: Set<number>
     } => ({
-      img: new Set(),
-      original: new Set(),
-      row: new Set()
+      // These sets are imperative request-deduplication state. No rendered
+      // view consumes their mutations, so Vue proxy notifications are wasted.
+      img: markRaw(new Set<number>()),
+      original: markRaw(new Set<number>()),
+      row: markRaw(new Set<number>())
     }),
     actions: {
       // Clears the set of image IDs

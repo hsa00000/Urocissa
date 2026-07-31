@@ -4,6 +4,10 @@ import { defineStore } from 'pinia'
 import axios from 'axios'
 import { TokenResponseSchema } from '@/type/schemas'
 import { storeHashToken } from '@/db/db'
+import {
+  readJwtExpiration,
+  registerHashTokenExpiration
+} from '@/script/utils/hashTokenExpiryRegistry'
 
 interface JwtPayload {
   timestamp: number
@@ -121,6 +125,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
         const newToken = await this._updateHashToken(currentToken)
         if (newToken !== null) {
           this.hashTokenMap.set(hash, newToken)
+          registerHashTokenExpiration(isolationId, hash, readJwtExpiration(newToken))
         }
         return newToken
       },

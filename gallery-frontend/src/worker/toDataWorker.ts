@@ -19,6 +19,7 @@ import { fromDataWorker, toDataWorker } from './workerApi'
 import { z } from 'zod'
 import { setupWorkerAxiosInterceptor } from './workerAxiosInterceptor'
 import { clampRowDisplayRatios } from './thumbnailRatio'
+import { readJwtExpiration } from '@/script/utils/hashTokenExpiryRegistry'
 
 const shouldProcessBatch: number[] = []
 const fetchedRowData = new Map<number, Row>()
@@ -58,7 +59,8 @@ self.addEventListener('message', (e) => {
             slicedDataArray.push({
               index,
               data: getData.abstractData,
-              hashToken: getData.hashToken
+              hashToken: getData.hashToken,
+              hashTokenExpiresAt: readJwtExpiration(getData.hashToken)
             })
           }
         }

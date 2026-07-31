@@ -51,6 +51,7 @@ export interface SlicedData {
   index: number
   data: EnrichedUnifiedData
   hashToken: string
+  hashTokenExpiresAt: number | undefined
 }
 
 export type GallerySortOrder = 'descending' | 'ascending' | 'random'

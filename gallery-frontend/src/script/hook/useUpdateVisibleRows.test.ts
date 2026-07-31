@@ -14,6 +14,7 @@ vi.mock('@/api/fetchRow', () => ({
 
 import {
   getCurrentVisibleRows,
+  publishVisibleRowsIfChanged,
   scrollTopOffsetFix,
   updateLastRowBottom,
   updateLastVisibleRow
@@ -103,5 +104,19 @@ describe('visible-row geometry snapshots', () => {
     expect(setTimeoutSpy).not.toHaveBeenCalled()
 
     setTimeoutSpy.mockRestore()
+  })
+
+  it('reuses the visible-row array when row identity and order are unchanged', () => {
+    const firstRow = createRow(0)
+    const secondRow = createRow(1)
+    const visibleRows = shallowRef([firstRow, secondRow])
+    const originalRows = visibleRows.value
+
+    expect(publishVisibleRowsIfChanged(visibleRows, [firstRow, secondRow])).toBe(false)
+    expect(visibleRows.value).toBe(originalRows)
+
+    expect(publishVisibleRowsIfChanged(visibleRows, [secondRow, firstRow])).toBe(true)
+    expect(visibleRows.value).toEqual([secondRow, firstRow])
+    expect(visibleRows.value).not.toBe(originalRows)
   })
 })

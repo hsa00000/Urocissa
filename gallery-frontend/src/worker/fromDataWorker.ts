@@ -14,6 +14,8 @@ import { useRedirectionStore } from '@/store/redirectionStore'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useTokenStore } from '@/store/tokenStore'
 import { useConstStore } from '@/store/constStore'
+import { markRaw } from 'vue'
+import { registerHashTokenExpiration } from '@/script/utils/hashTokenExpiryRegistry'
 
 const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 
@@ -42,7 +44,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
   const handler = createHandler<typeof fromDataWorker>({
     returnData: (payload) => {
       const slicedDataArray: SlicedData[] = payload.slicedDataArray
-      slicedDataArray.forEach(({ index, data, hashToken }) => {
+      slicedDataArray.forEach(({ index, data, hashToken, hashTokenExpiresAt }) => {
         dataStore.data.set(index, data)
         dataStore.hashMapData.set(data.id, index)
 
@@ -51,9 +53,15 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
         if (data.type === 'album') {
           if (data.cover !== null) {
             tokenStore.hashTokenMap.set(data.cover, hashToken)
+            registerHashTokenExpiration(
+              isolationId,
+              data.cover,
+              hashTokenExpiresAt
+            )
           }
         } else {
           tokenStore.hashTokenMap.set(data.id, hashToken)
+          registerHashTokenExpiration(isolationId, data.id, hashTokenExpiresAt)
         }
       })
       dataStore.batchFetched.set(payload.batch, true)
@@ -71,6 +79,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
 
       const offset = rowWithOffset.offset
       const row = rowWithOffset.row
+      row.displayElements = markRaw(row.displayElements)
 
       // Prevent updates if the view is locked (anchored) to a specific row to maintain scroll stability.
       if (locationStore.anchor !== null && locationStore.anchor !== row.rowIndex) {

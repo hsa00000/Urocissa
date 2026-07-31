@@ -1,82 +1,47 @@
-<template>
-  <div class="w-100 d-flex flex-wrap no-select">
-    <div
-      v-for="(data, subIndex) in row.displayElements"
-      :key="`${row.start}-${subIndex}-${prefetchStore.timestamp}`"
-      data-testid="gallery-item"
-      :data-item-index="row.start + subIndex"
-      :style="{
-        width: `${data.displayWidth}px`,
-        height: `${data.displayHeight}px`
-      }"
-      class="ma-1"
-    >
-      <div class="position-relative w-100 h-100 parent">
-        <div
-          id="click-handler"
-          :class="['w-100 h-100 position-absolute', { 'locate-highlight': locationStore.highlightedIndex === row.start + subIndex }]"
-          :style="{
-            pointerEvents: 'none',
-            zIndex: 100,
-            border:
-              collectionStore.editModeOn &&
-              collectionStore.isSelected(row.start + subIndex)
-                ? '4px solid rgb(var(--v-theme-primary))'
-                : '4px solid transparent'
-          }"
-          @click="(event: MouseEvent) => handleClick(event, row.start + subIndex)"
-        ></div>
-        <DesktopHoverIcon
-          class="icon-hover child"
-          v-if="!mobile"
-          :on-click="(event: MouseEvent) => handleClickIcon(event, row.start + subIndex)"
-        />
-        <HoverGradientDiv :mobile="mobile" />
-        <MainBlock
-          v-if="subIndex < timeInterval"
-          :index="row.start + subIndex"
-          :display-element="data"
-          :isolation-id="props.isolationId"
-          :mobile="mobile"
-          :on-pointerdown="(event: PointerEvent) => handlePointerdown(event, row.start + subIndex)"
-          :on-pointerup="(event: PointerEvent) => handlePointerUp(event, row.start + subIndex)"
-          :on-pointerleave="handlePointerLeave"
-          :on-click="(event: MouseEvent) => handleClick(event, row.start + subIndex)"
-        />
-        <div
-          id="grey-background-placeholder"
-          data-testid="open-item"
-          role="button"
-          aria-label="Open item"
-          class="w-100 h-100 bg-placeholder position-absolute"
-          :style="{
-            zIndex: 0
-          }"
-          @click="(event: MouseEvent) => handleClick(event, row.start + subIndex)"
-        ></div>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { layoutBatchNumber } from '@/type/constants'
-import { IsolationId, Row } from '@type/types'
+import { computed, onBeforeUnmount, shallowRef, toRef, watch, type ObjectDirective } from 'vue'
+import { basename, extname } from 'upath'
+import type { IsolationId, Row } from '@type/types'
 import { useCollectionStore } from '@/store/collectionStore'
-import { usePrefetchStore } from '@/store/prefetchStore'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useHandleClick } from '@/script/hook/useHandleClick'
-import { useRouter, useRoute } from 'vue-router'
-import { useQueueStore } from '@/store/queueStore'
-import { useWorkerStore } from '@/store/workerStore'
-import { getArrayValue } from '@utils/getter'
-import MainBlock from './FunctionalComponent/MainBlock'
-import DesktopHoverIcon from './FunctionalComponent/DesktopHoverIcon'
-import HoverGradientDiv from './FunctionalComponent/HoverGradientDiv'
 import { useConfigStore } from '@/store/configStore'
 import { useConstStore } from '@/store/constStore'
 import { useLocationStore } from '@/store/locationStore'
+import { usePrefetchStore } from '@/store/prefetchStore'
+import { useQueueStore } from '@/store/queueStore'
+import { useWorkerStore } from '@/store/workerStore'
+import { useHandleClick } from '@/script/hook/useHandleClick'
+import { useRowMediaRequests } from '@/script/hook/useRowMediaRequests'
 import { useRowScrollActivity } from '@/script/hook/useScrollActivity'
+import { paddingPixel } from '@/type/constants'
+import { formatDuration } from '@utils/dater'
+import { getArrayValue } from '@utils/getter'
+import {
+  registerThumbnailElement,
+  transparentThumbnailSrc,
+  unregisterThumbnailElement
+} from '@/script/utils/thumbnailElementRegistry'
+import { useRoute, useRouter } from 'vue-router'
+import AlbumChip from './FunctionalComponent/AlbumChip'
+import DesktopHoverIcon from './FunctionalComponent/DesktopHoverIcon'
+import DurationChip from './FunctionalComponent/DurationChip'
+import FilenameChip from './FunctionalComponent/FilenameChip'
+import ProcessingChip from './FunctionalComponent/ProcessingChip'
+
+interface RenderTile {
+  key: string
+  index: number
+  pending: boolean
+  durationLabel: string | null
+  filenameLabel: string | null
+  albumLabel: string | null
+  chipMaxWidth: string
+  tileClass: string
+  tileStyle: string
+  thumbnailClass: string
+  leftPixel: number
+  topPixel: number
+}
+
 const props = defineProps<{
   row: Row
   isolationId: IsolationId
@@ -91,49 +56,213 @@ const collectionStore = useCollectionStore(props.isolationId)
 const queueStore = useQueueStore(props.isolationId)
 const workerStore = useWorkerStore(props.isolationId)
 const locationStore = useLocationStore(props.isolationId)
-const timeInterval = ref(0)
-const isLongPress = ref(false)
-const pressTimer = ref<number | null>(null)
 const isScrolling = useRowScrollActivity()
+const row = toRef(props, 'row')
+const imagesDisabled = computed(() => configStore.disableImg)
+const { dataStore, imgStore } = useRowMediaRequests(row, props.isolationId, imagesDisabled)
+const vThumbnailSrc: ObjectDirective<HTMLImageElement, number> = {
+  mounted(element, binding) {
+    registerThumbnailElement(
+      props.isolationId,
+      binding.value,
+      element,
+      imgStore.imgUrl.get(binding.value)
+    )
+  },
+  updated(element, binding) {
+    if (binding.oldValue === binding.value) {
+      return
+    }
+
+    if (binding.oldValue !== null) {
+      unregisterThumbnailElement(props.isolationId, binding.oldValue, element)
+    }
+    registerThumbnailElement(
+      props.isolationId,
+      binding.value,
+      element,
+      imgStore.imgUrl.get(binding.value)
+    )
+  },
+  unmounted(element, binding) {
+    unregisterThumbnailElement(props.isolationId, binding.value, element)
+  }
+}
+const hoveredIndex = shallowRef<number | null>(null)
 const highlightTimers = new Set<ReturnType<typeof setTimeout>>()
-let intervalId: ReturnType<typeof setInterval> | null = null
+let isLongPress = false
+let pressTimer: number | null = null
 
+// Device interaction behavior intentionally follows the existing physical-device flag,
+// not a responsive viewport breakpoint.
 const mobile = configStore.isMobile
-
 const { handleClick } = useHandleClick(router, route, props.isolationId)
 
-const handlePointerdown = (event: MouseEvent, currentIndex: number) => {
+const tiles = computed<RenderTile[]>(() => {
+  const timestamp = prefetchStore.timestamp
+  const disableImg = imagesDisabled.value
+  const showFilenameChip = constStore.showFilenameChip
+  const editModeOn = collectionStore.editModeOn
+  const highlightedIndex = locationStore.highlightedIndex
+  let currentTopPixel = Number.NaN
+  let currentLeftPixel = paddingPixel
+
+  return props.row.displayElements.map((displayElement, subIndex) => {
+    if (displayElement.displayTopPixelAccumulated !== currentTopPixel) {
+      currentTopPixel = displayElement.displayTopPixelAccumulated
+      currentLeftPixel = paddingPixel
+    }
+
+    const index = props.row.start + subIndex
+    const abstractData = dataStore.data.get(index)
+    const isMedia = abstractData?.type === 'image' || abstractData?.type === 'video'
+    const duration = isMedia ? abstractData.exif.duration : undefined
+    const file = isMedia ? abstractData.alias[0]?.file : undefined
+    const base = file === undefined ? null : basename(file)
+    const extension = base === null ? '' : extname(base)
+    const filenameLabel =
+      base === null || extension.length === 0 ? base : base.slice(0, -extension.length)
+    const hasBorder = abstractData?.type === 'album'
+    const selected = editModeOn && collectionStore.isSelected(index)
+    const highlighted = highlightedIndex === index
+    const thumbhashUrl =
+      disableImg || typeof abstractData?.thumbhashUrl !== 'string'
+        ? null
+        : abstractData.thumbhashUrl
+    let tileClass = 'gallery-tile position-relative ma-1 bg-placeholder'
+    if (mobile) tileClass += ' gallery-tile--mobile'
+    if (selected) tileClass += ' gallery-tile--selected'
+    if (highlighted) tileClass += ' locate-highlight'
+    const tileStyle =
+      `width:${displayElement.displayWidth}px;height:${displayElement.displayHeight}px;` +
+      (thumbhashUrl === null ? '' : `background-image:url('${thumbhashUrl}');`)
+    const thumbnailClass =
+      `thumbnail-image ${mobile ? 'mobile-small-image' : 'desktop-small-image'} ` +
+      `w-100 h-100 position-absolute${hasBorder ? ' thumbnail-image--album' : ''}`
+    const tile = {
+      key: `${props.row.start}-${subIndex}-${timestamp}`,
+      index,
+      pending: isMedia && abstractData.pending,
+      durationLabel: duration === undefined ? null : formatDuration(duration),
+      filenameLabel: showFilenameChip ? filenameLabel : null,
+      albumLabel: abstractData?.type === 'album' ? (abstractData.title ?? 'Untitled') : null,
+      chipMaxWidth: `${(displayElement.displayWidth - 16) * 0.75}px`,
+      tileClass,
+      tileStyle,
+      thumbnailClass,
+      leftPixel: currentLeftPixel,
+      topPixel: displayElement.displayTopPixelAccumulated + paddingPixel
+    }
+    currentLeftPixel += displayElement.displayWidth + 2 * paddingPixel
+    return tile
+  })
+})
+const hoveredTile = computed(() => {
+  const index = hoveredIndex.value
+  return index === null ? null : (tiles.value.find((tile) => tile.index === index) ?? null)
+})
+
+function getCurrentTargetIndex(event: Event): number {
+  const target = event.currentTarget
+  if (!(target instanceof HTMLElement)) {
+    throw new Error('gallery interaction target is not an HTMLElement')
+  }
+
+  const index = Number(target.dataset.itemIndex)
+  if (!Number.isInteger(index)) {
+    throw new Error('gallery interaction target is missing data-item-index')
+  }
+  return index
+}
+
+function getEventTile(event: Event): HTMLElement | null {
+  const target = event.target
+  const currentTarget = event.currentTarget
+  if (!(target instanceof Element) || !(currentTarget instanceof HTMLElement)) {
+    return null
+  }
+
+  const tile = target.closest<HTMLElement>('.gallery-tile[data-item-index]')
+  return tile !== null && currentTarget.contains(tile) ? tile : null
+}
+
+function getEventTileIndex(event: Event): number | null {
+  const tile = getEventTile(event)
+  if (tile === null) {
+    return null
+  }
+
+  const index = Number(tile.dataset.itemIndex)
+  return Number.isInteger(index) ? index : null
+}
+
+function handleOpenClick(event: MouseEvent): void {
+  const index = getEventTileIndex(event)
+  if (index !== null) {
+    handleClick(event, index)
+  }
+}
+
+function handlePointerdown(event: PointerEvent): void {
   if (isScrolling.value) {
     return
   }
-  isLongPress.value = false
-  pressTimer.value = window.setTimeout(() => {
-    isLongPress.value = true
+
+  const currentIndex = getEventTileIndex(event)
+  if (currentIndex === null) {
+    return
+  }
+
+  isLongPress = false
+  pressTimer = window.setTimeout(() => {
+    isLongPress = true
     handleLongPressClick(event, currentIndex)
   }, 600)
 }
 
-const handlePointerUp = (event: MouseEvent, currentIndex: number) => {
+function handlePointerUp(event: PointerEvent): void {
   if (isScrolling.value) {
     return
   }
-  if (pressTimer.value !== null) {
-    clearTimeout(pressTimer.value)
-    pressTimer.value = null
+
+  const currentIndex = getEventTileIndex(event)
+  if (currentIndex === null) {
+    return
   }
-  if (!isLongPress.value) {
+
+  if (pressTimer !== null) {
+    clearTimeout(pressTimer)
+    pressTimer = null
+  }
+  if (!isLongPress) {
     handleClick(event, currentIndex)
   }
 }
 
-const handlePointerLeave = () => {
-  if (pressTimer.value !== null) {
-    clearTimeout(pressTimer.value)
-    pressTimer.value = null
+function handlePointerOut(event: PointerEvent): void {
+  const tile = getEventTile(event)
+  if (tile === null) {
+    return
+  }
+
+  const relatedTarget = event.relatedTarget
+  if (relatedTarget instanceof Node && tile.contains(relatedTarget)) {
+    return
+  }
+
+  if (pressTimer !== null) {
+    clearTimeout(pressTimer)
+    pressTimer = null
   }
 }
 
-const handleLongPressClick = (event: MouseEvent, currentIndex: number) => {
+function handleContextMenu(event: Event): void {
+  if (getEventTile(event) !== null) {
+    event.preventDefault()
+  }
+}
+
+function handleLongPressClick(event: MouseEvent, currentIndex: number): void {
   if (!collectionStore.editModeOn) {
     collectionStore.editModeOn = true
     collectionStore.addApi(currentIndex)
@@ -142,7 +271,9 @@ const handleLongPressClick = (event: MouseEvent, currentIndex: number) => {
     handleClick(event, currentIndex)
   }
 }
-const handleClickIcon = (event: MouseEvent, currentIndex: number) => {
+
+function handleSelectClick(event: MouseEvent): void {
+  const currentIndex = getCurrentTargetIndex(event)
   if (!collectionStore.editModeOn) {
     collectionStore.editModeOn = true
     collectionStore.addApi(currentIndex)
@@ -151,11 +282,82 @@ const handleClickIcon = (event: MouseEvent, currentIndex: number) => {
     handleClick(event, currentIndex)
   }
 }
+
+function handleMouseOver(event: MouseEvent): void {
+  if (mobile) {
+    return
+  }
+
+  const tile = getEventTile(event)
+  if (tile === null) {
+    return
+  }
+
+  const relatedTarget = event.relatedTarget
+  if (relatedTarget instanceof Node && tile.contains(relatedTarget)) {
+    return
+  }
+
+  const index = Number(tile.dataset.itemIndex)
+  if (Number.isInteger(index)) {
+    hoveredIndex.value = index
+  }
+}
+
+function handleMouseOut(event: MouseEvent): void {
+  const tile = getEventTile(event)
+  if (tile === null) {
+    const target = event.target
+    if (
+      target instanceof Element &&
+      target.closest('[data-testid="select-item"]') !== null
+    ) {
+      hoveredIndex.value = null
+    }
+    return
+  }
+
+  const relatedTarget = event.relatedTarget
+  if (relatedTarget instanceof Node && tile.contains(relatedTarget)) {
+    return
+  }
+
+  const index = Number(tile.dataset.itemIndex)
+  if (
+    relatedTarget instanceof Element &&
+    Number(relatedTarget.closest<HTMLElement>('[data-testid="select-item"]')?.dataset.itemIndex) ===
+      index
+  ) {
+    return
+  }
+
+  if (hoveredIndex.value === index) {
+    hoveredIndex.value = null
+  }
+}
+
+function handleRowMouseLeave(): void {
+  hoveredIndex.value = null
+}
+
+const rowInteractionListeners = mobile
+  ? {
+      contextmenu: handleContextMenu,
+      pointerdown: handlePointerdown,
+      pointerup: handlePointerUp,
+      pointerout: handlePointerOut
+    }
+  : {
+      click: handleOpenClick,
+      mouseover: handleMouseOver,
+      mouseout: handleMouseOut,
+      mouseleave: handleRowMouseLeave
+    }
 
 watch(
   () => locationStore.highlightedIndex,
-  (val) => {
-    if (val !== null && val >= props.row.start && val <= props.row.end) {
+  (value) => {
+    if (value !== null && value >= props.row.start && value <= props.row.end) {
       const highlightTimer = setTimeout(() => {
         locationStore.highlightedIndex = null
         highlightTimers.delete(highlightTimer)
@@ -165,28 +367,10 @@ watch(
   }
 )
 
-onMounted(() => {
-  intervalId = setInterval(() => {
-    // this part is crutial: if we do not delay the show of img, the scrub will lag if the img already loading
-    if (timeInterval.value < layoutBatchNumber) {
-      timeInterval.value += layoutBatchNumber
-    } else {
-      if (intervalId !== null) {
-        clearInterval(intervalId)
-        intervalId = null
-      }
-    }
-  }, 0)
-})
-
 onBeforeUnmount(() => {
-  if (pressTimer.value !== null) {
-    clearTimeout(pressTimer.value)
-    pressTimer.value = null
-  }
-  if (intervalId !== null) {
-    clearInterval(intervalId)
-    intervalId = null
+  if (pressTimer !== null) {
+    clearTimeout(pressTimer)
+    pressTimer = null
   }
   highlightTimers.forEach((timer) => {
     clearTimeout(timer)
@@ -206,10 +390,117 @@ onBeforeUnmount(() => {
   }
 })
 </script>
+
+<template>
+  <div
+    class="buffer-row-block position-relative w-100 d-flex flex-wrap no-select"
+    v-on="rowInteractionListeners"
+  >
+    <DesktopHoverIcon
+      v-if="!mobile && hoveredTile !== null"
+      class="icon-hover"
+      :index="hoveredTile.index"
+      :left="hoveredTile.leftPixel"
+      :top="hoveredTile.topPixel"
+      :on-click="handleSelectClick"
+    />
+    <div
+      v-for="tile in tiles"
+      :key="tile.key"
+      v-memo="[
+        tile.tileClass,
+        tile.tileStyle,
+        tile.thumbnailClass,
+        tile.pending,
+        tile.durationLabel,
+        tile.filenameLabel,
+        tile.albumLabel,
+        tile.chipMaxWidth,
+        imagesDisabled
+      ]"
+      data-testid="gallery-item"
+      :data-item-index="tile.index"
+      role="button"
+      aria-label="Open item"
+      :class="tile.tileClass"
+      :style="tile.tileStyle"
+    >
+      <ProcessingChip v-if="tile.pending" />
+      <DurationChip v-if="tile.durationLabel !== null" :label="tile.durationLabel" />
+      <FilenameChip
+        v-if="tile.filenameLabel !== null"
+        :label="tile.filenameLabel"
+        :max-width="tile.chipMaxWidth"
+      />
+      <AlbumChip
+        v-if="tile.albumLabel !== null"
+        :label="tile.albumLabel"
+        :max-width="tile.chipMaxWidth"
+      />
+
+      <img
+        v-if="imagesDisabled"
+        data-testid="open-item"
+        class="thumbnail-image w-100 h-100 position-absolute"
+        :data-item-index="tile.index"
+        :src="transparentThumbnailSrc"
+      />
+      <img
+        v-else
+        v-thumbnail-src="tile.index"
+        data-testid="open-item"
+        :class="tile.thumbnailClass"
+        :data-item-index="tile.index"
+        decoding="async"
+      />
+    </div>
+  </div>
+</template>
+
 <style scoped>
-.parent:not(:hover) .child {
-  display: none;
+.gallery-tile::before,
+.gallery-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
+
+.gallery-tile::before {
+  display: none;
+  z-index: 3;
+  height: 40px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.gallery-tile:not(.gallery-tile--mobile):hover::before {
+  display: block;
+}
+
+.gallery-tile::after {
+  z-index: 100;
+  border: 4px solid transparent;
+}
+
+.gallery-tile--selected::after {
+  border-color: rgb(var(--v-theme-primary));
+}
+
+.thumbnail-image {
+  z-index: 2;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.thumbnail-image--album {
+  border: 8px solid white;
+}
+
+.gallery-tile {
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
 .icon-hover {
   color: #fafafa;
   transition: color 0.3s;
@@ -220,7 +511,7 @@ onBeforeUnmount(() => {
   color: white;
 }
 
-.locate-highlight {
+.locate-highlight::after {
   animation: locate-pulse 2s ease-out forwards;
 }
 

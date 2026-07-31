@@ -4,16 +4,19 @@ import { fromImgWorker } from '@/worker/workerApi'
 import { IsolationId, MessageColor } from '@type/types'
 import { useMessageStore } from '@/store/messageStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
+import { publishThumbnailElement } from '@/script/utils/thumbnailElementRegistry'
 const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 
 export function handleImgWorker(imgWorker: Worker, isolationId: IsolationId) {
   const imgStore = useImgStore(isolationId)
+  const imgUrlCache = imgStore.imgUrl
   const messageStore = useMessageStore('mainId')
   const redirectionStore = useRedirectionStore('mainId')
 
   const handler = createHandler<typeof fromImgWorker>({
     smallImageProcessed({ index, url }) {
-      imgStore.imgUrl.set(index, url)
+      imgUrlCache.set(index, url)
+      publishThumbnailElement(isolationId, index, url)
     },
     imageProcessed({ index, url }) {
       imgStore.imgOriginal.set(index, url)

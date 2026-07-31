@@ -5,6 +5,8 @@ import { PostToDataWorker, PostToImgWorker, toDataWorker, toImgWorker } from '@/
 import { defineStore } from 'pinia'
 import { bindActionDispatch } from 'typesafe-agent-events'
 import { useConstStore } from './constStore'
+import { resetThumbnailElements } from '@/script/utils/thumbnailElementRegistry'
+import { resetHashTokenExpirations } from '@/script/utils/hashTokenExpiryRegistry'
 
 export const useWorkerStore = (isolationId: IsolationId) =>
   defineStore('workerStore' + isolationId, {
@@ -54,6 +56,8 @@ export const useWorkerStore = (isolationId: IsolationId) =>
         }
       },
       terminateWorker() {
+        resetThumbnailElements(isolationId)
+        resetHashTokenExpirations(isolationId)
         if (this.worker !== null) {
           this.worker.terminate()
           removeHandleDataWorkerReturn(this.worker)

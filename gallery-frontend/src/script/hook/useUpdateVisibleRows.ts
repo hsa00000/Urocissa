@@ -12,6 +12,20 @@ type LocationStore = ReturnType<typeof useLocationStore>
 type RowStore = ReturnType<typeof useRowStore>
 type ScrollTopStore = ReturnType<typeof useScrollTopStore>
 
+export function publishVisibleRowsIfChanged(visibleRows: Ref<Row[]>, nextRows: Row[]): boolean {
+  const currentRows = visibleRows.value
+  const unchanged =
+    currentRows.length === nextRows.length &&
+    currentRows.every((row, index) => row === nextRows[index])
+
+  if (unchanged) {
+    return false
+  }
+
+  visibleRows.value = nextRows
+  return true
+}
+
 /**
  * Finds and returns rows that overlap within the given range.
  * The resulting rows are sorted by their top position (`topPixelAccumulated`) plus offset.
@@ -305,35 +319,38 @@ export function useUpdateVisibleRows(
 
   const updateVisibleRows = () => {
     if (imageContainerRef.value) {
-      visibleRows.value = getCurrentVisibleRows(
-        rowStore.lastVisibleRow,
-        startHeight.value,
-        endHeight.value,
-        rowStore
-      )
+      const nextVisibleRows = {
+        value: getCurrentVisibleRows(
+          rowStore.lastVisibleRow,
+          startHeight.value,
+          endHeight.value,
+          rowStore
+        )
+      } as Ref<Row[]>
 
-      if (visibleRows.value.length > 0) {
+      if (nextVisibleRows.value.length > 0) {
         // The logic in getCurrentVisibleRows might miss the top and bottom rows, so we add them back
-        appendAndPrependRow(visibleRows, rowStore)
+        appendAndPrependRow(nextVisibleRows, rowStore)
 
-        filterRowForLocation(visibleRows, locationStore)
+        filterRowForLocation(nextVisibleRows, locationStore)
 
         scrollTopOffsetFix(
-          visibleRows,
+          nextVisibleRows,
           Math.max(getScrollUpperBound(prefetchStore.totalHeight, windowHeight.value), 0),
           rowStore,
           scrollTopStore
         )
       }
-      updateLastVisibleRow(visibleRows, rowStore)
-      updateLocationIndex(visibleRows, startHeight.value, locationStore)
+      updateLastVisibleRow(nextVisibleRows, rowStore)
+      updateLocationIndex(nextVisibleRows, startHeight.value, locationStore)
       updateLastRowBottom(
-        visibleRows,
+        nextVisibleRows,
         lastRowBottom,
         endHeight.value,
         prefetchStore,
         isolationId
       )
+      publishVisibleRowsIfChanged(visibleRows, nextVisibleRows.value)
     }
   }
 

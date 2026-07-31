@@ -1,4 +1,3 @@
-import { readAndCompressImage } from '@misskey-dev/browser-image-resizer'
 import { bindActionDispatch, createHandler } from 'typesafe-agent-events'
 import { fromImgWorker, toImgWorker } from '@/worker/workerApi'
 import {
@@ -11,6 +10,7 @@ import axios from 'axios'
 import { getThumbnailSrc } from '@utils/thumbnail'
 import { setupWorkerAxiosInterceptor } from './workerAxiosInterceptor'
 import { ThumbnailBlobCache } from './thumbnailBlobCache'
+import { resizeThumbnailBlob } from './thumbnailResize'
 
 const postToMainImg = bindActionDispatch(fromImgWorker, self.postMessage.bind(self))
 const controllerMap = new Map<number, AbortController>()
@@ -79,23 +79,13 @@ const handler = createHandler<typeof toImgWorker>({
       }
 
       controllerMap.delete(event.index)
-      const img = await createImageBitmap(blob)
-
-      const albumMode = event.albumMode === true
-      const converted: Blob = await readAndCompressImage(img, {
-        argorithm: 'bilinear',
-        quality: 1,
-        maxWidth: albumMode
-          ? img.width *
-            Math.max(event.width / img.width, event.height / img.height) *
-            event.devicePixelRatio
-          : event.width * event.devicePixelRatio,
-        maxHeight: albumMode
-          ? img.height *
-            Math.max(event.width / img.width, event.height / img.height) *
-            event.devicePixelRatio
-          : event.height * event.devicePixelRatio
-      })
+      const converted = await resizeThumbnailBlob(
+        blob,
+        event.width,
+        event.height,
+        event.devicePixelRatio,
+        event.albumMode === true
+      )
 
       const objectUrl = URL.createObjectURL(converted)
       postToMainImg.smallImageProcessed({ index: event.index, url: objectUrl })
