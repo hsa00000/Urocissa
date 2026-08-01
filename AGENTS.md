@@ -3,6 +3,54 @@
 This file applies to the entire repository. The frontend rules below are mandatory for
 `gallery-frontend` and for any other Vue/Vuetify interface added to this repository.
 
+## Command execution and local service safety
+
+These rules apply to all repository work, including investigation, testing, benchmarks,
+and frontend or backend development.
+
+### Package manager and validation commands
+
+- `gallery-frontend` is an npm project because it has `package-lock.json`. Use npm
+  scripts or the already-installed local binaries; do not use pnpm, Yarn, or another
+  package manager against its `node_modules`.
+- Do not let a fallback runner install, move, or repair dependencies implicitly. Any
+  dependency installation or network access must be intentional and reported.
+- Run checks that share the same `node_modules` sequentially. Do not launch TypeScript,
+  Vitest, ESLint, and build commands concurrently through package-manager processes.
+
+### Long-running processes
+
+- Check the expected port or health endpoint before starting a local service and reuse
+  an already-running service when it is the intended instance.
+- Treat Vite, backend servers, watchers, and similar programs as managed services, not
+  ordinary commands that are expected to exit. Retain their PID or managed cell/session
+  identifier, verify readiness separately, and stop processes started for the task
+  during cleanup.
+- Do not launch a long-lived process through PowerShell `Start-Process` while also using
+  `-RedirectStandardOutput` or `-RedirectStandardError`; this combination can prevent
+  the command runner from returning. Prefer a managed yielded process/session or a
+  dedicated terminal.
+- A service launch must produce an identifier and pass its readiness check promptly.
+  If it does not, stop and inspect the process instead of retrying the same launch
+  pattern or waiting indefinitely.
+
+### Errors, timeouts, and waiting
+
+- For PowerShell command blocks, set `$ErrorActionPreference = 'Stop'`. Check
+  `$LASTEXITCODE` after native commands when their exit status matters so a
+  non-terminating PowerShell error cannot be mistaken for success.
+- Set an internal deadline for polling, browser navigation, benchmarks, and network
+  requests. The outer command timeout must be longer than the command's worst-case
+  internal deadline.
+- Use short, bounded wait intervals. After two consecutive waits with no new output,
+  inspect the process, port, or logs, or terminate it; do not continue blind waiting.
+- Use `rg` with explicit exclusions for repository searches. Avoid unrestricted
+  recursive filesystem scans that traverse `node_modules`, build outputs, or large
+  generated directories.
+- During benchmark development, run one sample or the smallest relevant scenario
+  first. Run the full repeated-sample gate only after the command is known to complete
+  reliably, and surface per-sample progress for longer runs.
+
 ## Vuetify-first frontend policy
 
 All frontend work must preserve a consistent Vuetify visual language. Prefer Vuetify's
