@@ -17,7 +17,7 @@ import { parseGallerySortOrder } from '@/script/utils/gallerySort'
 import { consumeInitialMainLocateOverride } from '@/route/initialRouteLocate'
 
 interface UsePrefetchOptions {
-  beforeApply?: () => void
+  onRequestStart?: () => void
   reloadTrigger?: Readonly<Ref<unknown>>
 }
 
@@ -103,6 +103,10 @@ export function usePrefetch(
           locate = currentQueryLocate
         }
 
+        // Invalidate the visible collection before waiting on the network so
+        // query changes immediately enter the existing loading state.
+        options.onRequestStart?.()
+
         // Parallel Execution: Run Config chain and Prefetch chain simultaneously
         await Promise.all([
           processConfigChain(isolationId),
@@ -113,8 +117,7 @@ export function usePrefetch(
             locate,
             isolationId,
             route,
-            () => !disposed && requestGeneration === generation,
-            options.beforeApply
+            () => !disposed && requestGeneration === generation
           )
         ])
       }
@@ -150,8 +153,7 @@ async function processPrefetchChain(
   locate: string | null,
   isolationId: IsolationId,
   route: RouteLocationNormalizedLoadedGeneric,
-  isCurrent: () => boolean,
-  beforeApply?: () => void
+  isCurrent: () => boolean
 ) {
   // 1. Fetch main data (Critical step)
   const prefetchReturn = await prefetch(filterJsonString, priorityId, sortOrder, locate)
@@ -159,8 +161,6 @@ async function processPrefetchChain(
   // Query-only navigations can start a newer request without unmounting the
   // reader. Never let an older response replace that newer snapshot.
   if (!isCurrent()) return
-
-  beforeApply?.()
 
   // 2. Sync Store immediately after prefetch returns
   // This updates the Token which fetchScrollbar relies on.

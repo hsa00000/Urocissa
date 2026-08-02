@@ -201,7 +201,7 @@ function resetCollectionSnapshot(): void {
 }
 
 usePrefetch(filterJsonString, windowWidth, route, props.isolationId, {
-  beforeApply: resetCollectionSnapshot,
+  onRequestStart: resetCollectionSnapshot,
   reloadTrigger
 })
 

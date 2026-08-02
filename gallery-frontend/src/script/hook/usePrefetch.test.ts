@@ -4,6 +4,7 @@ import { effectScope, reactive, ref } from 'vue'
 import type { EffectScope } from 'vue'
 import type { RouteLocationNormalizedLoadedGeneric } from 'vue-router'
 import type { PrefetchReturn } from '@/type/types'
+import { useInitializedStore } from '@/store/initializedStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useTokenStore } from '@/store/tokenStore'
 import { usePrefetch } from './usePrefetch'
@@ -70,11 +71,11 @@ describe('reactive collection prefetch', () => {
       params: {},
       meta: { level: 3, baseName: 'home' }
     }) as unknown as RouteLocationNormalizedLoadedGeneric
-    const beforeApply = vi.fn()
+    const onRequestStart = vi.fn()
     prefetchMock.mockResolvedValueOnce(snapshot(1)).mockResolvedValueOnce(snapshot(2))
 
     scope.run(() => {
-      usePrefetch(filter, windowWidth, route, 'subId', { beforeApply })
+      usePrefetch(filter, windowWidth, route, 'subId', { onRequestStart })
     })
     await vi.advanceTimersByTimeAsync(100)
 
@@ -83,7 +84,7 @@ describe('reactive collection prefetch', () => {
 
     expect(prefetchMock).toHaveBeenNthCalledWith(1, 'old-filter', '', 'descending', null)
     expect(prefetchMock).toHaveBeenNthCalledWith(2, 'old-filter', '', 'random', null)
-    expect(beforeApply).toHaveBeenCalledTimes(2)
+    expect(onRequestStart).toHaveBeenCalledTimes(2)
     expect(usePrefetchStore('subId').timestamp).toBe(2)
     expect(useTokenStore('subId').timestampToken).toBe('token-2')
   })
@@ -98,11 +99,11 @@ describe('reactive collection prefetch', () => {
       params,
       meta: { level: 1, baseName: 'home' }
     }) as unknown as RouteLocationNormalizedLoadedGeneric
-    const beforeApply = vi.fn()
+    const onRequestStart = vi.fn()
     prefetchMock.mockResolvedValue(snapshot(1))
 
     scope.run(() => {
-      usePrefetch(filter, windowWidth, route, 'mainId', { beforeApply })
+      usePrefetch(filter, windowWidth, route, 'mainId', { onRequestStart })
     })
     await vi.advanceTimersByTimeAsync(100)
 
@@ -116,7 +117,7 @@ describe('reactive collection prefetch', () => {
 
     expect(prefetchMock).toHaveBeenCalledTimes(1)
     expect(prefetchMock).toHaveBeenCalledWith(null, '', 'descending', null)
-    expect(beforeApply).toHaveBeenCalledTimes(1)
+    expect(onRequestStart).toHaveBeenCalledTimes(1)
   })
 
   it('does not reload subId when navigation only changes Level 3 and Level 4', async () => {
@@ -129,11 +130,11 @@ describe('reactive collection prefetch', () => {
       params,
       meta: { level: 3, baseName: 'home' }
     }) as unknown as RouteLocationNormalizedLoadedGeneric
-    const beforeApply = vi.fn()
+    const onRequestStart = vi.fn()
     prefetchMock.mockResolvedValue(snapshot(1))
 
     scope.run(() => {
-      usePrefetch(filter, windowWidth, route, 'subId', { beforeApply })
+      usePrefetch(filter, windowWidth, route, 'subId', { onRequestStart })
     })
     await vi.advanceTimersByTimeAsync(100)
 
@@ -152,7 +153,7 @@ describe('reactive collection prefetch', () => {
       'descending',
       null
     )
-    expect(beforeApply).toHaveBeenCalledTimes(1)
+    expect(onRequestStart).toHaveBeenCalledTimes(1)
   })
 
   it('reloads actual filter, locate, priority, and reload-trigger changes', async () => {
@@ -165,12 +166,12 @@ describe('reactive collection prefetch', () => {
       params: { hash: 'album-id' },
       meta: { level: 3, baseName: 'home' }
     }) as unknown as RouteLocationNormalizedLoadedGeneric
-    const beforeApply = vi.fn()
+    const onRequestStart = vi.fn()
     prefetchMock.mockResolvedValue(snapshot(1))
 
     scope.run(() => {
       usePrefetch(filter, windowWidth, route, 'subId', {
-        beforeApply,
+        onRequestStart,
         reloadTrigger
       })
     })
@@ -211,7 +212,7 @@ describe('reactive collection prefetch', () => {
       'descending',
       'child-id'
     )
-    expect(beforeApply).toHaveBeenCalledTimes(5)
+    expect(onRequestStart).toHaveBeenCalledTimes(5)
   })
 
   it('does not let a stale response replace the latest query snapshot', async () => {
@@ -224,11 +225,11 @@ describe('reactive collection prefetch', () => {
       params: {},
       meta: { level: 3, baseName: 'home' }
     }) as unknown as RouteLocationNormalizedLoadedGeneric
-    const beforeApply = vi.fn()
+    const onRequestStart = vi.fn()
     prefetchMock.mockReturnValueOnce(oldRequest.promise).mockResolvedValueOnce(snapshot(2))
 
     scope.run(() => {
-      usePrefetch(filter, windowWidth, route, 'subId', { beforeApply })
+      usePrefetch(filter, windowWidth, route, 'subId', { onRequestStart })
     })
     await vi.advanceTimersByTimeAsync(100)
 
@@ -241,9 +242,75 @@ describe('reactive collection prefetch', () => {
     await Promise.resolve()
 
     expect(prefetchMock).toHaveBeenNthCalledWith(2, 'new-filter', '', 'descending', null)
-    expect(beforeApply).toHaveBeenCalledTimes(1)
+    expect(onRequestStart).toHaveBeenCalledTimes(2)
     expect(usePrefetchStore('subId').timestamp).toBe(2)
     expect(useTokenStore('subId').timestampToken).toBe('token-2')
+  })
+
+  it('invalidates the visible snapshot when a throttled query request starts', async () => {
+    const throttledRequest = deferred<PrefetchReturn>()
+    const filter = ref<string | null>('old-filter')
+    const windowWidth = ref(1200)
+    const query: Record<string, string | undefined> = {}
+    const route = reactive({
+      query,
+      params: {},
+      meta: { level: 3, baseName: 'home' }
+    }) as unknown as RouteLocationNormalizedLoadedGeneric
+    const initializedStore = useInitializedStore('subId')
+    const prefetchStore = usePrefetchStore('subId')
+    const resetVisibleSnapshot = vi.fn(() => {
+      initializedStore.initialized = false
+      prefetchStore.timestamp = null
+      prefetchStore.calculateLength(0)
+    })
+    prefetchMock
+      .mockResolvedValueOnce(snapshot(1))
+      .mockReturnValueOnce(throttledRequest.promise)
+
+    scope.run(() => {
+      usePrefetch(filter, windowWidth, route, 'subId', {
+        onRequestStart: resetVisibleSnapshot
+      })
+    })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(initializedStore.initialized).toBe(true)
+    expect(prefetchStore.timestamp).toBe(1)
+    expect(prefetchStore.dataLength).toBe(1)
+    resetVisibleSnapshot.mockClear()
+
+    filter.value = 'new-filter'
+    await vi.advanceTimersByTimeAsync(74)
+
+    expect(resetVisibleSnapshot).not.toHaveBeenCalled()
+    expect(initializedStore.initialized).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(prefetchMock).toHaveBeenNthCalledWith(
+      2,
+      'new-filter',
+      '',
+      'descending',
+      null
+    )
+    expect(resetVisibleSnapshot).toHaveBeenCalledOnce()
+    expect(initializedStore.initialized).toBe(false)
+    expect(prefetchStore.timestamp).toBeNull()
+    expect(prefetchStore.dataLength).toBe(0)
+
+    await vi.advanceTimersByTimeAsync(500)
+    expect(initializedStore.initialized).toBe(false)
+    expect(prefetchStore.dataLength).toBe(0)
+
+    throttledRequest.resolve(snapshot(2))
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(resetVisibleSnapshot).toHaveBeenCalledOnce()
+    expect(initializedStore.initialized).toBe(true)
+    expect(prefetchStore.timestamp).toBe(2)
+    expect(prefetchStore.dataLength).toBe(1)
   })
 
   it('does not apply a Level 3 sort query to the background Level 1 collection', async () => {
