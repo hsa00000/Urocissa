@@ -37,13 +37,13 @@ impl Task for VideoTask {
     async fn run(self) -> Self::Output {
         let _pending_guard = PendingGuard::new();
         WORKER_RAYON_POOL
-            .spawn_async(move || video_task(self.abstract_data))
+            .spawn_async(move || video_task(&self.abstract_data))
             .await
             .map_err(|err| handle_error(err.context("Failed to run video task")))
     }
 }
 
-pub fn video_task(abstract_data: AbstractData) -> Result<()> {
+pub fn video_task(abstract_data: &AbstractData) -> Result<()> {
     let hash = abstract_data.hash();
     let slot_ref = TREE
         .state
@@ -54,7 +54,7 @@ pub fn video_task(abstract_data: AbstractData) -> Result<()> {
     let plan = MediaTaskPlan::new(vec![ReindexOperation::VideoCompression])?;
     let mut publisher = ArtifactPublisher::new(format!("import-video-{}", Uuid::new_v4()));
     match execute_media_pipeline_with_video_progress(
-        &abstract_data,
+        abstract_data,
         &plan,
         &mut publisher,
         true,

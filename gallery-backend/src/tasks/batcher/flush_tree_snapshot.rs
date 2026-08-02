@@ -45,15 +45,7 @@ fn flush_tree_snapshot_task() {
                 encode_start,
                 "Encode compact ordinal snapshot"
             );
-            let scrollbar_bytes = match codec::encode(&entry_ref.scrollbar) {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    handle_error(anyhow::anyhow!(
-                        "FlushTreeSnapshotTask: Failed to encode scrollbar for timestamp {timestamp}: {e}"
-                    ));
-                    break;
-                }
-            };
+            let scrollbar_bytes = codec::encode(&entry_ref.scrollbar);
 
             let timer_start = Instant::now();
             let txn = match TREE_SNAPSHOT.in_disk.begin_write() {

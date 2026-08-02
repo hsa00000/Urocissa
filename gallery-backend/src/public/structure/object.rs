@@ -131,7 +131,7 @@ mod tests {
         let json = serde_json::to_value(object).unwrap();
 
         assert_eq!(
-            json.get("cacheVersion").and_then(|value| value.as_u64()),
+            json.get("cacheVersion").and_then(serde_json::Value::as_u64),
             Some(0)
         );
         assert!(json.get("cache_version").is_none());

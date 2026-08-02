@@ -147,7 +147,7 @@ fn write_scrollbar_metadata(
     timestamp: i64,
     scrollbar: &[ScrollBarData],
 ) -> anyhow::Result<()> {
-    let bytes = codec::encode(scrollbar)?;
+    let bytes = codec::encode(scrollbar);
     let write_txn = database.begin_write()?;
     {
         let mut table = write_txn.open_table(SCROLLBAR_METADATA_TABLE)?;

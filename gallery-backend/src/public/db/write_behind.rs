@@ -60,7 +60,9 @@ impl DirtyOperation {
     pub fn estimated_bytes(&self) -> usize {
         const HEADER: usize = 96;
         match self {
-            Self::Touch { targets, .. } => HEADER + targets.estimated_bytes(),
+            Self::Touch { targets, .. } | Self::Flags { targets, .. } => {
+                HEADER + targets.estimated_bytes()
+            }
             Self::Tags {
                 targets,
                 add,
@@ -83,7 +85,6 @@ impl DirtyOperation {
                     + targets.estimated_bytes()
                     + (add.len() + remove.len()) * std::mem::size_of::<ArrayString<64>>()
             }
-            Self::Flags { targets, .. } => HEADER + targets.estimated_bytes(),
             Self::Description { value, .. } => HEADER + value.as_ref().map_or(0, String::capacity),
             Self::AlbumCreate(album) | Self::AlbumReplace(album) => {
                 HEADER
@@ -148,6 +149,7 @@ impl DirtyBatch {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn push(&mut self, mut operation: DirtyOperation) {
         // Coalesce repeated edits in the active sequence. This is especially
         // important for UI toggles and create -> rename -> share journeys.
@@ -603,10 +605,12 @@ impl DirtyDeltaStore {
             .min();
         let pending_records = active_records + flushing_records;
         let estimated_drain_ms = state.flush_records_per_second.and_then(|rate| {
+            let pending_records = u32::try_from(pending_records).unwrap_or(u32::MAX);
             (rate > 0.0).then(|| {
-                ((pending_records as f64 / rate) * 1_000.0)
-                    .ceil()
-                    .min(u64::MAX as f64) as u64
+                Duration::try_from_secs_f64(f64::from(pending_records) / rate)
+                    .map_or(u64::MAX, |duration| {
+                        u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+                    })
             })
         });
         WriteBehindStatus {
@@ -734,7 +738,8 @@ impl DirtyDeltaStore {
                 state.last_flush_unique_records = flush_stats.unique_records;
                 state.last_flush_chunks = flush_stats.chunks;
                 if flush_stats.records > 0 && !elapsed.is_zero() {
-                    let rate = flush_stats.records as f64 / elapsed.as_secs_f64();
+                    let records = u32::try_from(flush_stats.records).unwrap_or(u32::MAX);
+                    let rate = f64::from(records) / elapsed.as_secs_f64();
                     state.flush_records_per_second =
                         Some(state.flush_records_per_second.map_or(rate, |previous| {
                             previous * (1.0 - FLUSH_RATE_EWMA_ALPHA) + rate * FLUSH_RATE_EWMA_ALPHA
@@ -835,6 +840,7 @@ impl DirtyDeltaStore {
         }
     }
 
+    #[cfg(feature = "performance-test")]
     pub async fn flush(&self, timeout: Duration) -> bool {
         let deadline = tokio::time::Instant::now() + timeout;
         loop {
@@ -919,6 +925,7 @@ fn before_flush_commit() -> anyhow::Result<()> {
 }
 
 #[cfg(not(feature = "performance-test"))]
+#[allow(clippy::unnecessary_wraps)]
 fn before_flush_commit() -> anyhow::Result<()> {
     Ok(())
 }
@@ -1099,7 +1106,7 @@ fn persist_target_records(
                 ..
             } => targets.union(operation_targets, universe),
             DirtyOperation::Description { target, .. } => {
-                targets.union(&TargetSet::from_slot_refs([*target], universe), universe)
+                targets.union(&TargetSet::from_slot_refs([*target], universe), universe);
             }
             DirtyOperation::AlbumCreate(_)
             | DirtyOperation::AlbumReplace(_)
@@ -1510,9 +1517,8 @@ mod tests {
     fn coalesced_touch_stays_after_interleaved_album_replacement() {
         let target_set = targets([1]);
         let album_id = ArrayString::<64>::from("touch-order-album").unwrap();
-        let mut album = match Album::new(album_id, None).into_abstract_data() {
-            AbstractData::Album(album) => album,
-            _ => unreachable!(),
+        let AbstractData::Album(mut album) = Album::new(album_id, None).into_abstract_data() else {
+            unreachable!();
         };
         album.object.update_at = 10;
         let slot = SlotRef::new(1, 1);
@@ -1613,9 +1619,10 @@ mod tests {
     #[test]
     fn unflushed_album_create_delete_cancels_membership_and_records() {
         let album_id = ArrayString::<64>::from("pending-album").unwrap();
-        let album = match Album::new(album_id, Some("Pending".to_owned())).into_abstract_data() {
-            AbstractData::Album(album) => album,
-            _ => unreachable!(),
+        let AbstractData::Album(album) =
+            Album::new(album_id, Some("Pending".to_owned())).into_abstract_data()
+        else {
+            unreachable!();
         };
         let mut batch = DirtyBatch::new(1);
         batch.push(DirtyOperation::AlbumCreate(album.clone()));
@@ -1659,7 +1666,9 @@ mod tests {
                 archived: None,
                 trashed: None,
             });
-        let started = Instant::now() - Duration::from_secs(1);
+        let started = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .expect("one second is representable");
         store.complete(
             0,
             started,
@@ -1771,9 +1780,10 @@ mod tests {
     #[test]
     fn target_centric_overlay_preserves_operation_order_around_album_replace() {
         let album_id = ArrayString::<64>::from("ordered-album").unwrap();
-        let mut album = match Album::new(album_id, Some("before".to_owned())).into_abstract_data() {
-            AbstractData::Album(album) => album,
-            _ => unreachable!(),
+        let AbstractData::Album(mut album) =
+            Album::new(album_id, Some("before".to_owned())).into_abstract_data()
+        else {
+            unreachable!();
         };
         album.object.is_favorite = false;
         album.object.is_archived = false;
@@ -1816,9 +1826,10 @@ mod tests {
     fn media_publication_only_retires_the_committed_target_from_album_edits() {
         let album_id = ArrayString::<64>::from("shared-album-edit").unwrap();
         let deleted_album_id = ArrayString::<64>::from("deleted-album").unwrap();
-        let album = match Album::new(album_id, Some("Shared".to_owned())).into_abstract_data() {
-            AbstractData::Album(album) => album,
-            _ => unreachable!(),
+        let AbstractData::Album(album) =
+            Album::new(album_id, Some("Shared".to_owned())).into_abstract_data()
+        else {
+            unreachable!();
         };
         let committed = SlotRef::new(1, 1);
         let still_pending = SlotRef::new(2, 1);
@@ -1854,6 +1865,7 @@ mod tests {
     #[cfg(feature = "performance-test")]
     #[test]
     #[ignore = "targeted Redb flush chunk throughput matrix"]
+    #[allow(clippy::too_many_lines)]
     fn flush_chunk_matrix_selects_the_smallest_material_improvement() {
         use crate::storage::DataStore;
 
@@ -1925,7 +1937,8 @@ mod tests {
                 patch_tag(&store, &ids, candidate, &tag, true);
                 patch_tag(&store, &ids, candidate, &tag, false);
                 let elapsed = started.elapsed();
-                let rate = (RECORDS * 2) as f64 / elapsed.as_secs_f64();
+                let processed = u32::try_from(RECORDS * 2).expect("benchmark size fits u32");
+                let rate = f64::from(processed) / elapsed.as_secs_f64();
                 rates.get_mut(&candidate).unwrap().push(rate);
                 println!(
                     "flush-matrix chunk={candidate} round={round} duration_ms={} records_per_second={rate:.2}",
@@ -1937,7 +1950,8 @@ mod tests {
         let averages = rates
             .iter()
             .map(|(candidate, values)| {
-                let average = values.iter().sum::<f64>() / values.len() as f64;
+                let samples = u32::try_from(values.len()).expect("sample count fits u32");
+                let average = values.iter().sum::<f64>() / f64::from(samples);
                 (*candidate, average)
             })
             .collect::<std::collections::BTreeMap<_, _>>();

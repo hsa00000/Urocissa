@@ -47,13 +47,13 @@ fn parse_presigned_list(raw: Option<String>, field: &str) -> AppResult<Vec<Strin
 }
 
 fn build_presigned_metadata(
-    presigned_album_id_opt: Option<String>,
-    presigned_album_ids_opt: Option<String>,
-    presigned_tags_opt: Option<String>,
+    legacy_album_id: Option<String>,
+    album_ids_json: Option<String>,
+    tags_json: Option<String>,
 ) -> AppResult<PresignedMetadata> {
     let mut metadata = PresignedMetadata::default();
-    let mut album_ids = parse_presigned_list(presigned_album_ids_opt, "presigned albums")?;
-    if let Some(album_id) = presigned_album_id_opt {
+    let mut album_ids = parse_presigned_list(album_ids_json, "presigned albums")?;
+    if let Some(album_id) = legacy_album_id {
         album_ids.push(album_id);
     }
 
@@ -63,7 +63,7 @@ fn build_presigned_metadata(
         metadata.album_ids.insert(parsed);
     }
 
-    for tag in parse_presigned_list(presigned_tags_opt, "presigned tags")? {
+    for tag in parse_presigned_list(tags_json, "presigned tags")? {
         let tag = tag.trim();
         if !tag.is_empty() {
             metadata.tags.insert(tag.to_owned());
@@ -76,6 +76,7 @@ fn build_presigned_metadata(
     "/upload?<presigned_album_id_opt>&<presigned_album_ids_opt>&<presigned_tags_opt>",
     data = "<form>"
 )]
+#[allow(clippy::similar_names)]
 pub async fn upload(
     auth: GuardResult<GuardUpload>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
@@ -136,39 +137,6 @@ pub async fn upload(
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod presigned_metadata_tests {
-    use super::build_presigned_metadata;
-
-    #[test]
-    fn merges_legacy_and_json_presets() {
-        let metadata = build_presigned_metadata(
-            Some("legacy-album".to_owned()),
-            Some(r#"["album-a","album-b","album-a"]"#.to_owned()),
-            Some(r#"[" first ","second","first",""]"#.to_owned()),
-        )
-        .unwrap();
-
-        assert_eq!(metadata.album_ids.len(), 3);
-        assert!(
-            metadata
-                .album_ids
-                .iter()
-                .any(|id| id.as_str() == "legacy-album")
-        );
-        assert!(metadata.album_ids.iter().any(|id| id.as_str() == "album-a"));
-        assert!(metadata.album_ids.iter().any(|id| id.as_str() == "album-b"));
-        assert_eq!(metadata.tags.len(), 2);
-        assert!(metadata.tags.contains("first"));
-        assert!(metadata.tags.contains("second"));
-    }
-
-    #[test]
-    fn rejects_malformed_presigned_json() {
-        assert!(build_presigned_metadata(None, Some("not-json".to_owned()), None).is_err());
-    }
 }
 
 /// Persists the temporary file to disk with the correct modification time.
@@ -236,4 +204,37 @@ fn get_extension(file: &TempFile<'_>) -> Result<String, AppError> {
             error!("Failed to determine file extension from Content-Type");
             AppError::new(ErrorKind::InvalidInput, "Missing or unknown file extension")
         })
+}
+
+#[cfg(test)]
+mod presigned_metadata_tests {
+    use super::build_presigned_metadata;
+
+    #[test]
+    fn merges_legacy_and_json_presets() {
+        let metadata = build_presigned_metadata(
+            Some("legacy-album".to_owned()),
+            Some(r#"["album-a","album-b","album-a"]"#.to_owned()),
+            Some(r#"[" first ","second","first",""]"#.to_owned()),
+        )
+        .unwrap();
+
+        assert_eq!(metadata.album_ids.len(), 3);
+        assert!(
+            metadata
+                .album_ids
+                .iter()
+                .any(|id| id.as_str() == "legacy-album")
+        );
+        assert!(metadata.album_ids.iter().any(|id| id.as_str() == "album-a"));
+        assert!(metadata.album_ids.iter().any(|id| id.as_str() == "album-b"));
+        assert_eq!(metadata.tags.len(), 2);
+        assert!(metadata.tags.contains("first"));
+        assert!(metadata.tags.contains("second"));
+    }
+
+    #[test]
+    fn rejects_malformed_presigned_json() {
+        assert!(build_presigned_metadata(None, Some("not-json".to_owned()), None).is_err());
+    }
 }

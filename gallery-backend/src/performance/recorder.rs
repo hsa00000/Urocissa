@@ -88,8 +88,7 @@ pub fn record_log(record: &log::Record<'_>) {
     let phase = recorder
         .phase
         .lock()
-        .map(|value| value.clone())
-        .unwrap_or_else(|_| "unknown".to_string());
+        .map_or_else(|_| "unknown".to_string(), |value| value.clone());
     let sequence = recorder.sequence.fetch_add(1, Ordering::Relaxed);
     let event = PerformanceEvent {
         schema_version: 1,
@@ -124,8 +123,7 @@ fn write_event(
     let phase = recorder
         .phase
         .lock()
-        .map(|value| value.clone())
-        .unwrap_or_else(|_| "unknown".to_string());
+        .map_or_else(|_| "unknown".to_string(), |value| value.clone());
     let sequence = recorder.sequence.fetch_add(1, Ordering::Relaxed);
     let event = PerformanceEvent {
         schema_version: 1,

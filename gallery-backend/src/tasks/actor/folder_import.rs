@@ -89,8 +89,8 @@ pub fn folder_import_status() -> FolderImportStatus {
     IMPORT_STATUS.lock().unwrap().status.clone()
 }
 
-pub fn start_folder_import(path: String) -> AppResult<()> {
-    let root = canonicalize_import_root(&path)?;
+pub fn start_folder_import(path: &str) -> AppResult<()> {
+    let root = canonicalize_import_root(path)?;
     let internal_roots = internal_subtree_roots();
 
     if is_inside_internal_subtree(&root, &internal_roots) {

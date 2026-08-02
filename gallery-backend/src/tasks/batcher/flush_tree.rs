@@ -22,13 +22,6 @@ impl FlushTreeTask {
             remove_list: Vec::new(),
         }
     }
-
-    pub fn remove(abstract_data_list: Vec<AbstractData>) -> Self {
-        Self {
-            insert_list: Vec::new(),
-            remove_list: abstract_data_list,
-        }
-    }
 }
 
 impl BatchTask for FlushTreeTask {

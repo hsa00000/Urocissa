@@ -149,6 +149,7 @@ mod enabled {
 
     #[derive(Debug, Clone, Copy, Serialize)]
     #[serde(crate = "rocket::serde")]
+    #[allow(clippy::struct_field_names)]
     pub struct TreeMemorySummary {
         pub arena_inline_bytes: usize,
         pub record_dynamic_bytes: usize,
@@ -289,7 +290,7 @@ mod enabled {
                 "performance fixture root is not empty",
             ));
         }
-        let result = tokio::task::spawn_blocking(move || create_fixture(request))
+        let result = tokio::task::spawn_blocking(move || create_fixture(&request))
             .await
             .map_err(|error| AppError::new(ErrorKind::Internal, error.to_string()))??;
         Ok(Json(result))
@@ -317,10 +318,11 @@ mod enabled {
     }
 
     #[post("/__perf/phase", format = "json", data = "<phase_request>")]
-    pub fn phase(_token: PerfToken, phase_request: Json<PhaseRequest>) -> AppResult<Json<()>> {
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn phase(_token: PerfToken, phase_request: Json<PhaseRequest>) -> Json<()> {
         performance::set_phase(&phase_request.name);
         performance::flush();
-        Ok(Json(()))
+        Json(())
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -420,15 +422,12 @@ mod enabled {
         let bytes = operation.estimated_bytes() + touch.estimated_bytes();
         WRITE_BEHIND.reserve(bytes).await?;
 
-        let mut state = match TREE.state.write() {
-            Ok(state) => state,
-            Err(_) => {
-                WRITE_BEHIND.release_reservation(bytes);
-                return Err(AppError::new(
-                    ErrorKind::Internal,
-                    "tree state lock poisoned",
-                ));
-            }
+        let Ok(mut state) = TREE.state.write() else {
+            WRITE_BEHIND.release_reservation(bytes);
+            return Err(AppError::new(
+                ErrorKind::Internal,
+                "tree state lock poisoned",
+            ));
         };
         if !targets.is_current(&state) {
             WRITE_BEHIND.release_reservation(bytes);
@@ -484,7 +483,7 @@ mod enabled {
         Ok(Json(result))
     }
 
-    fn create_fixture(request: FixtureRequest) -> Result<FixtureSummary, AppError> {
+    fn create_fixture(request: &FixtureRequest) -> Result<FixtureSummary, AppError> {
         let total_start = Instant::now();
         let mut generation_ns = 0_u64;
         let mut insert_ns = 0_u64;
@@ -626,7 +625,7 @@ mod enabled {
             .map_or(0, |metadata| metadata.len());
         let write_behind = WRITE_BEHIND.status();
         let memory = performance::memory_snapshot();
-        let tree_snapshot_memory_bytes = std::mem::size_of_val(&*TREE_SNAPSHOT.in_memory)
+        let tree_snapshot_memory_bytes = std::mem::size_of_val(TREE_SNAPSHOT.in_memory)
             .saturating_add(
                 TREE_SNAPSHOT
                     .in_memory
@@ -634,12 +633,12 @@ mod enabled {
                     .map(|entry| entry.value().estimated_bytes())
                     .sum::<usize>(),
             )
-            .saturating_add(std::mem::size_of_val(&*TREE_SNAPSHOT.verified_layouts))
+            .saturating_add(std::mem::size_of_val(TREE_SNAPSHOT.verified_layouts))
             .saturating_add(TREE_SNAPSHOT.verified_layouts.len().saturating_mul(
                 std::mem::size_of::<i64>()
                     + std::mem::size_of::<crate::public::db::tree_snapshot::SnapshotBlobLayout>(),
             ));
-        let query_snapshot_memory_bytes = std::mem::size_of_val(&*QUERY_SNAPSHOT.in_memory)
+        let query_snapshot_memory_bytes = std::mem::size_of_val(QUERY_SNAPSHOT.in_memory)
             .saturating_add(QUERY_SNAPSHOT.in_memory.len().saturating_mul(
                 std::mem::size_of::<u64>()
                     + std::mem::size_of::<crate::router::get::get_prefetch::Prefetch>(),
@@ -671,17 +670,17 @@ mod enabled {
             backend_phase_rss_sample_count: memory.phase_sample_count,
             redb_main_cache: cache_summary(
                 TREE.store.cache_limit_bytes(),
-                TREE.store.cache_stats(),
+                &TREE.store.cache_stats(),
             ),
             redb_tree_snapshot_cache: cache_summary(
                 TREE_SNAPSHOT_CACHE_BYTES,
-                TREE_SNAPSHOT.in_disk.cache_stats(),
+                &TREE_SNAPSHOT.in_disk.cache_stats(),
             ),
             redb_query_snapshot_cache: cache_summary(
                 QUERY_SNAPSHOT_CACHE_BYTES,
-                QUERY_SNAPSHOT.in_disk.cache_stats(),
+                &QUERY_SNAPSHOT.in_disk.cache_stats(),
             ),
-            redb_expire_cache: cache_summary(EXPIRE_CACHE_BYTES, EXPIRE.in_disk.cache_stats()),
+            redb_expire_cache: cache_summary(EXPIRE_CACHE_BYTES, &EXPIRE.in_disk.cache_stats()),
             tree_memory: tree_memory.into(),
             tree_snapshot_memory_bytes,
             query_snapshot_memory_bytes,
@@ -689,7 +688,7 @@ mod enabled {
         }
     }
 
-    fn cache_summary(limit_bytes: usize, stats: redb::CacheStats) -> RedbCacheSummary {
+    fn cache_summary(limit_bytes: usize, stats: &redb::CacheStats) -> RedbCacheSummary {
         RedbCacheSummary {
             limit_bytes,
             used_bytes: stats.used_bytes(),
@@ -768,7 +767,11 @@ mod enabled {
                 title: album.metadata.title.clone(),
                 cover: album.metadata.cover.map(|cover| cover.to_string()),
                 item_count: album.metadata.item_count,
-                scanned_member_count: state.query.albums.get(&id).map_or(0, |set| set.len()),
+                scanned_member_count: state
+                    .query
+                    .albums
+                    .get(&id)
+                    .map_or(0, crate::public::db::tree::state::OrdinalSet::len),
                 share_count: album.metadata.share_list.len(),
                 share,
             })
@@ -784,7 +787,9 @@ mod enabled {
             .as_deref()
             .map(|id| {
                 TREE.store.read(|reader| {
-                    let durable = reader.get(id)?.map(|value| value.into_value());
+                    let durable = reader
+                        .get(id)?
+                        .map(crate::storage::store::RecordValue::into_value);
                     Ok::<_, anyhow::Error>(WRITE_BEHIND.logical_record(id, durable))
                 })
             })
@@ -842,29 +847,29 @@ mod enabled {
             {
                 item = Some(audit_item(&record));
             }
-            if album.is_none() {
-                if let AbstractData::Album(album_record) = &record {
-                    if !album_id.is_some_and(|id| album_record.object.id.as_str() == id) {
-                        continue;
-                    }
-                    let share = request.share_id.as_deref().and_then(|share_id| {
-                        album_record
-                            .metadata
-                            .share_list
-                            .iter()
-                            .find(|(id, _)| id.as_str() == share_id)
-                            .map(|(_, share)| share.clone())
-                    });
-                    album = Some(AuditAlbumSummary {
-                        id: album_record.object.id.to_string(),
-                        title: album_record.metadata.title.clone(),
-                        cover: album_record.metadata.cover.map(|cover| cover.to_string()),
-                        item_count: album_record.metadata.item_count,
-                        scanned_member_count: 0,
-                        share_count: album_record.metadata.share_list.len(),
-                        share,
-                    });
+            if album.is_none()
+                && let AbstractData::Album(album_record) = &record
+            {
+                if album_id.is_none_or(|id| album_record.object.id.as_str() != id) {
+                    continue;
                 }
+                let share = request.share_id.as_deref().and_then(|share_id| {
+                    album_record
+                        .metadata
+                        .share_list
+                        .iter()
+                        .find(|(id, _)| id.as_str() == share_id)
+                        .map(|(_, share)| share.clone())
+                });
+                album = Some(AuditAlbumSummary {
+                    id: album_record.object.id.to_string(),
+                    title: album_record.metadata.title.clone(),
+                    cover: album_record.metadata.cover.map(|cover| cover.to_string()),
+                    item_count: album_record.metadata.item_count,
+                    scanned_member_count: 0,
+                    share_count: album_record.metadata.share_list.len(),
+                    share,
+                });
             }
         }
         if let Some(album) = &mut album {
@@ -915,7 +920,7 @@ mod enabled {
     }
 
     fn elapsed_ns(start: Instant) -> u64 {
-        start.elapsed().as_nanos().min(u64::MAX as u128) as u64
+        u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX)
     }
 
     #[cfg(test)]

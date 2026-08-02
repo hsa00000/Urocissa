@@ -14,13 +14,14 @@ pub struct StartFolderImportRequest {
 }
 
 #[post("/post/import/folder", data = "<req>")]
+#[allow(clippy::needless_pass_by_value)]
 pub fn start_folder_import_handler(
     _auth: GuardAuth,
     read_only: GuardResult<GuardReadOnlyMode>,
     req: Json<StartFolderImportRequest>,
 ) -> AppResult<Status> {
     let _ = read_only?;
-    start_folder_import(req.into_inner().path)?;
+    start_folder_import(&req.path)?;
     Ok(Status::Accepted)
 }
 

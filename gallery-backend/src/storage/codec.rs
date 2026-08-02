@@ -7,8 +7,8 @@
 use anyhow::{Context, Result};
 use bitcode::{DecodeOwned, Encode};
 
-pub fn encode<T: Encode + ?Sized>(value: &T) -> Result<Vec<u8>> {
-    Ok(bitcode::encode(value))
+pub fn encode<T: Encode + ?Sized>(value: &T) -> Vec<u8> {
+    bitcode::encode(value)
 }
 
 pub fn decode<T: DecodeOwned>(bytes: &[u8]) -> Result<T> {

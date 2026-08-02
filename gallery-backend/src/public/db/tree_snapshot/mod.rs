@@ -29,7 +29,7 @@ pub struct PendingTreeSnapshot {
 }
 
 impl PendingTreeSnapshot {
-    #[cfg(any(test, feature = "performance-test"))]
+    #[cfg(feature = "performance-test")]
     pub fn estimated_bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(
@@ -45,6 +45,7 @@ impl PendingTreeSnapshot {
             )
     }
 
+    #[cfg(test)]
     pub fn encode(&self) -> anyhow::Result<Vec<u8>> {
         self.encode_with_layout().map(|(bytes, _)| bytes)
     }

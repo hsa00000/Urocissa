@@ -26,6 +26,7 @@ pub struct EditTagsData {
 }
 
 #[put("/put/edit_tag", format = "json", data = "<json_data>")]
+#[allow(clippy::too_many_lines)]
 pub async fn edit_tag(
     auth: GuardResult<GuardAuth>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
@@ -71,15 +72,12 @@ pub async fn edit_tag(
         + touch_preview.estimated_bytes();
     WRITE_BEHIND.reserve(bytes).await?;
 
-    let mut state = match TREE.state.write() {
-        Ok(state) => state,
-        Err(_) => {
-            WRITE_BEHIND.release_reservation(bytes);
-            return Err(AppError::new(
-                ErrorKind::Internal,
-                "tree state lock poisoned",
-            ));
-        }
+    let Ok(mut state) = TREE.state.write() else {
+        WRITE_BEHIND.release_reservation(bytes);
+        return Err(AppError::new(
+            ErrorKind::Internal,
+            "tree state lock poisoned",
+        ));
     };
     if state.structural_epoch() != structural_epoch {
         WRITE_BEHIND.release_reservation(bytes);

@@ -70,6 +70,7 @@ pub enum MediaStage {
     Thumbnail,
     VisualHashes,
     VideoCompression,
+    #[cfg(test)]
     ClearTags,
     Publish,
 }
@@ -89,6 +90,7 @@ impl MediaStage {
             Self::Thumbnail => "thumbnail",
             Self::VisualHashes => "visualHashes",
             Self::VideoCompression => "videoCompression",
+            #[cfg(test)]
             Self::ClearTags => "clearTags",
             Self::Publish => "publish",
         }
@@ -135,6 +137,7 @@ impl MediaTaskPlan {
                 .any(|operation| operation.applies_to(data.is_image()))
     }
 
+    #[cfg(test)]
     pub fn stages_for(&self, data: &AbstractData) -> Vec<MediaStage> {
         let mut stages = Vec::new();
         if self.contains(ReindexOperation::FileSize) {

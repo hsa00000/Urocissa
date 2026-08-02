@@ -9,10 +9,10 @@ use crate::storage::cache::{CacheClass, database_builder};
 static TREE_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     let db_directory = get_data_path().join("db");
     let path = db_directory.join("temp_db_v6.redb");
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent).unwrap();
     }
     // Tree/query snapshots are derived data. Schema 6 stores the ordered
     // ordinals and target bitmap in one compact blob, so old files can be

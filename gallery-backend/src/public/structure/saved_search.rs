@@ -34,6 +34,7 @@ pub struct SavedSearch {
 }
 
 impl SavedSearch {
+    #[cfg(test)]
     pub fn new(name: String, context: SavedSearchContext, query: String) -> Self {
         Self::new_with_sort(name, context, query, GallerySortOrder::default())
     }

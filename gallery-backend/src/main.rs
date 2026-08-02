@@ -24,6 +24,7 @@ use public::db::tree::TREE;
 use public::db::write_behind::WRITE_BEHIND;
 use storage::migration::prepare_storage;
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     // Initialize logger first thing
     let tui_events_rx = initialize_logger();
@@ -198,7 +199,7 @@ fn main() {
 
 #[cfg(feature = "auto-open-browser")]
 fn open_browser(port: u16) {
-    let url = format!("http://localhost:{}", port);
+    let url = format!("http://localhost:{port}");
     info!("Opening browser at {}", url);
     if let Err(e) = webbrowser::open(&url) {
         error!("Failed to open browser: {}", e);

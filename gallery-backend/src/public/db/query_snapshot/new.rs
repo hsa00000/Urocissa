@@ -9,10 +9,10 @@ use crate::storage::cache::{CacheClass, database_builder};
 static QUERY_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     let db_directory = get_data_path().join("db");
     let path = db_directory.join("cache_db_v6.redb");
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent).unwrap();
     }
     // Cached Prefetch values reference tree snapshots, so invalidate them when
     // the derived snapshot schema changes.

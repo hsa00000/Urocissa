@@ -131,6 +131,8 @@ impl MyCow {
         }
     }
 
+    // Method-item syntax cannot express the view's pinned lifetime here.
+    #[allow(clippy::redundant_closure_for_method_calls)]
     pub fn len(&self) -> usize {
         match self {
             Self::DashMap(data) => data.value().ordinals.len(),
@@ -138,24 +140,11 @@ impl MyCow {
         }
     }
 
+    #[allow(clippy::redundant_closure_for_method_calls)]
     pub fn structural_epoch(&self) -> Result<u64> {
         match self {
             Self::DashMap(data) => Ok(data.value().structural_epoch),
             Self::Redb { .. } => self.with_disk_view(|view| view.structural_epoch()),
-        }
-    }
-
-    pub fn universe(&self) -> Result<usize> {
-        match self {
-            Self::DashMap(data) => Ok(data.value().universe),
-            Self::Redb { .. } => self.with_disk_view(|view| view.universe()),
-        }
-    }
-
-    pub fn target_set(&self) -> Result<TargetSet> {
-        match self {
-            Self::DashMap(data) => Ok(data.value().targets.clone()),
-            Self::Redb { .. } => self.with_disk_view(|view| view.target_set())?,
         }
     }
 
@@ -181,20 +170,6 @@ impl MyCow {
             .get(slot_ref)
             .map(|record| record.id)
             .context(format!("stale tree snapshot generation at index {index}"))
-    }
-
-    pub fn get_identity(&self, index: usize) -> Result<(ArrayString<64>, u64)> {
-        let raw = self.get_slot_ref(index)?;
-        let slot_ref = SlotRef::from_raw(raw);
-        let state = TREE
-            .state
-            .read()
-            .map_err(|_| anyhow::anyhow!("tree state lock poisoned"))?;
-        let hash = state
-            .get(slot_ref)
-            .map(|record| record.id)
-            .context(format!("stale tree snapshot generation at index {index}"))?;
-        Ok((hash, raw))
     }
 
     pub fn for_each_slot_ref(&self, mut visit: impl FnMut(usize, u64) -> Result<()>) -> Result<()> {

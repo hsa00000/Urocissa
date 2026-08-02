@@ -341,8 +341,9 @@ fn check_query_cache(
     None
 }
 
+#[allow(clippy::too_many_lines)]
 fn filter_items(
-    expression_option: Option<Expression>,
+    expression_option: Option<&Expression>,
     resolved_share_option: Option<&ResolvedShare>,
     locate_option: Option<&String>,
     sort_order: GallerySortOrder,
@@ -359,9 +360,8 @@ fn filter_items(
         .filter(|share| !share.share.show_metadata)
         .map(|share| share.album_id);
     let compile_start = Instant::now();
-    let compiled_expression = expression_option
-        .as_ref()
-        .map(|expression| tree_guard.compile_expression(expression, hidden_album));
+    let compiled_expression =
+        expression_option.map(|expression| tree_guard.compile_expression(expression, hidden_album));
     crate::perf_timing!(
         "prefetch.compile_expression",
         compile_start,
@@ -610,7 +610,7 @@ fn create_json_response(
 // -----------------------------------------------------------------------------
 
 fn execute_prefetch_logic(
-    expression_option: Option<Expression>,
+    expression_option: Option<&Expression>,
     locate_option: Option<&String>,
     mut resolved_share_option: Option<ResolvedShare>,
     sort_order: GallerySortOrder,
@@ -619,7 +619,7 @@ fn execute_prefetch_logic(
     let start_time = Instant::now();
 
     // Step 1: Build cache key for response creation
-    let query_hash = query_cache_key(expression_option.as_ref(), locate_option, sort_order);
+    let query_hash = query_cache_key(expression_option, locate_option, sort_order);
 
     // Step 2: Check if query cache is available
     if let Some(query_hash) = query_hash
@@ -695,7 +695,7 @@ pub async fn prefetch(
     // Execute on blocking thread
     let job_handle = tokio::task::spawn_blocking(move || {
         execute_prefetch_logic(
-            combined_expression_option,
+            combined_expression_option.as_ref(),
             locate.as_ref(),
             resolved_share_option,
             sort_order,

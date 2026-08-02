@@ -1,9 +1,6 @@
 use arrayvec::ArrayString;
 use serde::{Deserialize, Serialize};
 
-pub mod generate_filter;
-pub mod generate_filter_hide_metadata;
-
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(untagged)]
 pub enum FilterValue {

@@ -52,17 +52,14 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
                 .and_then(|(_, value)| value.parse::<i64>().ok())
         });
 
-        let query_timestamp = match maybe_timestamp {
-            Some(ts) => ts,
-            None => {
-                return Outcome::Error((
-                    Status::Unauthorized,
-                    AppError::new(
-                        ErrorKind::Auth,
-                        "No valid 'timestamp' parameter found in the query",
-                    ),
-                ));
-            }
+        let Some(query_timestamp) = maybe_timestamp else {
+            return Outcome::Error((
+                Status::Unauthorized,
+                AppError::new(
+                    ErrorKind::Auth,
+                    "No valid 'timestamp' parameter found in the query",
+                ),
+            ));
         };
 
         if query_timestamp != claims.timestamp {

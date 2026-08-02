@@ -7,10 +7,10 @@ use crate::storage::cache::{CacheClass, database_builder};
 
 static EXPIRE_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     let path = get_data_path().join("db/expire_db.redb");
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent).unwrap();
     }
     database_builder(CacheClass::Expire).create(path).unwrap()
 });

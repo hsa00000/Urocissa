@@ -78,7 +78,7 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
         Ok(None)
     } else {
         if let Some(albums) = abstract_data.albums_mut() {
-            albums.extend(task.presigned.album_ids.iter().cloned());
+            albums.extend(task.presigned.album_ids.iter().copied());
         }
         abstract_data
             .tag_mut()

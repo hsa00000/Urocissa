@@ -16,6 +16,7 @@ use crate::router::selection::{SelectionDescriptor, resolve_selection};
 use crate::router::{AppResult, GuardResult};
 
 #[derive(Debug, Deserialize)]
+#[allow(clippy::struct_field_names)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteList {
     #[serde(default)]
@@ -63,6 +64,7 @@ pub async fn delete_data(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> AppResult<()> {
     let reservation = {
         let state = TREE
@@ -209,6 +211,7 @@ async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> App
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 async fn delete_durable_selection(targets: TargetSet, structural_epoch: u64) -> AppResult<()> {
     tokio::task::spawn_blocking(move || -> AppResult<()> {
         let _persistence_guard = TREE.persistence_lock.lock().unwrap();
@@ -280,10 +283,10 @@ async fn delete_durable_selection(targets: TargetSet, structural_epoch: u64) -> 
                             continue;
                         };
                         let mut data = value.into_value();
-                        if let Some(albums) = data.albums_mut() {
-                            if albums.remove(album_id) {
-                                data.touch_update_at(changed_at);
-                            }
+                        if let Some(albums) = data.albums_mut()
+                            && albums.remove(album_id)
+                        {
+                            data.touch_update_at(changed_at);
                         }
                         writer.insert_at_owned(member_id.as_str(), data)?;
                     }

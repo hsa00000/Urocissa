@@ -1,5 +1,8 @@
-use crate::public::error::{AppError, ErrorKind, ResultExt};
+#[cfg(not(feature = "embed-frontend"))]
+use crate::public::error::ResultExt;
+use crate::public::error::{AppError, ErrorKind};
 use crate::router::AppResult;
+#[cfg(not(feature = "embed-frontend"))]
 use rocket::fs::NamedFile;
 use rocket::http::Status;
 use rocket::response::{Redirect, content};
@@ -45,6 +48,7 @@ fn resolve_path(filename: &str) -> PathBuf {
 
 // Custom responder that can return either a NamedFile or embedded content
 pub enum FrontendResponse {
+    #[cfg(not(feature = "embed-frontend"))]
     File(NamedFile),
     #[cfg(feature = "embed-frontend")]
     Embedded(ContentType, Cow<'static, [u8]>),
@@ -53,17 +57,22 @@ pub enum FrontendResponse {
 impl<'r> rocket::response::Responder<'r, 'static> for FrontendResponse {
     fn respond_to(self, request: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
         match self {
+            #[cfg(not(feature = "embed-frontend"))]
             FrontendResponse::File(f) => f.respond_to(request),
             #[cfg(feature = "embed-frontend")]
-            FrontendResponse::Embedded(ct, data) => rocket::response::Response::build()
-                .header(ct)
-                .sized_body(data.len(), std::io::Cursor::new(data))
-                .ok(),
+            FrontendResponse::Embedded(ct, data) => {
+                let _ = request;
+                rocket::response::Response::build()
+                    .header(ct)
+                    .sized_body(data.len(), std::io::Cursor::new(data))
+                    .ok()
+            }
         }
     }
 }
 
 // Helper to serve file (either from disk or embedded)
+#[allow(clippy::unused_async)]
 async fn serve_file(filename: &str) -> AppResult<FrontendResponse> {
     #[cfg(feature = "embed-frontend")]
     {
@@ -73,10 +82,10 @@ async fn serve_file(filename: &str) -> AppResult<FrontendResponse> {
             return Ok(FrontendResponse::Embedded(ct, asset.data));
         }
         // If not found in embedded, fallback to error (or disk if you want mixed mode)
-        return Err(AppError::new(
+        Err(AppError::new(
             ErrorKind::NotFound,
-            format!("Embedded file not found: {}", filename),
-        ));
+            format!("Embedded file not found: {filename}"),
+        ))
     }
 
     #[cfg(not(feature = "embed-frontend"))]

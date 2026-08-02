@@ -158,7 +158,7 @@ mod tests {
             Self {
                 tag,
                 field_type: 2,
-                count: length as u32,
+                count: u32::try_from(length).expect("test TIFF ASCII length fits u32"),
                 payload,
             }
         }
@@ -167,7 +167,7 @@ mod tests {
             Self {
                 tag,
                 field_type: 7,
-                count: payload.len() as u32,
+                count: u32::try_from(payload.len()).expect("test TIFF payload length fits u32"),
                 payload,
             }
         }
@@ -208,7 +208,11 @@ mod tests {
         let table_offset = tiff.len();
         let data_offset = table_offset + 2 + entries.len() * 12 + 4;
         tiff.resize(data_offset, 0);
-        tiff[table_offset..table_offset + 2].copy_from_slice(&(entries.len() as u16).to_le_bytes());
+        tiff[table_offset..table_offset + 2].copy_from_slice(
+            &u16::try_from(entries.len())
+                .expect("test TIFF entry count fits u16")
+                .to_le_bytes(),
+        );
 
         let mut next_payload_offset = data_offset;
         for (index, entry) in entries.iter().enumerate() {
@@ -222,8 +226,11 @@ mod tests {
                 tiff[entry_offset + 8..entry_offset + 8 + entry.payload.len()]
                     .copy_from_slice(&entry.payload);
             } else {
-                tiff[entry_offset + 8..entry_offset + 12]
-                    .copy_from_slice(&(next_payload_offset as u32).to_le_bytes());
+                tiff[entry_offset + 8..entry_offset + 12].copy_from_slice(
+                    &u32::try_from(next_payload_offset)
+                        .expect("test TIFF payload offset fits u32")
+                        .to_le_bytes(),
+                );
                 tiff.extend_from_slice(&entry.payload);
                 next_payload_offset += entry.payload.len();
             }
@@ -243,8 +250,10 @@ mod tests {
             TiffEntry::long(0x8769, 0),
         ];
         let exif_ifd_offset = 8 + encoded_ifd_len(&ifd0);
-        ifd0.last_mut().expect("IFD0 should not be empty").payload =
-            (exif_ifd_offset as u32).to_le_bytes().to_vec();
+        ifd0.last_mut().expect("IFD0 should not be empty").payload = u32::try_from(exif_ifd_offset)
+            .expect("test TIFF EXIF offset fits u32")
+            .to_le_bytes()
+            .to_vec();
 
         let exif_ifd = vec![
             TiffEntry::ascii(0x9003, b"2023:03:29 18:42:05", 20),

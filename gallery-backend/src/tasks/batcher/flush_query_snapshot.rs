@@ -58,15 +58,7 @@ fn flush_query_snapshot_task() {
                         break;
                     }
                 };
-                let bytes = match codec::encode(ref_data) {
-                    Ok(bytes) => bytes,
-                    Err(e) => {
-                        handle_error(anyhow::anyhow!(
-                            "FlushQuerySnapshotTask: Failed to encode data for expression_hashed {expression_hashed}: {e}"
-                        ));
-                        break;
-                    }
-                };
+                let bytes = codec::encode(ref_data);
                 if let Err(e) = table.insert(expression_hashed, bytes.as_slice()) {
                     handle_error(anyhow::anyhow!(
                         "FlushQuerySnapshotTask: Failed to insert data for expression_hashed {expression_hashed}: {e}"

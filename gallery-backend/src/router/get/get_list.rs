@@ -46,9 +46,7 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
     let _ = auth?;
     tokio::task::spawn_blocking(move || -> AppResult<Json<Vec<AlbumInfo>>> {
         let start_time = Instant::now();
-        let album_list = TREE
-            .read_albums()
-            .map_err(|e| e.context("Failed to read albums"))?;
+        let album_list = TREE.read_albums();
         let album_info_list: Vec<AlbumInfo> = album_list
             .into_iter()
             .map(|album| AlbumInfo {

@@ -4,7 +4,6 @@ use crate::public::{
         abstract_data::AbstractData, response::database_timestamp::DataBaseTimestampReturn,
     },
 };
-use crate::storage::store::RecordReader;
 use anyhow::Result;
 use arrayvec::ArrayString;
 
@@ -14,17 +13,6 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
     }
     let hash = tree_snapshot.get_hash(index)?;
     Ok(hash)
-}
-
-pub fn hash_to_abstract_data(
-    data_table: &RecordReader,
-    hash: ArrayString<64>,
-) -> Result<AbstractData> {
-    if let Some(data) = data_table.get(hash.as_str())? {
-        Ok(data.into_value())
-    } else {
-        Err(anyhow::anyhow!("No data found for hash: {hash}"))
-    }
 }
 
 pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metadata: bool) {

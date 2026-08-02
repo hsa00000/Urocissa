@@ -10,7 +10,7 @@ const CONFIG_FILE_NAME: &str = "config.json";
 
 /// Returns the path to the config file based on the current mode (portable or installed).
 /// In portable mode, returns "./config.json".
-/// In installed mode, returns "<data_path>/config.json".
+/// In installed mode, returns `<data_path>/config.json`.
 pub fn get_config_path() -> PathBuf {
     get_data_path().join(CONFIG_FILE_NAME)
 }

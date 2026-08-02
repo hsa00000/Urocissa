@@ -378,11 +378,13 @@ impl RecordWriter<'_> {
         self.insert_v6_at(key.as_str(), stored)
     }
 
+    #[cfg(feature = "performance-test")]
     pub fn insert_owned(&mut self, value: AbstractData) -> Result<()> {
         let key = value.hash();
         self.insert_v6_at(key.as_str(), V6AbstractData::from(value))
     }
 
+    #[cfg(all(test, feature = "performance-test"))]
     pub fn insert_at(&mut self, key: &str, value: &AbstractData) -> Result<()> {
         if value.hash().as_str() != key {
             return Err(anyhow!(

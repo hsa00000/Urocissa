@@ -12,6 +12,7 @@ use figment::{
     providers::{Format, Json},
 };
 use rocket::data::{ByteUnit, Limits};
+#[cfg(not(feature = "embed-frontend"))]
 use rocket::fs::FileServer;
 use rocket::info;
 use std::path::PathBuf;
@@ -30,11 +31,9 @@ fn create_dummy_config() -> AppConfig {
 /// Handle routes for embedded frontend assets
 #[cfg(feature = "embed-frontend")]
 #[get("/assets/<file..>")]
-async fn assets(
-    file: PathBuf,
-) -> Option<(rocket::http::ContentType, std::borrow::Cow<'static, [u8]>)> {
+#[allow(clippy::needless_pass_by_value)]
+fn assets(file: PathBuf) -> Option<(rocket::http::ContentType, std::borrow::Cow<'static, [u8]>)> {
     use crate::public::embedded::FrontendAssets;
-    use rocket::routes; // Import routes only where used
 
     let filename = format!("assets/{}", file.display());
     let asset = FrontendAssets::get(&filename)?;
@@ -63,12 +62,11 @@ fn extract_limit(app_config: &AppConfig, key: &str, default_val: &str) -> ByteUn
         .public
         .limits
         .get(key)
-        .map(|s| s.as_str())
-        .unwrap_or(default_val);
+        .map_or(default_val, std::string::String::as_str);
 
     let bytes = raw_val
         .parse::<HumanBytes>()
-        .unwrap_or_else(|_| panic!("Invalid limit format for key '{}': {}", key, raw_val))
+        .unwrap_or_else(|_| panic!("Invalid limit format for key '{key}': {raw_val}"))
         .as_u64();
 
     ByteUnit::from(bytes)

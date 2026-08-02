@@ -15,7 +15,7 @@ use super::{
     album::AlbumCombined,
     common::FileModify,
     image::{ImageCombined, ImageMetadata},
-    object::{ObjectSchema, ObjectType, next_mutation_timestamp},
+    object::{ObjectSchema, ObjectType},
     video::{VideoCombined, VideoMetadata},
 };
 
@@ -457,6 +457,7 @@ impl AbstractData {
     }
 
     /// Get tags (reference)
+    #[cfg(any(test, feature = "performance-test"))]
     pub fn tag(&self) -> &HashSet<String> {
         match self {
             AbstractData::Image(img) => &img.object.tags,
@@ -472,11 +473,6 @@ impl AbstractData {
             AbstractData::Video(vid) => &mut vid.object.tags,
             AbstractData::Album(alb) => &mut alb.object.tags,
         }
-    }
-
-    /// Update the `update_at` timestamp
-    pub fn update_update_at(&mut self) {
-        self.touch_update_at(next_mutation_timestamp());
     }
 
     /// Apply a stable mutation timestamp without changing it on overlay reads.
@@ -732,7 +728,7 @@ impl AbstractData {
             .to_hex()
             .to_string();
         let hash = ArrayString::<64>::from(&hash).expect("BLAKE3 hash must fit ArrayString");
-        let is_video = next(&mut state) % 10 == 0;
+        let is_video = next(&mut state).is_multiple_of(10);
         let object_type = if is_video {
             ObjectType::Video
         } else {
@@ -756,12 +752,13 @@ impl AbstractData {
             pending: false,
             thumbhash: None,
             cache_version: 0,
-            description: (next(&mut state) % 5 == 0)
+            description: next(&mut state)
+                .is_multiple_of(5)
                 .then(|| format!("Performance fixture item {index}")),
             tags,
-            is_favorite: next(&mut state) % 10 == 0,
-            is_archived: next(&mut state) % 20 == 0,
-            is_trashed: next(&mut state) % 50 == 0,
+            is_favorite: next(&mut state).is_multiple_of(10),
+            is_archived: next(&mut state).is_multiple_of(20),
+            is_trashed: next(&mut state).is_multiple_of(50),
             update_at: timestamp,
         };
 
@@ -774,7 +771,9 @@ impl AbstractData {
                     width,
                     height,
                     ext: "mp4".to_string(),
-                    duration: (next(&mut state) % 3_600) as f64 + 0.5,
+                    duration: f64::from(
+                        u16::try_from(next(&mut state) % 3_600).expect("bounded duration fits u16"),
+                    ) + 0.5,
                     albums: HashSet::new(),
                     exif_vec: BTreeMap::new(),
                     alias: vec![file_modify],

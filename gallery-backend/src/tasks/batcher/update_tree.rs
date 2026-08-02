@@ -5,7 +5,6 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use anyhow::{Context, Result};
 use chrono::Utc;
-use mini_executor::BatchTask;
 use std::collections::HashSet;
 use std::sync::LazyLock;
 use std::time::Instant;
@@ -27,16 +26,7 @@ static ALLOWED_KEYS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     .collect()
 });
 
-pub struct UpdateTreeTask;
-
-impl BatchTask for UpdateTreeTask {
-    async fn batch_run(_: Vec<Self>) {
-        if let Err(error) = update_tree_task() {
-            error!("Failed to rebuild the in-memory tree: {error:#}");
-        }
-    }
-}
-
+#[cfg(feature = "performance-test")]
 pub fn update_tree_task() -> Result<(usize, usize)> {
     let data_table = TREE
         .store
@@ -47,13 +37,10 @@ pub fn update_tree_task() -> Result<(usize, usize)> {
 
 pub fn update_tree_from_reader(data_table: &RecordReader) -> Result<(usize, usize)> {
     let start_time = Instant::now();
-    let counts = TREE.with_list_snapshot_update(|| {
+    let counts = TREE.with_state_update(|| {
         let state = tree_state_from_reader(data_table)?;
         let counts = (state.len(), state.albums.len());
-        TREE.replace_tree_snapshot(
-            state,
-            crate::public::db::tree::read_tags::TreeListSnapshot::default(),
-        );
+        TREE.replace_tree_state(state);
         Ok::<_, anyhow::Error>(counts)
     })?;
 

@@ -12,7 +12,6 @@ use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::AlbumCombined;
 use crate::public::structure::expression::{AlbumFilterValue, Expression, FilterValue};
 use crate::public::structure::object::{ObjectSchema, ObjectType};
-use crate::public::structure::response::reduced_data::ReducedData;
 
 static NEXT_STRUCTURAL_EPOCH: LazyLock<AtomicU64> = LazyLock::new(|| {
     let time_seed = SystemTime::now()
@@ -44,6 +43,8 @@ impl SlotRef {
         Self(((generation as u64) << 32) | index as u64)
     }
 
+    /// Returns the packed low 32 bits written by [`Self::new`].
+    #[allow(clippy::cast_possible_truncation)]
     pub const fn index(self) -> u32 {
         self.0 as u32
     }
@@ -164,10 +165,6 @@ impl<T> RecordArena<T> {
 
     pub fn len(&self) -> usize {
         self.len
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
     }
 }
 
@@ -543,16 +540,6 @@ impl CacheRecord {
         self.thumbhash.as_deref().map(<[u8]>::to_vec)
     }
 
-    pub fn reduced(&self, slot_ref: SlotRef) -> ReducedData {
-        ReducedData {
-            hash: self.id,
-            slot_ref: slot_ref.raw(),
-            width: self.width,
-            height: self.height,
-            date: self.timestamp,
-        }
-    }
-
     #[cfg(feature = "performance-test")]
     fn estimated_dynamic_bytes(&self) -> usize {
         self.thumbhash.as_ref().map_or(0, |value| value.len())
@@ -676,6 +663,7 @@ impl<'a> AlbumAccumulator<'a> {
 
 #[cfg(feature = "performance-test")]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[allow(clippy::struct_field_names)]
 pub struct TreeMemoryUsage {
     pub arena_inline_bytes: usize,
     pub record_dynamic_bytes: usize,
@@ -972,6 +960,7 @@ impl OrdinalSet {
         changed
     }
 
+    #[cfg(test)]
     pub fn remove(&mut self, ordinal: u32, universe: usize) -> bool {
         let changed = match self {
             Self::Sparse(items) => match items.binary_search(&ordinal) {
@@ -1095,10 +1084,10 @@ impl OrdinalSet {
                     {
                         removed_index += 1;
                     }
-                    if removed.get(removed_index) != Some(&item) {
-                        next.push(item);
-                    } else {
+                    if removed.get(removed_index) == Some(&item) {
                         changed(item);
+                    } else {
+                        next.push(item);
                     }
                 }
                 *items = next;
@@ -1218,12 +1207,6 @@ impl TargetSetBuilder {
             ordinals,
             generation_overrides: self.generation_overrides,
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn estimated_bytes(&self) -> usize {
-        self.ordinals.words.capacity() * std::mem::size_of::<u64>()
-            + self.generation_overrides.capacity() * std::mem::size_of::<(u32, u32)>()
     }
 }
 
@@ -1401,6 +1384,7 @@ impl TargetSet {
                 })
     }
 
+    #[cfg(feature = "performance-test")]
     pub fn is_current(&self, state: &TreeState) -> bool {
         self.iter().all(|slot_ref| state.get(slot_ref).is_some())
     }
@@ -1566,7 +1550,7 @@ impl StringFacetIndex {
         self.has_any.set(ordinal, count > 0);
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "performance-test"))]
     fn insert_values_legacy<'a>(
         &mut self,
         ordinal: u32,
@@ -1589,6 +1573,7 @@ impl StringFacetIndex {
         self.has_any.set(ordinal, count > 0);
     }
 
+    #[cfg(test)]
     fn remove_record(&mut self, ordinal: u32, universe: usize) {
         self.ensure_ordinal(ordinal);
         self.membership_count.clear(ordinal);
@@ -1645,18 +1630,6 @@ impl StringFacetIndex {
         self.values.retain(|_, members| !members.is_empty());
     }
 
-    fn matching_members_ascii(&self, value: &str) -> OrdinalSet {
-        let needle = value.to_ascii_lowercase();
-        let universe = self.membership_count.len();
-        let mut matches = OrdinalSet::default();
-        for (candidate, members) in &self.values {
-            if contains_ascii_lowercase(candidate, &needle) {
-                matches.union_with(members, universe, |_| {});
-            }
-        }
-        matches
-    }
-
     fn rebalance(&mut self, universe: usize) {
         for members in self.values.values_mut() {
             members.rebalance(universe);
@@ -1683,6 +1656,7 @@ pub struct SingleStringFacetIndex {
 }
 
 impl SingleStringFacetIndex {
+    #[cfg(test)]
     pub fn get(&self, value: &str) -> Option<&OrdinalSet> {
         self.values.get(value)
     }
@@ -1710,7 +1684,7 @@ impl SingleStringFacetIndex {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "performance-test"))]
     fn insert_value_legacy(&mut self, ordinal: u32, value: Option<&String>, universe: usize) {
         if let Some(value) = value {
             self.values
@@ -1723,6 +1697,7 @@ impl SingleStringFacetIndex {
         }
     }
 
+    #[cfg(test)]
     fn remove_record(&mut self, ordinal: u32, universe: usize) {
         self.has_any.set(ordinal, false);
         self.values.retain(|_, members| {
@@ -1882,7 +1857,7 @@ impl QueryIndexes {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "performance-test"))]
     fn insert_record_legacy(&mut self, ordinal: u32, data: &AbstractData, universe: usize) {
         self.ensure_ordinal(ordinal);
         self.favorite.set(ordinal, object_flags(data).0);
@@ -1916,6 +1891,7 @@ impl QueryIndexes {
         }
     }
 
+    #[cfg(test)]
     fn remove_record(&mut self, ordinal: u32, universe: usize) {
         self.favorite.set(ordinal, false);
         self.archived.set(ordinal, false);
@@ -2063,7 +2039,7 @@ impl QueryIndexes {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "performance-test"))]
 fn object_flags(data: &AbstractData) -> (bool, bool, bool) {
     match data {
         AbstractData::Image(value) => (
@@ -2149,6 +2125,7 @@ impl TreeState {
         }
     }
 
+    #[cfg(test)]
     pub fn from_records(records: impl IntoIterator<Item = AbstractData>) -> Self {
         let records = records.into_iter();
         let record_count = exact_size_hint(&records);
@@ -2185,7 +2162,7 @@ impl TreeState {
         Ok(state.finish_unsorted_order(order))
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "performance-test"))]
     fn from_records_legacy_owned(records: Vec<AbstractData>) -> Self {
         let mut state = Self::default();
         for data in records {
@@ -2194,7 +2171,7 @@ impl TreeState {
         state.finish_unsorted()
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "performance-test"))]
     fn try_from_records_legacy_owned<E>(
         records: impl IntoIterator<Item = Result<AbstractData, E>>,
     ) -> Result<Self, E> {
@@ -2206,7 +2183,7 @@ impl TreeState {
         Ok(state.finish_unsorted())
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "performance-test"))]
     fn push_unsorted_borrowed_legacy(&mut self, data: &AbstractData) {
         let timestamp = data.compute_timestamp(crate::public::constant::DEFAULT_PRIORITY_LIST);
         let ext_id = self.query.intern_extension(data.ext());
@@ -2243,6 +2220,7 @@ impl TreeState {
         slot_ref
     }
 
+    #[cfg(all(test, feature = "performance-test"))]
     fn finish_unsorted(mut self) -> Self {
         let arena = &self.arena;
         Arc::make_mut(&mut self.order)
@@ -2284,6 +2262,7 @@ impl TreeState {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn track_record_added(&mut self, record: &CacheRecord) {
         #[cfg(feature = "performance-test")]
         {
@@ -2295,6 +2274,7 @@ impl TreeState {
         let _ = record;
     }
 
+    #[allow(clippy::unused_self)]
     fn track_record_removed(&mut self, record: &CacheRecord) {
         #[cfg(feature = "performance-test")]
         {
@@ -2312,10 +2292,6 @@ impl TreeState {
 
     fn bump_structural_epoch(&mut self) {
         self.structural_epoch = next_structural_epoch();
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.arena.is_empty()
     }
 
     pub fn get(&self, slot_ref: SlotRef) -> Option<&CacheRecord> {
@@ -2338,13 +2314,6 @@ impl TreeState {
             }),
             self.arena.capacity(),
         )
-    }
-
-    pub fn reduced_ordered(&self) -> Vec<ReducedData> {
-        self.order
-            .iter()
-            .filter_map(|slot_ref| self.get(*slot_ref).map(|record| record.reduced(*slot_ref)))
-            .collect()
     }
 
     pub fn insert(&mut self, data: &AbstractData) -> SlotRef {
@@ -2370,6 +2339,7 @@ impl TreeState {
         slot_ref
     }
 
+    #[cfg(test)]
     pub fn remove(&mut self, slot_ref: SlotRef) -> Option<CacheRecord> {
         let id = self.arena.get(slot_ref)?.id;
         self.id_index.remove(id.as_str(), slot_ref, &self.arena);
@@ -2411,6 +2381,7 @@ impl TreeState {
         self.bump_structural_epoch();
     }
 
+    #[cfg(test)]
     pub fn replace_static(&mut self, slot_ref: SlotRef, data: &AbstractData) -> Option<()> {
         let old = self.arena.get(slot_ref)?.clone();
         if old.id != data.hash() {
@@ -2557,6 +2528,7 @@ impl TreeState {
         }
     }
 
+    #[cfg(test)]
     pub fn matches(
         &self,
         slot_ref: SlotRef,
@@ -2578,6 +2550,7 @@ impl TreeState {
         CompiledExpression::new(expression, &self.query, hidden_metadata_album)
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn edit_album_memberships(
         &mut self,
         targets: &OrdinalSet,
@@ -2696,6 +2669,7 @@ impl TreeState {
         patches
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn edit_flags_and_refresh(
         &mut self,
         targets: &OrdinalSet,
@@ -2962,12 +2936,12 @@ pub fn sort_and_merge(
     let mut merged = Vec::with_capacity(existing.len() + additions.len());
     let (mut left, mut right) = (0, 0);
     while left < existing.len() && right < additions.len() {
-        if compare_slots(arena, existing[left], additions[right]) != Ordering::Greater {
-            merged.push(existing[left]);
-            left += 1;
-        } else {
+        if compare_slots(arena, existing[left], additions[right]) == Ordering::Greater {
             merged.push(additions[right]);
             right += 1;
+        } else {
+            merged.push(existing[left]);
+            left += 1;
         }
     }
     merged.extend_from_slice(&existing[left..]);
@@ -3047,7 +3021,9 @@ impl<'a> CompiledExpressionNode<'a> {
                 indexes,
                 hidden_metadata_album,
             ))),
-            Expression::Tag(_) if hidden_metadata_album.is_some() => Self::Constant(false),
+            Expression::Tag(_) | Expression::Path(_) if hidden_metadata_album.is_some() => {
+                Self::Constant(false)
+            }
             Expression::Tag(FilterValue::Value(tag)) => Self::Membership(indexes.tags.get(tag)),
             Expression::Tag(FilterValue::Exists(exists)) => {
                 Self::Bitmap(indexes.tags.has_any(), *exists)
@@ -3073,7 +3049,6 @@ impl<'a> CompiledExpressionNode<'a> {
             Expression::Make(FilterValue::Exists(exists)) => {
                 Self::Bitmap(indexes.makes.has_any(), *exists)
             }
-            Expression::Path(_) if hidden_metadata_album.is_some() => Self::Constant(false),
             Expression::Path(path) => Self::Path(path.to_ascii_lowercase()),
             Expression::Album(AlbumFilterValue::Value(album_id))
                 if hidden_metadata_album.is_some_and(|allowed| allowed != *album_id) =>
@@ -5013,7 +4988,10 @@ mod tests {
                     state.apply_batch(&[record], &HashSet::new());
                 }
                 1 if !state.order.is_empty() => {
-                    let position = random as usize % state.order.len();
+                    let position = usize::try_from(
+                        random % u64::try_from(state.order.len()).expect("order length fits u64"),
+                    )
+                    .expect("random position fits usize");
                     let slot_ref = state.order[position];
                     let id = state.get(slot_ref).unwrap().id;
                     let targets = TargetSet::from_slot_refs([slot_ref], state.arena.capacity());
@@ -5021,7 +4999,10 @@ mod tests {
                     records.remove(&id);
                 }
                 2 if !state.order.is_empty() => {
-                    let position = random as usize % state.order.len();
+                    let position = usize::try_from(
+                        random % u64::try_from(state.order.len()).expect("order length fits u64"),
+                    )
+                    .expect("random position fits usize");
                     let id = state.get(state.order[position]).unwrap().id;
                     let record = records.get_mut(&id).unwrap();
                     if let Some(alias) = record.alias_mut().and_then(|aliases| aliases.first_mut())
@@ -5029,7 +5010,7 @@ mod tests {
                         alias.modified = alias.modified.saturating_add(10_000 + step);
                         alias.scan_time = alias.modified;
                     }
-                    state.apply_batch(&[record.clone()], &HashSet::new());
+                    state.apply_batch(std::slice::from_ref(record), &HashSet::new());
                 }
                 _ => {
                     let additions = (0..3)
