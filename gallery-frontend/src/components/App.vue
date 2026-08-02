@@ -31,7 +31,6 @@
 import { useRoute } from 'vue-router'
 import { computed, onBeforeMount } from 'vue'
 import { useScrollbarStore } from '@/store/scrollbarStore'
-import { useRerenderStore } from '@/store/rerenderStore'
 import { useMessageStore } from '@/store/messageStore'
 import DropZoneModal from './Modal/DropZoneModal.vue'
 import { useConstStore } from '@/store/constStore'
@@ -50,21 +49,17 @@ import { createRootRouteKey } from '@/route/rootRouteKey'
 const modalStore = useModalStore('mainId')
 const scrollbarStore = useScrollbarStore('mainId')
 const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
-const rerenderStore = useRerenderStore('mainId')
 const messageStore = useMessageStore('mainId')
 const constStore = useConstStore('mainId')
 const configStore = useConfigStore('mainId')
 const route = useRoute()
 
-// Level 1 collection changes may replace the root page. Reader-only query
-// changes deliberately keep this key stable so nested route layers stay mounted.
+// Collection query changes update in place. Only a different root page or
+// worker topology replaces this route host.
 const routeKey = computed(() => {
   return createRootRouteKey({
     baseName: route.meta.baseName,
-    level: route.meta.level,
-    query: route.query,
-    concurrencyNumber: constStore.concurrencyNumber,
-    homeKey: rerenderStore.homeKey
+    concurrencyNumber: constStore.concurrencyNumber
   })
 })
 

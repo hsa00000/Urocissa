@@ -69,7 +69,7 @@ onMounted(() => {
 
       messageStore.success('Share deleted')
       modalStore.showDeleteShareModal = false
-      await albumStore.fetchAlbums()
+      await albumStore.refreshAlbums()
     })
   }
 })

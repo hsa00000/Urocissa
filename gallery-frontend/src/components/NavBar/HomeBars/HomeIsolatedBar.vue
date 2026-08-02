@@ -9,7 +9,7 @@ import { createGallerySearchRouteUpdate } from '@/components/Search/gallerySearc
 import { useCollectionStore } from '@/store/collectionStore'
 import { useFilterStore } from '@/store/filterStore'
 import { useModalStore } from '@/store/modalStore'
-import { useRerenderStore } from '@/store/rerenderStore'
+import { useCollectionReloadStore } from '@/store/collectionReloadStore'
 import { editTitle } from '@utils/createAlbums'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import HomeTemp from '@/components/Home/HomeTemp.vue'
@@ -25,7 +25,7 @@ const props = defineProps<{
 const modalStore = useModalStore('mainId')
 const collectionStore = useCollectionStore('subId')
 const filterStore = useFilterStore('subId')
-const rerenderStore = useRerenderStore('mainId')
+const collectionReloadStore = useCollectionReloadStore('mainId')
 
 const route = useRoute()
 const router = useRouter()
@@ -51,7 +51,7 @@ async function applySearchState({
     query: routeQuery
   }
   if (sortOrder === 'random' && router.resolve(location).fullPath === route.fullPath) {
-    rerenderStore.rerenderHomeIsolated()
+    collectionReloadStore.requestSubCollectionReload()
     return
   }
 

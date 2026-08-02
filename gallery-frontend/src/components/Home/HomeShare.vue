@@ -12,11 +12,11 @@
   <ShareLoginModal />
 </template>
 <script setup lang="ts">
-import { LocationQueryValue, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import Home from './Home.vue'
 import HomeShareBar from '@/components/NavBar/HomeBars/HomeShareBar.vue'
 import ShareLoginModal from '@/components/Modal/ShareLoginModal.vue'
-import { onBeforeMount, ref, Ref, watch } from 'vue'
+import { computed, onBeforeMount, ref, Ref, watch } from 'vue'
 import { useShareStore } from '@/store/shareStore'
 import { getShareInfo } from '@/db/db'
 
@@ -24,13 +24,11 @@ const route = useRoute()
 const albumId: Ref<string | undefined> = ref(undefined)
 const shareId: Ref<string | undefined> = ref(undefined)
 const basicString: Ref<string | undefined> = ref(undefined)
-const searchString = ref<LocationQueryValue | LocationQueryValue[] | undefined>(null)
+const searchString = computed(() => route.query.search)
 
 const shareStore = useShareStore('mainId')
 
 onBeforeMount(async () => {
-  searchString.value = route.query.search
-
   const albumIdOpt = route.params.albumId
   const shareIdOpt = route.params.shareId
 

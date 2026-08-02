@@ -26,6 +26,7 @@ export async function editTags(
   const messageStore = useMessageStore('mainId')
   const optimisticStore = useOptimisticStore(isolationId)
   const searchFacetStore = useSearchFacetStore()
+  const dataStore = useDataStore(isolationId)
   const selection = normalizeSelection(selectionInput)
   const selectedIds = selectedCachedResourceIds(isolationId, selection)
 
@@ -40,9 +41,15 @@ export async function editTags(
     removeTagsArray: [...removeTagsArray],
     timestamp: timestamp
   }
+  const selected = createSelectionMatcher(selection)
+  const previousTags = new Map<number, string[]>()
+  for (const [index, data] of dataStore.data) {
+    if (selected(index)) previousTags.set(index, [...data.tags])
+  }
+  const previousFacets = searchFacetStore.tags.map((tag) => ({ ...tag }))
   optimisticStore.optimisticUpdateTags(payload, true)
 
-  await tryWithMessageStore('mainId', async () => {
+  const result = await tryWithMessageStore('mainId', async () => {
     const axiosResponse = await axios.put<FacetValueInfo[]>('/put/edit_tag', {
       selection,
       addTagsArray,
@@ -50,7 +57,6 @@ export async function editTags(
       timestamp
     })
 
-    const selected = createSelectionMatcher(selection)
     for (const resourceId of selectedIds) {
       updateCachedResource(resourceId, (_data, cachedIsolationId, index) => {
         if (cachedIsolationId === isolationId && selected(index)) return
@@ -60,9 +66,24 @@ export async function editTags(
       })
     }
 
-    const tags = z.array(facetValueInfoSchema).parse(axiosResponse.data)
-    searchFacetStore.applyTags(tags)
+    const parsedTags = z.array(facetValueInfoSchema).safeParse(axiosResponse.data)
+    if (parsedTags.success) {
+      searchFacetStore.applyTags(parsedTags.data)
+    } else {
+      searchFacetStore.clearAll()
+      void searchFacetStore.fetchFacets()
+      messageStore.error('Tags were updated, but the refreshed tag list was invalid. Reloading it.')
+      return { accepted: true }
+    }
 
     messageStore.success('Successfully edited tags.')
+    return { accepted: true }
   })
+
+  if (result?.accepted === true) return
+  for (const [index, tags] of previousTags) {
+    const data = dataStore.data.get(index)
+    if (data !== undefined) data.tags = tags
+  }
+  searchFacetStore.applyTags(previousFacets)
 }

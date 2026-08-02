@@ -5,6 +5,7 @@ import Home from './Home.vue'
 import HomeIsolatedBar from '@/components/NavBar/HomeBars/HomeIsolatedBar.vue'
 import { useResolvedRouteResource } from '@/script/hook/useRouteResource'
 import { useCollectionStore } from '@/store/collectionStore'
+import { escapeAndWrap } from '@/script/utils/escape'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,7 +14,9 @@ const collectionStore = useCollectionStore('subId')
 const hash = computed(() =>
   typeof route.params.hash === 'string' ? route.params.hash : ''
 )
-const basicString = computed(() => `and(album:"${hash.value}", trashed:false)`)
+const basicString = computed(
+  () => `and(album:${escapeAndWrap(hash.value)}, trashed:false)`
+)
 const searchString = computed(() => route.query.subSearch)
 
 const { resource, status, errorMessage, retry } = useResolvedRouteResource(

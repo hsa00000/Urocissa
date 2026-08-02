@@ -42,7 +42,7 @@ import SelectInverse from '@Menu/MenuButton/BtnSelectInverse.vue'
 import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
 import { GalleryAlbum } from '@type/types'
 import { useModalStore } from '@/store/modalStore'
-import { useRerenderStore } from '@/store/rerenderStore'
+import { useCollectionReloadStore } from '@/store/collectionReloadStore'
 import { ref, watchEffect } from 'vue'
 import axios from 'axios'
 import { refreshAlbumMetadata } from '@utils/refreshAlbumMetadata'
@@ -54,7 +54,7 @@ const props = defineProps<{
 const collectionStore = useCollectionStore('tempId')
 const prefetchStore = usePrefetchStore('tempId')
 const modalStore = useModalStore('mainId')
-const rerenderStore = useRerenderStore('mainId')
+const collectionReloadStore = useCollectionReloadStore('mainId')
 const route = useRoute()
 
 const waiting = ref(false)
@@ -82,7 +82,7 @@ const submit = async () => {
     }
 
     await refreshAlbumMetadata(albumId)
-    rerenderStore.rerenderHomeIsolated()
+    collectionReloadStore.requestSubCollectionReload()
   }
 }
 watchEffect(() => {

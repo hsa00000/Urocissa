@@ -13,8 +13,7 @@ import { enrichWithThumbhash } from '@/script/utils/createData'
 import { serverErrorSchema } from '@/type/schemas'
 import {
   readJwtExpiration,
-  registerHashTokenExpiration,
-  resetHashTokenExpirations
+  registerHashTokenExpiration
 } from '@/script/utils/hashTokenExpiryRegistry'
 import type { RouteResourceIsolationId, RouteResourceSnapshot } from '@/type/types'
 
@@ -50,12 +49,10 @@ function clearHydratedStores(isolationId: RouteResourceIsolationId): void {
   useInitializedStore(isolationId).initialized = false
   useDataStore(isolationId).clearAll()
   usePrefetchStore(isolationId).clearAll()
-  useTokenStore(isolationId).timestampToken = null
-  useTokenStore(isolationId).hashTokenMap.clear()
+  useTokenStore(isolationId).clearAll()
   useImgStore(isolationId).clearAll()
   useQueueStore(isolationId).clearAll()
   useOptimisticStore(isolationId).clearAll()
-  resetHashTokenExpirations(isolationId)
 }
 
 function terminateHydrationWorkers(isolationId: RouteResourceIsolationId): void {

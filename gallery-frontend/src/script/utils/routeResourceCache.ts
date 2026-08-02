@@ -65,7 +65,8 @@ export function selectedCachedResourceIds(
   return [...ids]
 }
 
-export function clearCachedResource(resourceId: string): void {
+export function clearCachedResource(resourceId: string): Set<CollectionIsolationId> {
+  const affectedCollections = new Set<CollectionIsolationId>()
   for (const isolationId of allResourceIsolationIds) {
     if (isolationId === 'detailId' || isolationId === 'subDetailId') {
       const routeStore = useRouteResourceStore(isolationId)
@@ -78,6 +79,7 @@ export function clearCachedResource(resourceId: string): void {
     const dataStore = useDataStore(isolationId)
     const index = dataStore.hashMapData.get(resourceId)
     if (index === undefined) continue
+    if (!isRouteResourceIsolation(isolationId)) affectedCollections.add(isolationId)
     dataStore.hashMapData.delete(resourceId)
     dataStore.data.delete(index)
     dataStore.batchFetched.delete(index)
@@ -89,4 +91,6 @@ export function clearCachedResource(resourceId: string): void {
   for (const isolationId of ['mainId', 'subId', 'tempId', 'shareId'] as const) {
     useAlbumStore(isolationId).albums.delete(resourceId)
   }
+
+  return affectedCollections
 }

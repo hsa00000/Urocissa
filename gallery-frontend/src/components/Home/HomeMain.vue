@@ -8,18 +8,15 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeMount, ref } from 'vue'
+import { computed } from 'vue'
 import Home from './Home.vue'
-import { LocationQueryValue, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 
 const route = useRoute()
-const searchString = ref<LocationQueryValue | LocationQueryValue[] | undefined>(null)
+const searchString = computed(() => route.query.search)
 
 const props = defineProps<{
   basicString: string | null
 }>()
 
-onBeforeMount(() => {
-  searchString.value = route.query.search
-})
 </script>

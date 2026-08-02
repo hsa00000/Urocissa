@@ -37,7 +37,7 @@ export async function createNonEmptyAlbum(
     messageStore.success('Album created successfully.')
 
     const newAlbumId = response.data
-    await albumStore.fetchAlbums()
+    await albumStore.refreshAlbums()
     return newAlbumId
   })
 }
@@ -56,7 +56,7 @@ export async function createEmptyAlbum(): Promise<string | undefined> {
     messageStore.success('Album created successfully.')
 
     const newAlbumId = response.data
-    await albumStore.fetchAlbums()
+    await albumStore.refreshAlbums()
     return newAlbumId
   })
 }

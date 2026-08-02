@@ -1,7 +1,7 @@
 import { useMessageStore } from '@/store/messageStore'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
-import { IsolationId } from '@/type/types'
+import { IsolationId, type EnrichedUnifiedData } from '@/type/types'
 import axios from 'axios'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import type { SelectionInput } from '@/type/selection'
@@ -46,8 +46,17 @@ export async function editFlags(
 
   // Optimistic update
   const isSelected = createSelectionMatcher(selection)
+  const previousFlags = new Map<
+    number,
+    Pick<EnrichedUnifiedData, 'isFavorite' | 'isArchived' | 'isTrashed'>
+  >()
   for (const [index, data] of dataStore.data) {
     if (isSelected(index)) {
+      previousFlags.set(index, {
+        isFavorite: data.isFavorite,
+        isArchived: data.isArchived,
+        isTrashed: data.isTrashed
+      })
       if (flags.isFavorite !== undefined) {
         data.isFavorite = flags.isFavorite
       }
@@ -59,7 +68,7 @@ export async function editFlags(
       }
     }
   }
-  await tryWithMessageStore('mainId', async () => {
+  const succeeded = await tryWithMessageStore('mainId', async () => {
     await axios.put('/put/edit_flags', {
       selection,
       timestamp,
@@ -75,7 +84,17 @@ export async function editFlags(
     }
 
     messageStore.success('Successfully updated.')
+    return true
   })
+
+  if (succeeded === true) return
+  for (const [index, previous] of previousFlags) {
+    const data = dataStore.data.get(index)
+    if (data === undefined) continue
+    data.isFavorite = previous.isFavorite
+    data.isArchived = previous.isArchived
+    data.isTrashed = previous.isTrashed
+  }
 }
 
 // Convenience functions

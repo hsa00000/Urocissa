@@ -1,11 +1,7 @@
 <template>
   <div class="w-100 h-100 d-flex flex-column">
     <!-- This router-view contains ViewPage.vue. -->
-    <!--
-      albumHomeIsolatedKey triggers a ViewPage re-render when photos are added or removed
-      via HomeTempBar while browsing an album, ensuring the latest album data is displayed.
-    -->
-    <router-view :key="albumHomeIsolatedKey"></router-view>
+    <router-view></router-view>
 
     <div class="w-100 flex-grow-0 flex-shrink-0">
       <slot name="home-toolbar"></slot>
@@ -68,10 +64,11 @@ import HomeEmptyCard from '@/components/Home/HomeEmptyCard.vue'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { IsolationId } from '@type/types'
-import { useRerenderStore } from '@/store/rerenderStore'
+import { useCollectionReloadStore } from '@/store/collectionReloadStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
 import { useScrollbarStore } from '@/store/scrollbarStore'
+import { useTokenStore } from '@/store/tokenStore'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -93,9 +90,10 @@ const imgStore = useImgStore(props.isolationId)
 const locationStore = useLocationStore(props.isolationId)
 const optimisticUpateStore = useOptimisticStore(props.isolationId)
 const scrollbarStore = useScrollbarStore(props.isolationId)
+const tokenStore = useTokenStore(props.isolationId)
 // albumStore should not use 'mainId'; otherwise clearAll will be called when the 'props.isolationId' component is unmounted.
 const albumStore = useAlbumStore(props.isolationId)
-const rerenderStore = useRerenderStore('mainId')
+const collectionReloadStore = useCollectionReloadStore('mainId')
 const constStore = useConstStore('mainId')
 
 const route = useRoute()
@@ -161,16 +159,6 @@ const bufferHeight = computed(() => {
   return 600000
 })
 
-const albumHomeIsolatedKey = computed(() => {
-  const hash = route.params.hash
-  if (typeof hash === 'string') {
-    const rerenderKey = rerenderStore.homeIsolatedKey.toString()
-    return rerenderKey
-  } else {
-    return 'undefineBehavior'
-  }
-})
-
 watch(
   () => props.searchString,
   (searchString) => {
@@ -184,8 +172,8 @@ const filterJsonString = computed(() =>
 )
 const reloadTrigger = computed(() =>
   props.isolationId === 'mainId'
-    ? rerenderStore.homeKey
-    : rerenderStore.homeIsolatedKey
+    ? collectionReloadStore.mainCollectionReload
+    : collectionReloadStore.subCollectionReload
 )
 
 function resetCollectionSnapshot(): void {
@@ -199,6 +187,7 @@ function resetCollectionSnapshot(): void {
   prefetchStore.timestamp = null
   prefetchStore.calculateLength(0)
   prefetchStore.locateTo = null
+  tokenStore.clearAll()
   queueStore.clearAll()
   collectionStore.clearSelection()
   imgStore.clearAll()
@@ -252,6 +241,7 @@ onBeforeUnmount(() => {
   initializedStore.initialized = false
   dataStore.clearAll()
   prefetchStore.clearAll()
+  tokenStore.clearAll()
   queueStore.clearAll()
   filterStore.searchString = null
   collectionStore.clearSelection()

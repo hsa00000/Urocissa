@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useSavedSearchStore } from '@/store/savedSearchStore'
-import { useRerenderStore } from '@/store/rerenderStore'
+import { useCollectionReloadStore } from '@/store/collectionReloadStore'
 import SavedSearchDeleteDialog from './SavedSearchDeleteDialog.vue'
 import SavedSearchNameDialog from './SavedSearchNameDialog.vue'
 import { getSavedSearchDragTiming } from './savedSearchDrag'
@@ -30,7 +30,7 @@ const router = useRouter()
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
 const savedSearchStore = useSavedSearchStore()
-const rerenderStore = useRerenderStore('mainId')
+const collectionReloadStore = useCollectionReloadStore('mainId')
 const savedSearchListId = useId()
 const renamingSearch = shallowRef<SavedSearch | null>(null)
 const deletingSearch = shallowRef<SavedSearch | null>(null)
@@ -74,7 +74,7 @@ function openDeleteDialog(search: SavedSearch): void {
 function refreshActiveRandomSearch(search: SavedSearch): void {
   const targetFullPath = router.resolve(createSavedSearchLocation(search)).fullPath
   if (shouldRefreshSavedSearch(search, route.fullPath, targetFullPath)) {
-    rerenderStore.rerenderHome()
+    collectionReloadStore.requestMainCollectionReload()
   }
 }
 

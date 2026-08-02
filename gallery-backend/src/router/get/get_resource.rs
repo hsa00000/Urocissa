@@ -126,7 +126,7 @@ fn create_resource_snapshot(resource_id: &str) -> AppResult<RouteResourceSnapsho
         .read(|table| {
             table
                 .get(resource_id)
-                .map(|value| value.map(|value| value.into_value()))
+                .map(|value| value.map(crate::storage::store::RecordValue::into_value))
         })
         .map_err(|error| AppError::from_err(ErrorKind::Database, error))?;
     let abstract_data = WRITE_BEHIND

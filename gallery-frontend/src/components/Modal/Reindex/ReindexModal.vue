@@ -7,7 +7,7 @@ import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { useAlbumStore } from '@/store/albumStore'
-import { useRerenderStore } from '@/store/rerenderStore'
+import { useCollectionReloadStore } from '@/store/collectionReloadStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useReindexJobs } from '@/script/hook/useReindexJobs'
 import { useRouteResourceStore } from '@/store/routeResourceStore'
@@ -22,7 +22,7 @@ const modalStore = useModalStore('mainId')
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
 const searchFacetStore = useSearchFacetStore()
-const rerenderStore = useRerenderStore('mainId')
+const collectionReloadStore = useCollectionReloadStore('mainId')
 const albumStores: Record<CollectionIsolationId, ReturnType<typeof useAlbumStore>> = {
   mainId: useAlbumStore('mainId'),
   subId: useAlbumStore('subId'),
@@ -54,8 +54,8 @@ const handleTerminalSuccess = async (_job: unknown, isolationId: IsolationId) =>
       searchFacetStore.fetchFacets(),
       albumStores[albumIsolationId].fetchAlbums()
     ])
-    if (albumIsolationId === 'subId') rerenderStore.rerenderHomeIsolated()
-    else rerenderStore.rerenderHome()
+    if (albumIsolationId === 'subId') collectionReloadStore.requestSubCollectionReload()
+    else collectionReloadStore.requestMainCollectionReload()
   })
 }
 

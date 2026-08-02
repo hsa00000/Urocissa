@@ -3,8 +3,10 @@ import axios from 'axios'
 import { createPinia, setActivePinia } from 'pinia'
 import { editAlbums } from './editAlbums'
 import { editFlags } from './editFlags'
+import { editTags } from './editTags'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
+import { clearCachedResource } from '@/script/utils/routeResourceCache'
 import type { EnrichedUnifiedData, IsolationId } from '@/type/types'
 
 vi.mock('@/store/routeResourceStore', () => ({
@@ -51,6 +53,10 @@ function memberships(isolationId: IsolationId): string[] {
   return data.albums
 }
 
+function tags(isolationId: IsolationId): string[] {
+  return useDataStore(isolationId).data.get(0)?.tags ?? []
+}
+
 describe('route resource mutation cache synchronization', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -64,6 +70,7 @@ describe('route resource mutation cache synchronization', () => {
     const putSpy = vi.spyOn(axios, 'put').mockRejectedValueOnce(new Error('network failed'))
     await editFlags([0], { isArchived: true }, 'mainId')
 
+    expect(useDataStore('mainId').data.get(0)?.isArchived).toBe(false)
     expect(useDataStore('detailId').data.get(0)?.isArchived).toBe(false)
 
     putSpy.mockResolvedValueOnce({ status: 200 })
@@ -79,5 +86,22 @@ describe('route resource mutation cache synchronization', () => {
 
     expect(memberships('mainId')).toEqual(['album-a'])
     expect(memberships('detailId')).toEqual(['album-a'])
+  })
+
+  it('rolls back optimistic tags when the backend rejects the mutation', async () => {
+    vi.spyOn(axios, 'put').mockRejectedValueOnce(new Error('network failed'))
+
+    await editTags([0], ['new-tag'], [], 'mainId')
+
+    expect(tags('mainId')).toEqual([])
+    expect(tags('detailId')).toEqual([])
+  })
+
+  it('reports affected collection snapshots when clearing every cached copy', () => {
+    const affected = clearCachedResource(ID)
+
+    expect(affected).toEqual(new Set(['mainId']))
+    expect(useDataStore('mainId').data.size).toBe(0)
+    expect(useDataStore('detailId').data.size).toBe(0)
   })
 })

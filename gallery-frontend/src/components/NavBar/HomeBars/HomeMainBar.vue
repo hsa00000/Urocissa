@@ -9,7 +9,7 @@ import { useConstStore } from '@/store/constStore'
 import { useUploadStore } from '@/store/uploadStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useSavedSearchStore } from '@/store/savedSearchStore'
-import { useRerenderStore } from '@/store/rerenderStore'
+import { useCollectionReloadStore } from '@/store/collectionReloadStore'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
 import GallerySearchControl from '@/components/Search/GallerySearchControl.vue'
@@ -35,7 +35,7 @@ const collectionStore = useCollectionStore('mainId')
 const uploadStore = useUploadStore('mainId')
 const messageStore = useMessageStore('mainId')
 const savedSearchStore = useSavedSearchStore()
-const rerenderStore = useRerenderStore('mainId')
+const collectionReloadStore = useCollectionReloadStore('mainId')
 const vuetifyTheme = useTheme()
 const { smAndDown } = useDisplay()
 const route = useRoute()
@@ -110,7 +110,7 @@ async function applySearchState({
     sortOrder === 'random' &&
     router.resolve(location).fullPath === route.fullPath
   ) {
-    rerenderStore.rerenderHome()
+    collectionReloadStore.requestMainCollectionReload()
     return
   }
 

@@ -6,7 +6,8 @@ import { TokenResponseSchema } from '@/type/schemas'
 import { storeHashToken } from '@/db/db'
 import {
   readJwtExpiration,
-  registerHashTokenExpiration
+  registerHashTokenExpiration,
+  resetHashTokenExpirations
 } from '@/script/utils/hashTokenExpiryRegistry'
 
 interface JwtPayload {
@@ -60,12 +61,14 @@ export const useTokenStore = (isolationId: IsolationId) =>
       },
 
       async _updateTimestampToken(): Promise<void> {
+        const tokenToRenew = this.timestampToken
+        if (tokenToRenew === null) return
         try {
           const response = await axios.post('/post/renew-timestamp-token', {
-            token: this.timestampToken
+            token: tokenToRenew
           })
           const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
-          this.timestampToken = parsed.token
+          if (this.timestampToken === tokenToRenew) this.timestampToken = parsed.token
         } catch (err) {
           console.error('Failed to renew timestamp token:', err)
         }
@@ -123,7 +126,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
         await this.refreshTimestampTokenIfExpired()
 
         const newToken = await this._updateHashToken(currentToken)
-        if (newToken !== null) {
+        if (newToken !== null && this.hashTokenMap.get(hash) === currentToken) {
           this.hashTokenMap.set(hash, newToken)
           registerHashTokenExpiration(isolationId, hash, readJwtExpiration(newToken))
         }
@@ -144,6 +147,12 @@ export const useTokenStore = (isolationId: IsolationId) =>
         if (freshToken === null) return
 
         await storeHashToken(hash, freshToken)
+      },
+
+      clearAll(): void {
+        this.timestampToken = null
+        this.hashTokenMap.clear()
+        resetHashTokenExpirations(isolationId)
       }
     }
   })()

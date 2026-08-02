@@ -1,4 +1,4 @@
-import { useRerenderStore } from '@/store/rerenderStore'
+import { useCollectionReloadStore } from '@/store/collectionReloadStore'
 import type { Router } from 'vue-router'
 
 export async function navigateToAlbum(
@@ -8,8 +8,8 @@ export async function navigateToAlbum(
   const albumPath = `/albums/view/${albumId}/read`
 
   if (router.currentRoute.value.fullPath.startsWith('/albums')) {
-    const rerenderStore = useRerenderStore('mainId')
-    rerenderStore.rerenderHome()
+    const collectionReloadStore = useCollectionReloadStore('mainId')
+    collectionReloadStore.requestMainCollectionReload()
   }
 
   return router.push({ path: albumPath })
