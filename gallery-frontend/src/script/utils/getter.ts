@@ -13,6 +13,19 @@ function containsResource(isolationId: IsolationId, resourceId: string): boolean
   return index !== undefined && dataStore.data.has(index)
 }
 
+interface NestedResourceRouteLike {
+  meta: { level?: unknown }
+  params: RouteLocationNormalizedLoaded['params']
+}
+
+/** Returns the ID owned by the deepest currently matched resource layer. */
+export function getRouteResourceId(route: NestedResourceRouteLike): string | undefined {
+  if (route.meta.level === 4) {
+    return typeof route.params.subhash === 'string' ? route.params.subhash : undefined
+  }
+  return typeof route.params.hash === 'string' ? route.params.hash : undefined
+}
+
 export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded): IsolationId {
   if (route.meta.level === 4 && typeof route.params.subhash === 'string') {
     return containsResource('subId', route.params.subhash) ? 'subId' : 'subDetailId'
@@ -32,15 +45,8 @@ export function getHashIndexDataFromRoute(route: RouteLocationNormalizedLoaded) 
   const isolationId = getIsolationIdByRoute(route)
   const storeData = useDataStore(isolationId)
 
-  let hash: string
-
-  if (route.meta.level === 4 && typeof route.params.subhash === 'string') {
-    hash = route.params.subhash
-  } else if (route.meta.level === 2 && typeof route.params.hash === 'string') {
-    hash = route.params.hash
-  } else {
-    return undefined
-  }
+  const hash = getRouteResourceId(route)
+  if (hash === undefined || (route.meta.level !== 2 && route.meta.level !== 4)) return undefined
 
   const index = storeData.hashMapData.get(hash)
 

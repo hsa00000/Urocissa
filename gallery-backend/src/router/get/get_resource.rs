@@ -1,16 +1,22 @@
 use crate::operations::transitor::abstract_data_to_database_timestamp_return;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::state::TargetSet;
-use crate::public::db::tree_snapshot::PendingTreeSnapshot;
+use crate::public::db::tree_snapshot::{PendingTreeSnapshot, TREE_SNAPSHOT};
 use crate::public::db::write_behind::WRITE_BEHIND;
 use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::response::database_timestamp::DataBaseTimestampReturn;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
-use crate::router::get::get_prefetch::{Prefetch, insert_data_into_tree_snapshot};
+use crate::router::get::get_prefetch::{
+    Prefetch, cache_prefetch, insert_data_into_tree_snapshot, read_current_cached_prefetch,
+};
 use crate::router::{AppResult, GuardResult};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::{LazyLock, Mutex};
+
+static ROUTE_RESOURCE_SNAPSHOT_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,8 +52,39 @@ fn build_single_resource_snapshot(
     }
 }
 
-fn create_resource_snapshot(resource_id: &str) -> AppResult<RouteResourceSnapshot> {
-    validate_resource_id(resource_id)?;
+fn route_resource_cache_key(resource_id: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    "route-resource-snapshot-v1".hash(&mut hasher);
+    resource_id.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn cached_resource_prefetch(resource_id: &str, cache_key: u64) -> Option<Prefetch> {
+    let prefetch = read_current_cached_prefetch(cache_key)?;
+    if prefetch.data_length != 1 || prefetch.locate_to != Some(0) {
+        return None;
+    }
+    let snapshot = TREE_SNAPSHOT.read_tree_snapshot(prefetch.timestamp).ok()?;
+    (snapshot.len() == 1
+        && snapshot
+            .get_hash(0)
+            .ok()
+            .is_some_and(|id| id.as_str() == resource_id))
+    .then_some(prefetch)
+}
+
+fn get_or_create_resource_prefetch(resource_id: &str) -> AppResult<Prefetch> {
+    let cache_key = route_resource_cache_key(resource_id);
+    let _creation_guard = ROUTE_RESOURCE_SNAPSHOT_LOCK.lock().map_err(|error| {
+        AppError::new(
+            ErrorKind::Internal,
+            format!("Failed to lock route resource snapshot cache: {error:?}"),
+        )
+    })?;
+
+    if let Some(prefetch) = cached_resource_prefetch(resource_id, cache_key) {
+        return Ok(prefetch);
+    }
 
     let (slot_ref, structural_epoch, universe) = {
         let state = TREE.state.read().map_err(|error| {
@@ -64,6 +101,25 @@ fn create_resource_snapshot(resource_id: &str) -> AppResult<RouteResourceSnapsho
         })?;
         (slot_ref, state.structural_epoch(), state.arena.capacity())
     };
+
+    let snapshot = build_single_resource_snapshot(slot_ref, structural_epoch, universe);
+    let (timestamp, data_length) = insert_data_into_tree_snapshot(snapshot);
+    debug_assert_eq!(data_length, 1);
+    let prefetch = Prefetch {
+        timestamp,
+        locate_to: Some(0),
+        data_length,
+    };
+    // Register direct snapshots in the same derived-cache index used by normal
+    // prefetches. Repeated opens reuse the snapshot and existing expiry cleanup
+    // can remove it instead of leaving one tree snapshot behind per request.
+    cache_prefetch(cache_key, prefetch);
+    Ok(prefetch)
+}
+
+fn create_resource_snapshot(resource_id: &str) -> AppResult<RouteResourceSnapshot> {
+    validate_resource_id(resource_id)?;
+    let prefetch = get_or_create_resource_prefetch(resource_id)?;
 
     let durable = TREE
         .store
@@ -82,20 +138,13 @@ fn create_resource_snapshot(resource_id: &str) -> AppResult<RouteResourceSnapsho
             )
         })?;
 
-    let snapshot = build_single_resource_snapshot(slot_ref, structural_epoch, universe);
-    let (timestamp, data_length) = insert_data_into_tree_snapshot(snapshot);
-    debug_assert_eq!(data_length, 1);
-
-    let claims = ClaimsTimestamp::new(None, timestamp);
+    let claims = ClaimsTimestamp::new(None, prefetch.timestamp);
     let token = claims.encode();
-    let data = abstract_data_to_database_timestamp_return(abstract_data, timestamp, true, true);
+    let data =
+        abstract_data_to_database_timestamp_return(abstract_data, prefetch.timestamp, true, true);
 
     Ok(RouteResourceSnapshot {
-        prefetch: Prefetch {
-            timestamp,
-            locate_to: Some(0),
-            data_length,
-        },
+        prefetch,
         token,
         data,
     })
@@ -114,7 +163,7 @@ pub async fn get_resource(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_single_resource_snapshot, validate_resource_id};
+    use super::{build_single_resource_snapshot, route_resource_cache_key, validate_resource_id};
     use crate::public::db::tree::state::SlotRef;
     use crate::public::error::ErrorKind;
 
@@ -150,5 +199,17 @@ mod tests {
         assert_eq!(snapshot.targets.len(), 1);
         assert_eq!(snapshot.targets.slot_ref_for_ordinal(17), Some(slot_ref));
         assert!(snapshot.scrollbar.is_empty());
+    }
+
+    #[test]
+    fn direct_resource_cache_keys_are_stable_and_resource_specific() {
+        assert_eq!(
+            route_resource_cache_key(VALID_MEDIA_ID),
+            route_resource_cache_key(VALID_MEDIA_ID)
+        );
+        assert_ne!(
+            route_resource_cache_key(VALID_MEDIA_ID),
+            route_resource_cache_key(VALID_ALBUM_ID)
+        );
     }
 }

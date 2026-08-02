@@ -58,6 +58,13 @@ function clearHydratedStores(isolationId: RouteResourceIsolationId): void {
   resetHashTokenExpirations(isolationId)
 }
 
+function terminateHydrationWorkers(isolationId: RouteResourceIsolationId): void {
+  const workerStore = useWorkerStore(isolationId)
+  if (workerStore.worker !== null || workerStore.imgWorker.length > 0) {
+    workerStore.terminateWorker()
+  }
+}
+
 function hydrateSnapshot(
   isolationId: RouteResourceIsolationId,
   snapshot: RouteResourceSnapshot
@@ -120,6 +127,10 @@ export const useRouteResourceStore = (isolationId: RouteResourceIsolationId) =>
         this.generation += 1
         const generation = this.generation
         const controller = new AbortController()
+        // Worker replies are keyed only by collection index. A late reply for
+        // the previous route resource would otherwise populate index 0 after
+        // the next ID has taken ownership of this isolation.
+        terminateHydrationWorkers(isolationId)
         clearHydratedStores(isolationId)
         this.requestedId = resourceId
         this.status = 'loading'
@@ -164,10 +175,7 @@ export const useRouteResourceStore = (isolationId: RouteResourceIsolationId) =>
       },
       clear(): void {
         this.cancel()
-        const workerStore = useWorkerStore(isolationId)
-        if (workerStore.worker !== null || workerStore.imgWorker.length > 0) {
-          workerStore.terminateWorker()
-        }
+        terminateHydrationWorkers(isolationId)
         clearHydratedStores(isolationId)
         this.requestedId = null
         this.status = 'idle'

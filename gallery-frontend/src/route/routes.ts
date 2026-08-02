@@ -1,6 +1,11 @@
 // src/router.ts
 
-import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
+import {
+  createRouter,
+  createWebHistory,
+  isNavigationFailure,
+  RouteRecordRaw
+} from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 import 'vue-router'
 
@@ -18,7 +23,10 @@ import { loginRoute } from './loginRoute'
 import { shareRoute } from './shareRoute'
 import { configRoute } from './configRoute'
 import { uploadRoute } from './uploadRoute'
-import { saveInitialMainLocateOverride } from './initialRouteLocate'
+import {
+  resetInitialMainLocateOverride,
+  saveInitialMainLocateOverride
+} from './initialRouteLocate'
 import { withoutReaderOnlyQuery } from './routeQueryScope'
 
 // ======================================
@@ -189,17 +197,26 @@ export async function prepareInitialNestedHistory(): Promise<void> {
         // Replace current entry with the first ancestor, then push remaining ancestors, then restore target
         const first = chain[0]
         if (first !== undefined) {
-          await router.replace(first)
+          const failure = await router.replace(first)
+          if (isNavigationFailure(failure)) {
+            resetInitialMainLocateOverride()
+            return
+          }
           for (let i = 1; i < chain.length; i++) {
             const step = chain[i]
             if (step !== undefined) {
-              await router.push(step)
+              const failure = await router.push(step)
+              if (isNavigationFailure(failure)) {
+                resetInitialMainLocateOverride()
+                return
+              }
             }
           }
         }
-        await router.push(target)
+        const failure = await router.push(target)
+        if (isNavigationFailure(failure)) resetInitialMainLocateOverride()
       } catch {
-        // No-op on navigation aborts
+        resetInitialMainLocateOverride()
       }
     }
   }

@@ -10,13 +10,15 @@ vi.mock('@/api/fetchRouteResource', () => ({
   fetchRouteResource: vi.fn()
 }))
 
+const workerStoreMock = vi.hoisted(() => ({
+  worker: null as Worker | null,
+  imgWorker: [] as Worker[],
+  initializeWorker: vi.fn(),
+  terminateWorker: vi.fn()
+}))
+
 vi.mock('@/store/workerStore', () => ({
-  useWorkerStore: () => ({
-    worker: null,
-    imgWorker: [],
-    initializeWorker: vi.fn(),
-    terminateWorker: vi.fn()
-  })
+  useWorkerStore: () => workerStoreMock
 }))
 
 function snapshot(id: string, timestamp: number): RouteResourceSnapshot {
@@ -65,6 +67,16 @@ describe('route resource store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    workerStoreMock.worker = null
+    workerStoreMock.imgWorker = []
+    workerStoreMock.initializeWorker.mockImplementation(() => {
+      workerStoreMock.worker = {} as Worker
+      workerStoreMock.imgWorker = [{} as Worker]
+    })
+    workerStoreMock.terminateWorker.mockImplementation(() => {
+      workerStoreMock.worker = null
+      workerStoreMock.imgWorker = []
+    })
   })
 
   it('hydrates a one-item snapshot at index zero and deduplicates in-flight loads', async () => {
@@ -106,6 +118,23 @@ describe('route resource store', () => {
 
     expect(store.requestedId).toBe('b'.repeat(64))
     expect(store.status).toBe('ready')
+    expect(useDataStore('detailId').hashMapData.has('a'.repeat(64))).toBe(false)
+    expect(useDataStore('detailId').hashMapData.get('b'.repeat(64))).toBe(0)
+  })
+
+  it('terminates the previous image generation before reusing index zero', async () => {
+    vi.mocked(fetchRouteResource)
+      .mockResolvedValueOnce(snapshot('a'.repeat(64), 11))
+      .mockResolvedValueOnce(snapshot('b'.repeat(64), 22))
+    const store = useRouteResourceStore('detailId')
+
+    await store.load('a'.repeat(64))
+    expect(workerStoreMock.initializeWorker).toHaveBeenCalledOnce()
+
+    await store.load('b'.repeat(64))
+
+    expect(workerStoreMock.terminateWorker).toHaveBeenCalledOnce()
+    expect(workerStoreMock.initializeWorker).toHaveBeenCalledTimes(2)
     expect(useDataStore('detailId').hashMapData.has('a'.repeat(64))).toBe(false)
     expect(useDataStore('detailId').hashMapData.get('b'.repeat(64))).toBe(0)
   })

@@ -295,6 +295,23 @@ impl PrefetchReturn {
 // ── Helper functions for each step ──────────────────────────────────────────
 // -----------------------------------------------------------------------------
 
+pub(crate) fn read_current_cached_prefetch(query_hash: u64) -> Option<Prefetch> {
+    let prefetch = QUERY_SNAPSHOT.read_query_snapshot(query_hash).ok()??;
+    let snapshot_epoch = TREE_SNAPSHOT
+        .read_tree_snapshot(prefetch.timestamp)
+        .and_then(|snapshot| snapshot.structural_epoch());
+    let current_epoch = TREE.state.read().ok().map(|state| state.structural_epoch());
+    snapshot_epoch
+        .ok()
+        .is_some_and(|epoch| Some(epoch) == current_epoch)
+        .then_some(prefetch)
+}
+
+pub(crate) fn cache_prefetch(query_hash: u64, prefetch: Prefetch) {
+    QUERY_SNAPSHOT.in_memory.insert(query_hash, prefetch);
+    BATCH_COORDINATOR.execute_batch_detached(FlushQuerySnapshotTask);
+}
+
 fn check_query_cache(
     query_hash: u64,
     resolved_share_option: &mut Option<ResolvedShare>,
@@ -302,31 +319,18 @@ fn check_query_cache(
     let find_cache_start_time = Instant::now();
 
     // Check cache first
-    if let Ok(Some(prefetch)) = QUERY_SNAPSHOT.read_query_snapshot(query_hash) {
-        let snapshot_epoch = TREE_SNAPSHOT
-            .read_tree_snapshot(prefetch.timestamp)
-            .and_then(|snapshot| snapshot.structural_epoch());
-        let current_epoch = TREE.state.read().ok().map(|state| state.structural_epoch());
-        if snapshot_epoch
-            .ok()
-            .is_some_and(|epoch| Some(epoch) == current_epoch)
-        {
-            crate::perf_timing!(
-                "prefetch.query_cache_lookup",
-                find_cache_start_time,
-                "Query cache found"
-            );
-            let claims = ClaimsTimestamp::new(mem::take(resolved_share_option), prefetch.timestamp);
-            return Some(Json(PrefetchReturn::new(
-                prefetch,
-                claims.encode(),
-                claims.resolved_share_opt,
-            )));
-        }
-        log::warn!(
-            "ignoring query cache entry {} because its compact tree snapshot is stale or corrupt",
-            prefetch.timestamp
+    if let Some(prefetch) = read_current_cached_prefetch(query_hash) {
+        crate::perf_timing!(
+            "prefetch.query_cache_lookup",
+            find_cache_start_time,
+            "Query cache found"
         );
+        let claims = ClaimsTimestamp::new(mem::take(resolved_share_option), prefetch.timestamp);
+        return Some(Json(PrefetchReturn::new(
+            prefetch,
+            claims.encode(),
+            claims.resolved_share_opt,
+        )));
     }
 
     crate::perf_timing!(
@@ -581,8 +585,7 @@ fn create_json_response(
 
     // Cache the result
     if let Some(query_hash) = query_hash {
-        QUERY_SNAPSHOT.in_memory.insert(query_hash, prefetch);
-        BATCH_COORDINATOR.execute_batch_detached(FlushQuerySnapshotTask);
+        cache_prefetch(query_hash, prefetch);
     }
 
     // Build response

@@ -41,15 +41,6 @@ export async function editTags(
     timestamp: timestamp
   }
   optimisticStore.optimisticUpdateTags(payload, true)
-  const selected = createSelectionMatcher(selection)
-  for (const resourceId of selectedIds) {
-    updateCachedResource(resourceId, (_data, cachedIsolationId, index) => {
-      if (cachedIsolationId === isolationId && selected(index)) return
-      const dataStore = useDataStore(cachedIsolationId)
-      dataStore.addTags(index, addTagsArray)
-      dataStore.removeTags(index, removeTagsArray)
-    })
-  }
 
   await tryWithMessageStore('mainId', async () => {
     const axiosResponse = await axios.put<FacetValueInfo[]>('/put/edit_tag', {
@@ -58,6 +49,16 @@ export async function editTags(
       removeTagsArray,
       timestamp
     })
+
+    const selected = createSelectionMatcher(selection)
+    for (const resourceId of selectedIds) {
+      updateCachedResource(resourceId, (_data, cachedIsolationId, index) => {
+        if (cachedIsolationId === isolationId && selected(index)) return
+        const dataStore = useDataStore(cachedIsolationId)
+        dataStore.addTags(index, addTagsArray)
+        dataStore.removeTags(index, removeTagsArray)
+      })
+    }
 
     const tags = z.array(facetValueInfoSchema).parse(axiosResponse.data)
     searchFacetStore.applyTags(tags)

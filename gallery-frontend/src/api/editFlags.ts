@@ -59,20 +59,20 @@ export async function editFlags(
       }
     }
   }
-  for (const resourceId of selectedIds) {
-    updateCachedResource(resourceId, (data) => {
-      if (flags.isFavorite !== undefined) data.isFavorite = flags.isFavorite
-      if (flags.isArchived !== undefined) data.isArchived = flags.isArchived
-      if (flags.isTrashed !== undefined) data.isTrashed = flags.isTrashed
-    })
-  }
-
   await tryWithMessageStore('mainId', async () => {
     await axios.put('/put/edit_flags', {
       selection,
       timestamp,
       ...flags
     })
+
+    for (const resourceId of selectedIds) {
+      updateCachedResource(resourceId, (data) => {
+        if (flags.isFavorite !== undefined) data.isFavorite = flags.isFavorite
+        if (flags.isArchived !== undefined) data.isArchived = flags.isArchived
+        if (flags.isTrashed !== undefined) data.isTrashed = flags.isTrashed
+      })
+    }
 
     messageStore.success('Successfully updated.')
   })

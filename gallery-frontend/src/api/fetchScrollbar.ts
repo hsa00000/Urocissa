@@ -40,6 +40,9 @@ export async function fetchScrollbar(isolationId: IsolationId) {
       }
     )
     const scrollbarDataArray = z.array(scrollbarDataSchema).parse(response.data)
+    // A newer collection snapshot may have replaced this timestamp while the
+    // request was in flight. Never attach old scrollbar boundaries to it.
+    if (prefetchStore.timestamp !== timestamp) return
     scrollbarStore.initialize(scrollbarDataArray)
   })()
   pendingRequests.set(isolationId, { timestamp, promise: request })

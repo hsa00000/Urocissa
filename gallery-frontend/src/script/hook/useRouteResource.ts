@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, toValue, watch } from 'vue'
+import { computed, onScopeDispose, toValue, watch } from 'vue'
 import type { MaybeRefOrGetter } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import { useImgStore } from '@/store/imgStore'
@@ -17,18 +17,26 @@ export interface ResolvedRouteResource {
   data: EnrichedUnifiedData
 }
 
+interface RouteResourceLoaderOptions {
+  enabled?: MaybeRefOrGetter<boolean>
+  clearWhenDisabled?: boolean
+}
+
 export function useRouteResourceLoader(
   resourceId: MaybeRefOrGetter<string>,
   isolationId: RouteResourceIsolationId,
-  enabled: MaybeRefOrGetter<boolean> = true
+  options: RouteResourceLoaderOptions = {}
 ) {
   const store = useRouteResourceStore(isolationId)
+  const enabled = options.enabled ?? true
+  const clearWhenDisabled = options.clearWhenDisabled ?? true
 
   watch(
     [() => toValue(resourceId), () => toValue(enabled)],
     ([id, isEnabled]) => {
       if (!isEnabled || id === '') {
-        store.clear()
+        if (clearWhenDisabled) store.clear()
+        else store.cancel()
         return
       }
       void store.load(id)
@@ -36,7 +44,7 @@ export function useRouteResourceLoader(
     { immediate: true }
   )
 
-  onBeforeUnmount(() => {
+  onScopeDispose(() => {
     store.clear()
   })
 

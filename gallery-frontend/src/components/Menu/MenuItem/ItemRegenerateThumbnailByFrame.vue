@@ -7,7 +7,7 @@
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
 import axios from 'axios'
-import { getIsolationIdByRoute } from '@utils/getter'
+import { getIsolationIdByRoute, getRouteResourceId } from '@utils/getter'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useEditStore } from '@/store/editStore'
@@ -20,8 +20,8 @@ const messageStore = useMessageStore('mainId')
 const editStore = useEditStore('mainId')
 
 const regenerateThumbnailByFrame = async () => {
-  const hash = route.params.hash
-  if (typeof hash !== 'string') return
+  const hash = getRouteResourceId(route)
+  if (hash === undefined) return
 
   if (editStore.hasRegenerate(hash)) return
 

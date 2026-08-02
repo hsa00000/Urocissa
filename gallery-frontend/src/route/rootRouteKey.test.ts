@@ -40,5 +40,30 @@ describe('root route key', () => {
 
     expect(after).toBe(before)
   })
-})
 
+  it('does not collide when query values contain delimiters or arrays', () => {
+    const delimiterLeft = createRootRouteKey({
+      ...common,
+      level: 1,
+      query: { search: 'a-b', locate: 'c' }
+    })
+    const delimiterRight = createRootRouteKey({
+      ...common,
+      level: 1,
+      query: { search: 'a', locate: 'b-c' }
+    })
+    const oneArrayValue = createRootRouteKey({
+      ...common,
+      level: 1,
+      query: { search: ['a,b'] }
+    })
+    const twoArrayValues = createRootRouteKey({
+      ...common,
+      level: 1,
+      query: { search: ['a', 'b'] }
+    })
+
+    expect(delimiterLeft).not.toBe(delimiterRight)
+    expect(oneArrayValue).not.toBe(twoArrayValues)
+  })
+})

@@ -8,9 +8,11 @@ interface RootRouteKeyInput {
   homeKey: boolean
 }
 
-function queryValue(value: LocationQueryValue | LocationQueryValue[] | undefined): string {
+function queryValue(
+  value: LocationQueryValue | LocationQueryValue[] | undefined
+): string | LocationQueryValue[] {
   if (typeof value === 'string') return value
-  if (Array.isArray(value)) return value.join(',')
+  if (Array.isArray(value)) return [...value]
   return ''
 }
 
@@ -31,5 +33,16 @@ export function createRootRouteKey({
   const priorityId = isReaderRoute ? '' : queryValue(query.priority_id)
   const sort = isReaderRoute ? '' : queryValue(query.sort)
 
-  return `${String(baseName)}-${search}-${locate}-${priorityId}-${sort}-${concurrencyNumber}-${String(homeKey)}`
+  // A structured key avoids delimiter collisions (including array values such
+  // as ["a,b"] versus ["a", "b"]) that could otherwise keep a stale root
+  // collection mounted after a real query change.
+  return JSON.stringify([
+    String(baseName),
+    search,
+    locate,
+    priorityId,
+    sort,
+    concurrencyNumber,
+    homeKey
+  ])
 }

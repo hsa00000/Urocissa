@@ -6,7 +6,7 @@
 
 <script lang="ts" setup>
 import { useRoute, useRouter } from 'vue-router'
-import { getIsolationIdByRoute } from '@utils/getter'
+import { getIsolationIdByRoute, getRouteResourceId } from '@utils/getter'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import axios from 'axios'
 import { useMessageStore } from '@/store/messageStore'
@@ -36,12 +36,7 @@ const deleteData = async () => {
     await axios.delete('/delete/delete-data', {
       data: { selection, timestamp }
     })
-    const routeResourceId =
-      route.meta.level === 4 && typeof route.params.subhash === 'string'
-        ? route.params.subhash
-        : route.meta.level === 2 && typeof route.params.hash === 'string'
-          ? route.params.hash
-          : undefined
+    const routeResourceId = getRouteResourceId(route)
     for (const resourceId of selectedIds) clearCachedResource(resourceId)
     messageStore.success('Successfully deleted data.')
     if (routeResourceId !== undefined && selectedIds.includes(routeResourceId)) router.back()

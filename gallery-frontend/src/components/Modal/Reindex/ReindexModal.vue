@@ -10,6 +10,11 @@ import { useAlbumStore } from '@/store/albumStore'
 import { useRerenderStore } from '@/store/rerenderStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useReindexJobs } from '@/script/hook/useReindexJobs'
+import { useRouteResourceStore } from '@/store/routeResourceStore'
+import {
+  collectionIsolationForResource,
+  isRouteResourceIsolation
+} from '@/script/utils/routeResourceCache'
 import ReindexPlanForm from './ReindexPlanForm.vue'
 import ReindexJobList from './ReindexJobList.vue'
 
@@ -37,15 +42,19 @@ const isOpen = computed({
 
 const handleTerminalSuccess = async (_job: unknown, isolationId: IsolationId) => {
   await tryWithMessageStore('mainId', async () => {
-    const albumIsolationId: CollectionIsolationId =
-      isolationId === 'detailId' || isolationId === 'subDetailId' ? 'mainId' : isolationId
+    const albumIsolationId = collectionIsolationForResource(isolationId)
+    if (isRouteResourceIsolation(isolationId)) {
+      const routeResourceStore = useRouteResourceStore(isolationId)
+      const resourceId = routeResourceStore.requestedId
+      if (resourceId !== null) await routeResourceStore.load(resourceId, true)
+    }
     searchFacetStore.clearAll()
     for (const albumStore of Object.values(albumStores)) albumStore.clearAll()
     await Promise.all([
       searchFacetStore.fetchFacets(),
       albumStores[albumIsolationId].fetchAlbums()
     ])
-    if (isolationId === 'subId') rerenderStore.rerenderHomeIsolated()
+    if (albumIsolationId === 'subId') rerenderStore.rerenderHomeIsolated()
     else rerenderStore.rerenderHome()
   })
 }

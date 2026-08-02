@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { nextTick, ref } from 'vue'
+import { computed, effectScope, nextTick, ref } from 'vue'
+import { fetchRouteResource } from '@/api/fetchRouteResource'
 import { useDataStore } from '@/store/dataStore'
 import { useImgStore } from '@/store/imgStore'
 import { useRouteResourceStore } from '@/store/routeResourceStore'
-import { useResolvedRouteResource } from './useRouteResource'
-import type { EnrichedUnifiedData } from '@/type/types'
+import { useResolvedRouteResource, useRouteResourceLoader } from './useRouteResource'
+import type { EnrichedUnifiedData, RouteResourceSnapshot } from '@/type/types'
+
+vi.mock('@/api/fetchRouteResource', () => ({
+  fetchRouteResource: vi.fn()
+}))
 
 vi.mock('@/store/workerStore', () => ({
   useWorkerStore: () => ({
@@ -43,7 +48,66 @@ function image(id: string, archived = false): EnrichedUnifiedData {
 }
 
 describe('route resource resolver', () => {
-  beforeEach(() => setActivePinia(createPinia()))
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('skips the direct request while the collection already owns the resource', async () => {
+    const id = ref('e'.repeat(64))
+    const main = useDataStore('mainId')
+    main.data.set(4, image(id.value))
+    main.hashMapData.set(id.value, 4)
+    const needsDirect = computed(() => !main.hashMapData.has(id.value))
+    const scope = effectScope()
+
+    scope.run(() => {
+      useRouteResourceLoader(id, 'detailId', {
+        enabled: needsDirect,
+        clearWhenDisabled: false
+      })
+    })
+    await nextTick()
+    expect(fetchRouteResource).not.toHaveBeenCalled()
+
+    const directSnapshot: RouteResourceSnapshot = {
+      prefetch: { timestamp: 9, dataLength: 1, locateTo: 0 },
+      token: 'snapshot-token',
+      data: {
+        abstractData: {
+          type: 'image',
+          id: id.value,
+          width: 10,
+          height: 10,
+          ext: 'jpg',
+          size: 10,
+          tags: [],
+          exif: {},
+          phash: null,
+          thumbhash: null,
+          cacheVersion: 0,
+          pending: false,
+          albums: [],
+          alias: [],
+          description: null,
+          isFavorite: false,
+          isArchived: true,
+          isTrashed: false,
+          updateAt: 0
+        },
+        timestamp: 9,
+        token: 'hash-token'
+      }
+    }
+    vi.mocked(fetchRouteResource).mockResolvedValue(directSnapshot)
+    main.hashMapData.delete(id.value)
+    main.data.delete(4)
+    await nextTick()
+    await nextTick()
+
+    expect(fetchRouteResource).toHaveBeenCalledOnce()
+    scope.stop()
+  })
 
   it('prefers an exact collection row and falls back to the direct snapshot', () => {
     const id = ref('a'.repeat(64))

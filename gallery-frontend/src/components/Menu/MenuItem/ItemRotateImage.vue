@@ -9,15 +9,15 @@
 
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
-import { getIsolationIdByRoute } from '@utils/getter'
+import { getIsolationIdByRoute, getRouteResourceId } from '@utils/getter'
 import { handleRotateImage } from '@/script/utils/rotate'
 
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 
 const rotateImage = async () => {
-  const hash = route.params.hash
-  if (typeof hash !== 'string') return
+  const hash = getRouteResourceId(route)
+  if (hash === undefined) return
 
   await handleRotateImage(hash, isolationId)
 }
