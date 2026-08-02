@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch } from 'vue'
-import type { IsolationId } from '@/type/types'
+import type { CollectionIsolationId, IsolationId } from '@/type/types'
 import type { ReindexOperation } from '@/api/reindex'
 import { useModalStore } from '@/store/modalStore'
 import { useConfigStore } from '@/store/configStore'
@@ -18,7 +18,7 @@ const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
 const searchFacetStore = useSearchFacetStore()
 const rerenderStore = useRerenderStore('mainId')
-const albumStores: Record<IsolationId, ReturnType<typeof useAlbumStore>> = {
+const albumStores: Record<CollectionIsolationId, ReturnType<typeof useAlbumStore>> = {
   mainId: useAlbumStore('mainId'),
   subId: useAlbumStore('subId'),
   tempId: useAlbumStore('tempId'),
@@ -37,9 +37,14 @@ const isOpen = computed({
 
 const handleTerminalSuccess = async (_job: unknown, isolationId: IsolationId) => {
   await tryWithMessageStore('mainId', async () => {
+    const albumIsolationId: CollectionIsolationId =
+      isolationId === 'detailId' || isolationId === 'subDetailId' ? 'mainId' : isolationId
     searchFacetStore.clearAll()
     for (const albumStore of Object.values(albumStores)) albumStore.clearAll()
-    await Promise.all([searchFacetStore.fetchFacets(), albumStores[isolationId].fetchAlbums()])
+    await Promise.all([
+      searchFacetStore.fetchFacets(),
+      albumStores[albumIsolationId].fetchAlbums()
+    ])
     if (isolationId === 'subId') rerenderStore.rerenderHomeIsolated()
     else rerenderStore.rerenderHome()
   })

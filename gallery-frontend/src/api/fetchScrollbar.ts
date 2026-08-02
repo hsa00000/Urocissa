@@ -6,6 +6,13 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import { z } from 'zod'
 import { useTokenStore } from '@/store/tokenStore'
 
+interface PendingScrollbarRequest {
+  timestamp: number
+  promise: Promise<void>
+}
+
+const pendingRequests = new Map<IsolationId, PendingScrollbarRequest>()
+
 export async function fetchScrollbar(isolationId: IsolationId) {
   const prefetchStore = usePrefetchStore(isolationId)
   const tokenStore = useTokenStore(isolationId)
@@ -16,16 +23,30 @@ export async function fetchScrollbar(isolationId: IsolationId) {
     console.error('timestamp is null, cannot fetch scrollbar')
     return
   }
+  const pending = pendingRequests.get(isolationId)
+  if (pending?.timestamp === timestamp) return pending.promise
   const timestampToken = tokenStore.timestampToken
   if (timestampToken === null) {
     console.error('timestampToken is null, cannot fetch scrollbar')
     return
   }
-  const response = await axios.get<ScrollbarData[]>(`/get/get-scroll-bar?timestamp=${timestamp}`, {
-    headers: {
-      Authorization: `Bearer ${timestampToken}`
-    }
-  })
-  const scrollbarDataArray = z.array(scrollbarDataSchema).parse(response.data)
-  scrollbarStore.initialize(scrollbarDataArray)
+  const request = (async () => {
+    const response = await axios.get<ScrollbarData[]>(
+      `/get/get-scroll-bar?timestamp=${timestamp}`,
+      {
+        headers: {
+          Authorization: `Bearer ${timestampToken}`
+        }
+      }
+    )
+    const scrollbarDataArray = z.array(scrollbarDataSchema).parse(response.data)
+    scrollbarStore.initialize(scrollbarDataArray)
+  })()
+  pendingRequests.set(isolationId, { timestamp, promise: request })
+
+  try {
+    await request
+  } finally {
+    if (pendingRequests.get(isolationId)?.promise === request) pendingRequests.delete(isolationId)
+  }
 }

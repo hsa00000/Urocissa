@@ -18,6 +18,8 @@ import { loginRoute } from './loginRoute'
 import { shareRoute } from './shareRoute'
 import { configRoute } from './configRoute'
 import { uploadRoute } from './uploadRoute'
+import { saveInitialMainLocateOverride } from './initialRouteLocate'
+import { withoutReaderOnlyQuery } from './routeQueryScope'
 
 // ======================================
 // Define Simple Static Routes
@@ -133,9 +135,10 @@ router.afterEach((to) => {
   document.title = `${pageTitle} - Urocissa`
 })
 
-// On first app load, if user lands directly on a nested page (view/read),
-// synthesize the parent entry in history so a simple router.back() returns to it.
-void router.isReady().then(async () => {
+// Complete the initial parent history chain before mounting the app. No route
+// component can start an API request while these synthetic navigations run.
+export async function prepareInitialNestedHistory(): Promise<void> {
+  await router.isReady()
   const to = router.currentRoute.value
 
   const meta = to.meta
@@ -148,26 +151,40 @@ void router.isReady().then(async () => {
     if (routeName === undefined || baseName === undefined) return
 
     const q = to.query
+    const parentQuery = withoutReaderOnlyQuery(q)
     const hashParam = typeof to.params.hash === 'string' ? to.params.hash : undefined
+    if (baseName !== 'share' && hashParam !== undefined) {
+      saveInitialMainLocateOverride(hashParam)
+    }
     // subhash is not needed for ancestors, only for target which we restore via fullPath
 
     const chain: RouteLocationRaw[] = []
     // Always build from top-most parent to immediate parent to ensure multi-step back works
     if (routeName === `${baseName}ReadViewPage`) {
       if (hashParam === undefined) return
-      chain.push({ name: baseName, query: q })
-      chain.push({ name: `${baseName}ViewPage`, params: { hash: hashParam }, query: q })
+      chain.push({ name: baseName, query: parentQuery })
+      chain.push({
+        name: `${baseName}ViewPage`,
+        params: { hash: hashParam },
+        query: parentQuery
+      })
       chain.push({ name: `${baseName}ReadPage`, params: { hash: hashParam }, query: q })
     } else if (routeName === `${baseName}ReadPage`) {
       if (hashParam === undefined) return
-      chain.push({ name: baseName, query: q })
-      chain.push({ name: `${baseName}ViewPage`, params: { hash: hashParam }, query: q })
+      chain.push({ name: baseName, query: parentQuery })
+      chain.push({
+        name: `${baseName}ViewPage`,
+        params: { hash: hashParam },
+        query: parentQuery
+      })
     } else if (routeName === `${baseName}ViewPage`) {
       chain.push({ name: baseName, query: q })
     }
 
     if (chain.length > 0) {
-      const target: RouteLocationRaw = { path: to.fullPath }
+      // Keep the target as a URL string. Passing a fullPath through the `path`
+      // field can drop its query while Vue Router normalizes the location.
+      const target: RouteLocationRaw = to.fullPath
       try {
         // Replace current entry with the first ancestor, then push remaining ancestors, then restore target
         const first = chain[0]
@@ -186,6 +203,6 @@ void router.isReady().then(async () => {
       }
     }
   }
-})
+}
 
 export default router

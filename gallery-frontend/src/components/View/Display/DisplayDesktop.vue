@@ -24,6 +24,7 @@
         v-if="abstractData && abstractData.type === 'album' && !configStore.disableImg"
         :index="index"
         :album="abstractData"
+        :isolation-id="isolationId"
       />
     </div>
   </div>
@@ -36,7 +37,7 @@ import ViewPageDisplayAlbum from './DisplayAlbum.vue'
 import NavigationOverlays from './NavigationOverlays.vue'
 import type { EnrichedUnifiedData, IsolationId } from '@type/types'
 
-const props = defineProps<{
+defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
@@ -47,5 +48,5 @@ const props = defineProps<{
   nextPage: Record<string, unknown> | undefined
 }>()
 
-const configStore = useConfigStore(props.isolationId)
+const configStore = useConfigStore('mainId')
 </script>

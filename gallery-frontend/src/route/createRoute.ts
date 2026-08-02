@@ -7,6 +7,7 @@ import 'vue-router'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
 import HomeIsolated from '@/components/Home/HomeIsolated.vue'
 import ViewPageIsolated from '@/components/View/ViewPageIsolated.vue'
+import { withoutReaderOnlyQuery } from './routeQueryScope'
 
 type BaseName =
   | 'home'
@@ -92,7 +93,7 @@ export function createRoute(baseName: BaseName, component: Component): RouteReco
                 return {
                   name: `${baseName}ViewPage`,
                   params: { hash: route.params.hash, subhash: undefined },
-                  query: route.query
+                  query: withoutReaderOnlyQuery(route.query)
                 }
               },
               getChildPage: (route, subhash) => {

@@ -69,7 +69,6 @@ import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { IsolationId } from '@type/types'
 import { useRerenderStore } from '@/store/rerenderStore'
-import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
 import { useScrollbarStore } from '@/store/scrollbarStore'
@@ -97,7 +96,6 @@ const scrollbarStore = useScrollbarStore(props.isolationId)
 // albumStore should not use 'mainId'; otherwise clearAll will be called when the 'props.isolationId' component is unmounted.
 const albumStore = useAlbumStore(props.isolationId)
 const rerenderStore = useRerenderStore('mainId')
-const searchFacetStore = useSearchFacetStore()
 const constStore = useConstStore('mainId')
 
 const route = useRoute()
@@ -173,6 +171,51 @@ const albumHomeIsolatedKey = computed(() => {
   }
 })
 
+watch(
+  () => props.searchString,
+  (searchString) => {
+    filterStore.searchString = searchString
+  },
+  { immediate: true }
+)
+
+const filterJsonString = computed(() =>
+  filterStore.generateFilterJsonString(props.basicString)
+)
+const reloadTrigger = computed(() =>
+  props.isolationId === 'mainId'
+    ? rerenderStore.homeKey
+    : rerenderStore.homeIsolatedKey
+)
+
+function resetCollectionSnapshot(): void {
+  scrollController.resetPhysicalAnchor()
+  if (workerStore.worker !== null || workerStore.imgWorker.length > 0) {
+    workerStore.terminateWorker()
+  }
+
+  initializedStore.initialized = false
+  dataStore.clearAll()
+  prefetchStore.timestamp = null
+  prefetchStore.calculateLength(0)
+  prefetchStore.locateTo = null
+  queueStore.clearAll()
+  collectionStore.clearSelection()
+  imgStore.clearAll()
+  offsetStore.clearAll()
+  rowStore.clearAll()
+  scrollbarStore.clearAll()
+  locationStore.clearAll()
+  optimisticUpateStore.clearAll()
+  albumStore.clearAll()
+  scrollTopStore.scrollTop = 0
+}
+
+usePrefetch(filterJsonString, windowWidth, route, props.isolationId, {
+  beforeApply: resetCollectionSnapshot,
+  reloadTrigger
+})
+
 // Remove the locate query param after the two-step jump fully completes,
 // so refreshing won't re-trigger the jump.
 // Uses history.replaceState instead of router.replace to avoid changing
@@ -191,13 +234,6 @@ watch(
 )
 
 onMounted(() => {
-  filterStore.searchString = props.searchString
-  usePrefetch(
-    filterStore.generateFilterJsonString(props.basicString),
-    windowWidth,
-    route,
-    props.isolationId
-  )
   useInitializeScrollPosition(
     imageContainerRef,
     bufferHeight,
@@ -210,7 +246,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   scrollController.cancel()
-  workerStore.terminateWorker()
+  if (workerStore.worker !== null || workerStore.imgWorker.length > 0) {
+    workerStore.terminateWorker()
+  }
   initializedStore.initialized = false
   dataStore.clearAll()
   prefetchStore.clearAll()
@@ -223,7 +261,6 @@ onBeforeUnmount(() => {
   scrollbarStore.clearAll()
   locationStore.clearAll()
   optimisticUpateStore.clearAll()
-  searchFacetStore.clearAll()
   albumStore.clearAll()
 })
 </script>

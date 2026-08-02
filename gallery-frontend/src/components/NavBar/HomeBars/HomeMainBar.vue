@@ -222,6 +222,7 @@ watchEffect(() => {
           v-if="isLevelOne"
           class="d-none d-md-flex"
           :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
+          :aria-label="themeIsLight ? 'Switch to dark theme' : 'Switch to light theme'"
           @click="themeIsLight = !themeIsLight"
         />
         <BtnCreateAlbum v-if="isLevelOne" v-model="loading" />

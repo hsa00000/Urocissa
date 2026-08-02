@@ -7,12 +7,25 @@ import { toImgWorker } from '@/worker/workerApi'
 import { watch } from 'vue'
 import { useShareStore } from '@/store/shareStore'
 import { useTokenStore } from '@/store/tokenStore'
+import type { IsolationId } from '@/type/types'
+import { updateCachedResource } from './routeResourceCache'
 export async function refreshAlbumMetadata(albumId: string) {
-  const dataStore = useDataStore('mainId')
-  const workerStore = useWorkerStore('mainId')
+  const isolationId = (['mainId', 'detailId'] as const).find((candidate) => {
+    const store = useDataStore(candidate)
+    const index = store.hashMapData.get(albumId)
+    return index !== undefined && store.data.get(index)?.type === 'album'
+  }) satisfies IsolationId | undefined
+
+  if (isolationId === undefined) {
+    console.error(`cannot find album with albumId = ${albumId}`)
+    return
+  }
+
+  const dataStore = useDataStore(isolationId)
+  const workerStore = useWorkerStore(isolationId)
   const messageStore = useMessageStore('mainId')
   const shareStore = useShareStore('mainId')
-  const tokenStore = useTokenStore('mainId')
+  const tokenStore = useTokenStore(isolationId)
 
   const albumIndex = dataStore.hashMapData.get(albumId)
   if (albumIndex === undefined) {
@@ -38,9 +51,16 @@ export async function refreshAlbumMetadata(albumId: string) {
         console.error(`cannot find album with albumIndex = ${albumIndex}`)
         return
       }
+      updateCachedResource(albumId, (cachedData) => {
+        if (cachedData.type === 'album') Object.assign(cachedData, data)
+      })
 
       const coverHash = data.cover
-      if (coverHash === null) return
+      if (coverHash === null) {
+        messageStore.success(`Album metadata updated successfully`)
+        stopWatch()
+        return
+      }
 
       await tokenStore.refreshTimestampTokenIfExpired()
       await tokenStore.refreshHashTokenIfExpired(coverHash)
@@ -90,5 +110,5 @@ export async function refreshAlbumMetadata(albumId: string) {
     }
   )
 
-  await fetchDataInWorker('single', albumIndex, 'mainId')
+  await fetchDataInWorker('single', albumIndex, isolationId)
 }

@@ -45,6 +45,7 @@ import EditBatchAlbumsModal from '@/components/Modal/EditBatchAlbumsModal.vue'
 import SettingModal from '@/components/Modal/SettingModal.vue'
 import ReindexModal from '@/components/Modal/Reindex/ReindexModal.vue'
 import { useModalStore } from '@/store/modalStore'
+import { createRootRouteKey } from '@/route/rootRouteKey'
 
 const modalStore = useModalStore('mainId')
 const scrollbarStore = useScrollbarStore('mainId')
@@ -55,17 +56,16 @@ const constStore = useConstStore('mainId')
 const configStore = useConfigStore('mainId')
 const route = useRoute()
 
-// The routeKey is used to ensure that the router-view reloads the Home.vue component properly.
-// Without it, Vue may cache the component for optimization, potentially causing bugs.
+// Level 1 collection changes may replace the root page. Reader-only query
+// changes deliberately keep this key stable so nested route layers stay mounted.
 const routeKey = computed(() => {
-  const currentPage = route.meta.baseName
-  const search = typeof route.query.search === 'string' ? route.query.search : ''
-  const locate = typeof route.query.locate === 'string' ? route.query.locate : ''
-  const priorityId = typeof route.query.priority_id === 'string' ? route.query.priority_id : ''
-  const sort = typeof route.query.sort === 'string' ? route.query.sort : ''
-  const concurrencyNumber = constStore.concurrencyNumber
-  const homeKey = rerenderStore.homeKey.toString()
-  return `${currentPage}-${search}-${locate}-${priorityId}-${sort}-${concurrencyNumber}-${homeKey}`
+  return createRootRouteKey({
+    baseName: route.meta.baseName,
+    level: route.meta.level,
+    query: route.query,
+    concurrencyNumber: constStore.concurrencyNumber,
+    homeKey: rerenderStore.homeKey
+  })
 })
 
 onBeforeMount(async () => {

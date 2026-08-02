@@ -3,12 +3,29 @@ import { inject } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import { escapeAndWrap } from '@utils/escape'
 import { useShareStore } from '@/store/shareStore'
+import type { IsolationId } from '@/type/types'
 
 export { getThumbnailSrc } from './thumbnail'
 
-export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded) {
-  const isolationId = route.meta.level === 3 || route.meta.level === 4 ? 'subId' : 'mainId'
-  return isolationId
+function containsResource(isolationId: IsolationId, resourceId: string): boolean {
+  const dataStore = useDataStore(isolationId)
+  const index = dataStore.hashMapData.get(resourceId)
+  return index !== undefined && dataStore.data.has(index)
+}
+
+export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded): IsolationId {
+  if (route.meta.level === 4 && typeof route.params.subhash === 'string') {
+    return containsResource('subId', route.params.subhash) ? 'subId' : 'subDetailId'
+  }
+  if (route.meta.level === 3) return 'subId'
+  if (
+    route.meta.level === 2 &&
+    route.meta.baseName !== 'share' &&
+    typeof route.params.hash === 'string'
+  ) {
+    return containsResource('mainId', route.params.hash) ? 'mainId' : 'detailId'
+  }
+  return 'mainId'
 }
 
 export function getHashIndexDataFromRoute(route: RouteLocationNormalizedLoaded) {
@@ -17,10 +34,10 @@ export function getHashIndexDataFromRoute(route: RouteLocationNormalizedLoaded) 
 
   let hash: string
 
-  if (isolationId === 'mainId' && typeof route.params.hash === 'string') {
-    hash = route.params.hash
-  } else if (isolationId === 'subId' && typeof route.params.subhash === 'string') {
+  if (route.meta.level === 4 && typeof route.params.subhash === 'string') {
     hash = route.params.subhash
+  } else if (route.meta.level === 2 && typeof route.params.hash === 'string') {
+    hash = route.params.hash
   } else {
     return undefined
   }

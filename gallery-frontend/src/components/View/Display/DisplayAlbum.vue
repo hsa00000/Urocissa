@@ -1,9 +1,5 @@
 <template>
   <div class="h-100 d-flex align-center justify-center">
-    <router-view v-slot="{ Component }">
-      <component :is="Component" />
-    </router-view>
-
     <div class="card-pair">
       <v-card
         class="square album-cover-card rounded-0"
@@ -24,7 +20,7 @@
           <v-text-field
             v-model="titleModel"
             variant="underlined"
-            @blur="editTitle(props.album, titleModel)"
+            @blur="editTitle(props.album, titleModel, isolationId)"
             :placeholder="titleModel === '' ? 'Add Title' : undefined"
           />
         </v-card-item>
@@ -69,19 +65,19 @@ import { useAlbumStore } from '@/store/albumStore'
 import { filesize } from 'filesize'
 import { useRoute } from 'vue-router'
 import { dater } from '@utils/dater'
-import { GalleryAlbum } from '@type/types'
+import type { GalleryAlbum, IsolationId } from '@type/types'
 import { ref, watch } from 'vue'
 import { editTitle } from '@utils/createAlbums'
 
 const titleModel = ref('')
 const route = useRoute()
 const albumStore = useAlbumStore('mainId')
-const imgStore = useImgStore('mainId')
-
 const props = defineProps<{
   index: number
   album: GalleryAlbum
+  isolationId: IsolationId
 }>()
+const imgStore = useImgStore(props.isolationId)
 
 watch(
   () => props.album.title,

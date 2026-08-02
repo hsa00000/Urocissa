@@ -78,7 +78,8 @@ const props = defineProps<{
   abstractData: EnrichedUnifiedData | undefined
 }>()
 
-const configStore = useConfigStore(props.isolationId)
+// Device and user configuration are global; resource data remains isolated.
+const configStore = useConfigStore('mainId')
 const prefetchStore = usePrefetchStore(props.isolationId)
 const workerStore = useWorkerStore(props.isolationId)
 const queueStore = useQueueStore(props.isolationId)

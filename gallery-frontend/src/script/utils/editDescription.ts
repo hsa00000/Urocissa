@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { EnrichedUnifiedData, IsolationId } from '@type/types'
+import { updateCachedResource } from './routeResourceCache'
 
 export async function editUserDefinedDescription(
   abstractData: EnrichedUnifiedData,
@@ -9,7 +10,7 @@ export async function editUserDefinedDescription(
   index: number,
   isolationId: IsolationId
 ) {
-  const dataStore = useDataStore('mainId')
+  const dataStore = useDataStore(isolationId)
 
   function getCurrentDescription(): string {
     return abstractData.description ?? ''
@@ -27,9 +28,11 @@ export async function editUserDefinedDescription(
       timestamp: timestamp
     })
 
+    const nextDescription = descriptionModelValue === '' ? null : descriptionModelValue
     const item = dataStore.data.get(index)
-    if (item) {
-      item.description = descriptionModelValue === '' ? null : descriptionModelValue
-    }
+    if (item) item.description = nextDescription
+    updateCachedResource(abstractData.id, (data) => {
+      data.description = nextDescription
+    })
   }
 }

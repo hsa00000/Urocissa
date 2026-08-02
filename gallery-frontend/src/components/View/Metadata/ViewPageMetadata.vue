@@ -32,7 +32,7 @@ import { EnrichedUnifiedData, IsolationId } from '@type/types'
 import MetadataContent from './MetadataContent.vue'
 import MetadataMobile from './MetadataMobile.vue'
 
-const props = defineProps<{
+defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
@@ -40,7 +40,7 @@ const props = defineProps<{
 }>()
 
 const constStore = useConstStore('mainId')
-const configStore = useConfigStore(props.isolationId)
+const configStore = useConfigStore('mainId')
 </script>
 
 <style scoped>

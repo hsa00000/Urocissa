@@ -42,6 +42,7 @@
               "
               :index="index - 1"
               :album="previousAbstractData"
+              :isolation-id="isolationId"
             />
           </div>
         </div>
@@ -68,6 +69,7 @@
               "
               :index="index"
               :album="abstractData as unknown as GalleryAlbum"
+              :isolation-id="isolationId"
             />
           </div>
         </div>
@@ -94,6 +96,7 @@
               "
               :index="index + 1"
               :album="nextAbstractData"
+              :isolation-id="isolationId"
             />
           </div>
         </div>
@@ -135,6 +138,7 @@
             "
             :index="index - 1"
             :album="previousAbstractData"
+            :isolation-id="isolationId"
           />
         </div>
       </swiper-slide>
@@ -157,6 +161,7 @@
             v-if="abstractData && ['album'].includes(abstractData.type) && !configStore.disableImg"
             :index="index"
             :album="abstractData as GalleryAlbum"
+            :isolation-id="isolationId"
           />
         </div>
       </swiper-slide>
@@ -179,6 +184,7 @@
             v-if="nextAbstractData && nextAbstractData.type === 'album' && !configStore.disableImg"
             :index="index + 1"
             :album="nextAbstractData"
+            :isolation-id="isolationId"
           />
         </div>
       </swiper-slide>
@@ -213,7 +219,7 @@ const props = defineProps<{
   nextPage: Record<string, unknown> | undefined
 }>()
 
-const configStore = useConfigStore(props.isolationId)
+const configStore = useConfigStore('mainId')
 const dataStore = useDataStore(props.isolationId)
 const route = useRoute()
 const router = useRouter()

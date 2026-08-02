@@ -79,17 +79,14 @@ import { useConstStore } from '@/store/constStore'
 const route = useRoute()
 const shareStore = useShareStore('mainId')
 
-const props = defineProps<{
+defineProps<{
   isolationId: IsolationId
   hash: string
   index: number
   abstractData: EnrichedUnifiedData | undefined
 }>()
 
-// Use props.isolationId for constStore to support multi-window isolation if needed,
-// though constStore is usually global 'mainId' in other files, but here we can stick to props or mainId.
-// The TODO example used props.isolationId.
-const constStore = useConstStore(props.isolationId)
+const constStore = useConstStore('mainId')
 
 onMounted(() => {
   constStore.loadViewBarOverlay().catch((error: unknown) => {

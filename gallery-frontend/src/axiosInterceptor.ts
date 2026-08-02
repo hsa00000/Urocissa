@@ -9,7 +9,8 @@ import { useRedirectionStore } from '@/store/redirectionStore'
 const HEADERS = {
   ALBUM_ID: 'x-album-id',
   SHARE_ID: 'x-share-id',
-  SHARE_PASSWORD: 'x-share-password'
+  SHARE_PASSWORD: 'x-share-password',
+  SILENT_ROUTE_RESOURCE: 'x-silent-route-resource-error'
 }
 
 // --- Helpers ---
@@ -122,6 +123,14 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
  */
 async function handleAxiosResponseError(error: AxiosError) {
   if (!error.response) return Promise.reject(error)
+
+  // Route-resource failures are rendered inside the highest matched route layer.
+  // Keep authentication handling global, but avoid a duplicate snackbar for all
+  // other statuses.
+  const silentRouteResource = error.config?.headers.get(HEADERS.SILENT_ROUTE_RESOURCE)
+  if (silentRouteResource === 'true' && error.response.status !== 401) {
+    return Promise.reject(error)
+  }
 
   const stores = getStores()
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition

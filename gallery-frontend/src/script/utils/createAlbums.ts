@@ -2,11 +2,12 @@ import axios from 'axios'
 import { useMessageStore } from '@/store/messageStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { GalleryAlbum, IsolationId } from '@type/types'
-import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { tryWithMessageStore } from './try_catch'
 import type { SelectionInput } from '@/type/selection'
 import { normalizeSelection } from '@/type/selection'
+import { updateCachedResource } from './routeResourceCache'
+import { useDataStore } from '@/store/dataStore'
 
 export async function createNonEmptyAlbum(
   elementsIndex: SelectionInput,
@@ -60,9 +61,12 @@ export async function createEmptyAlbum(): Promise<string | undefined> {
   })
 }
 
-export async function editTitle(album: GalleryAlbum, titleModelValue: string) {
+export async function editTitle(
+  album: GalleryAlbum,
+  titleModelValue: string,
+  isolationId: IsolationId = 'mainId'
+) {
   const albumStore = useAlbumStore('mainId')
-  const dataStore = useDataStore('mainId')
 
   if ((album.title ?? '') !== titleModelValue) {
     const id = album.id
@@ -73,17 +77,17 @@ export async function editTitle(album: GalleryAlbum, titleModelValue: string) {
     })
     const albumInfo = albumStore.albums.get(id)
 
-    const index = dataStore.hashMapData.get(album.id)
-    if (index !== undefined) {
-      const data = dataStore.data.get(index)
-
-      if (albumInfo && data?.type === 'album') {
-        albumInfo.albumName = title
-        albumInfo.displayName = albumInfo.albumName ?? 'Untitled'
-        data.title = title
-      } else {
-        console.error(`Cannot find album with id ${id}`)
-      }
+    if (albumInfo) {
+      albumInfo.albumName = title
+      albumInfo.displayName = albumInfo.albumName ?? 'Untitled'
     }
+    const sourceStore = useDataStore(isolationId)
+    const sourceIndex = sourceStore.hashMapData.get(id)
+    const sourceData =
+      sourceIndex === undefined ? undefined : sourceStore.data.get(sourceIndex)
+    if (sourceData?.type === 'album') sourceData.title = title
+    updateCachedResource(id, (data) => {
+      if (data.type === 'album') data.title = title
+    })
   }
 }

@@ -6,6 +6,10 @@ import axios from 'axios'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import type { SelectionInput } from '@/type/selection'
 import { createSelectionMatcher, normalizeSelection } from '@/type/selection'
+import {
+  selectedCachedResourceIds,
+  updateCachedResource
+} from '@/script/utils/routeResourceCache'
 
 export interface EditFlagsPayload {
   selection: ReturnType<typeof normalizeSelection>
@@ -33,6 +37,7 @@ export async function editFlags(
   const messageStore = useMessageStore('mainId')
   const dataStore = useDataStore(isolationId)
   const selection = normalizeSelection(selectionInput)
+  const selectedIds = selectedCachedResourceIds(isolationId, selection)
 
   if (timestamp === null) {
     messageStore.error('Cannot edit flags because timestamp is missing.')
@@ -53,6 +58,13 @@ export async function editFlags(
         data.isTrashed = flags.isTrashed
       }
     }
+  }
+  for (const resourceId of selectedIds) {
+    updateCachedResource(resourceId, (data) => {
+      if (flags.isFavorite !== undefined) data.isFavorite = flags.isFavorite
+      if (flags.isArchived !== undefined) data.isArchived = flags.isArchived
+      if (flags.isTrashed !== undefined) data.isTrashed = flags.isTrashed
+    })
   }
 
   await tryWithMessageStore('mainId', async () => {

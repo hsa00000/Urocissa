@@ -1,60 +1,76 @@
-<template>
-  <v-overlay
-    v-model="overlayVisible"
-    height="100%"
-    width="100%"
-    class="d-flex"
-    id="view-page"
-    :transition="false"
-    :close-on-back="false"
-  >
-    <div v-if="index !== undefined" class="pa-0 h-100 w-100 d-flex position-relative bg-background">
-      <ViewPageDisplay
-        :abstract-data="abstractData"
-        :index="index"
-        :hash="hash"
-        :isolation-id="isolationId"
-      />
-      <ViewPageMetadata
-        v-if="abstractData && constStore.showInfo"
-        :abstract-data="abstractData"
-        :index="index"
-        :hash="hash"
-        :isolation-id="isolationId"
-      />
-    </div>
-    <div
-      v-else
-      fluid
-      class="pa-0 h-100 overflow-hidden position-relative"
-      style="background-color: black"
-    >
-      <div class="d-flex align-center justify-center w-100 h-100">
-        <v-progress-circular indeterminate color="primary" size="64" />
-      </div>
-    </div>
-  </v-overlay>
-</template>
-
 <script setup lang="ts">
 import { computed } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { useDataStore } from '@/store/dataStore'
 import ViewPageDisplay from '@/components/View/Display/Display.vue'
 import ViewPageMetadata from '@/components/View/Metadata/ViewPageMetadata.vue'
-import { IsolationId } from '@type/types'
+import { useResolvedRouteResource } from '@/script/hook/useRouteResource'
 import { useConstStore } from '@/store/constStore'
 import { useConfigStore } from '@/store/configStore'
+import type {
+  IsolationId,
+  RouteResourceIsolationId
+} from '@type/types'
+import type { RouteResourceExpectedType } from '@/script/hook/useRouteResource'
 import { interceptMobileInfoBackNavigation } from './mobileInfoBackNavigation'
+
 const props = defineProps<{
-  isolationId: IsolationId
+  collectionIsolationId: IsolationId
+  directIsolationId?: RouteResourceIsolationId
+  hashParam: 'hash' | 'subhash'
+  expectedTypes?: readonly RouteResourceExpectedType[]
 }>()
 
-const dataStore = useDataStore(props.isolationId)
 const route = useRoute()
 const router = useRouter()
 const constStore = useConstStore('mainId')
 const configStore = useConfigStore('mainId')
+
+const hash = computed(() => {
+  const value = route.params[props.hashParam]
+  return typeof value === 'string' ? value : ''
+})
+
+const { resource, status, errorMessage, retry } = useResolvedRouteResource(
+  hash,
+  props.collectionIsolationId,
+  props.directIsolationId,
+  props.expectedTypes
+)
+
+const overlayVisible = computed<boolean>({
+  get: () => true,
+  set: (value) => {
+    if (!value) router.back()
+  }
+})
+
+const errorTitle = computed(() => {
+  switch (status.value) {
+    case 'invalid':
+      return 'Invalid item ID'
+    case 'not-found':
+      return 'Item not found'
+    case 'wrong-type':
+      return 'Item cannot be opened here'
+    default:
+      return 'Unable to load item'
+  }
+})
+
+const errorBody = computed(() => {
+  if (status.value === 'wrong-type') {
+    return 'This route only accepts an image or video.'
+  }
+  return errorMessage.value ?? 'The item could not be loaded. Please try again.'
+})
+
+function leave(): void {
+  router.back()
+}
+
+function retryLoad(): void {
+  void retry()
+}
 
 onBeforeRouteLeave(() =>
   interceptMobileInfoBackNavigation({
@@ -66,43 +82,78 @@ onBeforeRouteLeave(() =>
     }
   })
 )
-
-const overlayVisible = computed<boolean>({
-  get() {
-    // The overlay is always visible as long as this component exists.
-    return true
-  },
-  set(val: boolean) {
-    if (!val) {
-      // When the overlay is requested to close (e.g., via ESC), navigate back.
-      router.back()
-    }
-  }
-})
-
-const hash = computed(() => {
-  if (props.isolationId === 'mainId') {
-    return route.params.hash as string
-  } else {
-    return route.params.subhash as string
-  }
-})
-
-const index = computed(() => {
-  return dataStore.hashMapData.get(hash.value)
-})
-
-const abstractData = computed(() => {
-  if (index.value !== undefined) {
-    return dataStore.data.get(index.value)
-  } else {
-    return undefined
-  }
-})
 </script>
+
+<template>
+  <v-overlay
+    id="view-page"
+    v-model="overlayVisible"
+    height="100%"
+    width="100%"
+    content-class="w-100 h-100"
+    class="d-flex"
+    :transition="false"
+    :close-on-back="false"
+  >
+    <!-- Keep the child route host alive for every parent loading/error state. -->
+    <router-view />
+
+    <v-sheet
+      v-if="status === 'ready' && resource !== undefined"
+      :key="`${resource.isolationId}:${hash}`"
+      color="background"
+      class="pa-0 h-100 w-100 d-flex position-relative"
+    >
+      <ViewPageDisplay
+        :abstract-data="resource.data"
+        :index="resource.index"
+        :hash="hash"
+        :isolation-id="resource.isolationId"
+      />
+      <ViewPageMetadata
+        v-if="constStore.showInfo"
+        :abstract-data="resource.data"
+        :index="resource.index"
+        :hash="hash"
+        :isolation-id="resource.isolationId"
+      />
+    </v-sheet>
+
+    <v-sheet
+      v-else-if="status === 'loading' || status === 'idle'"
+      color="background"
+      class="h-100 w-100 d-flex flex-column align-center justify-center ga-4"
+    >
+      <v-progress-circular indeterminate color="primary" size="64" />
+      <span class="text-body-1">Loading item…</span>
+    </v-sheet>
+
+    <v-sheet
+      v-else
+      color="background"
+      class="h-100 w-100 d-flex align-center justify-center pa-4"
+    >
+      <v-alert
+        type="error"
+        variant="tonal"
+        icon="mdi-alert-circle-outline"
+        :title="errorTitle"
+        max-width="640"
+        class="w-100"
+      >
+        <p class="mb-2">{{ errorBody }}</p>
+        <p class="text-body-2 text-break mb-4">Requested ID: {{ hash }}</p>
+        <v-btn color="primary" variant="flat" class="me-2" @click="retryLoad">
+          Retry
+        </v-btn>
+        <v-btn variant="text" @click="leave">Leave</v-btn>
+      </v-alert>
+    </v-sheet>
+  </v-overlay>
+</template>
+
 <style scoped>
 .v-container::-webkit-scrollbar {
   display: none;
-  /* Hide scrollbar */
 }
 </style>

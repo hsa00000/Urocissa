@@ -9,6 +9,7 @@ use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::album::ResolvedShare;
 use crate::public::structure::expression::{AlbumFilterValue, Expression};
 use crate::public::structure::gallery_sort_order::GallerySortOrder;
+use crate::public::structure::object::next_mutation_timestamp;
 use crate::public::structure::response::row::ScrollBarData;
 use crate::router::AppResult;
 use crate::router::GuardResult;
@@ -542,11 +543,14 @@ fn query_cache_key(
         .then(|| build_cache_key(expression_option, locate_option, sort_order))
 }
 
-fn insert_data_into_tree_snapshot(snapshot: PendingTreeSnapshot) -> (i64, usize) {
+pub(crate) fn insert_data_into_tree_snapshot(snapshot: PendingTreeSnapshot) -> (i64, usize) {
     let db_start_time = Instant::now();
 
     // Persist to snapshot
-    let timestamp_millis = Utc::now().timestamp_millis();
+    // Snapshot tokens are public identifiers. Millisecond wall-clock time alone can
+    // collide when independent route resources are opened concurrently, so reuse
+    // the process-wide monotonic timestamp generator.
+    let timestamp_millis = next_mutation_timestamp();
     let snapshot_length = snapshot.ordinals.len();
     TREE_SNAPSHOT.in_memory.insert(timestamp_millis, snapshot);
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeSnapshotTask);

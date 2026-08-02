@@ -7,8 +7,13 @@ import axios from 'axios'
 import { z } from 'zod'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import type { SelectionInput } from '@/type/selection'
-import { normalizeSelection } from '@/type/selection'
+import { createSelectionMatcher, normalizeSelection } from '@/type/selection'
 import { useSearchFacetStore } from '@/store/searchFacetStore'
+import { useDataStore } from '@/store/dataStore'
+import {
+  selectedCachedResourceIds,
+  updateCachedResource
+} from '@/script/utils/routeResourceCache'
 
 export async function editTags(
   selectionInput: SelectionInput,
@@ -22,6 +27,7 @@ export async function editTags(
   const optimisticStore = useOptimisticStore(isolationId)
   const searchFacetStore = useSearchFacetStore()
   const selection = normalizeSelection(selectionInput)
+  const selectedIds = selectedCachedResourceIds(isolationId, selection)
 
   if (timestamp === null) {
     messageStore.error('Cannot edit tags because timestamp is missing.')
@@ -35,6 +41,15 @@ export async function editTags(
     timestamp: timestamp
   }
   optimisticStore.optimisticUpdateTags(payload, true)
+  const selected = createSelectionMatcher(selection)
+  for (const resourceId of selectedIds) {
+    updateCachedResource(resourceId, (_data, cachedIsolationId, index) => {
+      if (cachedIsolationId === isolationId && selected(index)) return
+      const dataStore = useDataStore(cachedIsolationId)
+      dataStore.addTags(index, addTagsArray)
+      dataStore.removeTags(index, removeTagsArray)
+    })
+  }
 
   await tryWithMessageStore('mainId', async () => {
     const axiosResponse = await axios.put<FacetValueInfo[]>('/put/edit_tag', {

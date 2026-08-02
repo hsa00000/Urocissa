@@ -11,6 +11,7 @@ pub mod get_list;
 pub mod get_page;
 pub mod get_prefetch;
 pub mod get_reindex_jobs;
+pub mod get_resource;
 pub mod get_write_behind;
 
 pub fn generate_get_routes() -> Vec<Route> {
@@ -57,6 +58,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_fs_completion::get_fs_completion,
         get_import::get_folder_import_status,
         get_reindex_jobs::get_reindex_jobs,
+        get_resource::get_resource,
         get_write_behind::get_write_behind_status,
         crate::router::saved_searches::get_saved_searches
     ]

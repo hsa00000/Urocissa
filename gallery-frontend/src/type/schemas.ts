@@ -251,6 +251,12 @@ export const databaseTimestampSchema = z.object({
   token: z.string()
 })
 
+export const routeResourceSnapshotSchema = z.object({
+  prefetch: prefetchSchema,
+  token: z.string(),
+  data: databaseTimestampSchema
+})
+
 export const SubRowSchema = z.object({
   displayElements: z.array(displayElementSchema)
 })

@@ -6,7 +6,7 @@ import { createApp } from 'vue'
 import App from '@/components/App.vue'
 
 // Importing router and state management
-import router from '@/route/routes'
+import router, { prepareInitialNestedHistory } from '@/route/routes'
 import { createPinia } from 'pinia'
 
 // Importing global styles and icons
@@ -52,4 +52,5 @@ const vuetify = createVuetify({
 // Apply necessary plugins and mount the app
 app.use(router)
 app.use(vuetify)
+await prepareInitialNestedHistory()
 app.mount('#app')

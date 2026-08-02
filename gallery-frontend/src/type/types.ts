@@ -16,6 +16,7 @@ import {
   ResolvedShareSchema,
   TokenResponseSchema,
   BackendDataParser,
+  routeResourceSnapshotSchema,
   savedSearchContextSchema,
   savedSearchSchema
 } from '@type/schemas'
@@ -35,6 +36,7 @@ export type SubRow = z.infer<typeof SubRowSchema>
 export type Share = z.infer<typeof ShareSchema>
 export type ResolvedShare = z.infer<typeof ResolvedShareSchema>
 export type TokenResponse = z.infer<typeof TokenResponseSchema>
+export type RouteResourceSnapshot = z.infer<typeof routeResourceSnapshotSchema>
 export type SavedSearchContext = z.infer<typeof savedSearchContextSchema>
 export type SavedSearch = z.infer<typeof savedSearchSchema>
 
@@ -55,7 +57,9 @@ export interface SlicedData {
 }
 
 export type GallerySortOrder = 'descending' | 'ascending' | 'random'
-export type IsolationId = 'mainId' | 'subId' | 'tempId' | 'shareId'
+export type CollectionIsolationId = 'mainId' | 'subId' | 'tempId' | 'shareId'
+export type RouteResourceIsolationId = 'detailId' | 'subDetailId'
+export type IsolationId = CollectionIsolationId | RouteResourceIsolationId
 export type FetchDataMethod = 'batch' | 'single'
 export type MessageColor = 'error' | 'success' | 'info'
 
