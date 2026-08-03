@@ -2,6 +2,8 @@ import { computed, onScopeDispose, toValue, watch } from 'vue'
 import type { MaybeRefOrGetter } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import { useImgStore } from '@/store/imgStore'
+import { useInitializedStore } from '@/store/initializedStore'
+import { usePrefetchStore } from '@/store/prefetchStore'
 import { useRouteResourceStore } from '@/store/routeResourceStore'
 import type {
   EnrichedUnifiedData,
@@ -20,6 +22,11 @@ export interface ResolvedRouteResource {
 interface RouteResourceLoaderOptions {
   enabled?: MaybeRefOrGetter<boolean>
   clearWhenDisabled?: boolean
+}
+
+interface RouteResourceResolverOptions {
+  collectionOnly?: boolean
+  onCollectionRetry?: () => void
 }
 
 export function useRouteResourceLoader(
@@ -57,9 +64,12 @@ export function useResolvedRouteResource(
   resourceId: MaybeRefOrGetter<string>,
   collectionIsolationId: IsolationId,
   directIsolationId?: RouteResourceIsolationId,
-  expectedTypes?: readonly RouteResourceExpectedType[]
+  expectedTypes?: readonly RouteResourceExpectedType[],
+  options: RouteResourceResolverOptions = {}
 ) {
   const collectionStore = useDataStore(collectionIsolationId)
+  const initializedStore = useInitializedStore(collectionIsolationId)
+  const prefetchStore = usePrefetchStore(collectionIsolationId)
   const directDataStore = directIsolationId ? useDataStore(directIsolationId) : undefined
   const directStore = directIsolationId ? useRouteResourceStore(directIsolationId) : undefined
 
@@ -86,15 +96,32 @@ export function useResolvedRouteResource(
       !expectedTypes.includes(resource.value.data.type)
   )
 
+  const collectionMissResolved = computed(() => {
+    const id = toValue(resourceId)
+    const resolution = prefetchStore.locateResolution
+    return (
+      options.collectionOnly === true &&
+      initializedStore.initialized &&
+      prefetchStore.timestamp !== null &&
+      resolution?.requestedId === id &&
+      resolution.index === null
+    )
+  })
+
   const status = computed(() => {
     if (wrongType.value) return 'wrong-type' as const
     if (resource.value !== undefined) return 'ready' as const
+    if (collectionMissResolved.value) return 'unavailable' as const
     if (directStore === undefined) return 'loading' as const
     if (directStore.requestedId !== toValue(resourceId)) return 'loading' as const
     return directStore.status
   })
 
-  const errorMessage = computed(() => directStore?.errorMessage ?? null)
+  const errorMessage = computed(() =>
+    collectionMissResolved.value
+      ? 'This item is not available through this share link.'
+      : directStore?.errorMessage ?? null
+  )
 
   // A direct snapshot can render before the background collection locates the
   // same item. Preserve the already-decoded media before collection priority
@@ -132,6 +159,11 @@ export function useResolvedRouteResource(
     resource,
     status,
     errorMessage,
-    retry: () => directStore?.load(toValue(resourceId), true)
+    retry: () => {
+      if (directStore !== undefined) {
+        return directStore.load(toValue(resourceId), true)
+      }
+      options.onCollectionRetry?.()
+    }
   }
 }

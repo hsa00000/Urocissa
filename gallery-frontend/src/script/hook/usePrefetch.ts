@@ -5,6 +5,7 @@ import { IsolationId, PrefetchReturn } from '@type/types'
 import { prefetch } from '@/api/fetchPrefetch'
 import { useConfigStore } from '@/store/configStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
+import type { LocateResolution } from '@/store/prefetchStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { useAlbumStore } from '@/store/albumStore'
@@ -105,6 +106,7 @@ export function usePrefetch(
 
         // Invalidate the visible collection before waiting on the network so
         // query changes immediately enter the existing loading state.
+        usePrefetchStore(isolationId).locateResolution = null
         options.onRequestStart?.()
 
         // Parallel Execution: Run Config chain and Prefetch chain simultaneously
@@ -164,7 +166,14 @@ async function processPrefetchChain(
 
   // 2. Sync Store immediately after prefetch returns
   // This updates the Token which fetchScrollbar relies on.
-  syncStoreFromPrefetch(prefetchReturn, isolationId)
+  const locateResolution: LocateResolution | null =
+    locate === null
+      ? null
+      : {
+          requestedId: locate,
+          index: prefetchReturn.prefetch.locateTo
+        }
+  syncStoreFromPrefetch(prefetchReturn, isolationId, locateResolution)
 
   // Rows can render as soon as the snapshot and token exist.
   const prefetchStore = usePrefetchStore(isolationId)
@@ -198,7 +207,8 @@ async function processPrefetchChain(
  */
 function syncStoreFromPrefetch(
   prefetchReturn: PrefetchReturn,
-  isolationId: IsolationId
+  isolationId: IsolationId,
+  locateResolution: LocateResolution | null
 ) {
   const prefetchStore = usePrefetchStore(isolationId)
   const initializedStore = useInitializedStore(isolationId)
@@ -212,6 +222,7 @@ function syncStoreFromPrefetch(
 
   prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
   prefetchStore.calculateLength(prefetch.dataLength)
+  prefetchStore.locateResolution = locateResolution
   prefetchStore.locateTo = prefetch.locateTo
   tokenStore.timestampToken = token
 

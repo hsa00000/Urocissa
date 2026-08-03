@@ -6,6 +6,7 @@ import ViewPageMetadata from '@/components/View/Metadata/ViewPageMetadata.vue'
 import { useResolvedRouteResource } from '@/script/hook/useRouteResource'
 import { useConstStore } from '@/store/constStore'
 import { useConfigStore } from '@/store/configStore'
+import { useCollectionReloadStore } from '@/store/collectionReloadStore'
 import type {
   IsolationId,
   RouteResourceIsolationId
@@ -18,23 +19,37 @@ const props = defineProps<{
   directIsolationId?: RouteResourceIsolationId
   hashParam: 'hash' | 'subhash'
   expectedTypes?: readonly RouteResourceExpectedType[]
+  collectionOnly?: boolean
 }>()
 
 const route = useRoute()
 const router = useRouter()
 const constStore = useConstStore('mainId')
 const configStore = useConfigStore('mainId')
+const collectionReloadStore = useCollectionReloadStore('mainId')
 
 const hash = computed(() => {
   const value = route.params[props.hashParam]
   return typeof value === 'string' ? value : ''
 })
 
+function retryCollection(): void {
+  if (props.collectionIsolationId === 'subId') {
+    collectionReloadStore.requestSubCollectionReload()
+  } else {
+    collectionReloadStore.requestMainCollectionReload()
+  }
+}
+
 const { resource, status, errorMessage, retry } = useResolvedRouteResource(
   hash,
   props.collectionIsolationId,
   props.directIsolationId,
-  props.expectedTypes
+  props.expectedTypes,
+  {
+    collectionOnly: props.collectionOnly,
+    onCollectionRetry: retryCollection
+  }
 )
 
 const overlayVisible = computed<boolean>({
@@ -50,6 +65,8 @@ const errorTitle = computed(() => {
       return 'Invalid item ID'
     case 'not-found':
       return 'Item not found'
+    case 'unavailable':
+      return 'Item unavailable'
     case 'wrong-type':
       return 'Item cannot be opened here'
     default:

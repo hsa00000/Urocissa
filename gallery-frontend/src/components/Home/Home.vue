@@ -187,6 +187,7 @@ function resetCollectionSnapshot(): void {
   prefetchStore.timestamp = null
   prefetchStore.calculateLength(0)
   prefetchStore.locateTo = null
+  prefetchStore.locateResolution = null
   tokenStore.clearAll()
   queueStore.clearAll()
   collectionStore.clearSelection()

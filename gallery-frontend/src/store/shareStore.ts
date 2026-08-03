@@ -53,7 +53,14 @@ export const useShareStore = (isolationId: IsolationId) =>
         if (this.albumId && this.shareId) {
           await clearShareInfo(this.albumId, this.shareId)
         }
+      },
+      clearActiveContext() {
+        this.albumId = null
+        this.shareId = null
+        this.password = null
+        this.isAuthFailed = false
+        this.isLinkExpired = false
+        this.resolvedShare = null
       }
-
     }
   })()

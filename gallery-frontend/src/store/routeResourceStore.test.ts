@@ -97,7 +97,8 @@ describe('route resource store', () => {
     expect(usePrefetchStore('detailId')).toMatchObject({
       timestamp: 11,
       dataLength: 1,
-      locateTo: 0
+      locateTo: 0,
+      locateResolution: { requestedId: 'a'.repeat(64), index: 0 }
     })
   })
 

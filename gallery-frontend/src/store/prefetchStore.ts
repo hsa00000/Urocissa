@@ -2,6 +2,11 @@ import { fixedBigRowHeight, layoutBatchNumber } from '@/type/constants'
 import { IsolationId } from '@type/types'
 import { defineStore } from 'pinia'
 
+export interface LocateResolution {
+  requestedId: string
+  index: number | null
+}
+
 export const usePrefetchStore = (isolationId: IsolationId) =>
   defineStore('prefetchStore' + isolationId, {
     state: (): {
@@ -12,6 +17,7 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       dataLength: number // length of all photos
       rowLength: number // length of all photo batches
       locateTo: number | null
+      locateResolution: LocateResolution | null
       updateVisibleRowTrigger: boolean
       updateFetchRowTrigger: boolean
     } => ({
@@ -22,6 +28,7 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       dataLength: 0,
       rowLength: 0,
       locateTo: null,
+      locateResolution: null,
       updateVisibleRowTrigger: false,
       updateFetchRowTrigger: false
     }),
@@ -38,6 +45,7 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
         this.totalHeightOriginal = 0
         this.dataLength = 0
         this.locateTo = null
+        this.locateResolution = null
         this.updateVisibleRowTrigger = !this.updateVisibleRowTrigger
       },
       clearForResize() {

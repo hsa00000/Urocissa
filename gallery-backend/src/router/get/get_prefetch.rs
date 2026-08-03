@@ -658,6 +658,21 @@ fn execute_prefetch_logic(
     Ok(json)
 }
 
+fn constrain_query_to_share(
+    client_expression: Option<Expression>,
+    resolved_share: Option<&ResolvedShare>,
+) -> Option<Expression> {
+    let Some(resolved_share) = resolved_share else {
+        return client_expression;
+    };
+    let album_expression = Expression::Album(AlbumFilterValue::Value(resolved_share.album_id));
+
+    Some(match client_expression {
+        Some(client_expression) => Expression::And(vec![album_expression, client_expression]),
+        None => album_expression,
+    })
+}
+
 #[post(
     "/get/prefetch?<locate>&<sort>",
     format = "json",
@@ -671,7 +686,7 @@ pub async fn prefetch(
 ) -> AppResult<Json<PrefetchReturn>> {
     let auth_guard = auth_guard?;
     // Combine album filter (if any) with the client‑supplied query.
-    let mut combined_expression_option = query_data.map(rocket::serde::json::Json::into_inner);
+    let client_expression = query_data.map(rocket::serde::json::Json::into_inner);
     let resolved_share_option = auth_guard.claims.get_share();
     let sort_order = sort
         .as_deref()
@@ -680,17 +695,8 @@ pub async fn prefetch(
         .map_err(|message| AppError::new(ErrorKind::InvalidInput, message))?
         .unwrap_or_default();
 
-    if let Some(resolved_share) = &resolved_share_option {
-        let album_filter_expression =
-            Expression::Album(AlbumFilterValue::Value(resolved_share.album_id));
-
-        combined_expression_option = Some(match combined_expression_option {
-            Some(client_expression) => {
-                Expression::And(vec![album_filter_expression, client_expression])
-            }
-            None => album_filter_expression,
-        });
-    }
+    let combined_expression_option =
+        constrain_query_to_share(client_expression, resolved_share_option.as_ref());
 
     // Execute on blocking thread
     let job_handle = tokio::task::spawn_blocking(move || {
@@ -712,20 +718,42 @@ mod tests {
     use chrono::{TimeZone, Utc};
 
     use super::{
-        PARALLEL_FILTER_CHUNK_ITEMS, PrefetchMatchChunk, build_random_snapshot, merge_match_chunks,
-        query_cache_key, summarize_match_chunks,
+        PARALLEL_FILTER_CHUNK_ITEMS, PrefetchMatchChunk, build_random_snapshot,
+        constrain_query_to_share, merge_match_chunks, query_cache_key, summarize_match_chunks,
     };
     use crate::public::db::tree::state::SlotRef;
     use crate::public::db::tree_snapshot::read_scrollbar::build_scrollbar;
     use crate::public::db::tree_snapshot::{PendingTreeSnapshot, SnapshotBlobView};
+    use crate::public::structure::album::{ResolvedShare, Share};
+    use crate::public::structure::expression::{AlbumFilterValue, Expression};
     use crate::public::structure::gallery_sort_order::GallerySortOrder;
     use crate::public::structure::response::row::ScrollBarData;
+    use arrayvec::ArrayString;
 
     fn timestamp(year: i32, month: u32, day: u32) -> i64 {
         Utc.with_ymd_and_hms(year, month, day, 0, 0, 0)
             .single()
             .unwrap()
             .timestamp_millis()
+    }
+
+    #[test]
+    fn share_queries_are_always_constrained_to_the_shared_album() {
+        let album_id = ArrayString::<64>::from("shared-album").unwrap();
+        let resolved_share = ResolvedShare::new(album_id, None, Share::default());
+        let client_expression = Expression::Archived(true);
+
+        assert_eq!(
+            constrain_query_to_share(Some(client_expression.clone()), Some(&resolved_share)),
+            Some(Expression::And(vec![
+                Expression::Album(AlbumFilterValue::Value(album_id)),
+                client_expression,
+            ]))
+        );
+        assert_eq!(
+            constrain_query_to_share(None, Some(&resolved_share)),
+            Some(Expression::Album(AlbumFilterValue::Value(album_id)))
+        );
     }
 
     fn chunk(entries: &[(SlotRef, i64, bool)]) -> PrefetchMatchChunk {

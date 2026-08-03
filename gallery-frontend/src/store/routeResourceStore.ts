@@ -81,6 +81,7 @@ function hydrateSnapshot(
 
   prefetchStore.timestamp = snapshot.prefetch.timestamp
   prefetchStore.calculateLength(snapshot.prefetch.dataLength)
+  prefetchStore.locateResolution = { requestedId: item.id, index: 0 }
   prefetchStore.locateTo = snapshot.prefetch.locateTo
   tokenStore.timestampToken = snapshot.token
 

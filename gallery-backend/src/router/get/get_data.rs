@@ -90,7 +90,7 @@ pub async fn get_rows(
     index: usize,
     timestamp: i64,
 ) -> AppResult<Json<Row>> {
-    let _ = auth;
+    let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
         let filtered_rows = TREE_SNAPSHOT
@@ -112,8 +112,34 @@ pub async fn get_rows(
 pub fn get_scroll_bar(
     auth: GuardResult<GuardTimestamp>,
     timestamp: i64,
-) -> Json<Vec<ScrollBarData>> {
-    let _ = auth;
+) -> AppResult<Json<Vec<ScrollBarData>>> {
+    let _ = auth?;
     let scrollbar_data = TREE_SNAPSHOT.read_scrollbar(timestamp);
-    Json(scrollbar_data)
+    Ok(Json(scrollbar_data))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{get_rows, get_scroll_bar};
+    use crate::public::error::{AppError, ErrorKind};
+
+    fn rejected_guard() -> AppError {
+        AppError::new(ErrorKind::Auth, "timestamp token rejected")
+    }
+
+    #[tokio::test]
+    async fn rows_reject_guard_errors_before_reading_a_snapshot() {
+        let error = get_rows(Err(rejected_guard()), 0, 0).await.unwrap_err();
+
+        assert_eq!(error.kind, ErrorKind::Auth);
+        assert_eq!(error.message, "timestamp token rejected");
+    }
+
+    #[test]
+    fn scrollbar_rejects_guard_errors_before_reading_a_snapshot() {
+        let error = get_scroll_bar(Err(rejected_guard()), 0).unwrap_err();
+
+        assert_eq!(error.kind, ErrorKind::Auth);
+        assert_eq!(error.message, "timestamp token rejected");
+    }
 }

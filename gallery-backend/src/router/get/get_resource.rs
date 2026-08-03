@@ -163,9 +163,12 @@ pub async fn get_resource(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_single_resource_snapshot, route_resource_cache_key, validate_resource_id};
+    use super::{
+        build_single_resource_snapshot, get_resource, route_resource_cache_key,
+        validate_resource_id,
+    };
     use crate::public::db::tree::state::SlotRef;
-    use crate::public::error::ErrorKind;
+    use crate::public::error::{AppError, ErrorKind};
 
     const VALID_MEDIA_ID: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const VALID_ALBUM_ID: &str = "sntwjj2vnqq66wrxc5w5h1rn7t14k29d5wbjuj6abxhiun88881mtem1c06ez74u";
@@ -211,5 +214,18 @@ mod tests {
             route_resource_cache_key(VALID_MEDIA_ID),
             route_resource_cache_key(VALID_ALBUM_ID)
         );
+    }
+
+    #[tokio::test]
+    async fn direct_resources_reject_non_admin_guard_errors() {
+        let result = get_resource(
+            Err(AppError::new(ErrorKind::Auth, "admin access required")),
+            VALID_MEDIA_ID.to_owned(),
+        )
+        .await;
+        let error = result.unwrap_err();
+
+        assert_eq!(error.kind, ErrorKind::Auth);
+        assert_eq!(error.message, "admin access required");
     }
 }

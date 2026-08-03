@@ -4,6 +4,8 @@ import { computed, effectScope, nextTick, ref } from 'vue'
 import { fetchRouteResource } from '@/api/fetchRouteResource'
 import { useDataStore } from '@/store/dataStore'
 import { useImgStore } from '@/store/imgStore'
+import { useInitializedStore } from '@/store/initializedStore'
+import { usePrefetchStore } from '@/store/prefetchStore'
 import { useRouteResourceStore } from '@/store/routeResourceStore'
 import { useResolvedRouteResource, useRouteResourceLoader } from './useRouteResource'
 import type { EnrichedUnifiedData, RouteResourceSnapshot } from '@/type/types'
@@ -190,5 +192,78 @@ describe('route resource resolver', () => {
     })
     detail.hashMapData.set(id.value, 0)
     expect(resolved.status.value).toBe('wrong-type')
+  })
+
+  it('never starts a direct request when collection-only access disables it', async () => {
+    const id = ref('f'.repeat(64))
+    const scope = effectScope()
+
+    scope.run(() => {
+      useRouteResourceLoader(id, 'detailId', {
+        enabled: false,
+        clearWhenDisabled: false
+      })
+    })
+    await nextTick()
+
+    expect(fetchRouteResource).not.toHaveBeenCalled()
+    scope.stop()
+  })
+
+  it('terminates a resolved share locate miss without exposing a direct resource', () => {
+    const id = ref('9'.repeat(64))
+    const initialized = useInitializedStore('mainId')
+    const prefetch = usePrefetchStore('mainId')
+    const retryCollection = vi.fn()
+    const resolved = useResolvedRouteResource(
+      id,
+      'mainId',
+      undefined,
+      undefined,
+      {
+        collectionOnly: true,
+        onCollectionRetry: retryCollection
+      }
+    )
+
+    expect(resolved.status.value).toBe('loading')
+
+    prefetch.timestamp = 42
+    prefetch.locateResolution = { requestedId: id.value, index: null }
+    prefetch.locateTo = null
+    initialized.initialized = true
+
+    expect(resolved.status.value).toBe('unavailable')
+    expect(resolved.errorMessage.value).toBe(
+      'This item is not available through this share link.'
+    )
+
+    void resolved.retry()
+    expect(retryCollection).toHaveBeenCalledOnce()
+    expect(fetchRouteResource).not.toHaveBeenCalled()
+  })
+
+  it('keeps waiting for an authorized share row after locate succeeds', () => {
+    const id = ref('8'.repeat(64))
+    const initialized = useInitializedStore('mainId')
+    const prefetch = usePrefetchStore('mainId')
+    const main = useDataStore('mainId')
+    const resolved = useResolvedRouteResource(id, 'mainId', undefined, undefined, {
+      collectionOnly: true
+    })
+
+    prefetch.timestamp = 43
+    prefetch.locateResolution = { requestedId: id.value, index: 7 }
+    prefetch.locateTo = 7
+    initialized.initialized = true
+
+    expect(resolved.status.value).toBe('loading')
+
+    prefetch.locateTo = null
+    expect(resolved.status.value).toBe('loading')
+
+    main.data.set(7, image(id.value))
+    main.hashMapData.set(id.value, 7)
+    expect(resolved.status.value).toBe('ready')
   })
 })

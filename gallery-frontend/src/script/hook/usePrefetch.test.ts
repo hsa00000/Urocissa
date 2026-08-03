@@ -27,9 +27,9 @@ vi.mock('@/route/initialRouteLocate', () => ({
   consumeInitialMainLocateOverride: () => null
 }))
 
-function snapshot(timestamp: number): PrefetchReturn {
+function snapshot(timestamp: number, locateTo: number | null = null): PrefetchReturn {
   return {
-    prefetch: { timestamp, dataLength: 1, locateTo: null },
+    prefetch: { timestamp, dataLength: 1, locateTo },
     token: `token-${timestamp}`,
     resolvedShare: null
   }
@@ -277,6 +277,7 @@ describe('reactive collection prefetch', () => {
     expect(initializedStore.initialized).toBe(true)
     expect(prefetchStore.timestamp).toBe(1)
     expect(prefetchStore.dataLength).toBe(1)
+    prefetchStore.locateResolution = { requestedId: 'old-locate', index: null }
     resetVisibleSnapshot.mockClear()
 
     filter.value = 'new-filter'
@@ -295,6 +296,7 @@ describe('reactive collection prefetch', () => {
       null
     )
     expect(resetVisibleSnapshot).toHaveBeenCalledOnce()
+    expect(prefetchStore.locateResolution).toBeNull()
     expect(initializedStore.initialized).toBe(false)
     expect(prefetchStore.timestamp).toBeNull()
     expect(prefetchStore.dataLength).toBe(0)
@@ -339,5 +341,62 @@ describe('reactive collection prefetch', () => {
       'descending',
       'album-id'
     )
+    expect(usePrefetchStore('mainId').locateResolution).toEqual({
+      requestedId: 'album-id',
+      index: null
+    })
+  })
+
+  it('records the share route ID whose collection membership was resolved', async () => {
+    const id = '7'.repeat(64)
+    const filter = ref<string | null>('share-album-filter')
+    const windowWidth = ref(1200)
+    const route = reactive({
+      query: {},
+      params: { hash: id },
+      meta: { level: 2, baseName: 'share' }
+    }) as unknown as RouteLocationNormalizedLoadedGeneric
+    prefetchMock.mockResolvedValue(snapshot(3))
+
+    scope.run(() => {
+      usePrefetch(filter, windowWidth, route, 'mainId')
+    })
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(prefetchMock).toHaveBeenCalledWith(
+      'share-album-filter',
+      '',
+      'descending',
+      id
+    )
+    expect(usePrefetchStore('mainId')).toMatchObject({
+      timestamp: 3,
+      locateTo: null,
+      locateResolution: { requestedId: id, index: null }
+    })
+  })
+
+  it('keeps a successful locate resolution after the jump cursor is consumed', async () => {
+    const id = '8'.repeat(64)
+    const filter = ref<string | null>('share-album-filter')
+    const windowWidth = ref(1200)
+    const route = reactive({
+      query: {},
+      params: { hash: id },
+      meta: { level: 2, baseName: 'share' }
+    }) as unknown as RouteLocationNormalizedLoadedGeneric
+    prefetchMock.mockResolvedValue(snapshot(4, 0))
+
+    scope.run(() => {
+      usePrefetch(filter, windowWidth, route, 'mainId')
+    })
+    await vi.advanceTimersByTimeAsync(100)
+
+    const prefetchStore = usePrefetchStore('mainId')
+    expect(prefetchStore.locateResolution).toEqual({ requestedId: id, index: 0 })
+
+    prefetchStore.locateTo = null
+
+    expect(prefetchStore.locateResolution).toEqual({ requestedId: id, index: 0 })
   })
 })
