@@ -53,7 +53,7 @@
       @click:clear="model.expDuration = null"
     ></v-select>
 
-    <v-divider class="my-4 border-opacity-25"></v-divider>
+    <v-divider class="mx-n6 my-4 border-opacity-25"></v-divider>
 
     <v-list lines="one" class="bg-transparent pa-0">
       <v-list-item
