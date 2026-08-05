@@ -14,7 +14,9 @@ use crate::public::structure::album::Album;
 use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::router::selection::{SelectionDescriptor, resolve_selection};
+use crate::router::selection::{
+    SelectionDescriptor, resolve_selection, resolved_selection_is_current,
+};
 use crate::router::{AppResult, GuardResult};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
@@ -56,7 +58,11 @@ pub async fn create_non_empty_album(
             .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
     create_album(
         data.title,
-        Some((resolved.targets, resolved.structural_epoch)),
+        Some((
+            resolved.targets,
+            resolved.identity_epoch,
+            resolved.selection_epoch,
+        )),
     )
     .await
     .map(|id| id.to_string())
@@ -64,7 +70,7 @@ pub async fn create_non_empty_album(
 
 async fn create_album(
     title: Option<String>,
-    members: Option<(crate::public::db::tree::state::TargetSet, u64)>,
+    members: Option<(crate::public::db::tree::state::TargetSet, u64, u64)>,
 ) -> AppResult<ArrayString<64>> {
     let started = Instant::now();
     let album_id = generate_random_hash();
@@ -73,8 +79,9 @@ async fn create_album(
         crate::public::structure::abstract_data::AbstractData::Album(album) => album.clone(),
         _ => unreachable!(),
     };
-    let selection_epoch = members.as_ref().map(|(_, epoch)| *epoch);
-    let mut membership_operation = members.map(|(targets, _)| DirtyOperation::Albums {
+    let identity_epoch = members.as_ref().map(|(_, epoch, _)| *epoch);
+    let selection_epoch = members.as_ref().map(|(_, _, epoch)| *epoch);
+    let mut membership_operation = members.map(|(targets, _, _)| DirtyOperation::Albums {
         targets,
         add: BTreeSet::from([album_id]),
         remove: BTreeSet::new(),
@@ -96,7 +103,14 @@ async fn create_album(
         WRITE_BEHIND.release_reservation(reservation);
         AppError::new(ErrorKind::Internal, "tree state lock poisoned")
     })?;
-    if selection_epoch.is_some_and(|epoch| state.structural_epoch() != epoch) {
+    if let Some(DirtyOperation::Albums { targets, .. }) = &membership_operation
+        && !resolved_selection_is_current(
+            &state,
+            identity_epoch.expect("selection identity epoch must exist with members"),
+            selection_epoch.expect("selection epoch must exist with members"),
+            targets,
+        )
+    {
         WRITE_BEHIND.release_reservation(reservation);
         return Err(AppError::new(
             ErrorKind::Conflict,

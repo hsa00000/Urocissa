@@ -13,7 +13,7 @@ use crate::public::structure::album::AlbumCombined;
 use crate::public::structure::expression::{AlbumFilterValue, Expression, FilterValue};
 use crate::public::structure::object::{ObjectSchema, ObjectType};
 
-static NEXT_STRUCTURAL_EPOCH: LazyLock<AtomicU64> = LazyLock::new(|| {
+static NEXT_TREE_EPOCH: LazyLock<AtomicU64> = LazyLock::new(|| {
     let time_seed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(1, |duration| {
@@ -22,8 +22,8 @@ static NEXT_STRUCTURAL_EPOCH: LazyLock<AtomicU64> = LazyLock::new(|| {
     AtomicU64::new((time_seed ^ u64::from(std::process::id())).max(1))
 });
 
-fn next_structural_epoch() -> u64 {
-    NEXT_STRUCTURAL_EPOCH.fetch_add(1, AtomicOrdering::Relaxed)
+fn next_tree_epoch() -> u64 {
+    NEXT_TREE_EPOCH.fetch_add(1, AtomicOrdering::Relaxed)
 }
 
 #[allow(dead_code)]
@@ -1384,8 +1384,7 @@ impl TargetSet {
                 })
     }
 
-    #[cfg(feature = "performance-test")]
-    pub fn is_current(&self, state: &TreeState) -> bool {
+    pub(crate) fn is_current(&self, state: &TreeState) -> bool {
         self.iter().all(|slot_ref| state.get(slot_ref).is_some())
     }
 
@@ -2069,7 +2068,12 @@ pub struct TreeState {
     pub albums: HashMap<ArrayString<64>, AlbumCombined>,
     #[cfg(feature = "performance-test")]
     record_dynamic_bytes: usize,
+    // Cache revision: changes for inserts, removals, and order changes.
     structural_epoch: u64,
+    // Slot-reference namespace: changes only when the complete tree is rebuilt.
+    identity_epoch: u64,
+    // Destructive revision: changes when an existing slot identity is removed.
+    selection_epoch: u64,
 }
 
 impl Default for TreeState {
@@ -2082,7 +2086,9 @@ impl Default for TreeState {
             albums: HashMap::default(),
             #[cfg(feature = "performance-test")]
             record_dynamic_bytes: 0,
-            structural_epoch: next_structural_epoch(),
+            structural_epoch: next_tree_epoch(),
+            identity_epoch: next_tree_epoch(),
+            selection_epoch: next_tree_epoch(),
         }
     }
 }
@@ -2101,7 +2107,9 @@ impl TreeState {
             albums: HashMap::new(),
             #[cfg(feature = "performance-test")]
             record_dynamic_bytes: 0,
-            structural_epoch: next_structural_epoch(),
+            structural_epoch: next_tree_epoch(),
+            identity_epoch: next_tree_epoch(),
+            selection_epoch: next_tree_epoch(),
         }
     }
 
@@ -2290,8 +2298,20 @@ impl TreeState {
         self.structural_epoch
     }
 
+    pub fn identity_epoch(&self) -> u64 {
+        self.identity_epoch
+    }
+
+    pub fn selection_epoch(&self) -> u64 {
+        self.selection_epoch
+    }
+
     fn bump_structural_epoch(&mut self) {
-        self.structural_epoch = next_structural_epoch();
+        self.structural_epoch = next_tree_epoch();
+    }
+
+    fn bump_selection_epoch(&mut self) {
+        self.selection_epoch = next_tree_epoch();
     }
 
     pub fn get(&self, slot_ref: SlotRef) -> Option<&CacheRecord> {
@@ -2351,6 +2371,7 @@ impl TreeState {
         if let Some(record) = &removed {
             self.track_record_removed(record);
             self.bump_structural_epoch();
+            self.bump_selection_epoch();
         }
         removed
     }
@@ -2361,6 +2382,7 @@ impl TreeState {
         }
         let universe = self.arena.capacity();
         self.query.remove_targets(targets.ordinals(), universe);
+        let mut removed_any = false;
         for slot_ref in targets.iter() {
             let Some(id) = self.arena.get(slot_ref).map(|record| record.id) else {
                 continue;
@@ -2369,6 +2391,7 @@ impl TreeState {
             self.albums.remove(&id);
             if let Some(record) = self.arena.remove(slot_ref) {
                 self.track_record_removed(&record);
+                removed_any = true;
             }
         }
         let next_order = self
@@ -2378,7 +2401,10 @@ impl TreeState {
             .filter(|slot_ref| !targets.contains(*slot_ref))
             .collect();
         self.order = Arc::new(next_order);
-        self.bump_structural_epoch();
+        if removed_any {
+            self.bump_structural_epoch();
+            self.bump_selection_epoch();
+        }
     }
 
     #[cfg(test)]
@@ -2525,6 +2551,9 @@ impl TreeState {
         }
         if structural_changed {
             self.bump_structural_epoch();
+        }
+        if !removed_slots.is_empty() {
+            self.bump_selection_epoch();
         }
     }
 
@@ -4439,6 +4468,8 @@ mod tests {
             .collect::<Vec<_>>();
         let mut state = TreeState::from_records(records.iter().cloned());
         let initial_epoch = state.structural_epoch();
+        let identity_epoch = state.identity_epoch();
+        let initial_selection_epoch = state.selection_epoch();
         let targets = OrdinalSet::from_ordinals([0, 1], state.arena.capacity());
         state.query.edit_flags(
             &targets,
@@ -4448,21 +4479,30 @@ mod tests {
             },
         );
         assert_eq!(state.structural_epoch(), initial_epoch);
+        assert_eq!(state.identity_epoch(), identity_epoch);
+        assert_eq!(state.selection_epoch(), initial_selection_epoch);
 
         let rekeyed = state.find(records[0].hash().as_str()).unwrap();
         records[0].alias_mut().unwrap()[0].modified += 1;
         state.replace_static(rekeyed, &records[0]).unwrap();
         let rekeyed_epoch = state.structural_epoch();
         assert_ne!(rekeyed_epoch, initial_epoch);
+        assert_eq!(state.identity_epoch(), identity_epoch);
+        assert_eq!(state.selection_epoch(), initial_selection_epoch);
 
         let inserted = state.insert(&AbstractData::generate_performance_data(100, 19));
         let inserted_epoch = state.structural_epoch();
         assert_ne!(inserted_epoch, rekeyed_epoch);
+        assert_eq!(state.identity_epoch(), identity_epoch);
+        assert_eq!(state.selection_epoch(), initial_selection_epoch);
         state.remove_targets(&TargetSet::from_slot_refs(
             [inserted],
             state.arena.capacity(),
         ));
         assert_ne!(state.structural_epoch(), inserted_epoch);
+        assert_eq!(state.identity_epoch(), identity_epoch);
+        assert_ne!(state.selection_epoch(), initial_selection_epoch);
+        assert_ne!(TreeState::default().identity_epoch(), identity_epoch);
     }
 
     #[test]

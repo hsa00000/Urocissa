@@ -49,6 +49,7 @@ impl PinnedSnapshotView<'_> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn structural_epoch(&self) -> u64 {
         match self {
             Self::Memory(snapshot) => snapshot.structural_epoch,
@@ -56,6 +57,21 @@ impl PinnedSnapshotView<'_> {
         }
     }
 
+    pub(crate) fn identity_epoch(&self) -> u64 {
+        match self {
+            Self::Memory(snapshot) => snapshot.identity_epoch,
+            Self::Redb(snapshot) => snapshot.identity_epoch(),
+        }
+    }
+
+    pub(crate) fn selection_epoch(&self) -> u64 {
+        match self {
+            Self::Memory(snapshot) => snapshot.selection_epoch,
+            Self::Redb(snapshot) => snapshot.selection_epoch(),
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn universe(&self) -> usize {
         match self {
             Self::Memory(snapshot) => snapshot.universe,
@@ -86,6 +102,7 @@ impl PinnedSnapshotView<'_> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn for_each_selected_slot_ref(
         &self,
         indices: &[u32],
@@ -258,6 +275,8 @@ mod tests {
         let expected_targets = TargetSet::from_unique_slot_refs(slots, 16);
         let snapshot = PendingTreeSnapshot {
             structural_epoch: 77,
+            identity_epoch: 78,
+            selection_epoch: 79,
             universe: 16,
             ordinals: slots.iter().map(|slot_ref| slot_ref.index()).collect(),
             targets: expected_targets.clone(),
@@ -281,6 +300,8 @@ mod tests {
         let resolved = snapshot.with_pinned_view(|view| -> Result<_> {
             assert_eq!(view.len(), 3);
             assert_eq!(view.structural_epoch(), 77);
+            assert_eq!(view.identity_epoch(), 78);
+            assert_eq!(view.selection_epoch(), 79);
             assert_eq!(view.universe(), 16);
             let mut resolved = Vec::new();
             view.for_each_selected_slot_ref(&[2, 0, 1], |slot_ref| {

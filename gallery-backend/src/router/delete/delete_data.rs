@@ -12,7 +12,9 @@ use crate::public::structure::object::ObjectType;
 use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::router::selection::{SelectionDescriptor, resolve_selection};
+use crate::router::selection::{
+    SelectionDescriptor, resolve_selection, resolved_selection_is_current,
+};
 use crate::router::{AppResult, GuardResult};
 
 #[derive(Debug, Deserialize)]
@@ -48,7 +50,12 @@ pub async fn delete_data(
             .state
             .read()
             .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-        if state.structural_epoch() != resolved.structural_epoch {
+        if !resolved_selection_is_current(
+            &state,
+            resolved.identity_epoch,
+            resolved.selection_epoch,
+            &resolved.targets,
+        ) {
             return Err(AppError::new(ErrorKind::Conflict, "selection is stale"));
         }
         resolved.targets.iter().any(|ordinal| {
@@ -58,20 +65,34 @@ pub async fn delete_data(
         })
     };
     if contains_media {
-        delete_durable_selection(resolved.targets, resolved.structural_epoch).await
+        delete_durable_selection(
+            resolved.targets,
+            resolved.identity_epoch,
+            resolved.selection_epoch,
+        )
+        .await
     } else {
-        delete_logical_albums(resolved.targets, resolved.structural_epoch).await
+        delete_logical_albums(
+            resolved.targets,
+            resolved.identity_epoch,
+            resolved.selection_epoch,
+        )
+        .await
     }
 }
 
 #[allow(clippy::too_many_lines)]
-async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> AppResult<()> {
+async fn delete_logical_albums(
+    targets: TargetSet,
+    identity_epoch: u64,
+    selection_epoch: u64,
+) -> AppResult<()> {
     let reservation = {
         let state = TREE
             .state
             .read()
             .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-        if state.structural_epoch() != structural_epoch {
+        if !resolved_selection_is_current(&state, identity_epoch, selection_epoch, &targets) {
             return Err(AppError::new(
                 ErrorKind::Conflict,
                 "album selection is stale",
@@ -117,7 +138,7 @@ async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> App
         WRITE_BEHIND.release_reservation(reservation);
         AppError::new(ErrorKind::Internal, "tree state lock poisoned")
     })?;
-    if state.structural_epoch() != structural_epoch {
+    if !resolved_selection_is_current(&state, identity_epoch, selection_epoch, &targets) {
         WRITE_BEHIND.release_reservation(reservation);
         return Err(AppError::new(
             ErrorKind::Conflict,
@@ -212,14 +233,18 @@ async fn delete_logical_albums(targets: TargetSet, structural_epoch: u64) -> App
 }
 
 #[allow(clippy::too_many_lines)]
-async fn delete_durable_selection(targets: TargetSet, structural_epoch: u64) -> AppResult<()> {
+async fn delete_durable_selection(
+    targets: TargetSet,
+    identity_epoch: u64,
+    selection_epoch: u64,
+) -> AppResult<()> {
     tokio::task::spawn_blocking(move || -> AppResult<()> {
         let _persistence_guard = TREE.persistence_lock.lock().unwrap();
         let mut state = TREE
             .state
             .write()
             .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-        if state.structural_epoch() != structural_epoch {
+        if !resolved_selection_is_current(&state, identity_epoch, selection_epoch, &targets) {
             return Err(AppError::new(
                 ErrorKind::Conflict,
                 "selection became stale before durable delete",

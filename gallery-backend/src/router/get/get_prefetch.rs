@@ -226,6 +226,8 @@ fn merge_match_chunks(
 fn build_random_snapshot(
     matches: Vec<SlotRef>,
     structural_epoch: u64,
+    identity_epoch: u64,
+    selection_epoch: u64,
     universe: usize,
     locate_slot: Option<SlotRef>,
 ) -> Result<(PendingTreeSnapshot, Option<usize>), AppError> {
@@ -246,6 +248,8 @@ fn build_random_snapshot(
     Ok((
         PendingTreeSnapshot {
             structural_epoch,
+            identity_epoch,
+            selection_epoch,
             universe,
             ordinals,
             targets: targets.finish(universe),
@@ -413,6 +417,8 @@ fn filter_items(
         let result = build_random_snapshot(
             matches,
             tree_guard.structural_epoch(),
+            tree_guard.identity_epoch(),
+            tree_guard.selection_epoch(),
             tree_guard.arena.capacity(),
             locate_slot,
         );
@@ -504,6 +510,8 @@ fn filter_items(
     Ok((
         PendingTreeSnapshot {
             structural_epoch: tree_guard.structural_epoch(),
+            identity_epoch: tree_guard.identity_epoch(),
+            selection_epoch: tree_guard.selection_epoch(),
             universe,
             ordinals,
             targets,
@@ -812,6 +820,8 @@ mod tests {
 
         let snapshot = PendingTreeSnapshot {
             structural_epoch: 41,
+            identity_epoch: 42,
+            selection_epoch: 43,
             universe: 128,
             ordinals,
             targets,
@@ -903,7 +913,8 @@ mod tests {
     fn randomized_snapshot_preserves_the_permutation_locate_and_generations() {
         let shuffled = vec![SlotRef::new(9, 3), SlotRef::new(65, 1), SlotRef::new(7, 2)];
         let (snapshot, locate_to) =
-            build_random_snapshot(shuffled.clone(), 42, 128, Some(SlotRef::new(7, 2))).unwrap();
+            build_random_snapshot(shuffled.clone(), 42, 43, 44, 128, Some(SlotRef::new(7, 2)))
+                .unwrap();
 
         assert_eq!(snapshot.ordinals, vec![9, 65, 7]);
         assert_eq!(snapshot.targets.len(), shuffled.len());

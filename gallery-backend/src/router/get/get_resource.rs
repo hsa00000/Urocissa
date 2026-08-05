@@ -41,10 +41,14 @@ fn validate_resource_id(resource_id: &str) -> AppResult<()> {
 fn build_single_resource_snapshot(
     slot_ref: crate::public::db::tree::state::SlotRef,
     structural_epoch: u64,
+    identity_epoch: u64,
+    selection_epoch: u64,
     universe: usize,
 ) -> PendingTreeSnapshot {
     PendingTreeSnapshot {
         structural_epoch,
+        identity_epoch,
+        selection_epoch,
         universe,
         ordinals: vec![slot_ref.index()],
         targets: TargetSet::from_unique_slot_refs([slot_ref], universe),
@@ -86,7 +90,7 @@ fn get_or_create_resource_prefetch(resource_id: &str) -> AppResult<Prefetch> {
         return Ok(prefetch);
     }
 
-    let (slot_ref, structural_epoch, universe) = {
+    let (slot_ref, structural_epoch, identity_epoch, selection_epoch, universe) = {
         let state = TREE.state.read().map_err(|error| {
             AppError::new(
                 ErrorKind::Internal,
@@ -99,10 +103,22 @@ fn get_or_create_resource_prefetch(resource_id: &str) -> AppResult<Prefetch> {
                 format!("Item not found for id '{resource_id}'"),
             )
         })?;
-        (slot_ref, state.structural_epoch(), state.arena.capacity())
+        (
+            slot_ref,
+            state.structural_epoch(),
+            state.identity_epoch(),
+            state.selection_epoch(),
+            state.arena.capacity(),
+        )
     };
 
-    let snapshot = build_single_resource_snapshot(slot_ref, structural_epoch, universe);
+    let snapshot = build_single_resource_snapshot(
+        slot_ref,
+        structural_epoch,
+        identity_epoch,
+        selection_epoch,
+        universe,
+    );
     let (timestamp, data_length) = insert_data_into_tree_snapshot(snapshot);
     debug_assert_eq!(data_length, 1);
     let prefetch = Prefetch {
@@ -195,9 +211,11 @@ mod tests {
     #[test]
     fn direct_snapshot_maps_its_only_item_to_route_index_zero() {
         let slot_ref = SlotRef::new(17, 3);
-        let snapshot = build_single_resource_snapshot(slot_ref, 41, 64);
+        let snapshot = build_single_resource_snapshot(slot_ref, 41, 42, 43, 64);
 
         assert_eq!(snapshot.structural_epoch, 41);
+        assert_eq!(snapshot.identity_epoch, 42);
+        assert_eq!(snapshot.selection_epoch, 43);
         assert_eq!(snapshot.ordinals, vec![17]);
         assert_eq!(snapshot.targets.len(), 1);
         assert_eq!(snapshot.targets.slot_ref_for_ordinal(17), Some(slot_ref));

@@ -8,7 +8,9 @@ use crate::public::db::tree::TREE;
 use crate::public::error::{AppError, ErrorKind};
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::router::selection::{SelectionDescriptor, resolve_selection};
+use crate::router::selection::{
+    SelectionDescriptor, resolve_selection, resolved_selection_is_current,
+};
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::actor::reindex::{
     ReindexJobAccepted, ReindexJobStatus, cancel_reindex_job, enqueue_reindex_job,
@@ -43,12 +45,22 @@ pub async fn reindex(
         tokio::task::spawn_blocking(move || resolve_selection(data.timestamp, selection))
             .await
             .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
-    let targets = TREE
-        .state
-        .read()
-        .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?
-        .media_targets(&resolved.targets);
-    let accepted = enqueue_reindex_job(&targets, plan);
+    let accepted = {
+        let state = TREE
+            .state
+            .read()
+            .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+        if !resolved_selection_is_current(
+            &state,
+            resolved.identity_epoch,
+            resolved.selection_epoch,
+            &resolved.targets,
+        ) {
+            return Err(AppError::new(ErrorKind::Conflict, "selection is stale"));
+        }
+        let targets = state.media_targets(&resolved.targets);
+        enqueue_reindex_job(&targets, plan)
+    };
     Ok(Custom(Status::Accepted, Json(accepted)))
 }
 

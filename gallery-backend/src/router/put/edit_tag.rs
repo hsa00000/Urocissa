@@ -10,7 +10,9 @@ use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::router::selection::{SelectionDescriptor, resolve_selection};
+use crate::router::selection::{
+    SelectionDescriptor, resolve_selection, resolved_selection_is_current,
+};
 use crate::router::{AppResult, GuardResult};
 
 #[derive(Debug, Deserialize)]
@@ -46,7 +48,8 @@ pub async fn edit_tag(
     let mut add = data.add_tags_array.into_iter().collect::<BTreeSet<_>>();
     let remove = data.remove_tags_array.into_iter().collect::<BTreeSet<_>>();
     add.retain(|tag| !remove.contains(tag));
-    let structural_epoch = resolved.structural_epoch;
+    let identity_epoch = resolved.identity_epoch;
+    let selection_epoch = resolved.selection_epoch;
     let targets = resolved.targets;
     let worst_case_operations = add
         .iter()
@@ -79,7 +82,7 @@ pub async fn edit_tag(
             "tree state lock poisoned",
         ));
     };
-    if state.structural_epoch() != structural_epoch {
+    if !resolved_selection_is_current(&state, identity_epoch, selection_epoch, &targets) {
         WRITE_BEHIND.release_reservation(bytes);
         return Err(AppError::new(
             ErrorKind::Conflict,

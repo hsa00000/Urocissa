@@ -15,13 +15,18 @@ pub const TREE_SNAPSHOT_TABLE: TableDefinition<i64, &[u8]> = TableDefinition::ne
 pub const SCROLLBAR_METADATA_TABLE: TableDefinition<i64, &[u8]> =
     TableDefinition::new("scrollbar_metadata");
 
-const SNAPSHOT_MAGIC: [u8; 4] = *b"UTS6";
-const SNAPSHOT_HEADER_BYTES: usize = 28;
+const SNAPSHOT_MAGIC: [u8; 4] = *b"UTS7";
+const SNAPSHOT_HEADER_BYTES: usize = 44;
 const SNAPSHOT_CHECKSUM_BYTES: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct PendingTreeSnapshot {
+    /// Cache revision used to reject stale query-cache entries.
     pub structural_epoch: u64,
+    /// Namespace that makes persisted slot references safe across tree rebuilds.
+    pub identity_epoch: u64,
+    /// Destructive revision used to decide whether selected identities need validation.
+    pub selection_epoch: u64,
     pub universe: usize,
     pub ordinals: Vec<u32>,
     pub targets: TargetSet,
@@ -66,6 +71,8 @@ impl PendingTreeSnapshot {
             Vec::with_capacity(SNAPSHOT_HEADER_BYTES + payload_bytes + SNAPSHOT_CHECKSUM_BYTES);
         bytes.extend_from_slice(&SNAPSHOT_MAGIC);
         bytes.extend_from_slice(&self.structural_epoch.to_le_bytes());
+        bytes.extend_from_slice(&self.identity_epoch.to_le_bytes());
+        bytes.extend_from_slice(&self.selection_epoch.to_le_bytes());
         bytes.extend_from_slice(&u32::try_from(self.universe)?.to_le_bytes());
         bytes.extend_from_slice(&ordinal_count.to_le_bytes());
         bytes.extend_from_slice(&word_count.to_le_bytes());
@@ -86,6 +93,8 @@ impl PendingTreeSnapshot {
             bytes,
             SnapshotBlobLayout {
                 structural_epoch: self.structural_epoch,
+                identity_epoch: self.identity_epoch,
+                selection_epoch: self.selection_epoch,
                 universe: self.universe,
                 ordinal_count: ordinal_count as usize,
                 word_count: word_count as usize,
@@ -98,6 +107,8 @@ impl PendingTreeSnapshot {
 pub struct SnapshotBlobView<'a> {
     bytes: &'a [u8],
     structural_epoch: u64,
+    identity_epoch: u64,
+    selection_epoch: u64,
     universe: usize,
     ordinal_count: usize,
     word_count: usize,
@@ -107,6 +118,8 @@ pub struct SnapshotBlobView<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct SnapshotBlobLayout {
     structural_epoch: u64,
+    identity_epoch: u64,
+    selection_epoch: u64,
     universe: usize,
     ordinal_count: usize,
     word_count: usize,
@@ -119,10 +132,12 @@ impl<'a> SnapshotBlobView<'a> {
             return Err(anyhow::anyhow!("tree snapshot magic is invalid"));
         }
         let structural_epoch = read_u64(bytes, 4)?;
-        let universe = read_u32(bytes, 12)? as usize;
-        let ordinal_count = read_u32(bytes, 16)? as usize;
-        let word_count = read_u32(bytes, 20)? as usize;
-        let override_count = read_u32(bytes, 24)? as usize;
+        let identity_epoch = read_u64(bytes, 12)?;
+        let selection_epoch = read_u64(bytes, 20)?;
+        let universe = read_u32(bytes, 28)? as usize;
+        let ordinal_count = read_u32(bytes, 32)? as usize;
+        let word_count = read_u32(bytes, 36)? as usize;
+        let override_count = read_u32(bytes, 40)? as usize;
         let expected = SNAPSHOT_HEADER_BYTES
             .checked_add(
                 ordinal_count
@@ -150,6 +165,8 @@ impl<'a> SnapshotBlobView<'a> {
         Ok(Self {
             bytes,
             structural_epoch,
+            identity_epoch,
+            selection_epoch,
             universe,
             ordinal_count,
             word_count,
@@ -160,6 +177,8 @@ impl<'a> SnapshotBlobView<'a> {
     pub fn layout(&self) -> SnapshotBlobLayout {
         SnapshotBlobLayout {
             structural_epoch: self.structural_epoch,
+            identity_epoch: self.identity_epoch,
+            selection_epoch: self.selection_epoch,
             universe: self.universe,
             ordinal_count: self.ordinal_count,
             word_count: self.word_count,
@@ -171,6 +190,8 @@ impl<'a> SnapshotBlobView<'a> {
         Self {
             bytes,
             structural_epoch: layout.structural_epoch,
+            identity_epoch: layout.identity_epoch,
+            selection_epoch: layout.selection_epoch,
             universe: layout.universe,
             ordinal_count: layout.ordinal_count,
             word_count: layout.word_count,
@@ -180,6 +201,14 @@ impl<'a> SnapshotBlobView<'a> {
 
     pub fn structural_epoch(&self) -> u64 {
         self.structural_epoch
+    }
+
+    pub fn identity_epoch(&self) -> u64 {
+        self.identity_epoch
+    }
+
+    pub fn selection_epoch(&self) -> u64 {
+        self.selection_epoch
     }
 
     pub fn len(&self) -> usize {
@@ -251,6 +280,7 @@ impl<'a> SnapshotBlobView<'a> {
         Ok(1)
     }
 
+    #[cfg(test)]
     pub fn universe(&self) -> usize {
         self.universe
     }
@@ -273,8 +303,8 @@ fn read_u64(bytes: &[u8], offset: usize) -> anyhow::Result<u64> {
 #[derive(Debug)]
 pub struct TreeSnapshot {
     pub in_disk: &'static redb::Database,
-    /// Ordered compact arena ordinals plus a structural epoch. Static fields
-    /// are resolved from `RecordArena`, avoiding full metadata copies.
+    /// Ordered compact arena ordinals plus cache and selection identity epochs.
+    /// Static fields are resolved from `RecordArena`, avoiding full metadata copies.
     pub in_memory: &'static DashMap<i64, PendingTreeSnapshot>,
     pub verified_layouts: &'static DashMap<i64, SnapshotBlobLayout>,
 }
@@ -290,6 +320,8 @@ mod tests {
         let slots = [SlotRef::new(65, 1), SlotRef::new(7, 2), SlotRef::new(1, 1)];
         let snapshot = PendingTreeSnapshot {
             structural_epoch: 42,
+            identity_epoch: 43,
+            selection_epoch: 44,
             universe: 128,
             ordinals: slots.iter().map(|slot| slot.index()).collect(),
             targets: TargetSet::from_unique_slot_refs(slots, 128),
@@ -301,6 +333,8 @@ mod tests {
         assert!(bytes.len() < 256);
         let view = SnapshotBlobView::new(&bytes).unwrap();
         assert_eq!(view.structural_epoch(), 42);
+        assert_eq!(view.identity_epoch(), 43);
+        assert_eq!(view.selection_epoch(), 44);
         assert_eq!(view.universe(), 128);
         assert_eq!(view.len(), 3);
         assert_eq!(view.slot_ref(0).unwrap(), SlotRef::new(65, 1));
@@ -316,6 +350,8 @@ mod tests {
     fn compact_snapshot_rejects_corruption_and_cardinality_mismatch() {
         let snapshot = PendingTreeSnapshot {
             structural_epoch: 7,
+            identity_epoch: 8,
+            selection_epoch: 9,
             universe: 64,
             ordinals: vec![1],
             targets: TargetSet::from_slot_refs([SlotRef::new(1, 1)], 64),
@@ -327,6 +363,10 @@ mod tests {
         let mut bad_magic = bytes.clone();
         bad_magic[0] = 0;
         assert!(SnapshotBlobView::new(&bad_magic).is_err());
+
+        let mut old_magic = bytes.clone();
+        old_magic[..4].copy_from_slice(b"UTS6");
+        assert!(SnapshotBlobView::new(&old_magic).is_err());
 
         let mut bad_bitmap = bytes;
         let bitmap_offset = SNAPSHOT_HEADER_BYTES + 4;

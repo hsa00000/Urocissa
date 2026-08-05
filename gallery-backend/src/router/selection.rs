@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use crate::operations::open_db::open_tree_snapshot_table;
 use crate::public::db::tree::TREE;
-use crate::public::db::tree::state::{TargetSet, TargetSetBuilder};
+use crate::public::db::tree::state::{TargetSet, TargetSetBuilder, TreeState};
 use crate::public::db::tree_snapshot::read_tree_snapshot::PinnedSnapshotView;
 use crate::public::error::{AppError, ErrorKind};
 
@@ -28,7 +28,8 @@ impl SelectionDescriptor {
 pub struct ResolvedSelection {
     pub targets: TargetSet,
     pub len: usize,
-    pub structural_epoch: u64,
+    pub identity_epoch: u64,
+    pub selection_epoch: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -108,21 +109,57 @@ fn normalize_selection(
 fn resolve_indices(
     snapshot: &PinnedSnapshotView<'_>,
     indices: &[u32],
-    universe: usize,
+    state: &TreeState,
+    validate_identities: bool,
     timestamp: i64,
 ) -> Result<TargetSet, AppError> {
     let mut targets = TargetSetBuilder::default();
-    snapshot
-        .for_each_selected_slot_ref(indices, |slot_ref| {
-            targets.insert(slot_ref);
-        })
-        .map_err(|error| {
+    for index in indices {
+        let slot_ref = snapshot.slot_ref(*index as usize).map_err(|error| {
             AppError::from_err(
                 ErrorKind::Conflict,
-                anyhow::anyhow!("stale selection snapshot {timestamp}: {error}"),
+                anyhow::anyhow!("stale selection index {index} for {timestamp}: {error}"),
             )
         })?;
-    Ok(targets.finish(universe))
+        if validate_identities && state.get(slot_ref).is_none() {
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                format!("selection index {index} has a stale generation"),
+            ));
+        }
+        targets.insert(slot_ref);
+    }
+    Ok(targets.finish(state.arena.capacity()))
+}
+
+fn resolve_all_except(
+    snapshot: &PinnedSnapshotView<'_>,
+    excluded: &[u32],
+    state: &TreeState,
+    timestamp: i64,
+) -> Result<TargetSet, AppError> {
+    let mut targets = TargetSetBuilder::default();
+    let mut excluded_cursor = 0;
+    for index in 0..snapshot.len() {
+        if excluded.get(excluded_cursor).copied() == u32::try_from(index).ok() {
+            excluded_cursor += 1;
+            continue;
+        }
+        let slot_ref = snapshot.slot_ref(index).map_err(|error| {
+            AppError::from_err(
+                ErrorKind::Conflict,
+                anyhow::anyhow!("stale selection index {index} for {timestamp}: {error}"),
+            )
+        })?;
+        if state.get(slot_ref).is_none() {
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                format!("selection index {index} has a stale generation"),
+            ));
+        }
+        targets.insert(slot_ref);
+    }
+    Ok(targets.finish(state.arena.capacity()))
 }
 
 fn snapshot_target_set(
@@ -144,31 +181,49 @@ fn resolve_pinned_selection(
     snapshot: PinnedSnapshotView<'_>,
     timestamp: i64,
     selection: SelectionDescriptor,
-    structural_epoch: u64,
-    universe: usize,
+    state: &TreeState,
 ) -> Result<TargetSet, AppError> {
     let normalized = normalize_selection(selection, snapshot.len())?;
-    if snapshot.structural_epoch() != structural_epoch || snapshot.universe() != universe {
+    if snapshot.identity_epoch() != state.identity_epoch() {
         return Err(AppError::new(
             ErrorKind::Conflict,
-            "selection snapshot belongs to an older structural epoch",
+            "selection snapshot belongs to a different tree identity epoch",
         ));
     }
+    let validate_identities = snapshot.selection_epoch() != state.selection_epoch();
 
     match normalized {
-        NormalizedSelection::ExplicitAll | NormalizedSelection::AllExceptNone => {
+        NormalizedSelection::ExplicitAll | NormalizedSelection::AllExceptNone
+            if !validate_identities =>
+        {
             snapshot_target_set(&snapshot, timestamp)
         }
         NormalizedSelection::Explicit(indices) => {
-            resolve_indices(&snapshot, &indices, universe, timestamp)
+            resolve_indices(&snapshot, &indices, state, validate_identities, timestamp)
         }
-        NormalizedSelection::AllExcept(excluded) => {
+        NormalizedSelection::AllExcept(excluded) if !validate_identities => {
             let mut targets = snapshot_target_set(&snapshot, timestamp)?;
-            let excluded_targets = resolve_indices(&snapshot, &excluded, universe, timestamp)?;
+            let excluded_targets = resolve_indices(&snapshot, &excluded, state, false, timestamp)?;
             targets.subtract(&excluded_targets);
             Ok(targets)
         }
+        NormalizedSelection::ExplicitAll | NormalizedSelection::AllExceptNone => {
+            resolve_all_except(&snapshot, &[], state, timestamp)
+        }
+        NormalizedSelection::AllExcept(excluded) => {
+            resolve_all_except(&snapshot, &excluded, state, timestamp)
+        }
     }
+}
+
+pub fn resolved_selection_is_current(
+    state: &TreeState,
+    identity_epoch: u64,
+    selection_epoch: u64,
+    targets: &TargetSet,
+) -> bool {
+    state.identity_epoch() == identity_epoch
+        && (state.selection_epoch() == selection_epoch || targets.is_current(state))
 }
 
 /// Resolve a UI selection against its immutable tree snapshot and validate the
@@ -185,16 +240,13 @@ pub fn resolve_selection(
         )
     })?;
 
-    let (structural_epoch, universe) = {
-        let state = TREE
-            .state
-            .read()
-            .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-        (state.structural_epoch(), state.arena.capacity())
-    };
+    let state = TREE
+        .state
+        .read()
+        .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
     let targets = snapshot
         .with_pinned_view(|snapshot| {
-            resolve_pinned_selection(snapshot, timestamp, selection, structural_epoch, universe)
+            resolve_pinned_selection(snapshot, timestamp, selection, &state)
         })
         .map_err(|error| {
             AppError::from_err(
@@ -205,7 +257,8 @@ pub fn resolve_selection(
     let resolved = ResolvedSelection {
         len: targets.len(),
         targets,
-        structural_epoch,
+        identity_epoch: state.identity_epoch(),
+        selection_epoch: state.selection_epoch(),
     };
     crate::perf_timing!(
         "selection.resolve",
@@ -221,13 +274,16 @@ mod tests {
     use std::hint::black_box;
     use std::time::{Duration, Instant};
 
-    use crate::public::db::tree::state::{SlotRef, TargetSet, TargetSetBuilder};
+    use arrayvec::ArrayString;
+
+    use crate::public::db::tree::state::{SlotRef, TargetSet, TargetSetBuilder, TreeState};
     use crate::public::db::tree_snapshot::read_tree_snapshot::PinnedSnapshotView;
     use crate::public::db::tree_snapshot::{PendingTreeSnapshot, SnapshotBlobView};
+    use crate::public::structure::album::Album;
 
     use super::{
         IndexMembership, NormalizedSelection, SelectionDescriptor, normalize_selection,
-        resolve_pinned_selection,
+        resolve_pinned_selection, resolved_selection_is_current,
     };
 
     #[test]
@@ -325,55 +381,68 @@ mod tests {
         assert_eq!(normalized, NormalizedSelection::ExplicitAll);
     }
 
-    fn sample_snapshot() -> PendingTreeSnapshot {
-        let slots = [SlotRef::new(4, 1), SlotRef::new(2, 3), SlotRef::new(7, 1)];
+    fn album(id: &str) -> crate::public::structure::abstract_data::AbstractData {
+        Album::new(ArrayString::from(id).unwrap(), None).into_abstract_data()
+    }
+
+    fn sample_state() -> TreeState {
+        TreeState::from_records([
+            album("selection-a"),
+            album("selection-b"),
+            album("selection-c"),
+        ])
+    }
+
+    fn snapshot_for_state(state: &TreeState) -> PendingTreeSnapshot {
+        let slots = state.order.iter().copied().collect::<Vec<_>>();
         PendingTreeSnapshot {
-            structural_epoch: 42,
-            universe: 8,
+            structural_epoch: state.structural_epoch(),
+            identity_epoch: state.identity_epoch(),
+            selection_epoch: state.selection_epoch(),
+            universe: state.arena.capacity(),
             ordinals: slots.iter().map(|slot_ref| slot_ref.index()).collect(),
-            targets: TargetSet::from_unique_slot_refs(slots, 8),
+            targets: TargetSet::from_unique_slot_refs(slots, state.arena.capacity()),
             scrollbar: Vec::new(),
         }
     }
 
-    fn assert_selection_semantics(snapshot: PinnedSnapshotView<'_>) {
+    fn assert_selection_semantics(snapshot: PinnedSnapshotView<'_>, state: &TreeState) {
+        let mut expected = vec![snapshot.slot_ref(0).unwrap(), snapshot.slot_ref(2).unwrap()];
+        expected.sort_unstable();
         let targets = resolve_pinned_selection(
             snapshot,
             123,
             SelectionDescriptor::Explicit {
                 indices: vec![2, 0, 2],
             },
-            42,
-            8,
+            state,
         )
         .unwrap();
-        assert_eq!(
-            targets.iter().collect::<Vec<_>>(),
-            vec![SlotRef::new(4, 1), SlotRef::new(7, 1)]
-        );
+        assert_eq!(targets.iter().collect::<Vec<_>>(), expected);
     }
 
     #[test]
     fn memory_and_disk_blob_views_resolve_identical_selections() {
-        let snapshot = sample_snapshot();
-        assert_selection_semantics(PinnedSnapshotView::Memory(&snapshot));
+        let state = sample_state();
+        let snapshot = snapshot_for_state(&state);
+        assert_selection_semantics(PinnedSnapshotView::Memory(&snapshot), &state);
 
         let bytes = snapshot.encode().unwrap();
         let view = SnapshotBlobView::new(&bytes).unwrap();
-        assert_selection_semantics(PinnedSnapshotView::Redb(view));
+        assert_selection_semantics(PinnedSnapshotView::Redb(view), &state);
     }
 
     #[test]
-    fn full_exclusion_generation_and_stale_snapshot_validation_are_preserved() {
-        let snapshot = sample_snapshot();
+    fn full_and_excluded_selection_semantics_are_preserved() {
+        let state = sample_state();
+        let snapshot = snapshot_for_state(&state);
         let all = resolve_pinned_selection(
             PinnedSnapshotView::Memory(&snapshot),
             123,
             SelectionDescriptor::Explicit {
                 indices: vec![2, 1, 0],
             },
-            42,
-            8,
+            &state,
         )
         .unwrap();
         assert_eq!(all, snapshot.targets);
@@ -384,23 +453,26 @@ mod tests {
             SelectionDescriptor::AllExcept {
                 excluded_indices: Vec::new(),
             },
-            42,
-            8,
+            &state,
         )
         .unwrap();
         assert_eq!(all_except_none, snapshot.targets);
 
-        let generation_override = resolve_pinned_selection(
+        let one = resolve_pinned_selection(
             PinnedSnapshotView::Memory(&snapshot),
             123,
             SelectionDescriptor::Explicit { indices: vec![1] },
-            42,
-            8,
+            &state,
         )
         .unwrap();
         assert_eq!(
-            generation_override.iter().collect::<Vec<_>>(),
-            vec![SlotRef::new(2, 3)]
+            one.iter().collect::<Vec<_>>(),
+            vec![
+                snapshot
+                    .targets
+                    .slot_ref_for_ordinal(snapshot.ordinals[1])
+                    .unwrap()
+            ]
         );
 
         let excluded_override = resolve_pinned_selection(
@@ -409,45 +481,209 @@ mod tests {
             SelectionDescriptor::AllExcept {
                 excluded_indices: vec![1],
             },
-            42,
-            8,
+            &state,
         )
         .unwrap();
-        assert_eq!(
-            excluded_override.iter().collect::<Vec<_>>(),
-            vec![SlotRef::new(4, 1), SlotRef::new(7, 1)]
-        );
+        let mut expected = vec![
+            snapshot
+                .targets
+                .slot_ref_for_ordinal(snapshot.ordinals[0])
+                .unwrap(),
+            snapshot
+                .targets
+                .slot_ref_for_ordinal(snapshot.ordinals[2])
+                .unwrap(),
+        ];
+        expected.sort_unstable();
+        assert_eq!(excluded_override.iter().collect::<Vec<_>>(), expected);
 
         assert!(
             resolve_pinned_selection(
                 PinnedSnapshotView::Memory(&snapshot),
                 123,
                 SelectionDescriptor::Explicit { indices: vec![3] },
-                42,
-                8,
+                &state,
             )
             .is_err()
         );
+    }
+
+    fn assert_append_compatible(snapshot: PinnedSnapshotView<'_>, state: &TreeState) {
+        let expected = snapshot.target_set().unwrap();
+        let resolved = resolve_pinned_selection(
+            snapshot,
+            123,
+            SelectionDescriptor::Explicit {
+                indices: vec![0, 1, 2],
+            },
+            state,
+        )
+        .unwrap();
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn append_only_changes_keep_memory_and_disk_snapshots_resolvable() {
+        let mut state = sample_state();
+        let snapshot = snapshot_for_state(&state);
+        let bytes = snapshot.encode().unwrap();
+        let structural_epoch = state.structural_epoch();
+        let identity_epoch = state.identity_epoch();
+        let selection_epoch = state.selection_epoch();
+
+        state.insert(&album("selection-new"));
+
+        assert_ne!(state.structural_epoch(), structural_epoch);
+        assert_eq!(state.identity_epoch(), identity_epoch);
+        assert_eq!(state.selection_epoch(), selection_epoch);
+        assert_append_compatible(PinnedSnapshotView::Memory(&snapshot), &state);
+        assert_append_compatible(
+            PinnedSnapshotView::Redb(SnapshotBlobView::new(&bytes).unwrap()),
+            &state,
+        );
+        assert_eq!(
+            resolve_pinned_selection(
+                PinnedSnapshotView::Memory(&snapshot),
+                123,
+                SelectionDescriptor::AllExcept {
+                    excluded_indices: Vec::new(),
+                },
+                &state,
+            )
+            .unwrap(),
+            snapshot.targets,
+        );
+    }
+
+    #[test]
+    fn deletion_validation_only_rejects_selected_snapshot_items() {
+        let mut explicit_state = sample_state();
+        let explicit_snapshot = snapshot_for_state(&explicit_state);
+        let deleted = explicit_snapshot
+            .targets
+            .slot_ref_for_ordinal(explicit_snapshot.ordinals[0])
+            .unwrap();
+        explicit_state.remove(deleted).unwrap();
+        assert!(
+            resolve_pinned_selection(
+                PinnedSnapshotView::Memory(&explicit_snapshot),
+                123,
+                SelectionDescriptor::Explicit { indices: vec![1] },
+                &explicit_state,
+            )
+            .is_ok()
+        );
+        assert!(
+            resolve_pinned_selection(
+                PinnedSnapshotView::Memory(&explicit_snapshot),
+                123,
+                SelectionDescriptor::Explicit { indices: vec![0] },
+                &explicit_state,
+            )
+            .is_err()
+        );
+
+        let mut excluded_state = sample_state();
+        let excluded_snapshot = snapshot_for_state(&excluded_state);
+        let deleted = excluded_snapshot
+            .targets
+            .slot_ref_for_ordinal(excluded_snapshot.ordinals[0])
+            .unwrap();
+        excluded_state.remove(deleted).unwrap();
+        let resolved = resolve_pinned_selection(
+            PinnedSnapshotView::Memory(&excluded_snapshot),
+            123,
+            SelectionDescriptor::AllExcept {
+                excluded_indices: vec![0],
+            },
+            &excluded_state,
+        )
+        .unwrap();
+        assert_eq!(resolved.len(), 2);
+    }
+
+    #[test]
+    fn slot_reuse_and_tree_rebuild_never_retarget_old_selections() {
+        let mut state = sample_state();
+        let snapshot = snapshot_for_state(&state);
+        let selected = snapshot
+            .targets
+            .slot_ref_for_ordinal(snapshot.ordinals[0])
+            .unwrap();
+        state.remove(selected).unwrap();
+        let replacement = state.insert(&album("selection-replacement"));
+        assert_eq!(replacement.index(), selected.index());
+        assert_ne!(replacement.generation(), selected.generation());
         assert!(
             resolve_pinned_selection(
                 PinnedSnapshotView::Memory(&snapshot),
                 123,
                 SelectionDescriptor::Explicit { indices: vec![0] },
-                43,
-                8,
+                &state,
             )
             .is_err()
         );
+
+        let rebuilt = sample_state();
+        assert_ne!(rebuilt.identity_epoch(), snapshot.identity_epoch);
         assert!(
             resolve_pinned_selection(
                 PinnedSnapshotView::Memory(&snapshot),
                 123,
                 SelectionDescriptor::Explicit { indices: vec![0] },
-                42,
-                9,
+                &rebuilt,
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn publication_validation_allows_additions_and_unselected_deletions() {
+        let mut state = sample_state();
+        let snapshot = snapshot_for_state(&state);
+        let selected = TargetSet::from_slot_refs(
+            [snapshot
+                .targets
+                .slot_ref_for_ordinal(snapshot.ordinals[0])
+                .unwrap()],
+            state.arena.capacity(),
+        );
+        let identity_epoch = state.identity_epoch();
+        let selection_epoch = state.selection_epoch();
+
+        state.insert(&album("selection-new"));
+        assert!(resolved_selection_is_current(
+            &state,
+            identity_epoch,
+            selection_epoch,
+            &selected,
+        ));
+
+        let unselected = snapshot
+            .targets
+            .slot_ref_for_ordinal(snapshot.ordinals[1])
+            .unwrap();
+        state.remove(unselected).unwrap();
+        assert!(resolved_selection_is_current(
+            &state,
+            identity_epoch,
+            selection_epoch,
+            &selected,
+        ));
+
+        state.remove(selected.iter().next().unwrap()).unwrap();
+        assert!(!resolved_selection_is_current(
+            &state,
+            identity_epoch,
+            selection_epoch,
+            &selected,
+        ));
+        assert!(!resolved_selection_is_current(
+            &sample_state(),
+            identity_epoch,
+            selection_epoch,
+            &selected,
+        ));
     }
 
     fn median(mut samples: Vec<Duration>) -> Duration {

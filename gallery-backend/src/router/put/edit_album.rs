@@ -12,7 +12,9 @@ use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
-use crate::router::selection::{SelectionDescriptor, resolve_selection};
+use crate::router::selection::{
+    SelectionDescriptor, resolve_selection, resolved_selection_is_current,
+};
 use crate::router::{AppResult, GuardResult};
 
 #[derive(Debug, Deserialize)]
@@ -50,14 +52,15 @@ pub async fn edit_album(
         .into_iter()
         .collect::<BTreeSet<_>>();
     add.retain(|album| !remove.contains(album));
-    let structural_epoch = resolved.structural_epoch;
+    let identity_epoch = resolved.identity_epoch;
+    let selection_epoch = resolved.selection_epoch;
     let targets = resolved.targets;
     let reservation = {
         let state = TREE
             .state
             .read()
             .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
-        if state.structural_epoch() != structural_epoch {
+        if !resolved_selection_is_current(&state, identity_epoch, selection_epoch, &targets) {
             return Err(AppError::new(ErrorKind::Conflict, "selection is stale"));
         }
         let membership_bytes = add
@@ -103,7 +106,7 @@ pub async fn edit_album(
             "tree state lock poisoned",
         ));
     };
-    if state.structural_epoch() != structural_epoch {
+    if !resolved_selection_is_current(&state, identity_epoch, selection_epoch, &targets) {
         WRITE_BEHIND.release_reservation(reservation);
         return Err(AppError::new(
             ErrorKind::Conflict,

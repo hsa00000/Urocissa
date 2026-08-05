@@ -9,7 +9,9 @@ use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
-use crate::router::selection::{SelectionDescriptor, resolve_selection};
+use crate::router::selection::{
+    SelectionDescriptor, resolve_selection, resolved_selection_is_current,
+};
 use crate::router::{AppResult, GuardResult};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
@@ -48,7 +50,8 @@ pub async fn set_user_defined_description(
         ));
     }
     let target = resolved.targets.iter().next().expect("one resolved target");
-    let structural_epoch = resolved.structural_epoch;
+    let identity_epoch = resolved.identity_epoch;
+    let selection_epoch = resolved.selection_epoch;
     let description = data.description;
     let operation = DirtyOperation::Description {
         target,
@@ -70,7 +73,7 @@ pub async fn set_user_defined_description(
         WRITE_BEHIND.release_reservation(bytes);
         AppError::new(ErrorKind::Internal, "tree state lock poisoned")
     })?;
-    if state.structural_epoch() != structural_epoch {
+    if !resolved_selection_is_current(&state, identity_epoch, selection_epoch, &resolved.targets) {
         WRITE_BEHIND.release_reservation(bytes);
         return Err(AppError::new(
             ErrorKind::Conflict,
