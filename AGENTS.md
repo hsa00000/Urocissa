@@ -18,6 +18,25 @@ and frontend or backend development.
 - Run checks that share the same `node_modules` sequentially. Do not launch TypeScript,
   Vitest, ESLint, and build commands concurrently through package-manager processes.
 
+### Expensive hybrid virtual-scroll validation is opt-in
+
+- The hybrid virtual-scroll browser gate is a manual, expensive diagnostic. Do not run
+  `performance/run-hybrid-scroll-gate.ps1` with either `Quick` or `Full` unless the user
+  explicitly asks to run the hybrid-scroll tests, scroll performance/visual validation, or an
+  equivalent complete browser gate in the current request.
+- The same opt-in rule applies to direct equivalents of that gate: repeated hybrid-scroll browser
+  scenarios, Windows trusted wheel/touch injection, compositor elastic-overscroll captures,
+  performance traces, and the desktop/mobile visual matrix. A code change touching virtual
+  scrolling does not by itself authorize any of these expensive checks.
+- Without an explicit request, use only proportionate fast validation, such as `cargo test`, a
+  targeted Vitest file, a focused type check, or another ordinary project check appropriate to the
+  files changed. In the handoff, state that the hybrid-scroll gate was not run because it was not
+  explicitly requested; this is expected and is not a validation failure.
+- When the user does explicitly request this validation, select and run `Quick` or `Full` according
+  to `docs/HYBRID_VIRTUAL_SCROLL_TESTING.md`. This opt-in rule takes precedence over generic
+  benchmark, visual-check, pre-merge, and release checklists for this specific gate and its direct
+  equivalents.
+
 ### Long-running processes
 
 - Check the expected port or health endpoint before starting a local service and reuse

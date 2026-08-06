@@ -59,8 +59,19 @@ node performance\scroll-lag.mjs --browser chrome --headed --scenario native-whee
 The browser login password is mandatory and is never written to the report. Set it only for
 the current shell (or pass `--password` explicitly):
 
+> **Manual opt-in only:** the hybrid-scroll gates and the trusted Windows browser scenarios below
+> are expensive and must not run as routine validation. Run them only when the user explicitly
+> requests hybrid-scroll testing or equivalent complete scroll validation. Otherwise use the
+> project's ordinary fast checks, such as `cargo test` or focused frontend tests.
+
 ```powershell
 $env:UROCISSA_PASSWORD = Read-Host 'Urocissa password'
+
+# Explicitly requested quick scroll-contract gate
+.\performance\run-hybrid-scroll-gate.ps1 -Profile Quick
+
+# Explicitly requested complete scroll-contract gate
+.\performance\run-hybrid-scroll-gate.ps1 -Profile Full
 
 node performance\scroll-lag.mjs --url http://localhost:5173 `
   --scenario hybrid-top-handoff --headed --samples 3 --expect strict-smooth
@@ -80,6 +91,13 @@ node performance\scroll-lag.mjs --url http://localhost:5173 `
 node performance\scroll-lag.mjs --url http://localhost:5173 `
   --scenario height-clamp-projection --samples 1 --expect strict-smooth
 ```
+
+When explicitly requested, the two gate profiles perform environment/authentication preflight, run frontend checks
+sequentially, execute the required scenario matrix, and create one Markdown/JSON summary under
+`performance/.performance/hybrid-scroll/`. They never install dependencies or start services.
+The complete invariants, blocking thresholds, artifact layout, known Chrome handoff-pulse
+truncation advisory, and failure-triage procedure are documented in
+[`docs/HYBRID_VIRTUAL_SCROLL_TESTING.md`](../docs/HYBRID_VIRTUAL_SCROLL_TESTING.md).
 
 Hybrid-specific scenarios are `hybrid-top-handoff`, `hybrid-bottom-handoff`,
 `hybrid-bottom-live-offset`, `native-elastic-top`, `native-elastic-bottom`,

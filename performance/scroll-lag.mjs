@@ -4,10 +4,19 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import process from 'node:process'
 import { createInterface } from 'node:readline'
+import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
+import { gzip } from 'node:zlib'
 import { chromium } from 'playwright'
 
+import {
+  analyzeHandoffFrames,
+  classifyWheelDisplacement
+} from './hybrid-scroll-metrics.mjs'
+
 const args = process.argv.slice(2)
+const reportSchemaVersion = 2
+const gzipAsync = promisify(gzip)
 
 function option(name, fallback) {
   const index = args.indexOf(`--${name}`)
@@ -96,6 +105,8 @@ const config = {
   viewportHeight: Math.floor(numberOption('viewport-height', 1000)),
   scrollWorkPerPulseBudgetMs: numberOption('scroll-work-per-pulse-budget', 0.7),
   behaviorTolerancePx: numberOption('behavior-tolerance', 1),
+  handoffFrameGapBudgetMs: numberOption('handoff-frame-gap-budget', 25),
+  inputToFirstMotionBudgetMs: numberOption('input-to-first-motion-budget', 25),
   timerZeroBudget: Math.floor(nonNegativeNumberOption('timer-zero-budget', 10)),
   workerDelayMs: Math.floor(numberOption('worker-delay', 300)),
   thumbnailDelayMs: Math.floor(numberOption('thumbnail-delay', 40)),
@@ -103,8 +114,11 @@ const config = {
   locate: option('locate', null),
   output: option('output', null),
   checkpointDir: option('checkpoint-dir', null),
+  traceDir: option('trace-dir', null),
+  theme: option('theme', 'dark'),
   expect: option('expect', 'none'),
-  headed: args.includes('--headed')
+  headed: args.includes('--headed'),
+  quiet: args.includes('--quiet')
 }
 
 if (!supportedScenarios.has(config.scenario)) {
@@ -113,6 +127,10 @@ if (!supportedScenarios.has(config.scenario)) {
 
 if (!['none', 'janky', 'smooth', 'strict-smooth'].includes(config.expect)) {
   throw new Error('--expect must be one of: none, janky, smooth, strict-smooth')
+}
+
+if (!['dark', 'light'].includes(config.theme)) {
+  throw new Error('--theme must be one of: dark, light')
 }
 
 if (typeof config.password !== 'string' || config.password.length === 0) {
@@ -1061,6 +1079,7 @@ async function installInstrumentation(context) {
             : null
         state.frames.push({
           time,
+          sampledAt: performance.now(),
           gap: state.lastFrame === null ? null : time - state.lastFrame,
           scrollTop: container?.scrollTop ?? null,
           anchorStart: anchor?.getAttribute('start') ?? null,
@@ -1139,6 +1158,90 @@ async function loginAndWait(page) {
     timeout: 15_000
   })
   return waitForGallery(page)
+}
+
+async function applyRequestedTheme(page) {
+  const themeClass = `v-theme--${config.theme}`
+  const hasRequestedTheme = () =>
+    page.evaluate(
+      (expectedClass) => document.querySelector('.v-application')?.classList.contains(expectedClass),
+      themeClass
+    )
+
+  if (await hasRequestedTheme()) return config.theme
+
+  const originalViewport = page.viewportSize()
+  const themeButtonName =
+    config.theme === 'light' ? 'Switch to light theme' : 'Switch to dark theme'
+  let restoredViewport = false
+  try {
+    const themeButton = page.getByRole('button', { name: themeButtonName })
+    if (!(await themeButton.isVisible())) {
+      await page.setViewportSize({
+        width: Math.max(originalViewport?.width ?? 0, 1024),
+        height: Math.max(originalViewport?.height ?? 0, 844)
+      })
+    }
+    await themeButton.click()
+    await page.waitForFunction(
+      (expectedClass) =>
+        document.querySelector('.v-application')?.classList.contains(expectedClass) === true,
+      themeClass,
+      { timeout: 3000 }
+    )
+  } finally {
+    const currentViewport = page.viewportSize()
+    if (
+      originalViewport !== null &&
+      (currentViewport?.width !== originalViewport.width ||
+        currentViewport?.height !== originalViewport.height)
+    ) {
+      await page.setViewportSize(originalViewport)
+      restoredViewport = true
+    }
+  }
+
+  if (restoredViewport) {
+    await page.evaluate(
+      () =>
+        new Promise((resolveFrame) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolveFrame))
+        )
+    )
+  }
+  return config.theme
+}
+
+async function captureScenarioScreenshot(page, sampleIndex, label) {
+  if (!config.checkpointDir) return null
+  const directory = resolve(config.checkpointDir)
+  await mkdir(directory, { recursive: true })
+  const safeLabel = label.replace(/[^a-z0-9-]+/gi, '-').replace(/^-|-$/g, '')
+  const screenshotPath = resolve(
+    directory,
+    `${config.scenario}-sample-${sampleIndex + 1}-${safeLabel}-cdp.png`
+  )
+  await page.screenshot({ path: screenshotPath })
+  return screenshotPath
+}
+
+async function readBrowserEnvironment(page) {
+  return page.evaluate(() => ({
+    userAgent: navigator.userAgent,
+    devicePixelRatio: window.devicePixelRatio,
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+    screen: {
+      width: window.screen.width,
+      height: window.screen.height,
+      availableWidth: window.screen.availWidth,
+      availableHeight: window.screen.availHeight
+    },
+    maxTouchPoints: navigator.maxTouchPoints,
+    theme:
+      document.querySelector('.v-application')?.classList.contains('v-theme--light') === true
+        ? 'light'
+        : 'dark'
+  }))
 }
 
 async function beginFrameSampling(page) {
@@ -1747,6 +1850,16 @@ async function runHybridWheelPulse(page, controller, delta, pulseNumber) {
     }
   }, before.anchorStart)
 
+  // Keep at least one pre-input animation frame in the observation window so a mode
+  // transition can be evaluated as a real projection residual instead of inferred from
+  // the final wheel displacement.
+  await page.evaluate(
+    () =>
+      new Promise((resolveFrame) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolveFrame))
+      )
+  )
+
   const nativeInput = await controller.wheel(delta)
   await page.waitForFunction(
     ({ wheelIndex, scrollIndex }) => {
@@ -1786,10 +1899,29 @@ async function runHybridWheelPulse(page, controller, delta, pulseNumber) {
   const actualDisplacementPx = before.anchorTop - after.anchorTop
   const expectedDirection = Math.sign(expectedDisplacementPx)
   const modeChanged = before.mode !== after.mode
-  const movementStayedForward =
-    actualDisplacementPx * expectedDirection >= -config.behaviorTolerancePx &&
-    Math.abs(actualDisplacementPx) <=
-      Math.abs(expectedDisplacementPx) + config.behaviorTolerancePx
+  const modeTransitionScrollEvent = modeChanged
+    ? observed.scrollEvents.find((event) => event.mode !== before.mode) ?? null
+    : null
+  const transitionInternalWriteDelta =
+    modeTransitionScrollEvent === null
+      ? null
+      : modeTransitionScrollEvent.internalWriteCount - before.internalWriteCount
+  const transitionGenerationDelta =
+    modeTransitionScrollEvent === null
+      ? null
+      : modeTransitionScrollEvent.generation - before.generation
+  const displacement = classifyWheelDisplacement({
+    actualDisplacementPx,
+    expectedDisplacementPx,
+    modeChanged,
+    tolerancePx: config.behaviorTolerancePx
+  })
+  const handoffFrames = analyzeHandoffFrames({
+    frames: observed.frames,
+    wheelEvents: observed.wheelEvents,
+    anchorStart: before.anchorStart,
+    expectedDirection
+  })
   let previousAnchorTop = before.anchorTop
   let reverseMovementFrameCount = 0
   for (const frame of observed.frames) {
@@ -1811,17 +1943,40 @@ async function runHybridWheelPulse(page, controller, delta, pulseNumber) {
     expectedDisplacementPx: round(expectedDisplacementPx),
     actualDisplacementPx: round(actualDisplacementPx),
     modeChanged,
-    // A programmatic physical rebase can end Chrome's remaining per-notch smooth animation.
-    // At the handoff itself continuity means no reverse/overshoot frame; ordinary pulses must
-    // still deliver the full native wheel displacement.
-    visualDiscontinuityPx: round(
-      modeChanged && movementStayedForward
-        ? 0
-        : Math.abs(actualDisplacementPx - expectedDisplacementPx)
-    ),
-    wheelDisplacementErrorPx: round(
-      Math.abs(actualDisplacementPx - expectedDisplacementPx)
-    ),
+    movementStayedForward: displacement.movementStayedForward,
+    wheelDisplacementErrorPx: round(displacement.wheelDisplacementErrorPx),
+    wheelDisplacementRatio: round(displacement.wheelDisplacementRatio),
+    truncatedHandoffPulse: displacement.truncatedHandoffPulse,
+    generationDelta: after.generation - before.generation,
+    internalWriteDelta: after.internalWriteCount - before.internalWriteCount,
+    transitionGenerationDelta,
+    transitionInternalWriteDelta,
+    postTransitionInternalWriteDelta:
+      modeTransitionScrollEvent === null
+        ? null
+        : after.internalWriteCount - modeTransitionScrollEvent.internalWriteCount,
+    handoffProjectionResidualPx:
+      handoffFrames.handoffProjectionResidualPx === null
+        ? null
+        : round(handoffFrames.handoffProjectionResidualPx),
+    handoffFrameGapMs:
+      handoffFrames.handoffFrameGapMs === null
+        ? null
+        : round(handoffFrames.handoffFrameGapMs),
+    inputToFirstVisualMotionMs:
+      handoffFrames.inputToFirstVisualMotionMs === null
+        ? null
+        : round(handoffFrames.inputToFirstVisualMotionMs),
+    transitionFrameCount: handoffFrames.transitionFrameCount,
+    modeTransitionFrameCount: handoffFrames.modeTransitionFrameCount,
+    generationTransitionFrameCount: handoffFrames.generationTransitionFrameCount,
+    transitionFrames: handoffFrames.transitions.map((transition) => ({
+      ...transition,
+      frameGapMs: round(transition.frameGapMs),
+      anchorDeltaPx: round(transition.anchorDeltaPx),
+      logicalDeltaPx: round(transition.logicalDeltaPx),
+      projectionResidualPx: round(transition.projectionResidualPx)
+    })),
     reverseMovementFrameCount,
     wheelEvents: observed.wheelEvents,
     scrollEvents: observed.scrollEvents,
@@ -1829,7 +1984,7 @@ async function runHybridWheelPulse(page, controller, delta, pulseNumber) {
   }
 }
 
-async function runHybridHandoffScenario(page, imageContainer, boundary) {
+async function runHybridHandoffScenario(page, imageContainer, boundary, sampleIndex) {
   await clickScrollbarAt(page, boundary === 'top' ? 0 : 1)
   await page.waitForTimeout(1200)
   await imageContainer.hover()
@@ -1839,7 +1994,14 @@ async function runHybridHandoffScenario(page, imageContainer, boundary) {
   }
 
   const expectedEdgeMode = boundary === 'top' ? 'native-top' : 'native-bottom'
-  const initialState = await readHybridState(page, 'initial-edge')
+  const checkpointEvidence = []
+  const initialCheckpoint = await captureCdpCheckpoint(
+    page,
+    null,
+    `sample-${sampleIndex + 1}-${boundary}-handoff-baseline`
+  )
+  checkpointEvidence.push(initialCheckpoint)
+  const initialState = initialCheckpoint.state
   if (initialState?.mode !== expectedEdgeMode) {
     throw new Error(`hybrid ${boundary} scenario did not start at its native edge`)
   }
@@ -1856,35 +2018,97 @@ async function runHybridHandoffScenario(page, imageContainer, boundary) {
     for (let index = 0; index < maximumPulsesPerLeg; index += 1) {
       const pulse = await runHybridWheelPulse(page, controller, delta, pulses.length + 1)
       pulse.phase = phase
+      pulse.isControlPulse = false
       pulses.push(pulse)
       const state = await readHybridState(page, `${phase}-${index + 1}`)
       states.push(state)
-      if (state?.mode === targetMode) return
+      if (state?.mode === targetMode) return { pulse, state }
     }
     throw new Error(`hybrid ${boundary} handoff never reached ${targetMode}`)
   }
 
+  const runControlPulse = async (targetMode, delta, phase) => {
+    const pulse = await runHybridWheelPulse(page, controller, delta, pulses.length + 1)
+    pulse.phase = `${phase}-control`
+    pulse.isControlPulse = true
+    pulses.push(pulse)
+    const state = await readHybridState(page, `${phase}-control`)
+    states.push(state)
+    if (state?.mode !== targetMode || pulse.modeChanged) {
+      throw new Error(
+        `hybrid ${boundary} ${phase} control pulse did not remain in ${targetMode}`
+      )
+    }
+    return { pulse, state }
+  }
+
   try {
     await runUntilMode('compensated', outwardDelta, 'leave-edge')
+    checkpointEvidence.push(
+      await captureCdpCheckpoint(
+        page,
+        null,
+        `sample-${sampleIndex + 1}-${boundary}-native-to-compensated`
+      )
+    )
+    await runControlPulse('compensated', outwardDelta, 'leave-edge')
     await runUntilMode(expectedEdgeMode, returnDelta, 'return-edge')
+    checkpointEvidence.push(
+      await captureCdpCheckpoint(
+        page,
+        null,
+        `sample-${sampleIndex + 1}-${boundary}-compensated-to-native`
+      )
+    )
+    await runControlPulse(expectedEdgeMode, returnDelta, 'return-edge')
   } finally {
     await controller.close()
   }
 
   await page.waitForTimeout(200)
   const frameState = await finishFrameSampling(page)
-  const finalState = await readHybridState(page, 'final-edge')
+  const finalCheckpoint = await captureCdpCheckpoint(
+    page,
+    null,
+    `sample-${sampleIndex + 1}-${boundary}-handoff-settled`
+  )
+  checkpointEvidence.push(finalCheckpoint)
+  const finalState = finalCheckpoint.state
   const modeSequence = compactModeSequence(states)
-  const invalidPulses = pulses.filter(
-    (pulse) =>
+  const invalidPulses = pulses.filter((pulse) => {
+    const inputInvalid =
       pulse.wheelEvents.length !== 1 ||
       pulse.wheelEvents.some(
         (event) =>
           !event.isTrusted || !event.insideImageContainer || event.defaultPrevented
-      ) ||
-      pulse.visualDiscontinuityPx > config.behaviorTolerancePx ||
-      pulse.reverseMovementFrameCount > 0
-  )
+      )
+    const motionInvalid =
+      !pulse.movementStayedForward || pulse.reverseMovementFrameCount > 0
+    const ordinaryDisplacementInvalid =
+      !pulse.modeChanged &&
+      pulse.wheelDisplacementErrorPx > config.behaviorTolerancePx
+    const responsivePulse = pulse.modeChanged || pulse.isControlPulse
+    const responsivenessInvalid =
+      responsivePulse &&
+      (pulse.inputToFirstVisualMotionMs === null ||
+        pulse.inputToFirstVisualMotionMs >= config.inputToFirstMotionBudgetMs)
+    const handoffInvalid =
+      pulse.modeChanged &&
+      (pulse.modeTransitionFrameCount !== 1 ||
+        pulse.transitionGenerationDelta !== 1 ||
+        pulse.transitionInternalWriteDelta !== 1 ||
+        pulse.handoffProjectionResidualPx === null ||
+        pulse.handoffProjectionResidualPx > config.behaviorTolerancePx ||
+        pulse.handoffFrameGapMs === null ||
+        pulse.handoffFrameGapMs >= config.handoffFrameGapBudgetMs)
+    return (
+      inputInvalid ||
+      motionInvalid ||
+      ordinaryDisplacementInvalid ||
+      responsivenessInvalid ||
+      handoffInvalid
+    )
+  })
   const projectionErrors = states.filter(
     (state) =>
       state === null ||
@@ -1895,11 +2119,32 @@ async function runHybridHandoffScenario(page, imageContainer, boundary) {
       (state.topOriginError !== null && state.topOriginError > config.behaviorTolerancePx)
   )
   const expectedModeSequence = [expectedEdgeMode, 'compensated', expectedEdgeMode]
+  const handoffPulses = pulses.filter((pulse) => pulse.modeChanged)
+  const controlPulses = pulses.filter((pulse) => pulse.isControlPulse)
+  const truncatedHandoffPulses = handoffPulses.filter(
+    (pulse) => pulse.truncatedHandoffPulse
+  )
+  const maximumHandoffProjectionResidualPx = Math.max(
+    0,
+    ...handoffPulses.map((pulse) => pulse.handoffProjectionResidualPx ?? Number.POSITIVE_INFINITY)
+  )
+  const maximumHandoffFrameGapMs = Math.max(
+    0,
+    ...handoffPulses.map((pulse) => pulse.handoffFrameGapMs ?? Number.POSITIVE_INFINITY)
+  )
+  const maximumInputToFirstVisualMotionMs = Math.max(
+    0,
+    ...[...handoffPulses, ...controlPulses].map(
+      (pulse) => pulse.inputToFirstVisualMotionMs ?? Number.POSITIVE_INFINITY
+    )
+  )
 
   return {
     anchorStart: null,
     behaviorEquivalent:
       JSON.stringify(modeSequence) === JSON.stringify(expectedModeSequence) &&
+      handoffPulses.length === 2 &&
+      controlPulses.length === 2 &&
       invalidPulses.length === 0 &&
       projectionErrors.length === 0 &&
       finalState?.mode === expectedEdgeMode,
@@ -1916,9 +2161,14 @@ async function runHybridHandoffScenario(page, imageContainer, boundary) {
       modeSequence,
       invalidPulseCount: invalidPulses.length,
       projectionErrorCount: projectionErrors.length,
-      maximumVisualDiscontinuityPx: round(
-        Math.max(0, ...pulses.map((pulse) => pulse.visualDiscontinuityPx))
-      ),
+      handoffPulseCount: handoffPulses.length,
+      controlPulseCount: controlPulses.length,
+      truncatedHandoffPulseCount: truncatedHandoffPulses.length,
+      truncatedHandoffPulseNumbers: truncatedHandoffPulses.map((pulse) => pulse.pulse),
+      maximumHandoffProjectionResidualPx: round(maximumHandoffProjectionResidualPx),
+      maximumHandoffFrameGapMs: round(maximumHandoffFrameGapMs),
+      maximumInputToFirstVisualMotionMs: round(maximumInputToFirstVisualMotionMs),
+      checkpointEvidence,
       initialState,
       finalState,
       pulses
@@ -2893,9 +3143,9 @@ async function runScenario(
     case 'native-wheel-delay':
       return runNativeWheelScenario(page, imageContainer, true)
     case 'hybrid-top-handoff':
-      return runHybridHandoffScenario(page, imageContainer, 'top')
+      return runHybridHandoffScenario(page, imageContainer, 'top', sampleIndex)
     case 'hybrid-bottom-handoff':
-      return runHybridHandoffScenario(page, imageContainer, 'bottom')
+      return runHybridHandoffScenario(page, imageContainer, 'bottom', sampleIndex)
     case 'hybrid-bottom-live-offset':
       return runNativeElasticScenario(page, imageContainer, 'bottom', true)
     case 'native-elastic-top':
@@ -2983,6 +3233,13 @@ async function runSample(browser, sampleIndex) {
 
   try {
     const imageContainer = await loginAndWait(page)
+    await applyRequestedTheme(page)
+    const browserEnvironment = await readBrowserEnvironment(page)
+    const baselineScreenshotPath = await captureScenarioScreenshot(
+      page,
+      sampleIndex,
+      'baseline'
+    )
     const workerDelayPreparation =
       config.scenario === 'worker-delay' ? await prepareWorkerDelayScenario(page) : null
     const thumbnailBurstPreparation =
@@ -3001,6 +3258,24 @@ async function runSample(browser, sampleIndex) {
     )
     const galleryImageState = await readGalleryImageState(page)
     const traceEvents = await stopTrace()
+    let traceOutputPath = null
+    if (config.traceDir) {
+      const traceDirectory = resolve(config.traceDir)
+      await mkdir(traceDirectory, { recursive: true })
+      traceOutputPath = resolve(
+        traceDirectory,
+        `${config.scenario}-sample-${sampleIndex + 1}-trace.json.gz`
+      )
+      await writeFile(
+        traceOutputPath,
+        await gzipAsync(`${JSON.stringify({ traceEvents })}\n`)
+      )
+    }
+    const settledScreenshotPath = await captureScenarioScreenshot(
+      page,
+      sampleIndex,
+      'settled'
+    )
     const frameMetrics = scenarioResult.frameMetrics
     const traceMetrics = summarizeTrace(traceEvents)
     const scrollEventWorkPerPulseMs = round(
@@ -3055,6 +3330,12 @@ async function runSample(browser, sampleIndex) {
       scrollInteractionWorkPerScrollEventMs,
       scrollInteractionWorkPerEventMs,
       physicalAnchorErrorPx: scenarioResult.physicalAnchorErrorPx,
+      browserEnvironment,
+      traceOutputPath,
+      screenshots: {
+        baseline: baselineScreenshotPath,
+        settled: settledScreenshotPath
+      },
       galleryImageState,
       scenarioDetails: scenarioResult.details,
       ...frameMetrics,
@@ -3114,9 +3395,22 @@ try {
     )
   }
   report = {
+    schemaVersion: reportSchemaVersion,
     generatedAt: new Date().toISOString(),
     browserVersion,
     profileIsolation: 'Playwright temporary user-data-dir plus a fresh browser context per sample',
+    contract: {
+      coordinateInvariant: 'V = p - O',
+      behaviorTolerancePx: config.behaviorTolerancePx,
+      handoffProjectionResidualBudgetPx: config.behaviorTolerancePx,
+      handoffFrameGapBudgetMs: config.handoffFrameGapBudgetMs,
+      inputToFirstVisualMotionBudgetMs: config.inputToFirstMotionBudgetMs,
+      scrollInteractionWorkBudgetMs: config.scrollWorkPerPulseBudgetMs,
+      transitionInternalWriteCount: 1,
+      nativeBoundaryInternalWriteCount: 0,
+      truncatedTransitionPulsePolicy:
+        'advisory only; the immediately following same-direction control pulse must be complete'
+    },
     config: { ...config, password: '<redacted>' },
     aggregate: aggregate(samples),
     samples
@@ -3131,7 +3425,20 @@ if (config.output) {
   await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
 }
 
-console.log(JSON.stringify(report, null, 2))
+if (config.quiet) {
+  console.log(
+    JSON.stringify({
+      schemaVersion: report.schemaVersion,
+      scenario: config.scenario,
+      samples: config.samples,
+      behaviorEquivalentSamples: report.aggregate.behaviorEquivalentSamples,
+      jankySamples: report.aggregate.jankySamples,
+      output: config.output
+    })
+  )
+} else {
+  console.log(JSON.stringify(report, null, 2))
+}
 
 const requiredJankySamples = Math.ceil(config.samples * 0.6)
 if (report.aggregate.behaviorEquivalentSamples !== config.samples) {
