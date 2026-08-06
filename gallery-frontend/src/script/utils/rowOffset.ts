@@ -19,19 +19,24 @@ export function computeOffSetSumOfAboveRowsIndex(
   return offsetSum
 }
 
+/** Projects a logical row position from the top of the physical buffer. */
+export function projectVirtualTop(logicalTop: number, projectionOrigin: number): number {
+  return logicalTop + projectionOrigin
+}
+
 /**
- * Projects a logical row position into the bounded physical buffer coordinate space.
+ * Returns the small distance between a logical row and the bottom of the physical buffer.
  *
- * Keep the subtraction in JavaScript instead of splitting it across parent and child CSS
- * transforms. At million-photo scale both logical values can exceed browser rendering limits
- * even though their viewport-relative result remains small.
+ * Native-bottom mode can represent a logical document that is much taller than Chrome's
+ * physical layout limit. Anchoring from the bottom keeps the CSS transform bounded even when
+ * both the logical position and the physical scroll range are tens of millions of pixels.
  */
-export function projectVirtualTop(
+export function projectVirtualBottom(
   logicalTop: number,
-  committedScrollTop: number,
-  bufferHeight: number
+  logicalUpperBound: number,
+  viewportHeight: number
 ): number {
-  return logicalTop - committedScrollTop + bufferHeight / 3
+  return viewportHeight + logicalUpperBound - logicalTop
 }
 
 /** Returns a row's bounded position inside a visible-row group. */

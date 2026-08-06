@@ -43,7 +43,7 @@ metrics, one normal-startup record iteration, one migration source scan, and zer
 migration destination scans. The hard gates are V6 median ≤115% of V5 and peak
 RSS ≤850 MiB. Results are written under `.performance/storage/`.
 
-### Scroll-lag microbenchmark
+### Scroll-lag and hybrid virtual-scroll microbenchmark
 
 With Rocket listening on `127.0.0.1:5673` and Vite on `127.0.0.1:5173`, run the
 focused compensated-virtual-scroll benchmark with:
@@ -56,10 +56,38 @@ node performance\scroll-lag.mjs --browser chrome --headed --scenario native-whee
   --samples 3 --pulses 20 --pulse-settle 400 --os-wheel-delta -120
 ```
 
-Available scenarios are `continuous-down`, `continuous-up`, `discrete-wheel`,
-`discrete-wheel-delay`, `native-wheel`, `native-wheel-delay`, `worker-delay`, `bounds`,
-`scrollbar`, `locate`, `resize`, and `mobile`. `bounds` alternates upper and lower bounds
-between samples; `locate` can use `--locate <hash>` or a hash observed from the loaded page.
+The browser login password is mandatory and is never written to the report. Set it only for
+the current shell (or pass `--password` explicitly):
+
+```powershell
+$env:UROCISSA_PASSWORD = Read-Host 'Urocissa password'
+
+node performance\scroll-lag.mjs --url http://localhost:5173 `
+  --scenario hybrid-top-handoff --headed --samples 3 --expect strict-smooth
+node performance\scroll-lag.mjs --url http://localhost:5173 `
+  --scenario hybrid-bottom-handoff --headed --samples 3 --expect strict-smooth
+node performance\scroll-lag.mjs --url http://localhost:5173 `
+  --scenario native-elastic-top --headed --samples 3 --expect strict-smooth `
+  --checkpoint-dir performance\.performance\native-elastic-top
+node performance\scroll-lag.mjs --url http://localhost:5173 `
+  --scenario native-elastic-bottom --headed --samples 3 --expect strict-smooth `
+  --checkpoint-dir performance\.performance\native-elastic-bottom
+node performance\scroll-lag.mjs --url http://localhost:5173 `
+  --scenario hybrid-bottom-live-offset --headed --samples 5 --expect strict-smooth `
+  --checkpoint-dir performance\.performance\hybrid-bottom-live-offset
+node performance\scroll-lag.mjs --url http://localhost:5173 `
+  --scenario short-all-native --samples 1 --expect strict-smooth
+node performance\scroll-lag.mjs --url http://localhost:5173 `
+  --scenario height-clamp-projection --samples 1 --expect strict-smooth
+```
+
+Hybrid-specific scenarios are `hybrid-top-handoff`, `hybrid-bottom-handoff`,
+`hybrid-bottom-live-offset`, `native-elastic-top`, `native-elastic-bottom`,
+`short-all-native`, and `height-clamp-projection`. The existing scenarios remain
+`continuous-down`, `continuous-up`, `discrete-wheel`, `discrete-wheel-delay`,
+`native-wheel`, `native-wheel-delay`, `worker-delay`, `bounds`, `scrollbar`, `locate`,
+`resize`, and `mobile`. `bounds` alternates upper and lower bounds between samples;
+`locate` can use `--locate <hash>` or a hash observed from the loaded page.
 Reports include CDP timer install/fire counts for 0, 50, 75, and 100 ms timers. Use
 `--expect strict-smooth` when every sample must pass the jank gate.
 The browser instrumentation also records element `scrollend` events and waits for the
@@ -80,6 +108,23 @@ PID, verifies that it is the foreground window, and then sends one Windows
 OS delta, Chrome's trusted DOM wheel delta and final `defaultPrevented` state, physical scroll
 and `scrollend` events, per-frame row displacement, and final physical-anchor error.
 `native-wheel-delay` adds the configured row-response delay.
+
+The hybrid handoff scenarios use the same Windows `SendInput(MOUSEEVENTF_WHEEL)` path and
+assert the exact `native-top → compensated → native-top` or
+`native-bottom → compensated → native-bottom` sequence, one-pixel projection continuity,
+no reverse frame, and the final `p/P/O/V/U` invariants. The elastic scenarios use
+`InitializeTouchInjection` and `InjectTouchInput`; every down/update/up must arrive as a
+trusted, non-cancelled DOM touch event. Because Chromium's Windows build keeps elastic
+overscroll behind feature flags, these isolated test windows enable Chromium's native
+`ElasticOverscroll` and `OverscrollEffectOnNonRootScrollers` features. This changes only the
+test browser's native compositor behavior; the application contains no simulated spring.
+
+With `--checkpoint-dir`, the Windows helper records GDI `CopyFromScreen` frames and a
+composed-window baseline/peak/settled triplet captured through the Windows screenshot path,
+while Playwright records the matching CDP screenshot and DOM geometry. The visual gate
+requires a measurable native peak, a fully recovered settled frame, zero controller writes
+at a pure boundary, and at most one geometry-reconciliation write for the live-offset case.
+The helper preserves and restores the user's clipboard after composed-window capture.
 
 The runner builds the backend with `--profile dev-release --features performance-test` (never plain `--release`), builds the frontend, starts an isolated server, inserts the fixture, and restarts it to measure recovery. Chromium then performs the existing login/top-scroll/middle-jump/end-jump journey followed by:
 

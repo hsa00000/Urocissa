@@ -3,63 +3,166 @@ import { IsolationId } from '@type/types'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { throttle } from 'lodash'
-import { computed, nextTick, shallowRef, type ComputedRef, type Ref } from 'vue'
-import { useConfigStore } from '@/store/configStore'
+import {
+  computed,
+  nextTick,
+  readonly,
+  shallowRef,
+  type ComputedRef,
+  type Ref
+} from 'vue'
 
 const scrollObservationInterval = 100
 const fallbackScrollEndDelay = 200
-const physicalPositionTolerance = 0.5
 
-export interface CompensatedScrollController {
-  /** Logical viewport position including Chrome's in-progress native physical movement. */
-  readonly effectiveScrollTop: ComputedRef<number>
-  /** Observe a native scroll without interrupting the browser's scrolling animation. */
+export const hybridScrollDefaults = Object.freeze({
+  edgeRangePx: 3_000,
+  compensationAnchorPx: 200_000,
+  compensationBufferPx: 600_000,
+  positionTolerancePx: 1
+})
+
+export type HybridScrollMode = 'native-top' | 'compensated' | 'native-bottom'
+
+export type ScrollSyncReason =
+  | 'initialize'
+  | 'locate'
+  | 'scrollbar'
+  | 'resize'
+  | 'collection-reset'
+  | 'external'
+
+export interface HybridScrollOptions {
+  edgeRangePx?: number
+  compensationAnchorPx?: number
+  compensationBufferPx?: number
+  positionTolerancePx?: number
+}
+
+export interface HybridScrollDebugSnapshot {
+  mode: HybridScrollMode
+  physicalTop: number
+  physicalMaximum: number
+  projectionOrigin: number
+  effectiveScrollTop: number
+  logicalUpperBound: number
+  totalHeight: number
+  generation: number
+  internalWriteCount: number
+}
+
+export interface HybridScrollController {
+  readonly mode: Readonly<Ref<HybridScrollMode>>
+  readonly effectiveScrollTop: Readonly<Ref<number>>
+  readonly projectionOrigin: Readonly<Ref<number>>
+  readonly logicalUpperBound: ComputedRef<number>
+  readonly minimumBufferHeight: ComputedRef<number>
+  readonly generation: Readonly<Ref<number>>
+  readonly internalWriteCount: Readonly<Ref<number>>
   onScroll: () => void
-  /** Commit the completed native movement to virtual scrollTop and restore the physical anchor. */
   onScrollEnd: () => Promise<void>
-  /** Abandon an in-progress native transaction before locate, resize, or scrollbar jumps. */
-  resetPhysicalAnchor: () => void
-  /** Clear throttles and timers owned by the controller. */
+  reconcileGeometry: (anchorShiftPx: number) => Promise<void>
+  syncToLogicalPosition: (reason: ScrollSyncReason) => Promise<void>
+  getDebugSnapshot: () => HybridScrollDebugSnapshot
   cancel: () => void
+}
+
+interface InternalPhysicalWrite {
+  generation: number
+  target: number
+  externalMovementSerial: number
+  reached: boolean
 }
 
 function clamp(value: number, lowerBound: number, upperBound: number): number {
   return Math.min(Math.max(value, lowerBound), upperBound)
 }
 
+export function selectHybridScrollMode(
+  logicalTop: number,
+  logicalUpperBound: number,
+  _currentMode: HybridScrollMode,
+  edgeRangePx: number = hybridScrollDefaults.edgeRangePx,
+  tolerancePx: number = hybridScrollDefaults.positionTolerancePx
+): HybridScrollMode {
+  if (logicalUpperBound <= tolerancePx) return 'native-top'
+
+  if (logicalUpperBound <= edgeRangePx * 2) {
+    const midpoint = logicalUpperBound / 2
+    return logicalTop <= midpoint ? 'native-top' : 'native-bottom'
+  }
+
+  if (logicalTop <= edgeRangePx) return 'native-top'
+  if (logicalUpperBound - logicalTop <= edgeRangePx) return 'native-bottom'
+  return 'compensated'
+}
+
 /**
- * Keeps Chrome's native physical scrolling separate from the committed virtual position.
+ * Maps one logical virtual document onto three physical scrolling projections.
  *
- * During a native scroll transaction, the browser exclusively controls the element's
- * physical `scrollTop`. The resulting physical delta is exposed as `effectiveScrollTop`
- * for row selection and prefetching, while the committed Pinia value (and therefore the
- * Buffer transform) remains unchanged. Once `scrollend` fires, the final delta is committed
- * and the physical buffer is restored to its anchor in the same render checkpoint.
+ * `logical = physical - projectionOrigin` is the sole coordinate invariant. The Buffer
+ * consumes the same projection origin, so a mode hand-off can move both the rendered rows and
+ * physical scrollTop in one Vue render checkpoint without changing their viewport position.
  */
 export function handleScroll(
   imageContainerRef: Ref<HTMLElement | null>,
-  lastScrollTop: Ref<number>,
-  stopScroll: Ref<boolean>,
   windowHeight: Ref<number>,
-  isolationId: IsolationId
-): CompensatedScrollController {
-  const configStore = useConfigStore('mainId')
+  isolationId: IsolationId,
+  options: HybridScrollOptions = {}
+): HybridScrollController {
+  const edgeRangePx = options.edgeRangePx ?? hybridScrollDefaults.edgeRangePx
+  const compensationAnchorPx =
+    options.compensationAnchorPx ?? hybridScrollDefaults.compensationAnchorPx
+  const compensationBufferPx =
+    options.compensationBufferPx ?? hybridScrollDefaults.compensationBufferPx
+  const positionTolerancePx =
+    options.positionTolerancePx ?? hybridScrollDefaults.positionTolerancePx
+
   const scrollTopStore = useScrollTopStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
-  const transientPhysicalDelta = shallowRef(0)
+  const modeState = shallowRef<HybridScrollMode>('native-top')
+  const effectiveScrollTopState = shallowRef(0)
+  const projectionOriginState = shallowRef(0)
+  const generationState = shallowRef(0)
+  const internalWriteCountState = shallowRef(0)
 
   let fallbackScrollEndTimer: ReturnType<typeof setTimeout> | null = null
-  let mobileStopTimer: ReturnType<typeof setTimeout> | null = null
-  let internalPhysicalTarget: number | null = null
-  let committing = false
+  let internalPhysicalWrite: InternalPhysicalWrite | null = null
+  let externalMovementSerial = 0
+  let lastObservedPhysicalTop = 0
+  let operationQueue: Promise<void> = Promise.resolve()
+  let modeSwitchQueued = false
+  let geometryOperation: Promise<void> | null = null
+  let pendingGeometryLogicalTop: number | null = null
+  let geometryNotificationPending = false
+  let authoritativeEpoch = 0
+  let cancelled = false
 
-  const upperBound = computed(() =>
+  const isCancelled = (): boolean => cancelled
+  const hasPendingGeometryNotification = (): boolean => geometryNotificationPending
+
+  const logicalUpperBound = computed(() =>
     Math.max(getScrollUpperBound(prefetchStore.totalHeight, windowHeight.value), 0)
   )
 
-  const effectiveScrollTop = computed(() =>
-    clamp(scrollTopStore.scrollTop + transientPhysicalDelta.value, 0, upperBound.value)
+  const minimumBufferHeight = computed(() =>
+    logicalUpperBound.value > edgeRangePx * 2 ? compensationBufferPx : 0
   )
+
+  effectiveScrollTopState.value = clamp(
+    scrollTopStore.scrollTop,
+    0,
+    logicalUpperBound.value
+  )
+
+  const getPhysicalMaximum = (imageContainer: HTMLElement): number =>
+    Math.max(imageContainer.scrollHeight - imageContainer.clientHeight, 0)
+
+  const readUnclampedLogicalTop = (imageContainer: HTMLElement): number =>
+    imageContainer.scrollTop - projectionOriginState.value
+
+  const readLogicalTop = (imageContainer: HTMLElement): number =>
+    clamp(readUnclampedLogicalTop(imageContainer), 0, logicalUpperBound.value)
 
   const clearFallbackScrollEnd = () => {
     if (fallbackScrollEndTimer !== null) {
@@ -68,112 +171,170 @@ export function handleScroll(
     }
   }
 
-  const stopMobileScrollTemporarily = () => {
-    if (!configStore.isMobile) return
-
-    stopScroll.value = true
-    if (mobileStopTimer !== null) {
-      clearTimeout(mobileStopTimer)
-    }
-    mobileStopTimer = setTimeout(() => {
-      stopScroll.value = false
-      mobileStopTimer = null
-    }, 100)
-  }
-
-  const observePhysicalDelta = () => {
+  const publishPhysicalPosition = () => {
     const imageContainer = imageContainerRef.value
     if (imageContainer === null) return
-
-    transientPhysicalDelta.value = imageContainer.scrollTop - lastScrollTop.value
+    effectiveScrollTopState.value = readLogicalTop(imageContainer)
   }
 
-  const writePhysicalPosition = (imageContainer: HTMLElement, target: number) => {
-    if (Math.abs(imageContainer.scrollTop - target) <= physicalPositionTolerance) return
-
-    internalPhysicalTarget = target
-    imageContainer.scrollTop = target
-  }
-
-  const throttledObservePhysicalDelta = throttle(
-    observePhysicalDelta,
+  const throttledPublishPhysicalPosition = throttle(
+    publishPhysicalPosition,
     scrollObservationInterval,
-    { leading: true }
+    { leading: true, trailing: true }
   )
 
-  /**
-   * Maps the logical content bounds onto the physical buffer for the current transaction.
-   * Normal scrolling is never modified; a physical write happens only when the logical
-   * viewport reaches an edge, where a native scroll container would stop as well.
-   */
-  const clampPhysicalPositionToLogicalBounds = (imageContainer: HTMLElement): boolean => {
-    const anchor = lastScrollTop.value
-
-    if (upperBound.value === 0) {
-      transientPhysicalDelta.value = 0
-      scrollTopStore.scrollTop = 0
-      writePhysicalPosition(imageContainer, anchor)
-      stopMobileScrollTemporarily()
-      return true
-    }
-
-    const minimumPhysicalTop = anchor - scrollTopStore.scrollTop
-    const maximumPhysicalTop = anchor + upperBound.value - scrollTopStore.scrollTop
-    const clampedPhysicalTop = clamp(
-      imageContainer.scrollTop,
-      minimumPhysicalTop,
-      maximumPhysicalTop
+  const enqueueOperation = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = operationQueue.then(operation, operation)
+    operationQueue = result.then(
+      () => undefined,
+      () => undefined
     )
+    return result
+  }
 
-    if (Math.abs(clampedPhysicalTop - imageContainer.scrollTop) <= physicalPositionTolerance) {
+  const markTransition = (reason: string, nextMode: HybridScrollMode) => {
+    if (typeof performance === 'undefined' || typeof performance.mark !== 'function') return
+    performance.mark(`urocissa-scroll:${reason}:${nextMode}`)
+  }
+
+  const writePhysicalPosition = (
+    imageContainer: HTMLElement,
+    requestedTarget: number,
+    generation: number
+  ): boolean => {
+    const target = clamp(requestedTarget, 0, getPhysicalMaximum(imageContainer))
+    if (Math.abs(imageContainer.scrollTop - target) <= positionTolerancePx) {
+      lastObservedPhysicalTop = imageContainer.scrollTop
       return false
     }
 
-    writePhysicalPosition(imageContainer, clampedPhysicalTop)
-    transientPhysicalDelta.value = clampedPhysicalTop - anchor
-    stopMobileScrollTemporarily()
+    internalPhysicalWrite = {
+      generation,
+      target,
+      externalMovementSerial,
+      reached: false
+    }
+    internalWriteCountState.value += 1
+    imageContainer.scrollTop = target
+    lastObservedPhysicalTop = imageContainer.scrollTop
     return true
   }
 
-  const commitScrollTransaction = async () => {
-    if (committing) return
-
+  const applyProjection = async (
+    requestedLogicalTop: number,
+    requestedMode: HybridScrollMode,
+    reason: string
+  ): Promise<void> => {
     const imageContainer = imageContainerRef.value
-    if (imageContainer === null) return
+    if (imageContainer === null || cancelled) return
+    const transactionEpoch = authoritativeEpoch
 
     clearFallbackScrollEnd()
-    throttledObservePhysicalDelta.cancel()
+    throttledPublishPhysicalPosition.cancel()
 
-    const anchor = lastScrollTop.value
-    const physicalDelta = imageContainer.scrollTop - anchor
-    if (Math.abs(physicalDelta) <= physicalPositionTolerance) {
-      transientPhysicalDelta.value = 0
+    let nextLogicalTop = clamp(requestedLogicalTop, 0, logicalUpperBound.value)
+    let nextMode = selectHybridScrollMode(
+      nextLogicalTop,
+      logicalUpperBound.value,
+      requestedMode,
+      edgeRangePx,
+      positionTolerancePx
+    )
+
+    generationState.value += 1
+    const transactionGeneration = generationState.value
+
+    for (let pass = 0; pass < 2; pass += 1) {
+      const upperBound = logicalUpperBound.value
+      nextLogicalTop = clamp(nextLogicalTop, 0, upperBound)
+      nextMode = selectHybridScrollMode(
+        nextLogicalTop,
+        upperBound,
+        nextMode,
+        edgeRangePx,
+        positionTolerancePx
+      )
+
+      modeState.value = nextMode
+      scrollTopStore.scrollTop = nextLogicalTop
+      effectiveScrollTopState.value = nextLogicalTop
+
+      if (nextMode === 'native-top') {
+        projectionOriginState.value = 0
+      } else if (nextMode === 'compensated') {
+        projectionOriginState.value = compensationAnchorPx - nextLogicalTop
+      } else {
+        projectionOriginState.value = getPhysicalMaximum(imageContainer) - upperBound
+      }
+
+      markTransition(reason, nextMode)
+      await nextTick()
+
+      if (transactionEpoch !== authoritativeEpoch || isCancelled()) return
+
+      const updatedLogicalTop = clamp(nextLogicalTop, 0, logicalUpperBound.value)
+      const updatedMode = selectHybridScrollMode(
+        updatedLogicalTop,
+        logicalUpperBound.value,
+        nextMode,
+        edgeRangePx,
+        positionTolerancePx
+      )
+      if (updatedLogicalTop === nextLogicalTop && updatedMode === nextMode) break
+
+      nextLogicalTop = updatedLogicalTop
+      nextMode = updatedMode
+    }
+
+    if (
+      imageContainerRef.value !== imageContainer ||
+      transactionEpoch !== authoritativeEpoch ||
+      isCancelled()
+    ) {
       return
     }
 
-    committing = true
-    try {
-      const nextScrollTop = clamp(
-        scrollTopStore.scrollTop + physicalDelta,
-        0,
-        upperBound.value
-      )
-
-      // Vue batches these two writes, so consumers never observe committed + transient twice.
-      scrollTopStore.scrollTop = nextScrollTop
-      transientPhysicalDelta.value = 0
-
-      // Apply the Buffer transform before restoring physical scrollTop. Both operations occur
-      // before the browser's next paint, preserving the exact row position across the rebase.
-      await nextTick()
-
-      if (imageContainerRef.value === imageContainer) {
-        writePhysicalPosition(imageContainer, anchor)
-        lastScrollTop.value = anchor
-      }
-    } finally {
-      committing = false
+    const finalUpperBound = logicalUpperBound.value
+    nextLogicalTop = clamp(nextLogicalTop, 0, finalUpperBound)
+    if (nextMode === 'native-bottom') {
+      projectionOriginState.value = getPhysicalMaximum(imageContainer) - finalUpperBound
     }
+
+    const targetPhysicalTop = nextLogicalTop + projectionOriginState.value
+    writePhysicalPosition(imageContainer, targetPhysicalTop, transactionGeneration)
+    effectiveScrollTopState.value = clamp(
+      imageContainer.scrollTop - projectionOriginState.value,
+      0,
+      finalUpperBound
+    )
+  }
+
+  const queueModeSwitch = () => {
+    if (modeSwitchQueued || cancelled) return
+    modeSwitchQueued = true
+    const epoch = authoritativeEpoch
+
+    void enqueueOperation(async () => {
+      modeSwitchQueued = false
+      if (cancelled || epoch !== authoritativeEpoch) return
+
+      const imageContainer = imageContainerRef.value
+      if (imageContainer === null) return
+
+      const logicalTop = readLogicalTop(imageContainer)
+      const desiredMode = selectHybridScrollMode(
+        logicalTop,
+        logicalUpperBound.value,
+        modeState.value,
+        edgeRangePx,
+        positionTolerancePx
+      )
+      if (desiredMode !== modeState.value) {
+        await applyProjection(logicalTop, desiredMode, 'threshold')
+      }
+    }).catch((error: unknown) => {
+      console.error('Hybrid scroll mode switch failed:', error)
+    })
   }
 
   const scheduleFallbackScrollEnd = (imageContainer: HTMLElement) => {
@@ -182,54 +343,196 @@ export function handleScroll(
     clearFallbackScrollEnd()
     fallbackScrollEndTimer = setTimeout(() => {
       fallbackScrollEndTimer = null
-      void commitScrollTransaction()
+      void settleScrollTransaction()
     }, fallbackScrollEndDelay)
   }
 
   const onScroll = () => {
     const imageContainer = imageContainerRef.value
-    if (imageContainer === null) return
+    if (imageContainer === null || cancelled) return
 
-    if (internalPhysicalTarget !== null) {
-      const reachedInternalTarget =
-        Math.abs(imageContainer.scrollTop - internalPhysicalTarget) <= physicalPositionTolerance
-      internalPhysicalTarget = null
-      if (reachedInternalTarget) return
+    const physicalTop = imageContainer.scrollTop
+    if (
+      internalPhysicalWrite !== null &&
+      !internalPhysicalWrite.reached &&
+      Math.abs(physicalTop - internalPhysicalWrite.target) <= positionTolerancePx
+    ) {
+      internalPhysicalWrite.reached = true
+      lastObservedPhysicalTop = physicalTop
+      effectiveScrollTopState.value = readLogicalTop(imageContainer)
+      return
     }
 
-    const reachedLogicalBoundary = clampPhysicalPositionToLogicalBounds(imageContainer)
-    if (!reachedLogicalBoundary) {
-      throttledObservePhysicalDelta()
-    }
+    const physicalMovement = physicalTop - lastObservedPhysicalTop
+    if (Math.abs(physicalMovement) <= positionTolerancePx) return
+
+    externalMovementSerial += 1
+    lastObservedPhysicalTop = physicalTop
+    throttledPublishPhysicalPosition()
     scheduleFallbackScrollEnd(imageContainer)
+
+    const logicalTop = readLogicalTop(imageContainer)
+    const desiredMode = selectHybridScrollMode(
+      logicalTop,
+      logicalUpperBound.value,
+      modeState.value,
+      edgeRangePx,
+      positionTolerancePx
+    )
+    if (desiredMode !== modeState.value) queueModeSwitch()
   }
 
-  const resetPhysicalAnchor = () => {
+  const consumeInternalScrollEnd = (): boolean => {
+    const internalWrite = internalPhysicalWrite
+    if (internalWrite?.reached !== true) return false
+
+    internalPhysicalWrite = null
+    return externalMovementSerial === internalWrite.externalMovementSerial
+  }
+
+  const settleScrollTransaction = async (): Promise<void> => {
+    if (cancelled) return
     clearFallbackScrollEnd()
-    throttledObservePhysicalDelta.cancel()
-    transientPhysicalDelta.value = 0
+    throttledPublishPhysicalPosition.cancel()
 
     const imageContainer = imageContainerRef.value
     if (imageContainer === null) return
 
-    const anchor = lastScrollTop.value
-    writePhysicalPosition(imageContainer, anchor)
+    const logicalTop = readLogicalTop(imageContainer)
+    const desiredMode = selectHybridScrollMode(
+      logicalTop,
+      logicalUpperBound.value,
+      modeState.value,
+      edgeRangePx,
+      positionTolerancePx
+    )
+
+    if (desiredMode !== modeState.value || desiredMode === 'compensated') {
+      await applyProjection(logicalTop, desiredMode, 'scroll-end')
+      return
+    }
+
+    scrollTopStore.scrollTop = logicalTop
+    effectiveScrollTopState.value = logicalTop
   }
 
-  const cancel = () => {
+  const onScrollEnd = (): Promise<void> => {
+    if (consumeInternalScrollEnd()) return Promise.resolve()
+    return enqueueOperation(settleScrollTransaction)
+  }
+
+  const syncToLogicalPosition = (reason: ScrollSyncReason): Promise<void> => {
+    authoritativeEpoch += 1
+    const epoch = authoritativeEpoch
+    const requestedLogicalTop = scrollTopStore.scrollTop
+    pendingGeometryLogicalTop = null
+    geometryNotificationPending = false
+    internalPhysicalWrite = null
     clearFallbackScrollEnd()
-    throttledObservePhysicalDelta.cancel()
-    if (mobileStopTimer !== null) {
-      clearTimeout(mobileStopTimer)
-      mobileStopTimer = null
+    throttledPublishPhysicalPosition.cancel()
+
+    return enqueueOperation(async () => {
+      if (cancelled || epoch !== authoritativeEpoch) return
+      const logicalTop = clamp(requestedLogicalTop, 0, logicalUpperBound.value)
+      const desiredMode = selectHybridScrollMode(
+        logicalTop,
+        logicalUpperBound.value,
+        modeState.value,
+        edgeRangePx,
+        positionTolerancePx
+      )
+      await applyProjection(logicalTop, desiredMode, reason)
+    })
+  }
+
+  const reconcileGeometry = (anchorShiftPx: number): Promise<void> => {
+    const imageContainer = imageContainerRef.value
+    pendingGeometryLogicalTop ??=
+        geometryOperation === null && imageContainer !== null
+          ? readUnclampedLogicalTop(imageContainer)
+          : effectiveScrollTopState.value
+    if (Number.isFinite(anchorShiftPx)) pendingGeometryLogicalTop += anchorShiftPx
+    geometryNotificationPending = true
+    if (geometryOperation !== null) return geometryOperation
+
+    const epoch = authoritativeEpoch
+    geometryOperation = enqueueOperation(async () => {
+      do {
+        if (cancelled || epoch !== authoritativeEpoch) {
+          pendingGeometryLogicalTop = null
+          geometryNotificationPending = false
+          return
+        }
+
+        if (imageContainerRef.value === null) {
+          pendingGeometryLogicalTop = null
+          geometryNotificationPending = false
+          return
+        }
+
+        const requestedLogicalTop =
+          pendingGeometryLogicalTop ?? effectiveScrollTopState.value
+        pendingGeometryLogicalTop = null
+        geometryNotificationPending = false
+        const targetLogicalTop = clamp(
+          requestedLogicalTop,
+          0,
+          logicalUpperBound.value
+        )
+        const desiredMode = selectHybridScrollMode(
+          targetLogicalTop,
+          logicalUpperBound.value,
+          modeState.value,
+          edgeRangePx,
+          positionTolerancePx
+        )
+        await applyProjection(targetLogicalTop, desiredMode, 'geometry')
+      } while (hasPendingGeometryNotification())
+    }).finally(() => {
+      geometryOperation = null
+    })
+
+    return geometryOperation
+  }
+
+  const getDebugSnapshot = (): HybridScrollDebugSnapshot => {
+    const imageContainer = imageContainerRef.value
+    return {
+      mode: modeState.value,
+      physicalTop: imageContainer?.scrollTop ?? 0,
+      physicalMaximum: imageContainer === null ? 0 : getPhysicalMaximum(imageContainer),
+      projectionOrigin: projectionOriginState.value,
+      effectiveScrollTop: effectiveScrollTopState.value,
+      logicalUpperBound: logicalUpperBound.value,
+      totalHeight: prefetchStore.totalHeight,
+      generation: generationState.value,
+      internalWriteCount: internalWriteCountState.value
     }
   }
 
+  const cancel = () => {
+    cancelled = true
+    authoritativeEpoch += 1
+    clearFallbackScrollEnd()
+    throttledPublishPhysicalPosition.cancel()
+    internalPhysicalWrite = null
+    pendingGeometryLogicalTop = null
+    geometryNotificationPending = false
+  }
+
   return {
-    effectiveScrollTop,
+    mode: readonly(modeState),
+    effectiveScrollTop: readonly(effectiveScrollTopState),
+    projectionOrigin: readonly(projectionOriginState),
+    logicalUpperBound,
+    minimumBufferHeight,
+    generation: readonly(generationState),
+    internalWriteCount: readonly(internalWriteCountState),
     onScroll,
-    onScrollEnd: commitScrollTransaction,
-    resetPhysicalAnchor,
+    onScrollEnd,
+    reconcileGeometry,
+    syncToLogicalPosition,
+    getDebugSnapshot,
     cancel
   }
 }

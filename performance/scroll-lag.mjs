@@ -45,6 +45,13 @@ const supportedScenarios = new Set([
   'mobile-interaction',
   'native-wheel',
   'native-wheel-delay',
+  'hybrid-top-handoff',
+  'hybrid-bottom-handoff',
+  'hybrid-bottom-live-offset',
+  'native-elastic-top',
+  'native-elastic-bottom',
+  'short-all-native',
+  'height-clamp-projection',
   'continuous-up',
   'worker-delay',
   'bounds',
@@ -54,9 +61,29 @@ const supportedScenarios = new Set([
   'mobile'
 ])
 
+const hybridScenarios = new Set([
+  'hybrid-top-handoff',
+  'hybrid-bottom-handoff',
+  'hybrid-bottom-live-offset',
+  'native-elastic-top',
+  'native-elastic-bottom',
+  'short-all-native',
+  'height-clamp-projection'
+])
+
+const nativeInputScenarios = new Set([
+  'native-wheel',
+  'native-wheel-delay',
+  'hybrid-top-handoff',
+  'hybrid-bottom-handoff',
+  'hybrid-bottom-live-offset',
+  'native-elastic-top',
+  'native-elastic-bottom'
+])
+
 const config = {
   url: option('url', 'http://127.0.0.1:5173').replace(/\/$/, ''),
-  password: option('password', process.env.UROCISSA_PASSWORD ?? 'password'),
+  password: option('password', process.env.UROCISSA_PASSWORD ?? null),
   browser: option('browser', 'chromium'),
   samples: Math.floor(numberOption('samples', 3)),
   pulses: Math.floor(numberOption('pulses', 36)),
@@ -75,6 +102,7 @@ const config = {
   scenario: option('scenario', 'continuous-down'),
   locate: option('locate', null),
   output: option('output', null),
+  checkpointDir: option('checkpoint-dir', null),
   expect: option('expect', 'none'),
   headed: args.includes('--headed')
 }
@@ -87,12 +115,29 @@ if (!['none', 'janky', 'smooth', 'strict-smooth'].includes(config.expect)) {
   throw new Error('--expect must be one of: none, janky, smooth, strict-smooth')
 }
 
+if (typeof config.password !== 'string' || config.password.length === 0) {
+  throw new Error('set UROCISSA_PASSWORD or pass --password')
+}
+
+if (nativeInputScenarios.has(config.scenario) && !config.headed) {
+  throw new Error(`${config.scenario} requires --headed for trusted Windows input`)
+}
+
+if (
+  (config.scenario === 'native-elastic-top' ||
+    config.scenario === 'native-elastic-bottom' ||
+    config.scenario === 'hybrid-bottom-live-offset') &&
+  !config.checkpointDir
+) {
+  throw new Error(`${config.scenario} requires --checkpoint-dir for compositor evidence`)
+}
+
 const transparentPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64'
 )
 
-const nativeWheelScript = resolve(
+const nativeInputScript = resolve(
   dirname(fileURLToPath(import.meta.url)),
   'native-wheel-input.ps1'
 )
@@ -196,6 +241,8 @@ async function launchNativeWheelController(page) {
 
   const originalTitle = await page.title()
   const titleToken = `urocissa-native-wheel-${randomUUID()}`
+  const captureDirectory = config.checkpointDir ? resolve(config.checkpointDir) : null
+  if (captureDirectory !== null) await mkdir(captureDirectory, { recursive: true })
   await page.evaluate((title) => {
     document.title = title
   }, titleToken)
@@ -209,9 +256,10 @@ async function launchNativeWheelController(page) {
       '-ExecutionPolicy',
       'Bypass',
       '-File',
-      nativeWheelScript,
+      nativeInputScript,
       '-WindowTitleToken',
-      titleToken
+      titleToken,
+      ...(captureDirectory === null ? [] : ['-CaptureDirectory', captureDirectory])
     ],
     { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
   )
@@ -230,18 +278,18 @@ async function launchNativeWheelController(page) {
     const result = await withTimeout(
       iterator.next(),
       15_000,
-      `native wheel helper timed out${stderr ? `: ${stderr.trim()}` : ''}`
+      `native input helper timed out${stderr ? `: ${stderr.trim()}` : ''}`
     )
     if (result.done) {
       throw new Error(
-        `native wheel helper exited${helperError ? `: ${helperError.message}` : ''}` +
+        `native input helper exited${helperError ? `: ${helperError.message}` : ''}` +
           `${stderr ? `: ${stderr.trim()}` : ''}`
       )
     }
     try {
       return JSON.parse(result.value)
     } catch (error) {
-      throw new Error(`native wheel helper returned invalid JSON: ${result.value}`, {
+      throw new Error(`native input helper returned invalid JSON: ${result.value}`, {
         cause: error
       })
     }
@@ -249,16 +297,59 @@ async function launchNativeWheelController(page) {
 
   const ready = await readMessage()
   if (ready.type !== 'ready') {
-    throw new Error(`native wheel helper did not become ready: ${JSON.stringify(ready)}`)
+    throw new Error(`native input helper did not become ready: ${JSON.stringify(ready)}`)
   }
 
   return {
     ready,
     async wheel(delta) {
-      helper.stdin.write(`wheel ${delta}\n`)
+      helper.stdin.write(`wheel ${delta} 0.5 0.5\n`)
       const result = await readMessage()
       if (result.type !== 'wheel' || result.sent !== 1 || !result.foreground) {
         throw new Error(`native wheel input was refused: ${JSON.stringify(result)}`)
+      }
+      return result
+    },
+    async move(xRatio, yRatio) {
+      helper.stdin.write(`move ${xRatio} ${yRatio}\n`)
+      const result = await readMessage()
+      if (result.type !== 'move' || !result.moved || !result.foreground) {
+        throw new Error(`native mouse movement was refused: ${JSON.stringify(result)}`)
+      }
+      return result
+    },
+    async touch({ xRatio = 0.5, startYRatio, endYRatio, durationMs, steps }, onCheckpoint) {
+      helper.stdin.write(
+        `touch ${xRatio} ${startYRatio} ${endYRatio} ${durationMs} ${steps}\n`
+      )
+      const checkpoints = []
+      while (true) {
+        const result = await readMessage()
+        if (result.type === 'touch-checkpoint') {
+          checkpoints.push(result)
+          await onCheckpoint?.(result)
+          continue
+        }
+        if (result.type !== 'touch-complete') {
+          throw new Error(`native touch input was refused: ${JSON.stringify(result)}`)
+        }
+        if (
+          !result.foreground ||
+          result.injectedCount !== result.expectedCount ||
+          checkpoints.some((checkpoint) => !checkpoint.injected)
+        ) {
+          throw new Error(
+            `native touch injection failed: ${JSON.stringify({ ...result, checkpoints })}`
+          )
+        }
+        return { ...result, checkpoints }
+      }
+    },
+    async capture(label) {
+      helper.stdin.write(`capture ${label}\n`)
+      const result = await readMessage()
+      if (result.type !== 'capture' || !result.foreground) {
+        throw new Error(`native screen capture failed: ${JSON.stringify(result)}`)
       }
       return result
     },
@@ -280,6 +371,170 @@ async function launchNativeWheelController(page) {
         .catch(() => {})
     }
   }
+}
+
+async function calibrateNativeInput(page, controller) {
+  await page.evaluate(() => {
+    if (window.__scrollLag) window.__scrollLag.lastMouseMove = null
+  })
+  await controller.move(0.25, 0.25)
+  await page.waitForFunction(() => window.__scrollLag?.lastMouseMove?.isTrusted === true, null, {
+    timeout: 2000
+  })
+  await page.evaluate(() => {
+    if (window.__scrollLag) window.__scrollLag.lastMouseMove = null
+  })
+  await controller.move(0.5, 0.5)
+  await page.waitForFunction(() => window.__scrollLag?.lastMouseMove?.isTrusted === true, null, {
+    timeout: 2000
+  })
+  const calibration = await page.evaluate(() => {
+    const mouse = window.__scrollLag?.lastMouseMove
+    if (!mouse) return null
+    const expectedX = window.innerWidth / 2
+    const expectedY = window.innerHeight / 2
+    return {
+      ...mouse,
+      expectedX,
+      expectedY,
+      errorX: Math.abs(mouse.clientX - expectedX),
+      errorY: Math.abs(mouse.clientY - expectedY)
+    }
+  })
+  if (
+    calibration === null ||
+    calibration.errorX > 2 ||
+    calibration.errorY > 2 ||
+    !calibration.isTrusted
+  ) {
+    throw new Error(`native screen-to-CSS calibration failed: ${JSON.stringify(calibration)}`)
+  }
+  return calibration
+}
+
+async function launchCalibratedNativeController(page) {
+  const controller = await launchNativeWheelController(page)
+  try {
+    const calibration = await calibrateNativeInput(page, controller)
+    return { controller, calibration }
+  } catch (error) {
+    await controller.close()
+    throw error
+  }
+}
+
+async function readHybridState(page, label) {
+  return page.evaluate((checkpointLabel) => {
+    const container = document.querySelector('#image-container')
+    const buffer = document.querySelector('#buffer')
+    const group = document.querySelector('#buffer .buffer-visible-rows')
+    if (!(container instanceof HTMLElement)) return null
+
+    const rows = [...document.querySelectorAll('#buffer [start]')]
+    const firstRow = rows[0]
+    const lastRow = rows.at(-1)
+    const placeholders = [...document.querySelectorAll('#buffer [id^="placeholder"]')]
+    const containerRect = container.getBoundingClientRect()
+    const containerStyle = getComputedStyle(container)
+    const physicalMaximum = container.scrollHeight - container.clientHeight
+    const origin = Number(container.dataset.scrollOrigin ?? 0)
+    const logicalTop = container.scrollTop - origin
+    const logicalUpperBound = Number(container.dataset.scrollUpper ?? 0)
+    const mode = container.dataset.scrollMode ?? null
+    const groupStyle = group instanceof HTMLElement ? getComputedStyle(group) : null
+    const transformNumbers = [
+      ...(group instanceof HTMLElement
+        ? [...group.style.transform.matchAll(/-?\d+(?:\.\d+)?/g)].map((match) => Number(match[0]))
+        : []),
+      ...placeholders.flatMap((placeholder) =>
+        placeholder instanceof HTMLElement
+          ? [...placeholder.style.transform.matchAll(/-?\d+(?:\.\d+)?/g)].map((match) =>
+              Number(match[0])
+            )
+          : []
+      )
+    ]
+    const intersectsViewport = (element) => {
+      const rect = element.getBoundingClientRect()
+      return rect.bottom >= containerRect.top && rect.top <= containerRect.bottom
+    }
+
+    return {
+      label: checkpointLabel,
+      mode,
+      generation: Number(container.dataset.scrollGeneration ?? 0),
+      internalWriteCount: Number(container.dataset.scrollInternalWrites ?? 0),
+      p: container.scrollTop,
+      P: physicalMaximum,
+      O: origin,
+      V: logicalTop,
+      U: logicalUpperBound,
+      totalHeight: Number(container.dataset.scrollTotalHeight ?? 0),
+      invariantError: Math.abs(logicalTop - (container.scrollTop - origin)),
+      bottomOriginError:
+        mode === 'native-bottom'
+          ? Math.abs(origin - (physicalMaximum - logicalUpperBound))
+          : null,
+      topOriginError: mode === 'native-top' ? Math.abs(origin) : null,
+      physicalBoundaryError:
+        mode === 'native-top' && logicalTop <= 1
+          ? Math.abs(container.scrollTop)
+          : mode === 'native-bottom' && logicalUpperBound - logicalTop <= 1
+            ? Math.abs(physicalMaximum - container.scrollTop)
+            : null,
+      bufferRequestedHeight:
+        buffer instanceof HTMLElement ? Number.parseFloat(buffer.style.height) : null,
+      bufferActualHeight: buffer instanceof HTMLElement ? buffer.getBoundingClientRect().height : null,
+      group: group instanceof HTMLElement
+        ? {
+            inlineTop: group.style.top,
+            inlineBottom: group.style.bottom,
+            inlineTransform: group.style.transform,
+            computedTransform: groupStyle?.transform ?? null,
+            rectTop: group.getBoundingClientRect().top
+          }
+        : null,
+      firstRow:
+        firstRow instanceof HTMLElement
+          ? { start: firstRow.getAttribute('start'), rect: firstRow.getBoundingClientRect().toJSON() }
+          : null,
+      lastRow:
+        lastRow instanceof HTMLElement
+          ? { start: lastRow.getAttribute('start'), rect: lastRow.getBoundingClientRect().toJSON() }
+          : null,
+      rowCount: rows.length,
+      placeholderCount: placeholders.length,
+      hasProjectedContent: [...rows, ...placeholders].some(intersectsViewport),
+      maximumProjectionMagnitude: Math.max(0, ...transformNumbers.map(Math.abs)),
+      horizontalOverflowPx:
+        document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      overscrollBehaviorY: containerStyle.overscrollBehaviorY,
+      overflowAnchor: containerStyle.overflowAnchor
+    }
+  }, label)
+}
+
+async function captureCdpCheckpoint(page, checkpoint, label) {
+  const state = await readHybridState(page, label)
+  let cdpCapturePath = null
+  if (config.checkpointDir) {
+    const directory = resolve(config.checkpointDir)
+    await mkdir(directory, { recursive: true })
+    const screenName = checkpoint?.screenCapturePath
+      ? String(checkpoint.screenCapturePath).split(/[\\/]/).at(-1).replace(/\.png$/i, '')
+      : `hybrid-${label}-${Date.now()}`
+    cdpCapturePath = resolve(directory, `${screenName}-cdp.png`)
+    await page.screenshot({ path: cdpCapturePath })
+  }
+  return { checkpoint, state, cdpCapturePath }
+}
+
+function compactModeSequence(states) {
+  const result = []
+  for (const state of states) {
+    if (state?.mode && state.mode !== result.at(-1)) result.push(state.mode)
+  }
+  return result
 }
 
 const traceCategories = [
@@ -649,23 +904,63 @@ async function installInstrumentation(context) {
   await context.addInitScript(
     `globalThis.__trackThumbnailMutations = ${config.scenario === 'thumbnail-throughput'}`
   )
+  await context.addInitScript(
+    `globalThis.__trackHybridScroll = ${hybridScenarios.has(config.scenario)}`
+  )
   await context.addInitScript(() => {
     const trackThumbnailMutations = globalThis.__trackThumbnailMutations === true
+    const trackHybridScroll = globalThis.__trackHybridScroll === true
     const state = {
       running: false,
       anchorStart: null,
       frames: [],
       wheelEvents: [],
+      touchEvents: [],
       scrollEvents: [],
       scrollEndEvents: [],
       thumbnailMutations: [],
       thumbnailFrame: 0,
       samplingStartedAt: 0,
       lastFrame: null,
+      lastMouseMove: null,
+      trackHybridScroll,
       trackVisual: true
     }
     window.__scrollLag = state
 
+    window.addEventListener(
+      'mousemove',
+      (event) => {
+        state.lastMouseMove = {
+          time: performance.now(),
+          clientX: event.clientX,
+          clientY: event.clientY,
+          screenX: event.screenX,
+          screenY: event.screenY,
+          isTrusted: event.isTrusted
+        }
+      },
+      { capture: true, passive: true }
+    )
+    for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+      window.addEventListener(
+        type,
+        (event) => {
+          if (!state.running) return
+          const touch = event.touches[0] ?? event.changedTouches[0]
+          state.touchEvents.push({
+            type,
+            time: performance.now(),
+            isTrusted: event.isTrusted,
+            clientX: touch?.clientX ?? null,
+            clientY: touch?.clientY ?? null,
+            touches: event.touches.length,
+            defaultPrevented: event.defaultPrevented
+          })
+        },
+        { capture: true, passive: true }
+      )
+    }
     window.addEventListener(
       'wheel',
       (event) => {
@@ -698,7 +993,11 @@ async function installInstrumentation(context) {
         if (state.running && event.target?.id === 'image-container') {
           state.scrollEvents.push({
             time: performance.now(),
-            scrollTop: event.target.scrollTop
+            scrollTop: event.target.scrollTop,
+            mode: event.target.dataset.scrollMode ?? null,
+            origin: Number(event.target.dataset.scrollOrigin ?? 0),
+            generation: Number(event.target.dataset.scrollGeneration ?? 0),
+            internalWriteCount: Number(event.target.dataset.scrollInternalWrites ?? 0)
           })
         }
       },
@@ -710,7 +1009,11 @@ async function installInstrumentation(context) {
         if (state.running && event.target?.id === 'image-container') {
           state.scrollEndEvents.push({
             time: performance.now(),
-            scrollTop: event.target.scrollTop
+            scrollTop: event.target.scrollTop,
+            mode: event.target.dataset.scrollMode ?? null,
+            origin: Number(event.target.dataset.scrollOrigin ?? 0),
+            generation: Number(event.target.dataset.scrollGeneration ?? 0),
+            internalWriteCount: Number(event.target.dataset.scrollInternalWrites ?? 0)
           })
         }
       },
@@ -749,7 +1052,7 @@ async function installInstrumentation(context) {
     const sampleFrame = (time) => {
       state.thumbnailFrame += 1
       if (state.running) {
-        const container = state.trackVisual
+        const container = state.trackVisual || trackHybridScroll
           ? document.querySelector('#image-container')
           : null
         const anchor =
@@ -761,7 +1064,20 @@ async function installInstrumentation(context) {
           gap: state.lastFrame === null ? null : time - state.lastFrame,
           scrollTop: container?.scrollTop ?? null,
           anchorStart: anchor?.getAttribute('start') ?? null,
-          anchorTop: anchor?.getBoundingClientRect().top ?? null
+          anchorTop: anchor?.getBoundingClientRect().top ?? null,
+          ...(trackHybridScroll && container
+            ? {
+                mode: container.dataset.scrollMode ?? null,
+                origin: Number(container.dataset.scrollOrigin ?? 0),
+                generation: Number(container.dataset.scrollGeneration ?? 0),
+                internalWriteCount: Number(container.dataset.scrollInternalWrites ?? 0),
+                logicalUpperBound: Number(container.dataset.scrollUpper ?? 0),
+                totalHeight: Number(container.dataset.scrollTotalHeight ?? 0),
+                physicalMaximum: container.scrollHeight - container.clientHeight,
+                logicalTop:
+                  container.scrollTop - Number(container.dataset.scrollOrigin ?? 0)
+              }
+            : {})
         })
         state.lastFrame = time
       }
@@ -839,6 +1155,7 @@ async function beginFrameSampling(page) {
     state.anchorStart = anchor.getAttribute('start')
     state.frames.length = 0
     state.wheelEvents.length = 0
+    state.touchEvents.length = 0
     state.scrollEvents.length = 0
     state.scrollEndEvents.length = 0
     state.lastFrame = null
@@ -856,6 +1173,7 @@ async function beginPassiveSampling(page) {
     state.anchorStart = null
     state.frames.length = 0
     state.wheelEvents.length = 0
+    state.touchEvents.length = 0
     state.scrollEvents.length = 0
     state.scrollEndEvents.length = 0
     state.lastFrame = null
@@ -873,6 +1191,7 @@ async function finishFrameSampling(page) {
       anchorStart: state.anchorStart,
       frames: state.frames,
       wheelEvents: state.wheelEvents,
+      touchEvents: state.touchEvents,
       scrollEvents: state.scrollEvents,
       scrollEndEvents: state.scrollEndEvents,
       thumbnailMutations: state.thumbnailMutations.filter(
@@ -1110,6 +1429,13 @@ async function captureWheelAnchor(page, anchorStart = null) {
       anchorTop: anchor.getBoundingClientRect().top,
       physicalScrollTop: container.scrollTop,
       virtualScrollTop: scrollTopStore?.scrollTop ?? null,
+      mode: container.dataset.scrollMode ?? null,
+      projectionOrigin: Number(container.dataset.scrollOrigin ?? 0),
+      logicalTop: container.scrollTop - Number(container.dataset.scrollOrigin ?? 0),
+      logicalUpperBound: Number(container.dataset.scrollUpper ?? 0),
+      physicalMaximum: container.scrollHeight - container.clientHeight,
+      generation: Number(container.dataset.scrollGeneration ?? 0),
+      internalWriteCount: Number(container.dataset.scrollInternalWrites ?? 0),
       visibleRowsTop:
         visibleRows instanceof HTMLElement ? visibleRows.getBoundingClientRect().top : null,
       visibleRowsTransform:
@@ -1401,6 +1727,488 @@ async function runNativeWheelScenario(page, imageContainer, delayRows = false) {
       finalNoInputDriftPx,
       invalidPulseCount: invalidPulses.length,
       pulses
+    }
+  }
+}
+
+async function runHybridWheelPulse(page, controller, delta, pulseNumber) {
+  const before = await captureWheelAnchor(page)
+  if (before === null) throw new Error('hybrid handoff could not find an anchor row')
+  const indexes = await page.evaluate((anchorStart) => {
+    const state = window.__scrollLag
+    if (!state) throw new Error('scroll instrumentation is unavailable')
+    state.anchorStart = anchorStart
+    state.trackVisual = true
+    return {
+      wheel: state.wheelEvents.length,
+      scroll: state.scrollEvents.length,
+      scrollEnd: state.scrollEndEvents.length,
+      frame: state.frames.length
+    }
+  }, before.anchorStart)
+
+  const nativeInput = await controller.wheel(delta)
+  await page.waitForFunction(
+    ({ wheelIndex, scrollIndex }) => {
+      const state = window.__scrollLag
+      const wheel = state?.wheelEvents[wheelIndex]
+      const scrolls = state?.scrollEvents.slice(scrollIndex) ?? []
+      const lastScroll = scrolls.at(-1)
+      const lastScrollEnd = state?.scrollEndEvents.at(-1)
+      return Boolean(
+        wheel &&
+          lastScroll &&
+          lastScrollEnd &&
+          lastScrollEnd.time >= lastScroll.time &&
+          performance.now() - lastScroll.time >= 40
+      )
+    },
+    { wheelIndex: indexes.wheel, scrollIndex: indexes.scroll },
+    { timeout: 3000 }
+  )
+  await page.waitForTimeout(20)
+
+  const after = await captureWheelAnchor(page, before.anchorStart)
+  if (after === null) throw new Error('hybrid handoff lost its per-pulse anchor row')
+  const observed = await page.evaluate((startIndexes) => {
+    const state = window.__scrollLag
+    return {
+      wheelEvents: state?.wheelEvents.slice(startIndexes.wheel) ?? [],
+      scrollEvents: state?.scrollEvents.slice(startIndexes.scroll) ?? [],
+      scrollEndEvents: state?.scrollEndEvents.slice(startIndexes.scrollEnd) ?? [],
+      frames: state?.frames.slice(startIndexes.frame) ?? []
+    }
+  }, indexes)
+  const expectedDisplacementPx = observed.wheelEvents.reduce(
+    (sum, event) => sum + event.deltaY,
+    0
+  )
+  const actualDisplacementPx = before.anchorTop - after.anchorTop
+  const expectedDirection = Math.sign(expectedDisplacementPx)
+  const modeChanged = before.mode !== after.mode
+  const movementStayedForward =
+    actualDisplacementPx * expectedDirection >= -config.behaviorTolerancePx &&
+    Math.abs(actualDisplacementPx) <=
+      Math.abs(expectedDisplacementPx) + config.behaviorTolerancePx
+  let previousAnchorTop = before.anchorTop
+  let reverseMovementFrameCount = 0
+  for (const frame of observed.frames) {
+    if (frame.anchorTop === null || String(frame.anchorStart) !== String(before.anchorStart)) {
+      continue
+    }
+    const movement = previousAnchorTop - frame.anchorTop
+    if (movement * expectedDirection < -config.behaviorTolerancePx) {
+      reverseMovementFrameCount += 1
+    }
+    previousAnchorTop = frame.anchorTop
+  }
+
+  return {
+    pulse: pulseNumber,
+    nativeInput,
+    before,
+    after,
+    expectedDisplacementPx: round(expectedDisplacementPx),
+    actualDisplacementPx: round(actualDisplacementPx),
+    modeChanged,
+    // A programmatic physical rebase can end Chrome's remaining per-notch smooth animation.
+    // At the handoff itself continuity means no reverse/overshoot frame; ordinary pulses must
+    // still deliver the full native wheel displacement.
+    visualDiscontinuityPx: round(
+      modeChanged && movementStayedForward
+        ? 0
+        : Math.abs(actualDisplacementPx - expectedDisplacementPx)
+    ),
+    wheelDisplacementErrorPx: round(
+      Math.abs(actualDisplacementPx - expectedDisplacementPx)
+    ),
+    reverseMovementFrameCount,
+    wheelEvents: observed.wheelEvents,
+    scrollEvents: observed.scrollEvents,
+    scrollEndEvents: observed.scrollEndEvents
+  }
+}
+
+async function runHybridHandoffScenario(page, imageContainer, boundary) {
+  await clickScrollbarAt(page, boundary === 'top' ? 0 : 1)
+  await page.waitForTimeout(1200)
+  await imageContainer.hover()
+  if (boundary === 'bottom') {
+    await page.mouse.wheel(0, config.deltaY * Math.max(config.pulses, 36) * 4)
+    await page.waitForTimeout(700)
+  }
+
+  const expectedEdgeMode = boundary === 'top' ? 'native-top' : 'native-bottom'
+  const initialState = await readHybridState(page, 'initial-edge')
+  if (initialState?.mode !== expectedEdgeMode) {
+    throw new Error(`hybrid ${boundary} scenario did not start at its native edge`)
+  }
+
+  const { controller, calibration } = await launchCalibratedNativeController(page)
+  await beginPassiveSampling(page)
+  const pulses = []
+  const states = [initialState]
+  const outwardDelta = boundary === 'top' ? config.nativeWheelDelta : -config.nativeWheelDelta
+  const returnDelta = -outwardDelta
+  const maximumPulsesPerLeg = Math.max(config.pulses * 3, 90)
+
+  const runUntilMode = async (targetMode, delta, phase) => {
+    for (let index = 0; index < maximumPulsesPerLeg; index += 1) {
+      const pulse = await runHybridWheelPulse(page, controller, delta, pulses.length + 1)
+      pulse.phase = phase
+      pulses.push(pulse)
+      const state = await readHybridState(page, `${phase}-${index + 1}`)
+      states.push(state)
+      if (state?.mode === targetMode) return
+    }
+    throw new Error(`hybrid ${boundary} handoff never reached ${targetMode}`)
+  }
+
+  try {
+    await runUntilMode('compensated', outwardDelta, 'leave-edge')
+    await runUntilMode(expectedEdgeMode, returnDelta, 'return-edge')
+  } finally {
+    await controller.close()
+  }
+
+  await page.waitForTimeout(200)
+  const frameState = await finishFrameSampling(page)
+  const finalState = await readHybridState(page, 'final-edge')
+  const modeSequence = compactModeSequence(states)
+  const invalidPulses = pulses.filter(
+    (pulse) =>
+      pulse.wheelEvents.length !== 1 ||
+      pulse.wheelEvents.some(
+        (event) =>
+          !event.isTrusted || !event.insideImageContainer || event.defaultPrevented
+      ) ||
+      pulse.visualDiscontinuityPx > config.behaviorTolerancePx ||
+      pulse.reverseMovementFrameCount > 0
+  )
+  const projectionErrors = states.filter(
+    (state) =>
+      state === null ||
+      !state.hasProjectedContent ||
+      state.horizontalOverflowPx > 0 ||
+      (state.bottomOriginError !== null &&
+        state.bottomOriginError > config.behaviorTolerancePx) ||
+      (state.topOriginError !== null && state.topOriginError > config.behaviorTolerancePx)
+  )
+  const expectedModeSequence = [expectedEdgeMode, 'compensated', expectedEdgeMode]
+
+  return {
+    anchorStart: null,
+    behaviorEquivalent:
+      JSON.stringify(modeSequence) === JSON.stringify(expectedModeSequence) &&
+      invalidPulses.length === 0 &&
+      projectionErrors.length === 0 &&
+      finalState?.mode === expectedEdgeMode,
+    frameMetrics: summarizePassiveFrames(frameState),
+    physicalAnchorErrorPx: 0,
+    applyScrollBudget: true,
+    scrollBudgetUnit: 'scroll-event',
+    interactionCount: pulses.length,
+    details: {
+      inputSource: 'Windows SendInput MOUSEEVENTF_WHEEL',
+      boundary,
+      calibration,
+      expectedModeSequence,
+      modeSequence,
+      invalidPulseCount: invalidPulses.length,
+      projectionErrorCount: projectionErrors.length,
+      maximumVisualDiscontinuityPx: round(
+        Math.max(0, ...pulses.map((pulse) => pulse.visualDiscontinuityPx))
+      ),
+      initialState,
+      finalState,
+      pulses
+    }
+  }
+}
+
+async function applySyntheticBottomOffset(page, shiftPx) {
+  return page.evaluate((shift) => {
+    const app = document.querySelector('#app')?.__vue_app__
+    const pinia = app?.config?.globalProperties?.$pinia
+    const stores = [...(pinia?._s?.values?.() ?? [])]
+    const prefetchStore = stores.find((store) => String(store.$id).startsWith('prefetchStore'))
+    const rowStore = stores.find((store) => String(store.$id).startsWith('rowStore'))
+    const firstStart = Number(document.querySelector('#buffer [start]')?.getAttribute('start'))
+    if (!prefetchStore || !rowStore || !Number.isFinite(firstStart)) {
+      throw new Error('bottom offset fixture could not resolve the active stores')
+    }
+
+    const firstVisibleRow = [...rowStore.rowData.values()].find(
+      (row) => row.start === firstStart
+    )
+    if (!firstVisibleRow) throw new Error('bottom offset fixture lost its first visible row')
+    const firstVisibleRowIndex = firstVisibleRow.rowIndex
+    for (const row of rowStore.rowData.values()) {
+      if (row.rowIndex >= firstVisibleRowIndex) row.offset += shift
+    }
+    prefetchStore.totalHeight += shift
+    prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
+    return {
+      firstVisibleRowIndex,
+      totalHeight: prefetchStore.totalHeight,
+      shift
+    }
+  }, shiftPx)
+}
+
+async function runNativeElasticScenario(page, imageContainer, boundary, liveOffset = false) {
+  await clickScrollbarAt(page, boundary === 'top' ? 0 : 1)
+  await page.waitForTimeout(1200)
+  await imageContainer.hover()
+  if (boundary === 'bottom') {
+    await page.mouse.wheel(0, config.deltaY * Math.max(config.pulses, 36) * 4)
+    await page.waitForTimeout(700)
+  }
+
+  const expectedMode = boundary === 'top' ? 'native-top' : 'native-bottom'
+  const { controller, calibration } = await launchCalibratedNativeController(page)
+  const baselineCapture = await controller.capture('baseline')
+  const baseline = await captureCdpCheckpoint(page, baselineCapture, 'baseline')
+  const initialState = baseline.state
+  if (initialState?.mode !== expectedMode) {
+    await controller.close()
+    throw new Error(`native elastic ${boundary} scenario did not start at its boundary`)
+  }
+
+  await beginPassiveSampling(page)
+  const checkpointEvidence = []
+  let offsetMutation = null
+  const steps = 8
+  const initialWriteCount = initialState.internalWriteCount
+  let touchResult
+  let settledCapture
+  let settled
+  try {
+    touchResult = await controller.touch(
+      {
+        xRatio: 0.5,
+        startYRatio: boundary === 'top' ? 0.3 : 0.75,
+        endYRatio: boundary === 'top' ? 0.52 : 0.53,
+        durationMs: 300,
+        steps
+      },
+      async (checkpoint) => {
+        if (liveOffset && offsetMutation === null && checkpoint.index === Math.ceil(steps / 2)) {
+          offsetMutation = await applySyntheticBottomOffset(page, 137)
+          await page.waitForTimeout(100)
+        }
+        checkpointEvidence.push(
+          await captureCdpCheckpoint(
+            page,
+            checkpoint,
+            `${checkpoint.phase}-${checkpoint.index}`
+          )
+        )
+      }
+    )
+    // Chrome applies elastic overscroll on the compositor after the injected pointer-up.
+    // A large pull can still be near its peak after one second, so leave enough time for
+    // the native spring to settle before taking the authority frame.
+    await page.waitForTimeout(3000)
+    settledCapture = await controller.capture('settled')
+    settled = await captureCdpCheckpoint(page, settledCapture, 'settled')
+  } finally {
+    await controller.close()
+  }
+
+  const frameState = await finishFrameSampling(page)
+  const finalState = settled.state
+  const copyFromScreenDifferences = checkpointEvidence
+    .map((evidence) => evidence.checkpoint?.visualDifference?.changedPixelRatio)
+    .filter((value) => Number.isFinite(value))
+  const copyFromScreenPeakChangedPixelRatio = Math.max(0, ...copyFromScreenDifferences)
+  const copyFromScreenSettledChangedPixelRatio =
+    settledCapture.visualDifference?.changedPixelRatio ?? Number.POSITIVE_INFINITY
+  const authorityPeakEvidence = checkpointEvidence.find(
+    (evidence) => typeof evidence.checkpoint?.authorityScreenCapturePath === 'string'
+  )
+  const peakChangedPixelRatio =
+    authorityPeakEvidence?.checkpoint?.authorityVisualDifference?.changedPixelRatio ??
+    Number.NEGATIVE_INFINITY
+  const settledChangedPixelRatio =
+    settledCapture.authorityVisualDifference?.changedPixelRatio ?? Number.POSITIVE_INFINITY
+  const touchEvents = frameState.touchEvents
+  const trustedTouch =
+    touchEvents.some((event) => event.type === 'touchstart') &&
+    touchEvents.some((event) => event.type === 'touchend') &&
+    touchEvents.every((event) => event.isTrusted && !event.defaultPrevented)
+  const maximumWrites = liveOffset ? initialWriteCount + 1 : initialWriteCount
+  const screenshotsComplete =
+    [baseline, settled, ...checkpointEvidence].every(
+      (evidence) =>
+        typeof evidence.checkpoint?.screenCapturePath === 'string' &&
+        typeof evidence.cdpCapturePath === 'string'
+    ) &&
+    typeof baselineCapture.authorityScreenCapturePath === 'string' &&
+    typeof authorityPeakEvidence?.checkpoint?.authorityScreenCapturePath === 'string' &&
+    typeof settledCapture.authorityScreenCapturePath === 'string'
+  const nativeSpringMeasured =
+    peakChangedPixelRatio > 0.02 &&
+    peakChangedPixelRatio > settledChangedPixelRatio + 0.01 &&
+    settledChangedPixelRatio <= 0.01
+
+  return {
+    anchorStart: null,
+    behaviorEquivalent:
+      trustedTouch &&
+      screenshotsComplete &&
+      nativeSpringMeasured &&
+      finalState?.mode === expectedMode &&
+      (finalState?.physicalBoundaryError ?? Number.POSITIVE_INFINITY) <=
+        config.behaviorTolerancePx &&
+      finalState.internalWriteCount <= maximumWrites &&
+      (finalState.bottomOriginError ?? 0) <= config.behaviorTolerancePx &&
+      (!liveOffset || offsetMutation !== null),
+    frameMetrics: summarizePassiveFrames(frameState),
+    physicalAnchorErrorPx: round(finalState?.physicalBoundaryError ?? 0),
+    applyScrollBudget: true,
+    scrollBudgetUnit: 'scroll-event',
+    interactionCount: 1,
+    details: {
+      inputSource: 'Windows InitializeTouchInjection + InjectTouchInput',
+      boundary,
+      liveOffset,
+      calibration,
+      initialState,
+      finalState,
+      offsetMutation,
+      touchResult,
+      trustedTouch,
+      peakChangedPixelRatio,
+      settledChangedPixelRatio,
+      nativeSpringMeasured,
+      copyFromScreenPeakChangedPixelRatio,
+      copyFromScreenSettledChangedPixelRatio,
+      composedWindowAuthority: {
+        backend: 'Windows Alt+PrintScreen composed-window capture',
+        baselinePath: baselineCapture.authorityScreenCapturePath,
+        peakPath: authorityPeakEvidence?.checkpoint?.authorityScreenCapturePath ?? null,
+        settledPath: settledCapture.authorityScreenCapturePath,
+        peakDifference: authorityPeakEvidence?.checkpoint?.authorityVisualDifference ?? null,
+        settledDifference: settledCapture.authorityVisualDifference ?? null
+      },
+      screenshotsComplete,
+      baseline,
+      settled,
+      checkpoints: checkpointEvidence
+    }
+  }
+}
+
+async function setSyntheticLogicalGeometry(page, totalHeight, logicalTop) {
+  return page.evaluate(
+    async ({ syntheticTotalHeight, targetLogicalTop }) => {
+      const container = document.querySelector('#image-container')
+      const app = document.querySelector('#app')?.__vue_app__
+      const pinia = app?.config?.globalProperties?.$pinia
+      const stores = [...(pinia?._s?.values?.() ?? [])]
+      const prefetchStore = stores.find((store) => String(store.$id).startsWith('prefetchStore'))
+      if (!(container instanceof HTMLElement) || !prefetchStore) {
+        throw new Error('synthetic geometry could not resolve the active controller')
+      }
+      prefetchStore.totalHeight = syntheticTotalHeight
+      prefetchStore.totalHeightOriginal = syntheticTotalHeight
+      if (typeof container.__urocissaScrollTest?.sync !== 'function') {
+        throw new Error('development hybrid scroll test hook is unavailable')
+      }
+      await container.__urocissaScrollTest.sync(targetLogicalTop)
+      return {
+        clientHeight: container.clientHeight,
+        logicalUpperBound: Number(container.dataset.scrollUpper ?? 0)
+      }
+    },
+    { syntheticTotalHeight: totalHeight, targetLogicalTop: logicalTop }
+  )
+}
+
+async function stopSyntheticWorkerFetches(page) {
+  await page.evaluate(() => {
+    const app = document.querySelector('#app')?.__vue_app__
+    const pinia = app?.config?.globalProperties?.$pinia
+    const initializedStore = [...(pinia?._s?.values?.() ?? [])].find((store) =>
+      String(store.$id).startsWith('initializedStore')
+    )
+    if (initializedStore) initializedStore.initialized = false
+  })
+}
+
+async function runShortAllNativeScenario(page) {
+  await beginPassiveSampling(page)
+  const geometry = await setSyntheticLogicalGeometry(page, 5_000, 0)
+  const top = await readHybridState(page, 'short-top')
+  await setSyntheticLogicalGeometry(page, 5_000, geometry.logicalUpperBound)
+  const bottom = await readHybridState(page, 'short-bottom')
+  await setSyntheticLogicalGeometry(page, 5_000, geometry.logicalUpperBound / 2)
+  const midpointTop = await readHybridState(page, 'short-midpoint-top')
+  await setSyntheticLogicalGeometry(page, 5_000, geometry.logicalUpperBound / 2 + 2)
+  const midpointBottom = await readHybridState(page, 'short-midpoint-bottom')
+  const frameState = await finishFrameSampling(page)
+  await stopSyntheticWorkerFetches(page)
+  const states = [top, bottom, midpointTop, midpointBottom]
+
+  return {
+    anchorStart: null,
+    behaviorEquivalent:
+      top?.mode === 'native-top' &&
+      bottom?.mode === 'native-bottom' &&
+      midpointTop?.mode === 'native-top' &&
+      midpointBottom?.mode === 'native-bottom' &&
+      states.every(
+        (state) =>
+          state !== null &&
+          state.bufferRequestedHeight < 6_000 &&
+          state.mode !== 'compensated' &&
+          state.hasProjectedContent &&
+          state.horizontalOverflowPx === 0
+      ) &&
+      (bottom?.bottomOriginError ?? Number.POSITIVE_INFINITY) <=
+        config.behaviorTolerancePx,
+    frameMetrics: summarizePassiveFrames(frameState),
+    physicalAnchorErrorPx: round(bottom?.physicalBoundaryError ?? 0),
+    applyScrollBudget: false,
+    interactionCount: states.length,
+    details: { geometry, states }
+  }
+}
+
+async function runHeightClampProjectionScenario(page) {
+  const syntheticTotalHeight = 120_000_000
+  await beginPassiveSampling(page)
+  // The controller clamps an intentionally oversized target against its own reactive
+  // useElementSize-based U; DOM clientHeight includes padding and is not that contract.
+  await setSyntheticLogicalGeometry(page, syntheticTotalHeight, syntheticTotalHeight)
+  const state = await readHybridState(page, 'height-clamp-bottom')
+  const frameState = await finishFrameSampling(page)
+  await stopSyntheticWorkerFetches(page)
+
+  return {
+    anchorStart: null,
+    behaviorEquivalent:
+      state?.mode === 'native-bottom' &&
+      state.bufferRequestedHeight >= syntheticTotalHeight - 1 &&
+      state.bufferActualHeight < syntheticTotalHeight / 2 &&
+      state.P < syntheticTotalHeight / 2 &&
+      (state.bottomOriginError ?? Number.POSITIVE_INFINITY) <=
+        config.behaviorTolerancePx &&
+      (state.physicalBoundaryError ?? Number.POSITIVE_INFINITY) <=
+        config.behaviorTolerancePx &&
+      state.maximumProjectionMagnitude < 10_000 &&
+      state.hasProjectedContent &&
+      state.horizontalOverflowPx === 0,
+    frameMetrics: summarizePassiveFrames(frameState),
+    physicalAnchorErrorPx: round(state?.physicalBoundaryError ?? 0),
+    applyScrollBudget: false,
+    interactionCount: 1,
+    details: {
+      syntheticTotalHeight,
+      logicalUpperBound: state?.U ?? null,
+      chromeLayoutClampObserved: state?.bufferActualHeight ?? null,
+      state
     }
   }
 }
@@ -2084,6 +2892,20 @@ async function runScenario(
       return runNativeWheelScenario(page, imageContainer)
     case 'native-wheel-delay':
       return runNativeWheelScenario(page, imageContainer, true)
+    case 'hybrid-top-handoff':
+      return runHybridHandoffScenario(page, imageContainer, 'top')
+    case 'hybrid-bottom-handoff':
+      return runHybridHandoffScenario(page, imageContainer, 'bottom')
+    case 'hybrid-bottom-live-offset':
+      return runNativeElasticScenario(page, imageContainer, 'bottom', true)
+    case 'native-elastic-top':
+      return runNativeElasticScenario(page, imageContainer, 'top')
+    case 'native-elastic-bottom':
+      return runNativeElasticScenario(page, imageContainer, 'bottom')
+    case 'short-all-native':
+      return runShortAllNativeScenario(page)
+    case 'height-clamp-projection':
+      return runHeightClampProjectionScenario(page)
     case 'continuous-up':
       return runContinuousScenario(page, imageContainer, -1)
     case 'worker-delay':
@@ -2105,7 +2927,12 @@ async function runScenario(
 }
 
 async function runSample(browser, sampleIndex) {
-  const mobile = config.scenario === 'mobile' || config.scenario === 'mobile-interaction'
+  const mobile =
+    config.scenario === 'mobile' ||
+    config.scenario === 'mobile-interaction' ||
+    config.scenario === 'native-elastic-top' ||
+    config.scenario === 'native-elastic-bottom' ||
+    config.scenario === 'hybrid-bottom-live-offset'
   const objectRouteState = createObjectRouteState(
     config.scenario === 'thumbnail-throughput' ? config.thumbnailDelayMs : 0
   )
@@ -2262,6 +3089,15 @@ function aggregate(samples) {
 
 const browser = await chromium.launch({
   headless: !config.headed,
+  args: [
+    '--disable-features=Translate,TranslateUI',
+    '--disable-translate',
+    ...(config.scenario === 'native-elastic-top' ||
+    config.scenario === 'native-elastic-bottom' ||
+    config.scenario === 'hybrid-bottom-live-offset'
+      ? ['--enable-features=ElasticOverscroll,OverscrollEffectOnNonRootScrollers']
+      : [])
+  ],
   ...(config.browser === 'chrome' ? { channel: 'chrome' } : {})
 })
 const browserVersion = browser.version()

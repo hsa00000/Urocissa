@@ -1,45 +1,7 @@
-<template>
-  <div class="w-100 h-100 d-flex flex-column">
-    <!-- This router-view contains ViewPage.vue. -->
-    <router-view></router-view>
-
-    <div class="w-100 flex-grow-0 flex-shrink-0">
-      <slot name="home-toolbar"></slot>
-    </div>
-
-    <div class="w-100 flex-grow-1 min-h-0 d-flex">
-      <div
-        id="image-container"
-        ref="imageContainerRef"
-        class="d-flex flex-wrap position-relative flex-grow-1 min-h-0 h-100 pa-1 pb-2 bg-surface-light"
-        :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
-        @scroll="onScroll"
-        @scrollend="onScrollEnd"
-      >
-        <Buffer
-          v-if="initializedStore.initialized && prefetchStore.dataLength > 0"
-          :buffer-height="bufferHeight"
-          :effective-scroll-top="effectiveScrollTop"
-          :isolation-id="props.isolationId"
-        />
-        <HomeEmptyCard
-          v-if="initializedStore.initialized && prefetchStore.dataLength === 0"
-          :isolation-id="props.isolationId"
-        />
-      </div>
-
-      <div class="flex-grow-0 flex-shrink-0 bg-surface-light" style="overflow: visible">
-        <ScrollBar
-          :isolation-id="props.isolationId"
-          @before-scroll-jump="scrollController.resetPhysicalAnchor"
-        />
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { ref, onMounted, computed, provide, onBeforeUnmount, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { useRoute, type LocationQueryValue } from 'vue-router'
+import { useElementSize } from '@vueuse/core'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useCollectionStore } from '@/store/collectionStore'
@@ -47,15 +9,17 @@ import { useFilterStore } from '@/store/filterStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useWorkerStore } from '@/store/workerStore'
 import { useQueueStore } from '@/store/queueStore'
-import { LocationQueryValue, useRoute } from 'vue-router'
-import { useElementSize } from '@vueuse/core'
 import { usePrefetch } from '@/script/hook/usePrefetch'
-import { handleScroll } from '@/script/hook/useHandleScroll'
+import {
+  handleScroll,
+  type HybridScrollDebugSnapshot,
+  type ScrollSyncReason
+} from '@/script/hook/useHandleScroll'
 import { useInitializeScrollPosition } from '@/script/hook/useInitializeScrollPosition'
 import { useImgStore } from '@/store/imgStore'
 import Buffer from '@/components/Buffer/Buffer.vue'
 import ScrollBar from '@/components/Home/HomeScrollBar.vue'
-import { layoutBatchNumber } from '@/type/constants'
+import { fixedBigRowHeight, layoutBatchNumber } from '@/type/constants'
 import { useOffsetStore } from '@/store/offsetStore'
 import { useRowStore } from '@/store/rowStore'
 import { useLocationStore } from '@/store/locationStore'
@@ -63,7 +27,7 @@ import { fetchRowInWorker } from '@/api/fetchRow'
 import HomeEmptyCard from '@/components/Home/HomeEmptyCard.vue'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
-import { IsolationId } from '@type/types'
+import type { IsolationId } from '@type/types'
 import { useCollectionReloadStore } from '@/store/collectionReloadStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
@@ -91,7 +55,8 @@ const locationStore = useLocationStore(props.isolationId)
 const optimisticUpateStore = useOptimisticStore(props.isolationId)
 const scrollbarStore = useScrollbarStore(props.isolationId)
 const tokenStore = useTokenStore(props.isolationId)
-// albumStore should not use 'mainId'; otherwise clearAll will be called when the 'props.isolationId' component is unmounted.
+// albumStore should not use 'mainId'; otherwise clearAll will be called when the
+// props.isolationId component is unmounted.
 const albumStore = useAlbumStore(props.isolationId)
 const collectionReloadStore = useCollectionReloadStore('mainId')
 const constStore = useConstStore('mainId')
@@ -99,38 +64,72 @@ const constStore = useConstStore('mainId')
 const route = useRoute()
 const imageContainerRef = ref<HTMLElement | null>(null)
 const { width: windowWidth, height: windowHeight } = useElementSize(imageContainerRef)
-const clientHeight = ref<number>(0)
-
-const lastScrollTop = ref(0)
-const stopScroll = ref(false)
+const clientHeight = ref(0)
 
 provide('imageContainerRef', imageContainerRef)
 provide('windowWidth', windowWidth)
 provide('windowHeight', windowHeight)
 
-const scrollController = handleScroll(
-  imageContainerRef,
-  lastScrollTop,
-  stopScroll,
-  windowHeight,
-  props.isolationId
-)
-const { effectiveScrollTop } = scrollController
+const scrollController = handleScroll(imageContainerRef, windowHeight, props.isolationId)
+const {
+  effectiveScrollTop,
+  generation: scrollGeneration,
+  internalWriteCount,
+  logicalUpperBound,
+  minimumBufferHeight: bufferHeight,
+  mode: scrollMode,
+  projectionOrigin
+} = scrollController
 
-const onScroll = () => {
+let authoritativeSyncDepth = 0
+
+async function synchronizeLogicalPosition(reason: ScrollSyncReason): Promise<void> {
+  authoritativeSyncDepth += 1
+  try {
+    await scrollController.syncToLogicalPosition(reason)
+  } finally {
+    // Geometry notifications produced by the same render are already reflected by the sync's
+    // post-render P/U measurement and must not be applied a second time.
+    await nextTick()
+    authoritativeSyncDepth -= 1
+  }
+}
+
+function requestLogicalPositionSync(reason: ScrollSyncReason): void {
+  void synchronizeLogicalPosition(reason).catch((error: unknown) => {
+    console.error(`Hybrid scroll ${reason} synchronization failed:`, error)
+  })
+}
+
+function onGeometryShift(anchorShiftPx: number): void {
+  if (
+    authoritativeSyncDepth > 0 ||
+    prefetchStore.locateTo !== null ||
+    locationStore.pendingLocateTarget !== null
+  ) {
+    return
+  }
+
+  void scrollController.reconcileGeometry(anchorShiftPx).catch((error: unknown) => {
+    console.error('Hybrid scroll geometry reconciliation failed:', error)
+  })
+}
+
+function onScroll(): void {
   if (prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null) {
     scrollController.onScroll()
   }
 }
 
-const onScrollEnd = () => {
+function onScrollEnd(): void {
   if (prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null) {
-    void scrollController.onScrollEnd()
+    void scrollController.onScrollEnd().catch((error: unknown) => {
+      console.error('Hybrid scroll settlement failed:', error)
+    })
   }
 }
 
 watch([windowWidth, () => constStore.subRowHeightScale, () => constStore.limitRatio], async () => {
-  scrollController.resetPhysicalAnchor()
   locationStore.triggerForResize()
   prefetchStore.windowWidth = Math.round(windowWidth.value)
   prefetchStore.clearForResize()
@@ -141,22 +140,16 @@ watch([windowWidth, () => constStore.subRowHeightScale, () => constStore.limitRa
   const locationRowIndex = Math.floor(locationStore.locationIndex / layoutBatchNumber)
 
   locationStore.anchor = initializedStore.initialized ? locationRowIndex : null
-
-  scrollTopStore.scrollTop = locationRowIndex * 2400
+  scrollTopStore.scrollTop = locationRowIndex * fixedBigRowHeight
+  await synchronizeLogicalPosition('resize')
   await fetchRowInWorker(locationRowIndex, props.isolationId)
 })
 
-watch(
-  [() => prefetchStore.locateTo, () => locationStore.pendingLocateTarget],
-  ([locateTo, pendingLocateTarget]) => {
-    if (locateTo !== null || pendingLocateTarget !== null) {
-      scrollController.resetPhysicalAnchor()
-    }
-  }
-)
-
-const bufferHeight = computed(() => {
-  return 600000
+let locateWasPending = false
+watch([() => prefetchStore.locateTo, () => locationStore.pendingLocateTarget], ([locateTo, target]) => {
+  const locateIsPending = locateTo !== null || target !== null
+  if (locateWasPending && !locateIsPending) requestLogicalPositionSync('locate')
+  locateWasPending = locateIsPending
 })
 
 watch(
@@ -176,8 +169,19 @@ const reloadTrigger = computed(() =>
     : collectionReloadStore.subCollectionReload
 )
 
+const scrollDebugAttributes = computed(() => {
+  if (!import.meta.env.DEV) return {}
+  return {
+    'data-scroll-mode': scrollMode.value,
+    'data-scroll-origin': String(projectionOrigin.value),
+    'data-scroll-generation': String(scrollGeneration.value),
+    'data-scroll-upper': String(logicalUpperBound.value),
+    'data-scroll-total-height': String(prefetchStore.totalHeight),
+    'data-scroll-internal-writes': String(internalWriteCount.value)
+  }
+})
+
 function resetCollectionSnapshot(): void {
-  scrollController.resetPhysicalAnchor()
   if (workerStore.worker !== null || workerStore.imgWorker.length > 0) {
     workerStore.terminateWorker()
   }
@@ -199,6 +203,7 @@ function resetCollectionSnapshot(): void {
   optimisticUpateStore.clearAll()
   albumStore.clearAll()
   scrollTopStore.scrollTop = 0
+  requestLogicalPositionSync('collection-reset')
 }
 
 usePrefetch(filterJsonString, windowWidth, route, props.isolationId, {
@@ -223,18 +228,50 @@ watch(
   }
 )
 
+type ScrollDebugElement = HTMLElement & {
+  __urocissaScrollDebug?: () => HybridScrollDebugSnapshot
+  __urocissaScrollTest?: {
+    sync: (logicalTop: number) => Promise<void>
+  }
+}
+
+let scrollDebugElement: ScrollDebugElement | null = null
+
+watch(
+  imageContainerRef,
+  (imageContainer, previousImageContainer) => {
+    if (previousImageContainer !== null) {
+      delete (previousImageContainer as ScrollDebugElement).__urocissaScrollDebug
+      delete (previousImageContainer as ScrollDebugElement).__urocissaScrollTest
+    }
+    scrollDebugElement = imageContainer
+    if (import.meta.env.DEV && scrollDebugElement !== null) {
+      scrollDebugElement.__urocissaScrollDebug = scrollController.getDebugSnapshot
+      scrollDebugElement.__urocissaScrollTest = {
+        async sync(logicalTop: number) {
+          scrollTopStore.scrollTop = logicalTop
+          await synchronizeLogicalPosition('external')
+        }
+      }
+    }
+  },
+  { flush: 'post' }
+)
+
 onMounted(() => {
   useInitializeScrollPosition(
     imageContainerRef,
-    bufferHeight,
-    lastScrollTop,
     clientHeight,
-    windowWidth,
-    props.isolationId
+    props.isolationId,
+    synchronizeLogicalPosition
   )
 })
 
 onBeforeUnmount(() => {
+  if (scrollDebugElement !== null) {
+    delete scrollDebugElement.__urocissaScrollDebug
+    delete scrollDebugElement.__urocissaScrollTest
+  }
   scrollController.cancel()
   if (workerStore.worker !== null || workerStore.imgWorker.length > 0) {
     workerStore.terminateWorker()
@@ -256,10 +293,56 @@ onBeforeUnmount(() => {
 })
 </script>
 
+<template>
+  <div class="w-100 h-100 d-flex flex-column">
+    <!-- This router-view contains ViewPage.vue. -->
+    <router-view></router-view>
+
+    <div class="w-100 flex-grow-0 flex-shrink-0">
+      <slot name="home-toolbar"></slot>
+    </div>
+
+    <div class="w-100 flex-grow-1 min-h-0 d-flex">
+      <div
+        id="image-container"
+        ref="imageContainerRef"
+        v-bind="scrollDebugAttributes"
+        class="d-flex flex-wrap position-relative flex-grow-1 min-h-0 h-100 pa-1 pb-2 bg-surface-light overflow-y-scroll"
+        @scroll="onScroll"
+        @scrollend="onScrollEnd"
+      >
+        <Buffer
+          v-if="initializedStore.initialized && prefetchStore.dataLength > 0"
+          :buffer-height="bufferHeight"
+          :effective-scroll-top="effectiveScrollTop"
+          :isolation-id="props.isolationId"
+          :logical-upper-bound="logicalUpperBound"
+          :projection-origin="projectionOrigin"
+          :scroll-mode="scrollMode"
+          @geometry-shift="onGeometryShift"
+        />
+        <HomeEmptyCard
+          v-if="initializedStore.initialized && prefetchStore.dataLength === 0"
+          :isolation-id="props.isolationId"
+        />
+      </div>
+
+      <div class="flex-grow-0 flex-shrink-0 bg-surface-light" style="overflow: visible">
+        <ScrollBar
+          :isolation-id="props.isolationId"
+          @scroll-jump="requestLogicalPositionSync('scrollbar')"
+        />
+      </div>
+    </div>
+  </div>
+</template>
+
 <style scoped>
 #image-container {
   -ms-overflow-style: none;
   scrollbar-width: none;
+  overscroll-behavior-y: contain;
+  overflow-anchor: none;
 }
 
 #image-container::-webkit-scrollbar {

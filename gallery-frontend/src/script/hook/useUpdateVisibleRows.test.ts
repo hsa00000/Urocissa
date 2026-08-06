@@ -4,7 +4,6 @@ import { shallowRef } from 'vue'
 import type { Row } from '@type/types'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useRowStore } from '@/store/rowStore'
-import { useScrollTopStore } from '@/store/scrollTopStore'
 
 const fetchRowInWorkerMock = vi.hoisted(() => vi.fn<() => Promise<void>>())
 
@@ -14,8 +13,8 @@ vi.mock('@/api/fetchRow', () => ({
 
 import {
   getCurrentVisibleRows,
+  getVisibleRowAnchorShift,
   publishVisibleRowsIfChanged,
-  scrollTopOffsetFix,
   updateLastRowBottom,
   updateLastVisibleRow
 } from './useUpdateVisibleRows'
@@ -70,23 +69,33 @@ describe('visible-row geometry snapshots', () => {
     expect(resolvedRows[0]).toBe(currentRow)
   })
 
-  it('applies an offset shift once and then snapshots the new geometry', () => {
+  it('reports a complete logical anchor shift once and then snapshots it', () => {
     const rowStore = useRowStore('tempId')
-    const scrollTopStore = useScrollTopStore('tempId')
     rowStore.rowData.set(0, createRow())
     const currentRow = rowStore.rowData.get(0)
     if (currentRow === undefined) throw new Error('row fixture was not stored')
     const visibleRows = shallowRef([currentRow])
-    scrollTopStore.scrollTop = 100
 
     updateLastVisibleRow(visibleRows, rowStore)
     currentRow.offset = 25
-    scrollTopOffsetFix(visibleRows, 1000, rowStore, scrollTopStore)
-    expect(scrollTopStore.scrollTop).toBe(125)
+    currentRow.topPixelAccumulated = 100
+    expect(getVisibleRowAnchorShift(visibleRows, rowStore)).toBe(125)
 
     updateLastVisibleRow(visibleRows, rowStore)
-    scrollTopOffsetFix(visibleRows, 1000, rowStore, scrollTopStore)
-    expect(scrollTopStore.scrollTop).toBe(125)
+    expect(getVisibleRowAnchorShift(visibleRows, rowStore)).toBe(0)
+  })
+
+  it('uses the complete accumulated-top shift when recovering visible rows', () => {
+    const rowStore = useRowStore('tempId')
+    const currentRow = createRow()
+    rowStore.rowData.set(0, currentRow)
+    const visibleRows = shallowRef([currentRow])
+    updateLastVisibleRow(visibleRows, rowStore)
+
+    currentRow.topPixelAccumulated = 2_000
+    const resolvedRows = getCurrentVisibleRows(rowStore.lastVisibleRow, 0, 1_000, rowStore)
+
+    expect(resolvedRows).toEqual([currentRow])
   })
 
   it('requests a missing row without scheduling a self-trigger timer', () => {

@@ -4,13 +4,11 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import { useLocationStore } from '@/store/locationStore'
 import { useRowStore, type RowGeometrySnapshot } from '@/store/rowStore'
 import { markRaw, Ref, shallowRef, watch } from 'vue'
-import { useScrollTopStore } from '@/store/scrollTopStore'
-import { getArrayValue, getMapValue, getScrollUpperBound } from '@utils/getter'
+import { getArrayValue, getMapValue } from '@utils/getter'
 
 type PrefetchStore = ReturnType<typeof usePrefetchStore>
 type LocationStore = ReturnType<typeof useLocationStore>
 type RowStore = ReturnType<typeof useRowStore>
-type ScrollTopStore = ReturnType<typeof useScrollTopStore>
 
 export function publishVisibleRowsIfChanged(visibleRows: Ref<Row[]>, nextRows: Row[]): boolean {
   const currentRows = visibleRows.value
@@ -82,9 +80,11 @@ export function getCurrentVisibleRows(
     // If there are rows from the previous frame within the current viewport,
     // calculate the shift in row offsets.
     const lastRow = getArrayValue(rowsInRange, rowsInRange.length - 1)
-    const lastRowOffset = lastRow.offset
-    const currentRowOffset = getMapValue(rowStore.rowData, lastRow.rowIndex).offset
-    extraShift = currentRowOffset - lastRowOffset
+    const currentRow = getMapValue(rowStore.rowData, lastRow.rowIndex)
+    extraShift =
+      currentRow.topPixelAccumulated +
+      currentRow.offset -
+      (lastRow.topPixelAccumulated + lastRow.offset)
   }
 
   if (rowsInRange.length > 0 && extraShift === 0) {
@@ -155,31 +155,28 @@ function filterRowForLocation(visibleRows: Ref<Row[]>, locationStore: LocationSt
 }
 
 /**
- * Adjusts the `scrollTop` value to ensure the visible rows are properly aligned.
- * Calculates the necessary offset shift based on the difference between the current and last known offsets of the last visible row.
- *
- * @param visibleRows - Array of currently visible rows.
- * @param scrollTop - Current scroll position.
- * @param scrollingBound - Maximum allowed scroll position.
+ * Returns the complete logical displacement of the last stable row shared by the old and
+ * current visible sets. The hybrid scroll controller owns applying this displacement; this
+ * hook must not mutate the committed scroll position itself.
  */
-export function scrollTopOffsetFix(
+export function getVisibleRowAnchorShift(
   visibleRows: Ref<Row[]>,
-  scrollingBound: number,
-  rowStore: RowStore,
-  scrollTopStore: ScrollTopStore
-) {
+  rowStore: RowStore
+): number {
   const lastRow = visibleRows.value.findLast((row) => rowStore.lastVisibleRow.has(row.rowIndex))
 
   if (lastRow) {
     const lastKnownRow = rowStore.lastVisibleRow.get(lastRow.rowIndex)
     if (lastKnownRow) {
-      // Compute the difference between the current and last known offset
-      const shift = lastRow.offset - lastKnownRow.offset
-
-      // Adjust scrollTop while ensuring it does not exceed the scrollingBound
-      scrollTopStore.scrollTop = Math.min(scrollTopStore.scrollTop + shift, scrollingBound)
+      return (
+        lastRow.topPixelAccumulated +
+        lastRow.offset -
+        (lastKnownRow.topPixelAccumulated + lastKnownRow.offset)
+      )
     }
   }
+
+  return 0
 }
 
 /**
@@ -308,16 +305,15 @@ export function useUpdateVisibleRows(
   startHeight: Readonly<Ref<number>>,
   endHeight: Readonly<Ref<number>>,
   lastRowBottom: Ref<number>,
-  windowHeight: Ref<number>,
-  isolationId: IsolationId
+  isolationId: IsolationId,
+  onGeometryChange?: (anchorShiftPx: number) => void
 ) {
   const visibleRows: Ref<Row[]> = shallowRef<Row[]>([])
   const prefetchStore = usePrefetchStore(isolationId)
   const locationStore = useLocationStore(isolationId)
   const rowStore = useRowStore(isolationId)
-  const scrollTopStore = useScrollTopStore(isolationId)
 
-  const updateVisibleRows = () => {
+  const updateVisibleRows = (notifyGeometryChange = false) => {
     if (imageContainerRef.value) {
       const nextVisibleRows = {
         value: getCurrentVisibleRows(
@@ -328,18 +324,14 @@ export function useUpdateVisibleRows(
         )
       } as Ref<Row[]>
 
+      let anchorShift = 0
       if (nextVisibleRows.value.length > 0) {
         // The logic in getCurrentVisibleRows might miss the top and bottom rows, so we add them back
         appendAndPrependRow(nextVisibleRows, rowStore)
 
         filterRowForLocation(nextVisibleRows, locationStore)
 
-        scrollTopOffsetFix(
-          nextVisibleRows,
-          Math.max(getScrollUpperBound(prefetchStore.totalHeight, windowHeight.value), 0),
-          rowStore,
-          scrollTopStore
-        )
+        anchorShift = getVisibleRowAnchorShift(nextVisibleRows, rowStore)
       }
       updateLastVisibleRow(nextVisibleRows, rowStore)
       updateLocationIndex(nextVisibleRows, startHeight.value, locationStore)
@@ -351,19 +343,24 @@ export function useUpdateVisibleRows(
         isolationId
       )
       publishVisibleRowsIfChanged(visibleRows, nextVisibleRows.value)
+      if (notifyGeometryChange) onGeometryChange?.(anchorShift)
     }
   }
 
-  // Watch dependencies and trigger updateVisibleRows when any change occurs
+  // Viewport movement only updates projection. Worker geometry revisions additionally notify
+  // the controller even when the stable anchor shift is zero, because U/P may still change.
   watch(
-    [
-      imageContainerRef,
-      startHeight,
-      () => prefetchStore.updateVisibleRowTrigger,
-      () => document.visibilityState
-    ],
-    updateVisibleRows,
+    [imageContainerRef, startHeight, () => document.visibilityState],
+    () => {
+      updateVisibleRows(false)
+    },
     { immediate: true }
+  )
+  watch(
+    () => prefetchStore.updateVisibleRowTrigger,
+    () => {
+      updateVisibleRows(true)
+    }
   )
 
   return { visibleRows }

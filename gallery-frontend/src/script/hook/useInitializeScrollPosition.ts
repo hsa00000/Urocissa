@@ -1,60 +1,52 @@
-import { watch, type Ref, type ComputedRef } from 'vue'
+import { watch, type Ref } from 'vue'
 import { useInitializedStore } from '@/store/initializedStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { fixedBigRowHeight, layoutBatchNumber } from '@/type/constants'
 import { fetchRowInWorker } from '@/api/fetchRow'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useLocationStore } from '@/store/locationStore'
-import { IsolationId } from '@type/types'
+import type { IsolationId } from '@type/types'
+
+type InitialScrollSyncReason = 'initialize' | 'locate'
 
 /**
- * Initializes scroll position and client height for the image container.
- * If `locateTo` is set, scrolls to the target row and fetches data.
- *
- * @param imageContainerRef - Image container element reference.
- * @param scrollTop - Current scroll position reference.
- * @param bufferHeight - Buffer height reference.
- * @param lastScrollTop - Last scroll position reference.
- * @param clientHeight - Client height reference.
+ * Initializes the logical position only. Home's hybrid controller is the single owner of
+ * projecting that position into the DOM, including both phases of a locate operation.
  */
 export function useInitializeScrollPosition(
   imageContainerRef: Ref<HTMLElement | null>,
-  bufferHeight: ComputedRef<number>,
-  lastScrollTop: Ref<number>,
   clientHeight: Ref<number>,
-  windowWidth: Ref<number>,
-  isolationId: IsolationId
+  isolationId: IsolationId,
+  syncToLogicalPosition: (reason: InitialScrollSyncReason) => Promise<void>
 ): void {
   const initializedStore = useInitializedStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
+  const scrollTopStore = useScrollTopStore(isolationId)
+  const locationStore = useLocationStore(isolationId)
 
   watch(
-    // Here windowWidth is watched for the case that when resizing,
-    // the imageContainer.scrollTop may be reset to 0 (whenever bufferHeight becomes 0).
-    [() => initializedStore.initialized, windowWidth],
-
-    async () => {
-      const scrollTopStore = useScrollTopStore(isolationId)
+    () => initializedStore.initialized,
+    async (initialized) => {
       const imageContainer = imageContainerRef.value
-      if (imageContainer !== null && initializedStore.initialized) {
-        imageContainer.scrollTop = bufferHeight.value / 3
+      if (imageContainer === null || !initialized) return
 
-        lastScrollTop.value = bufferHeight.value / 3
-
-        clientHeight.value = imageContainer.clientHeight
-
-        const jumpTo = prefetchStore.locateTo
-        if (jumpTo !== null) {
-          const locationStore = useLocationStore(isolationId)
-          const targetRowIndex = Math.floor(jumpTo / layoutBatchNumber)
-          locationStore.locationIndex = jumpTo
-          locationStore.anchor = targetRowIndex
-          locationStore.pendingLocateTarget = jumpTo
-          scrollTopStore.scrollTop = targetRowIndex * fixedBigRowHeight
-          await fetchRowInWorker(targetRowIndex, isolationId)
-          prefetchStore.locateTo = null
-        }
+      clientHeight.value = imageContainer.clientHeight
+      const jumpTo = prefetchStore.locateTo
+      if (jumpTo === null) {
+        await syncToLogicalPosition('initialize')
+        return
       }
+
+      const targetRowIndex = Math.floor(jumpTo / layoutBatchNumber)
+      locationStore.locationIndex = jumpTo
+      locationStore.anchor = targetRowIndex
+      locationStore.pendingLocateTarget = jumpTo
+      scrollTopStore.scrollTop = targetRowIndex * fixedBigRowHeight
+
+      // First phase: move directly from the current projection to the coarse row target.
+      await syncToLogicalPosition('locate')
+      await fetchRowInWorker(targetRowIndex, isolationId)
+      prefetchStore.locateTo = null
     },
     { immediate: true, flush: 'post' }
   )
