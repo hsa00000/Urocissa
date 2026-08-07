@@ -19,6 +19,14 @@ export function computeOffSetSumOfAboveRowsIndex(
   return offsetSum
 }
 
+/** Keeps long logical documents on the fixed physical buffer used by scroll compensation. */
+export function resolvePhysicalBufferHeight(
+  compensationBufferHeight: number,
+  logicalContentHeight: number
+): number {
+  return compensationBufferHeight === 0 ? logicalContentHeight : compensationBufferHeight
+}
+
 /** Projects a logical row position from the top of the physical buffer. */
 export function projectVirtualTop(logicalTop: number, projectionOrigin: number): number {
   return logicalTop + projectionOrigin

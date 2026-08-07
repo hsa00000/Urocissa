@@ -29,7 +29,8 @@ import type { HybridScrollMode } from '@/script/hook/useHandleScroll'
 import {
   projectRelativeTop,
   projectVirtualBottom,
-  projectVirtualTop
+  projectVirtualTop,
+  resolvePhysicalBufferHeight
 } from '@/script/utils/rowOffset'
 
 const props = defineProps<{
@@ -64,8 +65,8 @@ const lastRowBottom = ref(0)
 const placeholderNoneRowRefHeight = computed(() =>
   placeholderNoneRef.value ? placeholderNoneRef.value.placeholderRowRefHeight : 0
 )
-const renderedBufferHeight = computed(() =>
-  Math.max(props.bufferHeight, prefetchStore.totalHeight)
+const physicalBufferHeight = computed(() =>
+  resolvePhysicalBufferHeight(props.bufferHeight, prefetchStore.totalHeight)
 )
 const visibleRowsLength = computed(() => visibleRows.value.length)
 const visibleRowsLogicalTop = computed(() => {
@@ -159,7 +160,9 @@ watch(windowWidth, () => {
   <div
     id="buffer"
     class="position-relative w-100 overflow-y-hidden"
-    :style="{ height: `${renderedBufferHeight}px` }"
+    :style="{
+      height: `${physicalBufferHeight}px`
+    }"
   >
     <div
       v-if="visibleRows.length > 0"

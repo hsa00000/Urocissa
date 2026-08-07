@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { projectRelativeTop, projectVirtualBottom, projectVirtualTop } from './rowOffset'
+import {
+  projectRelativeTop,
+  projectVirtualBottom,
+  projectVirtualTop,
+  resolvePhysicalBufferHeight
+} from './rowOffset'
+
+describe('physical buffer height', () => {
+  it('uses the real content height when the collection does not scroll', () => {
+    expect(resolvePhysicalBufferHeight(0, 500)).toBe(500)
+  })
+
+  it('uses the fixed compensation buffer for ordinary scrollable content', () => {
+    expect(resolvePhysicalBufferHeight(600_000, 917_679)).toBe(600_000)
+  })
+
+  it('never sends a million-photo logical height into CSS', () => {
+    expect(resolvePhysicalBufferHeight(600_000, 120_000_000)).toBe(600_000)
+  })
+})
 
 describe('projectVirtualTop', () => {
   it('keeps million-photo coordinates near the physical buffer viewport', () => {
