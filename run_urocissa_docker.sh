@@ -51,10 +51,12 @@ Options:
   --help             Show this help message and exit.
   --debug            Enable debug mode (verbose output).
   --dev              Use the 'dev' tag (hsa00000/urocissa:dev).
+  --tag <tag>        Use a specific image tag (for example, 3.3.1).
   --log-file <file>  Specify a log file for debug output.
 
 Examples:
   ./run_urocissa_docker.sh
+  ./run_urocissa_docker.sh --tag 3.3.1
   ./run_urocissa_docker.sh --debug --log-file run.log
 EOF
 }
@@ -89,6 +91,13 @@ parse_arguments() {
             --dev)
                 DOCKER_TAG="dev"
                 shift
+                ;;
+            --tag)
+                if [[ $# -lt 2 || -z "$2" || "$2" == --* ]]; then
+                    log_error "Option --tag requires an image tag"
+                fi
+                DOCKER_TAG="$2"
+                shift 2
                 ;;
             --log-file)
                 LOG_FILE="$2"
