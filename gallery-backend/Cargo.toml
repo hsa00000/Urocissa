@@ -1,6 +1,6 @@
 [package]
 name = "urocissa"
-version = "3.3.1"
+version = "3.4.0"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
