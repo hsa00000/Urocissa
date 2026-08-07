@@ -12,19 +12,20 @@
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
-    "nuxt": "^4.4.7",
+    "nuxt": "4.5.1",
     "vue": "^3.5.34",
     "vue-router": "^5.0.7"
   },
   "devDependencies": {
     "gh-pages": "^6.3.0",
+    "vuetify": "^4.1.5",
     "vuetify-nuxt-module": "^1.0.0-rc.2"
   },
   "overrides": {
     "esbuild": "^0.25.0",
-    "tar": "^7.5.16",
+    "tar": "^7.5.21",
     "@isaacs/brace-expansion": "^5.0.1",
-    "brace-expansion": "^5.0.5",
+    "brace-expansion": "^5.0.9",
     "nanotar": "^0.3.0",
     "lodash": "^4.18.0",
     "rollup": "^4.59.0",
@@ -32,7 +33,7 @@
     "devalue": "^5.8.1",
     "serialize-javascript": "^7.0.5",
     "simple-git": "^3.32.3",
-    "unhead": "3.1.8",
+    "unhead": "^3.2.3",
     "svgo": "^4.0.1",
     "vite": "8.1.5",
     "picomatch": "^4.0.4",
@@ -40,6 +41,9 @@
     "defu": "^6.1.5",
     "yaml": "^2.8.3",
     "h3": "^1.15.9",
-    "srvx": "^0.11.13"
+    "srvx": "^0.11.13",
+    "@nuxt/devtools": "^3.3.1",
+    "postcss": "^8.5.23",
+    "undici": "^8.9.0"
   }
 }
