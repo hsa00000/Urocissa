@@ -71,20 +71,20 @@ Both demos are currently in read-only mode, and uploading files or editing tags 
 
 ## Memory Usage Estimate
 
-Urocissa uses an in-memory cached database to ensure instant access and blazing-fast search. Based on real-world measurements, the following table estimates the RAM needed to handle large numbers of photos:
+Urocissa uses an in-memory cached database to ensure instant access and blazing-fast search. Based on a local V6 performance benchmark, the following table estimates the RAM needed to handle large numbers of photos:
 
 | Photo Count | Estimated RAM Usage |
 | ----------- | ------------------- |
-| 1 million   | ~1.2 GiB            |
-| 2 million   | ~2.4 GiB            |
-| 3 million   | ~3.6 GiB            |
-| 4 million   | ~4.8 GiB            |
-| 5 million   | ~6.0 GiB            |
-| 6 million   | ~7.2 GiB            |
-| 8 million   | ~9.6 GiB            |
-| 10 million  | ~12 GiB             |
+| 1 million   | ~0.49 GiB           |
+| 2 million   | ~0.98 GiB           |
+| 3 million   | ~1.47 GiB           |
+| 4 million   | ~1.96 GiB           |
+| 5 million   | ~2.45 GiB           |
+| 6 million   | ~2.95 GiB           |
+| 8 million   | ~3.93 GiB           |
+| 10 million  | ~4.91 GiB           |
 
-These values are based on actual runtime RSS (resident memory) usage of the `urocissa` process, measured during full data generation. In-memory usage may vary slightly depending on runtime allocator behavior, indexing options, or memory reuse patterns, but the scaling is approximately linear.
+The 1-million-record run reached a peak RSS (resident memory) of 502.6 MiB, including a full-selection edit and write-behind drain. The benchmark uses metadata-only records, so media files are not included. Larger values are linear extrapolations; actual usage may vary with allocator behavior, indexing options, and memory reuse patterns.
 
 ## Quick Setup
 
